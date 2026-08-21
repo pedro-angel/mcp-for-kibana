@@ -1,0 +1,118 @@
+{
+ "recorded": {
+  "at": "2026-08-16",
+  "by": "tests/e2e_replay/record_model_turn.py",
+  "model": "google/gemma-4-12b-qat",
+  "runtime": "LM Studio /api/v1/chat with integrations: [mcp/mcp-for-kibana]",
+  "stack": "elastic-start-local + Kibana Sample Data Flights",
+  "note": "REAL model turn: call order and arguments are the model's own. Authored elements, by construction: needle selection (verified against recorded bodies) and the schema_rejected entry (the run contained no client-rejected call)."
+ },
+ "marker_token": "E2E ef3509b6",
+ "space_token": "e2e-google-gemma-4-12b-qat-5466861b",
+ "dashboard_title": "E2E ef3509b6 flight prices",
+ "dashboard_id_token": "e2e-ef3509b6-flight-prices-c3f97ac8c8bd",
+ "schema_rejected": {
+  "tool": "create_dashboard",
+  "arguments": {
+   "title": "E2E ef3509b6 flight prices",
+   "panels": [
+    {
+     "title": "x",
+     "chart_type": "bar",
+     "data_view": "x",
+     "metrics": [
+      {
+       "agg": "average",
+       "field": "AvgTicketPrice"
+      }
+     ]
+    }
+   ],
+   "space": "REPLAY-UPPER"
+  },
+  "runtime_reason": "authored addition: uppercase space id fails ^[a-z0-9_-]+$ under both Python re and Draft-7"
+ },
+ "steps": [
+  {
+   "tool": "create_space",
+   "arguments": {
+    "id": "e2e-google-gemma-4-12b-qat-5466861b",
+    "name": "E2E Space"
+   },
+   "observed_output": "[{\"type\":\"text\",\"text\":\"{\\\"id\\\":\\\"e2e-google-gemma-4-12b-qat-5466861b\\\",\\\"name\\\":\\\"E2E Space\\\",\\\"description\\\":null,\\\"solution\\\":null,\\\"disabled_features\\\":[],\\\"reserved\\\":false}\"}]",
+   "expect": {
+    "is_error": false,
+    "contains": [],
+    "gates": "recorded model turn \u2014 every needle was verified present in the recorded body"
+   }
+  },
+  {
+   "tool": "create_data_view",
+   "arguments": {
+    "index_pattern": "kibana_sample_data_flights",
+    "name": "flights_data",
+    "space": "e2e-google-gemma-4-12b-qat-5466861b"
+   },
+   "observed_output": "[{\"type\":\"text\",\"text\":\"{\\\"id\\\":\\\"2eb4e48d-6b1d-49bc-ad2b-3fe85930ed1e\\\",\\\"name\\\":\\\"flights_data\\\",\\\"index_pattern\\\":\\\"kibana_sample_data_flights\\\",\\\"space\\\":\\\"e2e-google-gemma-4-12b-qat-5466861b\\\"}\"}]",
+   "expect": {
+    "is_error": false,
+    "contains": [
+     "kibana_sample_data_flights"
+    ],
+    "gates": "recorded model turn \u2014 every needle was verified present in the recorded body"
+   }
+  },
+  {
+   "tool": "describe_data_view",
+   "arguments": {
+    "data_view": "flights_data",
+    "space": "e2e-google-gemma-4-12b-qat-5466861b"
+   },
+   "observed_output": "[{\"type\":\"text\",\"text\":\"{\\\"id\\\":\\\"2eb4e48d-6b1d-49bc-ad2b-3fe85930ed1e\\\",\\\"name\\\":\\\"flights_data\\\",\\\"index_pattern\\\":\\\"kibana_sample_data_flights\\\",\\\"time_field\\\":null,\\\"fields\\\":{\\\"AvgTicketPrice\\\":\\\"number\\\",\\\"Cancelled\\\":\\\"boolean\\\",\\\"Carrier\\\":\\\"string\\\",\\\"Dest\\\":\\\"string\\\",\\\"DestAirportID\\\":\\\"string\\\",\\\"DestCityName\\\":\\\"string\\\",\\\"DestCountry\\\":\\\"string\\\",\\\"DestLocation\\\":\\\"geo_point\\\",\\\"DestRegion\\\":\\\"string\\\",\\\"DestWeather\\\":\\\"string\\\",\\\"DistanceKilometers\\\":\\\"number\\\",\\\"DistanceMiles\\\":\\\"number\\\",\\\"FlightDelay\\\":\\\"boolean\\\",\\\"FlightDelayMin\\\":\\\"number\\\",\\\"FlightDelayType\\\":\\\"string\\\",\\\"FlightNum\\\":\\\"string\\\",\\\"FlightTimeHour\\\":\\\"string\\\",\\\"FlightTimeMin\\\":\\\"number\\\",\\\"Origin\\\":\\\"string\\\",\\\"OriginAirportID\\\":\\\"string\\\",\\\"OriginCityName\\\":\\\"string\\\",\\\"OriginCountry\\\":\\\"string\\\",\\\"OriginLocation\\\":\\\"geo_point\\\",\\\"OriginRegion\\\":\\\"string\\\",\\\"OriginWeather\\\":\\\"string\\\",\\\"_id\\\":\\\"string\\\",\\\"_ignored\\\":\\\"string\\\",\\\"_index\\\":\\\"string\\\",\\\"_score\\\":\\\"number\\\",\\\"_source\\\":\\\"_source\\\",\\\"dayOfWeek\\\":\\\"number\\\",\\\"timestamp\\\":\\\"date\\\"},\\\"space\\\":\\\"e2e-google-gemma-4-12b-qat-5466861b\\\"}\"}]",
+   "expect": {
+    "is_error": false,
+    "contains": [
+     "kibana_sample_data_flights"
+    ],
+    "gates": "recorded model turn \u2014 every needle was verified present in the recorded body"
+   }
+  },
+  {
+   "tool": "create_dashboard",
+   "arguments": {
+    "panels": [
+     {
+      "chart_type": "bar",
+      "data_view": "flights_data",
+      "group_by": [
+       {
+        "field": "Carrier",
+        "kind": "terms",
+        "limit": 10
+       }
+      ],
+      "metrics": [
+       {
+        "agg": "average",
+        "field": "AvgTicketPrice",
+        "label": "Avg Ticket Price"
+       }
+      ],
+      "title": "Average Ticket Price by Carrier"
+     }
+    ],
+    "space": "e2e-google-gemma-4-12b-qat-5466861b",
+    "title": "E2E ef3509b6 flight prices"
+   },
+   "observed_output": "[{\"type\":\"text\",\"text\":\"{\\\"id\\\":\\\"e2e-ef3509b6-flight-prices-c3f97ac8c8bd\\\",\\\"url\\\":\\\"http://localhost:15601/s/e2e-google-gemma-4-12b-qat-5466861b/app/dashboards#/view/e2e-ef3509b6-flight-prices-c3f97ac8c8bd\\\",\\\"title\\\":\\\"E2E ef3509b6 flight prices\\\",\\\"panel_count\\\":1,\\\"status\\\":\\\"created\\\",\\\"space\\\":\\\"e2e-google-gemma-4-12b-qat-5466861b\\\"}\"}]",
+   "expect": {
+    "is_error": false,
+    "contains": [
+     "E2E ef3509b6",
+     "/s/e2e-google-gemma-4-12b-qat-5466861b/app/dashboards#/view/"
+    ],
+    "gates": "recorded model turn \u2014 every needle was verified present in the recorded body"
+   }
+  }
+ ]
+}

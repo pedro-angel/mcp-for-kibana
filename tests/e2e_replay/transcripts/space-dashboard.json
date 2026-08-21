@@ -1,0 +1,204 @@
+{
+  "recorded": {
+    "at": "2026-08-15",
+    "by": "tests/e2e_replay/record_space_transcript.py",
+    "model": "none \u2014 authored call sequence, no model in the loop",
+    "runtime": "fastmcp.Client over stdio -> uv run mcp-for-kibana (KIBANA_MCP_TIER=write, KIBANA_MCP_TOOLBOXES=dashboards,data-management,platform-admin)",
+    "stack": "elastic-start-local + Kibana Sample Data Flights",
+    "note": "Every argument and observed_output is real traffic; the ORDER of the calls was authored, so a green replay certifies the space-targeted surface and NOT that a model can choose these calls."
+  },
+  "marker_token": "REPLAY 6ea35f47",
+  "space_token": "replay-0779002e",
+  "dashboard_title": "Replay space flights REPLAY 6ea35f47",
+  "dashboard_id_token": "replay-space-flights-replay-6ea35f47-b99890a2aa4b",
+  "schema_rejected": {
+    "tool": "create_dashboard",
+    "arguments": {
+      "title": "Replay space flights REPLAY 6ea35f47",
+      "panels": [
+        {
+          "title": "Avg Ticket Price by Carrier",
+          "chart_type": "bar",
+          "data_view": "Replay Flights",
+          "metrics": [
+            {
+              "agg": "average",
+              "field": "AvgTicketPrice"
+            }
+          ],
+          "group_by": [
+            {
+              "field": "Carrier",
+              "kind": "terms",
+              "limit": 10
+            }
+          ]
+        }
+      ],
+      "space": "REPLAY-UPPER"
+    },
+    "runtime_reason": "1 validation error for call[create_dashboard]\nspace\n  String should match pattern '^[a-z0-9_-]+$' [type=string_pattern_mismatch, input_value='REPLAY-UPPER', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.13/v/string_pattern_mismatch"
+  },
+  "steps": [
+    {
+      "tool": "create_space",
+      "arguments": {
+        "id": "replay-0779002e",
+        "name": "Replay replay-0779002e",
+        "description": "Ephemeral space for the MCP replay tier"
+      },
+      "observed_output": "{\"id\":\"replay-0779002e\",\"name\":\"Replay replay-0779002e\",\"description\":\"Ephemeral space for the MCP replay tier\",\"solution\":null,\"disabled_features\":[],\"reserved\":false}",
+      "expect": {
+        "is_error": false,
+        "contains": [
+          "\"id\":\"replay-0779002e\""
+        ],
+        "gates": "the space every later step targets is created under the id given"
+      }
+    },
+    {
+      "tool": "create_data_view",
+      "arguments": {
+        "index_pattern": "kibana_sample_data_flights",
+        "name": "Replay Flights",
+        "time_field": "timestamp",
+        "space": "replay-0779002e"
+      },
+      "observed_output": "{\"id\":\"30013317-7a16-405b-a083-19152f946855\",\"name\":\"Replay Flights\",\"index_pattern\":\"kibana_sample_data_flights\",\"space\":\"replay-0779002e\"}",
+      "expect": {
+        "is_error": false,
+        "contains": [
+          "kibana_sample_data_flights",
+          "\"space\":\"replay-0779002e\""
+        ],
+        "gates": "a scoped write lands in the chosen space and echoes it back"
+      }
+    },
+    {
+      "tool": "create_dashboard",
+      "arguments": {
+        "title": "Replay space flights REPLAY 6ea35f47",
+        "description": "REPLAY 6ea35f47 replay run",
+        "panels": [
+          {
+            "title": "Avg Ticket Price by Carrier",
+            "chart_type": "bar",
+            "data_view": "Replay Flights",
+            "metrics": [
+              {
+                "agg": "average",
+                "field": "AvgTicketPrice"
+              }
+            ],
+            "group_by": [
+              {
+                "field": "Carrier",
+                "kind": "terms",
+                "limit": 10
+              }
+            ]
+          }
+        ],
+        "space": "replay-0779002e"
+      },
+      "observed_output": "{\"id\":\"replay-space-flights-replay-6ea35f47-b99890a2aa4b\",\"url\":\"http://localhost:15601/s/replay-0779002e/app/dashboards#/view/replay-space-flights-replay-6ea35f47-b99890a2aa4b\",\"title\":\"Replay space flights REPLAY 6ea35f47\",\"panel_count\":1,\"status\":\"created\",\"space\":\"replay-0779002e\"}",
+      "expect": {
+        "is_error": false,
+        "contains": [
+          "/s/replay-0779002e/app/dashboards#/view/",
+          "\"panel_count\":1",
+          "\"status\":\"created\"",
+          "\"space\":\"replay-0779002e\""
+        ],
+        "gates": "the scoped create builds the dashboard, echoes the space, and returns a space-prefixed deep link a user can open"
+      }
+    },
+    {
+      "tool": "add_esql_xy_panel",
+      "arguments": {
+        "dashboard_id": "replay-space-flights-replay-6ea35f47-b99890a2aa4b",
+        "title": "Flights per day",
+        "esql": "FROM kibana_sample_data_flights | STATS flights = COUNT(*) BY day = BUCKET(timestamp, 1 day) | SORT day",
+        "x_column": "day",
+        "y_columns": [
+          "flights"
+        ],
+        "chart_type": "line",
+        "space": "replay-0779002e"
+      },
+      "observed_output": "{\"id\":\"replay-space-flights-replay-6ea35f47-b99890a2aa4b\",\"url\":\"http://localhost:15601/s/replay-0779002e/app/dashboards#/view/replay-space-flights-replay-6ea35f47-b99890a2aa4b\",\"space\":\"replay-0779002e\"}",
+      "expect": {
+        "is_error": false,
+        "contains": [
+          "/s/replay-0779002e/app/dashboards#/view/",
+          "\"space\":\"replay-0779002e\""
+        ],
+        "gates": "a follow-up write finds the dashboard inside the space and returns the same space-prefixed link"
+      }
+    },
+    {
+      "tool": "get_dashboard",
+      "arguments": {
+        "dashboard_id": "replay-space-flights-replay-6ea35f47-b99890a2aa4b",
+        "space": "replay-0779002e"
+      },
+      "observed_output": "{\"id\":\"replay-space-flights-replay-6ea35f47-b99890a2aa4b\",\"title\":\"Replay space flights REPLAY 6ea35f47\",\"description\":\"REPLAY 6ea35f47 replay run\",\"panels\":[{\"index\":0,\"type\":\"vis\",\"title\":\"Avg Ticket Price by Carrier\"},{\"index\":1,\"type\":\"vis\",\"title\":\"Flights per day\"}],\"space\":\"replay-0779002e\"}",
+      "expect": {
+        "is_error": false,
+        "contains": [
+          "Replay space flights REPLAY 6ea35f47",
+          "REPLAY 6ea35f47",
+          "\"space\":\"replay-0779002e\""
+        ],
+        "gates": "a scoped read sees both panels the scoped writes created"
+      }
+    },
+    {
+      "tool": "list_data_views",
+      "arguments": {
+        "space": "replay-0779002e"
+      },
+      "observed_output": "[{\"id\":\"30013317-7a16-405b-a083-19152f946855\",\"name\":\"Replay Flights\",\"index_pattern\":\"kibana_sample_data_flights\"}]",
+      "expect": {
+        "is_error": false,
+        "contains": [
+          "Replay Flights"
+        ],
+        "gates": "a scoped list returns the space's own data views (and, being a list, carries no space echo)"
+      }
+    },
+    {
+      "tool": "describe_data_view",
+      "arguments": {
+        "data_view": "Replay Flights",
+        "space": "replay-0779002e"
+      },
+      "observed_output": "{\"id\":\"30013317-7a16-405b-a083-19152f946855\",\"name\":\"Replay Flights\",\"index_pattern\":\"kibana_sample_data_flights\",\"time_field\":\"timestamp\",\"fields\":{\"AvgTicketPrice\":\"number\",\"Cancelled\":\"boolean\",\"Carrier\":\"string\",\"Dest\":\"string\",\"DestAirportID\":\"string\",\"DestCityName\":\"string\",\"DestCountry\":\"string\",\"DestLocation\":\"geo_point\",\"DestRegion\":\"string\",\"DestWeather\":\"string\",\"DistanceKilometers\":\"number\",\"DistanceMiles\":\"number\",\"FlightDelay\":\"boolean\",\"FlightDelayMin\":\"number\",\"FlightDelayType\":\"string\",\"FlightNum\":\"string\",\"FlightTimeHour\":\"string\",\"FlightTimeMin\":\"number\",\"Origin\":\"string\",\"OriginAirportID\":\"string\",\"OriginCityName\":\"string\",\"OriginCountry\":\"string\",\"OriginLocation\":\"geo_point\",\"OriginRegion\":\"string\",\"OriginWeather\":\"string\",\"_id\":\"string\",\"_ignored\":\"string\",\"_index\":\"string\",\"_score\":\"number\",\"_source\":\"_source\",\"dayOfWeek\":\"number\",\"timestamp\":\"date\"},\"space\":\"replay-0779002e\"}",
+      "expect": {
+        "is_error": false,
+        "contains": [
+          "AvgTicketPrice",
+          "Carrier",
+          "\"space\":\"replay-0779002e\""
+        ],
+        "gates": "field discovery works inside the space, so a model can chart there"
+      }
+    },
+    {
+      "tool": "search_dashboards",
+      "arguments": {
+        "query": "REPLAY 6ea35f47",
+        "space": "replay-0779002e"
+      },
+      "observed_output": "[{\"id\":\"replay-space-flights-replay-6ea35f47-b99890a2aa4b\",\"title\":\"Replay space flights REPLAY 6ea35f47\",\"description\":\"REPLAY 6ea35f47 replay run\"}]",
+      "expect": {
+        "is_error": false,
+        "contains": [
+          "Replay space flights REPLAY 6ea35f47",
+          "REPLAY 6ea35f47"
+        ],
+        "gates": "a scoped search finds what the scoped writes created"
+      }
+    }
+  ]
+}

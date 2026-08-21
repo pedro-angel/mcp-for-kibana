@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 548 322" font-size="13" role="img" aria-label="Median cost per run in dollars per Claude model and arm">
+
+  <style>
+    text { font-family: -apple-system, "Segoe UI", Roboto, sans-serif; }
+    .t1 { fill: #0b0b0b; } .t2 { fill: #52514e; }
+    .grid { stroke: #d8d7d2; stroke-width: 1; }
+    .track { fill: #e8e7e2; }
+    .s0 { fill: #2a78d6; } .s1 { fill: #eb6834; } .s2 { fill: #1baf7a; }
+    @media (prefers-color-scheme: dark) {
+      .t1 { fill: #ffffff; } .t2 { fill: #c3c2b7; }
+      .grid { stroke: #3a3a38; }
+      .track { fill: #2c2c2a; }
+      .s0 { fill: #3987e5; } .s1 { fill: #d95926; } .s2 { fill: #199e70; }
+    }
+  </style>
+
+<text x="16" y="24" font-size="15" font-weight="600" class="t1">Study C — median cost per run (USD)</text>
+<text x="16" y="42" class="t2">per model and arm, list price</text>
+<rect x="16" y="56" width="11" height="11" rx="3" class="s0"/>
+<text x="32" y="66" class="t2" font-size="12">with-mcp</text>
+<rect x="119.6" y="56" width="11" height="11" rx="3" class="s1"/>
+<text x="135.6" y="66" class="t2" font-size="12">no-mcp</text>
+<rect x="206.79999999999998" y="56" width="11" height="11" rx="3" class="s2"/>
+<text x="222.79999999999998" y="66" class="t2" font-size="12">with-mcp-directed</text>
+<line x1="64" y1="282.0" x2="528" y2="282.0" class="grid"/>
+<text x="56" y="286.0" text-anchor="end" class="t2" font-size="11">$0.00</text>
+<line x1="64" y1="218.66666666666666" x2="528" y2="218.66666666666666" class="grid"/>
+<text x="56" y="222.66666666666666" text-anchor="end" class="t2" font-size="11">$0.50</text>
+<line x1="64" y1="155.33333333333331" x2="528" y2="155.33333333333331" class="grid"/>
+<text x="56" y="159.33333333333331" text-anchor="end" class="t2" font-size="11">$1.00</text>
+<line x1="64" y1="92.0" x2="528" y2="92.0" class="grid"/>
+<text x="56" y="96.0" text-anchor="end" class="t2" font-size="11">$1.50</text>
+<path d="M64,282 V278.48748866666665 Q64,274.48748866666665 68,274.48748866666665 H100 Q104,274.48748866666665 104,278.48748866666665 V282 Z" class="s0"/>
+<text x="84.0" y="269.48748866666665" text-anchor="middle" class="t1" font-size="11" font-weight="600">$0.06</text>
+<path d="M106,282 V271.1636853333333 Q106,267.1636853333333 110,267.1636853333333 H142 Q146,267.1636853333333 146,271.1636853333333 V282 Z" class="s1"/>
+<text x="126.0" y="262.1636853333333" text-anchor="middle" class="t1" font-size="11" font-weight="600">$0.12</text>
+<path d="M148,282 V276.0764013333333 Q148,272.0764013333333 152,272.0764013333333 H184 Q188,272.0764013333333 188,276.0764013333333 V282 Z" class="s2"/>
+<text x="168.0" y="267.0764013333333" text-anchor="middle" class="t1" font-size="11" font-weight="600">$0.08</text>
+<text x="126.0" y="302" text-anchor="middle" class="t2">Haiku 4.5</text>
+<path d="M230,282 V246.525372 Q230,242.525372 234,242.525372 H266 Q270,242.525372 270,246.525372 V282 Z" class="s0"/>
+<text x="250.0" y="237.525372" text-anchor="middle" class="t1" font-size="11" font-weight="600">$0.31</text>
+<path d="M272,282 V110.13117399999999 Q272,106.13117399999999 276,106.13117399999999 H308 Q312,106.13117399999999 312,110.13117399999999 V282 Z" class="s1"/>
+<text x="292.0" y="101.13117399999999" text-anchor="middle" class="t1" font-size="11" font-weight="600">$1.39</text>
+<path d="M314,282 V243.983894 Q314,239.983894 318,239.983894 H350 Q354,239.983894 354,243.983894 V282 Z" class="s2"/>
+<text x="334.0" y="234.983894" text-anchor="middle" class="t1" font-size="11" font-weight="600">$0.33</text>
+<text x="292.0" y="302" text-anchor="middle" class="t2">Sonnet 5</text>
+<path d="M396,282 V231.29653 Q396,227.29653 400,227.29653 H432 Q436,227.29653 436,231.29653 V282 Z" class="s0"/>
+<text x="416.0" y="222.29653" text-anchor="middle" class="t1" font-size="11" font-weight="600">$0.43</text>
+<path d="M438,282 V118.69809666666671 Q438,114.69809666666671 442,114.69809666666671 H474 Q478,114.69809666666671 478,118.69809666666671 V282 Z" class="s1"/>
+<text x="458.0" y="109.69809666666671" text-anchor="middle" class="t1" font-size="11" font-weight="600">$1.32</text>
+<path d="M480,282 V236.46345333333332 Q480,232.46345333333332 484,232.46345333333332 H516 Q520,232.46345333333332 520,236.46345333333332 V282 Z" class="s2"/>
+<text x="500.0" y="227.46345333333332" text-anchor="middle" class="t1" font-size="11" font-weight="600">$0.39</text>
+<text x="458.0" y="302" text-anchor="middle" class="t2">Opus 5</text>
+<line x1="64" y1="282" x2="528" y2="282" class="grid"/>
+</svg>

@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 650 424" font-size="13" role="img" aria-label="Passed runs out of five per local model">
+
+  <style>
+    text { font-family: -apple-system, "Segoe UI", Roboto, sans-serif; }
+    .t1 { fill: #0b0b0b; } .t2 { fill: #52514e; }
+    .grid { stroke: #d8d7d2; stroke-width: 1; }
+    .track { fill: #e8e7e2; }
+    .s0 { fill: #2a78d6; } .s1 { fill: #eb6834; } .s2 { fill: #1baf7a; }
+    @media (prefers-color-scheme: dark) {
+      .t1 { fill: #ffffff; } .t2 { fill: #c3c2b7; }
+      .grid { stroke: #3a3a38; }
+      .track { fill: #2c2c2a; }
+      .s0 { fill: #3987e5; } .s1 { fill: #d95926; } .s2 { fill: #199e70; }
+    }
+  </style>
+
+<text x="16" y="24" font-size="15" font-weight="600" class="t1">Study L — passed runs out of 5</text>
+<text x="16" y="42" class="t2">space task through mcp-for-kibana, one bar per model</text>
+<text x="240" y="70" text-anchor="end" class="t2" font-family="ui-monospace, Menlo, monospace" font-size="12">gemma-4-12b-qat</text>
+<rect x="250" y="56" width="330" height="20" rx="4" class="track"/>
+<path d="M250,56 H576 Q580,56 580,60 V72 Q580,76 576,76 H250 Z" class="s0"/>
+<text x="590" y="70" class="t1" font-weight="600" font-size="12">5/5</text>
+<text x="240" y="102" text-anchor="end" class="t2" font-family="ui-monospace, Menlo, monospace" font-size="12">gemma-4-26b-a4b-qat</text>
+<rect x="250" y="88" width="330" height="20" rx="4" class="track"/>
+<path d="M250,88 H576 Q580,88 580,92 V104 Q580,108 576,108 H250 Z" class="s0"/>
+<text x="590" y="102" class="t1" font-weight="600" font-size="12">5/5</text>
+<text x="240" y="134" text-anchor="end" class="t2" font-family="ui-monospace, Menlo, monospace" font-size="12">nemotron-3-nano-4b</text>
+<rect x="250" y="120" width="330" height="20" rx="4" class="track"/>
+<path d="M250,120 H576 Q580,120 580,124 V136 Q580,140 576,140 H250 Z" class="s0"/>
+<text x="590" y="134" class="t1" font-weight="600" font-size="12">5/5</text>
+<text x="240" y="166" text-anchor="end" class="t2" font-family="ui-monospace, Menlo, monospace" font-size="12">nemotron-3-nano-omni</text>
+<rect x="250" y="152" width="330" height="20" rx="4" class="track"/>
+<path d="M250,152 H576 Q580,152 580,156 V168 Q580,172 576,172 H250 Z" class="s0"/>
+<text x="590" y="166" class="t1" font-weight="600" font-size="12">5/5</text>
+<text x="240" y="198" text-anchor="end" class="t2" font-family="ui-monospace, Menlo, monospace" font-size="12">bonsai-27b</text>
+<rect x="250" y="184" width="330" height="20" rx="4" class="track"/>
+<path d="M250,184 H576 Q580,184 580,188 V200 Q580,204 576,204 H250 Z" class="s0"/>
+<text x="590" y="198" class="t1" font-weight="600" font-size="12">5/5</text>
+<text x="240" y="230" text-anchor="end" class="t2" font-family="ui-monospace, Menlo, monospace" font-size="12">devstral-small-2-2512</text>
+<rect x="250" y="216" width="330" height="20" rx="4" class="track"/>
+<path d="M250,216 H444 Q448,216 448,220 V232 Q448,236 444,236 H250 Z" class="s0"/>
+<text x="590" y="230" class="t1" font-weight="600" font-size="12">3/5</text>
+<text x="240" y="262" text-anchor="end" class="t2" font-family="ui-monospace, Menlo, monospace" font-size="12">magistral-small-2509</text>
+<rect x="250" y="248" width="330" height="20" rx="4" class="track"/>
+<path d="M250,248 H444 Q448,248 448,252 V264 Q448,268 444,268 H250 Z" class="s0"/>
+<text x="590" y="262" class="t1" font-weight="600" font-size="12">3/5</text>
+<text x="240" y="294" text-anchor="end" class="t2" font-family="ui-monospace, Menlo, monospace" font-size="12">ministral-3-3b</text>
+<rect x="250" y="280" width="330" height="20" rx="4" class="track"/>
+<path d="M250,280 H378 Q382,280 382,284 V296 Q382,300 378,300 H250 Z" class="s0"/>
+<text x="590" y="294" class="t1" font-weight="600" font-size="12">2/5</text>
+<text x="240" y="326" text-anchor="end" class="t2" font-family="ui-monospace, Menlo, monospace" font-size="12">gpt-oss-20b</text>
+<rect x="250" y="312" width="330" height="20" rx="4" class="track"/>
+<path d="M250,312 H378 Q382,312 382,316 V328 Q382,332 378,332 H250 Z" class="s0"/>
+<text x="590" y="326" class="t1" font-weight="600" font-size="12">2/5</text>
+<text x="240" y="358" text-anchor="end" class="t2" font-family="ui-monospace, Menlo, monospace" font-size="12">ministral-3-14b-reasoning</text>
+<rect x="250" y="344" width="330" height="20" rx="4" class="track"/>
+<path d="M250,344 H312 Q316,344 316,348 V360 Q316,364 312,364 H250 Z" class="s0"/>
+<text x="590" y="358" class="t1" font-weight="600" font-size="12">1/5</text>
+<text x="240" y="390" text-anchor="end" class="t2" font-family="ui-monospace, Menlo, monospace" font-size="12">granite-4-h-tiny</text>
+<rect x="250" y="376" width="330" height="20" rx="4" class="track"/>
+<text x="590" y="390" class="t1" font-weight="600" font-size="12">0/5</text>
+</svg>

@@ -1,0 +1,4 @@
+# Normalize line endings on commit; check out LF everywhere so shell scripts stay
+# runnable on Windows clones too (a CRLF shebang line breaks execution).
+* text=auto eol=lf
+*.sh text eol=lf

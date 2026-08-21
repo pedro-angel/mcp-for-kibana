@@ -1,0 +1,29 @@
+Kibana MCP Server
+Copyright 2026 Kibana MCP Server Contributors
+
+This product includes software developed by the Kibana MCP Server Contributors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
+This project uses the kibana-py library, which is also licensed
+under the Apache License, Version 2.0.
+
+This project vendors elastic/start-local (https://github.com/elastic/start-local,
+version 0.14.0) under elastic-start-local/, licensed under the Apache License,
+Version 2.0. Upstream provenance comments are retained in the vendored scripts.
+
+The local development stack scripts under elastic-start-local/ pull official
+Elastic container images (Elasticsearch, Kibana, APM Server, Elastic Agent)
+from docker.elastic.co. Those images are distributed under the Elastic
+License 2.0, not Apache 2.0, and their use is subject to Elastic's terms.
+The stack identifies itself to Elastic via config/telemetry.yml.

@@ -1,0 +1,213 @@
+[project]
+name = "mcp-for-kibana"
+version = "0.1.0"
+description = "MCP server for Kibana: composable toolboxes over a hexagonal core"
+readme = "README.md"
+license = "Apache-2.0"
+# 3.12 is the true floor: the codebase uses PEP 695 type-parameter syntax
+# (e.g. `def _translate_errors[F: Callable]` in adapters/kibana/gateway.py),
+# which is 3.12+. Verified: the full unit suite passes on 3.12, 3.13, and 3.14
+# (CI runs the matrix). Earlier `>=3.14` was an artifact of the dev machine,
+# not a real requirement — and it did not match the kibana-py sibling either.
+requires-python = ">=3.12"
+keywords = ["kibana", "elasticsearch", "mcp", "model-context-protocol", "llm", "dashboards", "observability", "fastmcp"]
+authors = [{ name = "Pedro Ángel", email = "16236718+pedro-angel@users.noreply.github.com" }]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: System Administrators",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: System :: Monitoring",
+    "Topic :: Software Development :: Libraries :: Application Frameworks",
+    "Typing :: Typed",
+]
+dependencies = [
+    "fastmcp>=3.4.7,<4",
+    "kibana-py[async]>=0.5.0",
+    "pydantic>=2.7",
+    "pydantic-settings>=2.15.0",
+]
+
+[project.optional-dependencies]
+# OpenTelemetry span export (Phase C). Optional: FastMCP instruments the server
+# regardless, but spans only record + export when a TracerProvider is installed,
+# which needs the SDK + OTLP exporter. `pip install mcp-for-kibana[otel]`.
+# opentelemetry-api is already pulled in transitively by fastmcp.
+#
+# The proto-grpc exporter is included even though we export over HTTP: kibana-py
+# 0.4.2's observability/_imports.py still imports the grpc exporter unconditionally
+# and its except-branch leaves the exporter name undefined if it's missing, so once
+# the SDK is present `import kibana` crashes without it (verified: base api-only
+# install is fine; sdk-without-grpc breaks the kibana import). Dropping this dep is
+# blocked on the upstream fix (pedro-angel/kibana-py#68 — confirmed still open in
+# 0.4.2). Base installs (no otel extra) are unaffected — they never pull the SDK.
+otel = [
+    "opentelemetry-sdk>=1.44.0",
+    "opentelemetry-exporter-otlp-proto-http>=1.30",
+    "opentelemetry-exporter-otlp-proto-grpc>=1.30",  # kibana-py 0.4.2 import guard (#68)
+]
+
+[project.scripts]
+mcp-for-kibana = "kibana_mcp.server:main"
+
+[project.urls]
+Homepage = "https://github.com/pedro-angel/mcp-for-kibana"
+Repository = "https://github.com/pedro-angel/mcp-for-kibana"
+Documentation = "https://github.com/pedro-angel/mcp-for-kibana/tree/main/docs"
+Issues = "https://github.com/pedro-angel/mcp-for-kibana/issues"
+Changelog = "https://github.com/pedro-angel/mcp-for-kibana/blob/main/CHANGELOG.md"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.25",
+    # The replay tier validates recorded tool arguments against the server's LIVE
+    # inputSchema. jsonschema arrives transitively via mcp, but a gate must not
+    # rest on someone else's transitive pin — declare it.
+    "jsonschema>=4.23",
+    "ruff>=0.16.2",
+    "mypy>=2.3",
+    "import-linter>=2.1",
+    "httpx>=0.27",
+    "pre-commit>=4.6.2",
+    "pip-audit>=2.9",
+    "bandit>=1.9",
+    "pytest-cov>=6.0",
+    # So CI unit tests exercise the OTEL-enabled path (mirrors the `otel` extra;
+    # grpc exporter included for the kibana-py 0.4.2 import guard noted above).
+    "opentelemetry-sdk>=1.44.0",
+    "opentelemetry-exporter-otlp-proto-http>=1.30",
+    "opentelemetry-exporter-otlp-proto-grpc>=1.30",
+]
+docs = [
+    "mkdocs-material>=9.7.7",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/kibana_mcp"]
+
+# Single source: docs/*.md stays the only copy in git. These two pages are
+# duplicated into the wheel so an installed package can serve them as MCP
+# resources (kibana_mcp/adapters/mcp/docs_resources.py) with no repo
+# checkout present. Only these two: they are the pages an agent needs at runtime
+# (how to drive the server, and what every tool takes) — the rest of the site is
+# for humans reading the docs, not for a model mid-conversation.
+[tool.hatch.build.targets.wheel.force-include]
+"docs/user-guide.md" = "kibana_mcp/_docs/user-guide.md"
+"docs/tools.md" = "kibana_mcp/_docs/tools.md"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = "-m 'not contract and not e2e and not e2e_replay and not ephemeral and not fleet_ephemeral'"
+markers = [
+    "contract: needs the docker Kibana stack (scripts/stack.sh up)",
+    "e2e: needs LM Studio running with the mcp-for-kibana entry in mcp.json",
+    "e2e_replay: needs the docker Kibana stack only — replays a RECORDED model turn through a real MCP client (no LLM, so it runs in CI)",
+    "ephemeral: needs an isolated ephemeral stack (scripts/ephemeral_stack.sh); excluded from default + contract",
+    "fleet_ephemeral: needs the isolated fleet 2-agent ephemeral stack (scripts/fleet_ephemeral.sh); excluded from default + contract",
+]
+
+# Coverage config is the SINGLE SOURCE for the threshold: both `make test` and
+# the Definition-of-Done gate's unit_green run `pytest --cov` with no
+# `--cov-fail-under` flag, so pytest-cov reads `fail_under` from here. Bumping the
+# bar is a one-line change that both run-paths pick up and can't drift on.
+[tool.coverage.run]
+source = ["kibana_mcp"]
+branch = true
+
+[tool.coverage.report]
+fail_under = 90
+show_missing = true
+# Exclude defensive/unreachable lines from the denominator honestly.
+exclude_also = [
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "\\.\\.\\.",
+]
+
+[tool.ruff]
+target-version = "py312"
+src = ["src", "tests"]
+line-length = 100
+
+# Pin the rule set instead of inheriting ruff's implicit defaults, which are not
+# stable across releases: 0.16 dropped E402 and added I/B/C4/S/RUF, so a
+# patch-level dependency bump reported 72 findings in code that had not changed.
+# An unpinned `select` hands the gate's meaning to the upstream default. This is
+# the set the tree was written against; widening it is its own reviewed change,
+# not a side effect of an upgrade.
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]
+
+# Static typing gate. `strict` is the whole point: the package ships a
+# `py.typed` marker and advertises the `Typing :: Typed` classifier, so
+# consumers type-check THROUGH us — a bare `dict` in a port signature silently
+# becomes `dict[Any, Any]` in their checker too. Strict is what makes that
+# claim true rather than aspirational.
+#
+# python_version pins the floor (3.12, same as requires-python and ruff's
+# target-version), so a 3.13/3.14-only construct fails here rather than in the
+# CI matrix.
+[tool.mypy]
+python_version = "3.12"
+files = ["src/kibana_mcp"]
+strict = true
+# pydantic's plugin teaches mypy that BaseModel/BaseSettings fields with
+# defaults, env sources, or aliases are not required constructor arguments.
+# Without it, `Settings()` and `TimeRange(...)` report bogus [call-arg] errors.
+plugins = ["pydantic.mypy"]
+# Keep the gate honest: an ignore that stops being needed, or a blanket
+# `Any`-typed decorator silently erasing a signature, must fail the build
+# rather than rot in place.
+warn_unused_ignores = true
+warn_unreachable = true
+enable_error_code = [
+    "redundant-expr",
+    "truthy-bool",
+    "ignore-without-code",
+    "possibly-undefined",
+]
+
+[tool.importlinter]
+root_package = "kibana_mcp"
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "hexagonal layers"
+type = "layers"
+layers = [
+    "kibana_mcp.server",
+    "kibana_mcp.toolboxes",
+    "kibana_mcp.adapters",
+    "kibana_mcp.ports",
+    "kibana_mcp.core | kibana_mcp.config",
+]
+
+[[tool.importlinter.contracts]]
+name = "core and ports are pure of frameworks"
+type = "forbidden"
+source_modules = ["kibana_mcp.core", "kibana_mcp.ports", "kibana_mcp.config"]
+forbidden_modules = ["fastmcp", "mcp", "kibana"]
+
+[[tool.importlinter.contracts]]
+name = "kibana-py only inside adapters.kibana"
+type = "forbidden"
+source_modules = ["kibana_mcp.toolboxes", "kibana_mcp.adapters.mcp"]
+forbidden_modules = ["kibana"]
+
+[[tool.importlinter.contracts]]
+name = "server may not import kibana directly"
+type = "forbidden"
+source_modules = ["kibana_mcp.server"]
+forbidden_modules = ["kibana"]
+allow_indirect_imports = true

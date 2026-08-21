@@ -1,0 +1,15 @@
+.git
+.venv
+tests
+docs/*
+!docs/user-guide.md
+!docs/tools.md
+htmlcov
+.env
+.env.*
+!*.example
+elastic-start-local/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/

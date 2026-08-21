@@ -1,0 +1,168 @@
+{
+  "recorded": {
+    "at": "2026-08-09",
+    "model": "openai/gpt-oss-20b",
+    "runtime": "LM Studio /api/v1/chat, integrations: [mcp/kibana-mcp]",
+    "stack": "elastic-start-local + Kibana Sample Data Flights",
+    "stats": {
+      "input_tokens": 3173,
+      "total_output_tokens": 1053,
+      "reasoning_output_tokens": 494,
+      "tokens_per_second": 72.01230264343691,
+      "time_to_first_token_seconds": 4.497,
+      "model_load_time_seconds": 9.109
+    }
+  },
+  "prompt": "Using the kibana tools, create a dashboard titled 'E2E 2f62d2bb flight prices' with a bar chart of the average ticket price by carrier over the last 7 days, using the flights sample data. Make exactly one create-dashboard call, then stop.",
+  "marker_token": "E2E 2f62d2bb",
+  "schema_rejected": {
+    "tool": "create_dashboard",
+    "arguments": {
+      "title": "E2E 2f62d2bb flight prices",
+      "panels": [
+        {
+          "title": "Avg Ticket Price by Carrier",
+          "chart_type": "bar",
+          "data_view": "flights",
+          "metrics": [
+            {
+              "agg": "average",
+              "field": "price"
+            }
+          ],
+          "group_by": [
+            {
+              "field": "carrier",
+              "kind": "terms",
+              "limit": 10
+            }
+          ]
+        }
+      ],
+      "time_range": "now-7d/d to now"
+    },
+    "runtime_reason": "Failed to parse arguments for tool \"create_dashboard\": params.time_range is not any of [subschema 0],[subschema 1]"
+  },
+  "steps": [
+    {
+      "tool": "create_dashboard",
+      "arguments": {
+        "title": "E2E 2f62d2bb flight prices",
+        "panels": [
+          {
+            "title": "Avg Ticket Price by Carrier",
+            "chart_type": "bar",
+            "data_view": "flights",
+            "metrics": [
+              {
+                "agg": "average",
+                "field": "price"
+              }
+            ],
+            "group_by": [
+              {
+                "field": "carrier",
+                "kind": "terms",
+                "limit": 10
+              }
+            ]
+          }
+        ]
+      },
+      "observed_output": "data view 'flights' not found \u2014 call list_data_views to see what exists",
+      "expect": {
+        "is_error": true,
+        "contains": [
+          "data view 'flights' not found",
+          "list_data_views"
+        ],
+        "gates": "an unknown data_view names the recovery tool, so a model can self-correct"
+      }
+    },
+    {
+      "tool": "list_data_views",
+      "arguments": {},
+      "observed_output": "[{\"id\":\"d3d7af60-4c81-11e8-b3d7-01146121b73d\",\"name\":\"Kibana Sample Data Flights\",\"index_pattern\":\"kibana_sample_data_flights\"}]",
+      "expect": {
+        "is_error": false,
+        "contains": [
+          "Kibana Sample Data Flights",
+          "kibana_sample_data_flights"
+        ],
+        "gates": "list_data_views returns the human name the model needs to retry with"
+      }
+    },
+    {
+      "tool": "create_dashboard",
+      "arguments": {
+        "title": "E2E 2f62d2bb flight prices",
+        "panels": [
+          {
+            "title": "Avg Ticket Price by Carrier",
+            "chart_type": "bar",
+            "data_view": "Kibana Sample Data Flights",
+            "metrics": [
+              {
+                "agg": "average",
+                "field": "price"
+              }
+            ],
+            "group_by": [
+              {
+                "field": "carrier",
+                "kind": "terms",
+                "limit": 10
+              }
+            ]
+          }
+        ]
+      },
+      "observed_output": "invalid visualization spec:\n- metric 'average': field 'price' does not exist in the data view \u2014 available fields include: AvgTicketPrice, Cancelled, Carrier, Dest, DestAirportID, DestCityName, DestCountry, DestLocation\n- group_by: field 'carrier' does not exist in the data view \u2014 did you mean 'Carrier'?\nUse describe_data_view to check field names and types.",
+      "expect": {
+        "is_error": true,
+        "contains": [
+          "field 'price' does not exist",
+          "AvgTicketPrice",
+          "did you mean 'Carrier'",
+          "describe_data_view"
+        ],
+        "gates": "a bad field lists real fields AND fuzzy-suggests the near miss"
+      }
+    },
+    {
+      "tool": "create_dashboard",
+      "arguments": {
+        "title": "E2E 2f62d2bb flight prices",
+        "panels": [
+          {
+            "title": "Avg Ticket Price by Carrier",
+            "chart_type": "bar",
+            "data_view": "Kibana Sample Data Flights",
+            "metrics": [
+              {
+                "agg": "average",
+                "field": "AvgTicketPrice"
+              }
+            ],
+            "group_by": [
+              {
+                "field": "Carrier",
+                "kind": "terms",
+                "limit": 10
+              }
+            ]
+          }
+        ]
+      },
+      "observed_output": "{\"id\":\"e2e-2f62d2bb-flight-prices-6411bf33069b\",\"url\":\"http://localhost:15601/app/dashboards#/view/e2e-2f62d2bb-flight-prices-6411bf33069b\",\"title\":\"E2E 2f62d2bb flight prices\",\"panel_count\":1,\"status\":\"created\"}",
+      "expect": {
+        "is_error": false,
+        "contains": [
+          "\"panel_count\":1",
+          "\"status\":\"created\""
+        ],
+        "gates": "the corrected spec actually creates the dashboard"
+      }
+    }
+  ]
+}

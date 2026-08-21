@@ -1,0 +1,30 @@
+# APM server overlay — a project addition on top of the upstream elastic-start-local
+# compose (kept a clean near-copy in docker-compose.yml). Provides the local
+# OpenTelemetry backend the instrumented MCP server exports to (Phase C), so no
+# separate observability stack is needed. Opt-in: started only by
+#   KIBANA_MCP_STACK_APM=1 scripts/stack.sh up
+# It joins the same compose project (-p mcp-for-kibana-stack) and network as
+# elasticsearch, reaching ES over the network at http://elasticsearch:9200, and
+# publishes an APM-intake + native OTLP endpoint on host 127.0.0.1:${APM_LOCAL_PORT}.
+#
+# Note apm-server.AUTH.secret_token (not the pre-8.x apm-server.secret_token, which
+# 9.x silently ignores — measured on a live 9.x server: with the old key the
+# endpoint accepted UNAUTHENTICATED intake, failing open rather than erroring, so
+# a typo here is invisible until someone tests it). The image ships no curl, so no healthcheck;
+# --wait returns on "running" and callers poll the endpoint for readiness.
+services:
+  apm-server:
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    image: docker.elastic.co/apm/apm-server:${ES_LOCAL_VERSION}
+    container_name: ${APM_LOCAL_CONTAINER_NAME}
+    ports:
+      - 127.0.0.1:${APM_LOCAL_PORT}:8200
+    command: >
+      -e
+      -E apm-server.host=0.0.0.0:8200
+      -E apm-server.auth.secret_token=${ELASTIC_APM_SECRET_TOKEN}
+      -E output.elasticsearch.hosts=[http://elasticsearch:9200]
+      -E output.elasticsearch.username=elastic
+      -E output.elasticsearch.password=${ES_LOCAL_PASSWORD}

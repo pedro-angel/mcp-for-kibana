@@ -1,0 +1,144 @@
+name: integration
+
+# Runs the DoD live tiers IN CI, not just on a maintainer's laptop.
+#
+# Parity: each job provisions with the EXACT scripts local uses and then runs
+# the SAME Definition-of-Done gate (scripts/checks/definition-of-done.sh) with
+# a per-tier config from .github/dod/ — so CI's verdicts and `make dod` cannot
+# drift, and CI inherits the gate's anti-skip guard (an empty or all-skipped
+# suite reads NO-GO, not green). Tier coverage here: contract_green,
+# e2e_replay_green, streams_ephemeral, fleet_ephemeral. The fast criteria run
+# in checks.yml via the make leaves.
+#
+# e2e_green stays local-only and `n/a` in every .github/dod config: it needs a
+# provisioned LM Studio runtime + a loaded model (docs/e2e-setup.md), which a
+# GitHub runner has not got. What CI *can* run is e2e_replay_green — the same
+# MCP surface driven by a recorded real-model turn instead of a live one. That
+# closes the per-PR gap without pretending a model ran.
+#
+# Rollout: now runs per-PR as well as on push-to-main, so `dod-live` can be a
+# required status. Kept a separate workflow (not folded into checks.yml) so the
+# fast content gates stay credential-free and quick.
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions: {}  # deny-all at workflow level; grant per-job
+
+concurrency:
+  group: integration-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contract:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      # Pinned to the SAME SHA as every other workflow (checks.yml) — the
+      # check-one-pin-per-action hook enforces one pin per action repo-wide.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install uv
+        run: curl -LsSf https://astral.sh/uv/install.sh | sh
+
+      # Same scripts as local `make test-contract`: brings up ES + Kibana + Fleet
+      # (+ demo agent, waited to 'online', not merely enrolled) and seeds sample
+      # data + a freshly-minted API key into the gitignored
+      # elastic-start-local/.env.seed (no secrets needed — CI mints its own,
+      # exactly as a developer's first `stack.sh seed` does).
+      - name: Provision the live stack
+        run: |
+          scripts/stack.sh up
+          scripts/stack.sh seed
+
+      # Two criteria over the one provisioned stack: contract_green and
+      # e2e_replay_green (a recorded real-model turn replayed through a real
+      # MCP client — no LLM, so it is deterministic enough for CI).
+      - name: DoD gate — seeded-stack tier (contract + e2e replay)
+        run: |
+          uv sync --group dev
+          scripts/checks/definition-of-done.sh .github/dod/ci-contract.config
+
+      # Evidence when something goes wrong: the gate's per-criterion log, then
+      # container status + logs.
+      - name: Diagnostics on failure
+        if: failure()
+        run: |
+          cat "/tmp/dod-$(basename "$PWD")"/*.log 2>/dev/null || true
+          scripts/stack.sh status || true
+          ( cd elastic-start-local && docker compose -p mcp-for-kibana-stack logs --tail=200 ) || true
+
+  streams-ephemeral:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install uv
+        run: curl -LsSf https://astral.sh/uv/install.sh | sh
+
+      # The criterion's harness (scripts/ephemeral_stack.sh) provisions and
+      # tears down its own isolated stack (up -> pytest -m ephemeral -> down);
+      # a fresh runner has no dev stack, so the local "stop the dev stack
+      # first" choreography does not apply here.
+      - name: DoD gate — streams-ephemeral tier
+        run: |
+          uv sync --group dev
+          scripts/checks/definition-of-done.sh .github/dod/ci-streams.config
+
+      # The harness trap has already torn the stack down by now — the gate's
+      # per-criterion log is the evidence.
+      - name: Diagnostics on failure
+        if: failure()
+        run: cat "/tmp/dod-$(basename "$PWD")"/*.log 2>/dev/null || true
+
+  fleet-ephemeral:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install uv
+        run: curl -LsSf https://astral.sh/uv/install.sh | sh
+
+      # scripts/fleet_ephemeral.sh owns its own isolated 2-agent fleet stack
+      # (up -> pytest -m fleet_ephemeral -> down). Its "dev stack must be
+      # stopped" guard passes trivially on a fresh runner.
+      - name: DoD gate — fleet-ephemeral tier
+        run: |
+          uv sync --group dev
+          scripts/checks/definition-of-done.sh .github/dod/ci-fleet.config
+
+      - name: Diagnostics on failure
+        if: failure()
+        run: cat "/tmp/dod-$(basename "$PWD")"/*.log 2>/dev/null || true
+
+  # Fan-in: the single status that says "CI's live tiers are GO". This is the
+  # check to require in branch protection (and to gate the ghcr publish on)
+  # when the workflow is promoted per the staged-rollout note above.
+  dod-live:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: [contract, streams-ephemeral, fleet-ephemeral]
+    if: always()
+    steps:
+      - name: Verdict
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "tier results: $RESULTS"
+          for r in $RESULTS; do
+            [ "$r" = "success" ] || { echo "VERDICT: NO-GO"; exit 1; }
+          done
+          echo "VERDICT: GO"

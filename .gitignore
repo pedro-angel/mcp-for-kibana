@@ -1,0 +1,54 @@
+# --- Secrets: structurally un-committable. Force-allow only *.example templates. ---
+.env
+.env.*
+!*.example
+*.tfvars
+!*.tfvars.example
+*.tfstate
+*.tfstate.*
+*.pem
+*.key
+*.p12
+id_rsa
+id_ed25519
+credentials.json
+service-account*.json
+
+# --- OS / editor cruft ---
+.DS_Store
+Thumbs.db
+
+# --- Python venv created by ./bootstrap.sh ---
+.venv/
+
+# --- Dependency / build output (add your stack's — see github.com/github/gitignore) ---
+node_modules/
+dist/
+build/
+# mkdocs build --strict output (mkdocs.yml)
+site/
+
+# --- Python bytecode and caches ---
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# --- Coverage output ---
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
+# --- Environment-research probes: disposable experiment code; the kept records
+# (README, decisions.jsonl, Lessons.md) beside it stay committed ---
+docs/experiments/*/scratch/
+
+# --- AI-assistant working state ---
+# Scratch state written by whatever assistant a contributor happens to use. It is
+# machine-local and must never become a dependency of the project: nothing in the
+# code, the docs or the build may reference it, and deleting it must change
+# nothing. Ignored so it cannot be committed by accident.
+.superpowers/
+.claude/

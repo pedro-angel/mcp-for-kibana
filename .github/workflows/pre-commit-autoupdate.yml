@@ -1,0 +1,38 @@
+# Weekly pre-commit autoupdate PR.
+# Note: this PR is created with the default GITHUB_TOKEN, and GitHub does not
+# start workflow runs from GITHUB_TOKEN-triggered events — checks.yml does NOT
+# run on this PR. Before merging, trigger the gate manually:
+#   gh workflow run checks.yml --ref chore/pre-commit-autoupdate
+# (checks.yml's commit-msg gate would skip these github-actions[bot] commits anyway.)
+name: pre-commit autoupdate
+
+on:
+  schedule:
+    - cron: "0 6 * * 1" # Mondays 06:00 UTC
+  workflow_dispatch:
+
+permissions: {} # Deny all at workflow level; grant per-job below
+
+jobs:
+  autoupdate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - run: python -m pip install --upgrade pre-commit
+      - run: pre-commit autoupdate
+      - uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
+        with:
+          commit-message: "ci(pre-commit): autoupdate hook versions"
+          title: "ci(pre-commit): autoupdate hook versions"
+          body: |
+            Automated weekly `pre-commit autoupdate`. Review the rev bumps before merging —
+            a hook bump can change what the gate enforces.
+          branch: chore/pre-commit-autoupdate
+          labels: dependencies

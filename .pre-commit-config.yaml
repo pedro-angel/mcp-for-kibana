@@ -1,0 +1,66 @@
+# .pre-commit-config.yaml — project-agnostic git-controls starter.
+#
+# Setup:
+#   git init
+#   pipx install pre-commit        # or: brew install pre-commit  |  brew install prek
+#   pre-commit install --install-hooks
+#
+# CI re-runs THIS SAME FILE (.github/workflows/checks.yml), so local hooks and CI can't drift.
+# `default_install_hook_types` is what makes a bare `install` also wire the commit-msg stage.
+
+default_install_hook_types: [pre-commit, commit-msg]
+minimum_pre_commit_version: "3.5.0"
+
+repos:
+  # ---- generic file hygiene -------------------------------------------------
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]   # keep markdown hard line breaks
+      - id: end-of-file-fixer
+      - id: mixed-line-ending
+        args: [--fix=lf]
+      - id: check-merge-conflict
+      - id: check-case-conflict
+      - id: check-added-large-files
+        args: [--maxkb=1024]
+      - id: check-yaml
+        exclude: ^mkdocs\.yml$
+      # mkdocs.yml uses a Material-for-MkDocs-documented custom YAML tag
+      # (!!python/name:... for the Mermaid superfences format callable) that
+      # PyYAML's safe_load can't construct; --unsafe still catches syntax
+      # errors (e.g. duplicate keys), just not that tag.
+      - id: check-yaml
+        name: "check-yaml (mkdocs.yml, --unsafe: custom python/name tag)"
+        files: ^mkdocs\.yml$
+        args: [--unsafe]
+      - id: detect-private-key
+      # Team repo with a PR workflow? Uncomment to block direct commits to main:
+      # - id: no-commit-to-branch
+      #   args: [--branch, main]
+
+  # ---- conventional-commit TYPE PREFIX (commit-msg stage) -------------------
+  - repo: https://github.com/compilerla/conventional-pre-commit
+    rev: v4.4.0
+    hooks:
+      - id: conventional-pre-commit
+        stages: [commit-msg]
+        args: [feat, fix, docs, chore, refactor, test, build, ci, perf, style, revert]
+
+  # ---- project invariants, consumed remotely from the controls repo ----------
+  # pre-commit's native distribution: gate changes arrive as a reviewable `rev`
+  # bump with provenance instead of vendored copies drifting silently.
+  # (check-commit-trailer runs at commit-msg.)
+  - repo: https://github.com/pedro-angel/git-controls-starter
+    rev: v1.5.0
+    hooks:
+      - id: check-no-tracked-secrets
+      - id: check-one-pin-per-action
+      - id: check-no-private-identifiers
+      - id: check-commit-trailer
+      # The shared cross-repo target vocabulary. The manifest travels with the
+      # checker, so this consumes both at a pinned rev and vendors neither —
+      # the checker's own two tiers are vendor-the-pair OR pin-the-hook, never
+      # both, and this repo is on the pinned-hook tier.
+      - id: vocabulary-conformance

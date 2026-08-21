@@ -1,0 +1,79 @@
+site_name: mcp-for-kibana — an MCP server for Kibana
+site_description: "MCP server for Kibana: composable toolboxes over a hexagonal core, powered by kibana-py."
+# site_url: intentionally unset — set it when docs hosting (GitHub Pages vs ReadTheDocs) is chosen.
+docs_dir: docs
+repo_url: https://github.com/pedro-angel/mcp-for-kibana
+repo_name: pedro-angel/mcp-for-kibana
+edit_uri: ""
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+
+markdown_extensions:
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - tables
+  - toc:
+      permalink: true
+
+# Emits site/llms.txt and site/llms-full.txt at build time from the nav
+# below. See docs/hooks/llms_txt.py for why this is a hook rather than the
+# mkdocs-llmstxt plugin.
+hooks:
+  - docs/hooks/llms_txt.py
+
+# The hook script is a build tool, not a documentation page — keep it out of
+# the built site's static output.
+exclude_docs: |
+  hooks/**
+
+# Defensive: silences the strict-mode "not included in nav" warning for any
+# non-page asset that lands under docs/examples/ in the future. Nothing here
+# currently triggers it (mcp.json is a static asset, not a doc page).
+not_in_nav: |
+  examples/**
+
+nav:
+  - Home: index.md
+  - Getting started: user-guide.md
+  - Tool reference: tools.md
+  - Configuration: configuration.md
+  - Deployment: deployment.md
+  - Architecture: architecture.md
+  - Specification:
+      - Brief: spec/brief.md
+      - Design doctrine: spec/design.md
+      - Decisions ledger: spec/decisions.md
+      - Regeneration brief: spec/regeneration.md
+      - Toolbox contracts:
+          - dashboards: spec/toolboxes/dashboards.md
+          - data-management: spec/toolboxes/data-management.md
+          - alerting: spec/toolboxes/alerting.md
+          - cases: spec/toolboxes/cases.md
+          - security-detections: spec/toolboxes/security-detections.md
+          - fleet: spec/toolboxes/fleet.md
+          - streams: spec/toolboxes/streams.md
+          - observability: spec/toolboxes/observability.md
+          - platform-admin: spec/toolboxes/platform-admin.md
+          - platform-health: spec/toolboxes/platform-health.md
+  - Testing & E2E: e2e-setup.md
+  - Server usability: server-usability.md
+  - Roadmap: roadmap.md

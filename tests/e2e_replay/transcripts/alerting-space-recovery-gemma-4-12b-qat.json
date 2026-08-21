@@ -1,0 +1,124 @@
+{
+ "recorded": {
+  "at": "2026-08-19",
+  "by": "tests/e2e_replay/record_model_turn.py",
+  "model": "google/gemma-4-12b-qat",
+  "runtime": "LM Studio /api/v1/chat with integrations: [mcp/mcp-for-kibana-alerting]",
+  "stack": "elastic-start-local + Kibana Sample Data Flights",
+  "note": "REAL model turn: call order and arguments are the model's own. Authored elements, by construction: needle selection (verified against recorded bodies), error-step classification (textual, on the gateway's rejection prefix; replay asserts is_error live) and the schema_rejected entry."
+ },
+ "marker_token": "E2E d63e8cc8",
+ "space_token": "e2e-google-gemma-4-12b-qat-63591872",
+ "steps": [
+  {
+   "tool": "create_space",
+   "arguments": {
+    "id": "e2e-google-gemma-4-12b-qat-63591872",
+    "name": "e2e-google-gemma-4-12b-qat-63591872"
+   },
+   "observed_output": "[{\"type\":\"text\",\"text\":\"{\\\"id\\\":\\\"e2e-google-gemma-4-12b-qat-63591872\\\",\\\"name\\\":\\\"e2e-google-gemma-4-12b-qat-63591872\\\",\\\"description\\\":null,\\\"solution\\\":null,\\\"disabled_features\\\":[],\\\"reserved\\\":false}\"}]",
+   "expect": {
+    "is_error": false,
+    "contains": [],
+    "gates": "recorded model turn \u2014 every needle was verified present in the recorded body"
+   }
+  },
+  {
+   "tool": "create_alert_rule",
+   "arguments": {
+    "consumer": "stackAlerts",
+    "name": "E2E d63e8cc8 flight watch",
+    "params": {
+     "additionalProperties": {
+      "index": [
+       "kibana_sample_data_flights"
+      ],
+      "searchType": "esQuery",
+      "esQuery": "{\"query\":{\"match_all\":{}}}",
+      "size": 100,
+      "threshold": [
+       0
+      ],
+      "thresholdComparator": ">",
+      "timeField": "timestamp",
+      "timeWindowSize": 5,
+      "timeWindowUnit": "m"
+     }
+    },
+    "rule_type_id": ".es-query",
+    "schedule_interval": "1m",
+    "space": "e2e-google-gemma-4-12b-qat-63591872"
+   },
+   "observed_output": "[{\"type\":\"text\",\"text\":\"Kibana rejected the payload: [Space: e2e-google-gemma-4-12b-qat-63591872] params invalid: [size]: expected value of type [number] but got [undefined]\"}]",
+   "expect": {
+    "is_error": true,
+    "contains": [
+     "Kibana rejected the payload:",
+     "params invalid",
+     "[Space: e2e-google-gemma-4-12b-qat-63591872]"
+    ],
+    "gates": "recorded model turn \u2014 the error body carried the guidance the model recovered from"
+   }
+  },
+  {
+   "tool": "create_alert_rule",
+   "arguments": {
+    "consumer": "stackAlerts",
+    "name": "E2E d63e8cc8 flight watch",
+    "params": {
+     "esQuery": "{\"query\":{\"match_all\":{}}}",
+     "index": [
+      "kibana_sample_data_flights"
+     ],
+     "searchType": "esQuery",
+     "size": 100,
+     "threshold": [
+      0
+     ],
+     "thresholdComparator": ">",
+     "timeField": "timestamp",
+     "timeWindowSize": 5,
+     "timeWindowUnit": "m"
+    },
+    "rule_type_id": ".es-query",
+    "schedule_interval": "1m",
+    "space": "e2e-google-gemma-4-12b-qat-63591872"
+   },
+   "observed_output": "[{\"type\":\"text\",\"text\":\"{\\\"id\\\":\\\"84a096d6-2f70-400e-a372-455066288fb3\\\",\\\"name\\\":\\\"E2E d63e8cc8 flight watch\\\",\\\"rule_type_id\\\":\\\".es-query\\\",\\\"consumer\\\":\\\"stackAlerts\\\",\\\"enabled\\\":false,\\\"schedule_interval\\\":\\\"1m\\\",\\\"status\\\":\\\"pending\\\",\\\"tags\\\":[],\\\"space\\\":\\\"e2e-google-gemma-4-12b-qat-63591872\\\"}\"}]",
+   "expect": {
+    "is_error": false,
+    "contains": [
+     "E2E d63e8cc8",
+     ".es-query"
+    ],
+    "gates": "recorded model turn \u2014 every needle was verified present in the recorded body"
+   }
+  },
+  {
+   "tool": "enable_alert_rule",
+   "arguments": {
+    "rule_id": "84a096d6-2f70-400e-a372-455066288fb3",
+    "space": "e2e-google-gemma-4-12b-qat-63591872"
+   },
+   "observed_output": "[{\"type\":\"text\",\"text\":\"{\\\"id\\\":\\\"84a096d6-2f70-400e-a372-455066288fb3\\\",\\\"enabled\\\":true,\\\"space\\\":\\\"e2e-google-gemma-4-12b-qat-63591872\\\"}\"}]",
+   "expect": {
+    "is_error": false,
+    "contains": [],
+    "gates": "recorded model turn \u2014 every needle was verified present in the recorded body"
+   }
+  }
+ ],
+ "end_state": "alerting_rule",
+ "rule_id_token": "84a096d6-2f70-400e-a372-455066288fb3",
+ "schema_rejected": {
+  "tool": "create_alert_rule",
+  "arguments": {
+   "name": "x",
+   "rule_type_id": ".es-query",
+   "consumer": "stackAlerts",
+   "params": {},
+   "space": "REPLAY-UPPER"
+  },
+  "runtime_reason": "authored addition: uppercase space id fails ^[a-z0-9_-]+$ under both Python re and Draft-7"
+ }
+}

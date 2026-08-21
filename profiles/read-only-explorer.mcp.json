@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "mcp-for-kibana": {
+      "command": "uv",
+      "args": ["--directory", "/ABSOLUTE/PATH/TO/mcp-for-kibana", "run", "mcp-for-kibana"],
+      "env": {
+        "KIBANA_URL": "http://localhost:15601",
+        "KIBANA_API_KEY": "<paste from elastic-start-local/.env.seed, or a real Kibana API key>",
+        "KIBANA_MCP_TOOLBOXES": "dashboards,platform-health,data-management",
+        "KIBANA_MCP_TIER": "read"
+      }
+    }
+  }
+}

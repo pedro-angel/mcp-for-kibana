@@ -1,0 +1,27 @@
+{
+  "mcpServers": {
+    "mcp-for-kibana": {
+      "command": "uv",
+      "args": ["--directory", "/ABSOLUTE/PATH/TO/mcp-for-kibana", "run", "mcp-for-kibana"],
+      "env": {
+        "KIBANA_URL": "http://localhost:15601",
+        "KIBANA_API_KEY": "<paste from elastic-start-local/.env.seed, or a real Kibana API key>",
+        "KIBANA_MCP_TIER": "write"
+      }
+    },
+    "mcp-for-kibana-devseed": {
+      "command": "uv",
+      "args": ["--directory", "/ABSOLUTE/PATH/TO/mcp-for-kibana", "run", "mcp-for-kibana"],
+      "env": {
+        "KIBANA_MCP_ENV_FILE": "/ABSOLUTE/PATH/TO/mcp-for-kibana/elastic-start-local/.env.seed",
+        "KIBANA_MCP_TIER": "write"
+      }
+    },
+    "mcp-for-kibana-http": {
+      "url": "http://localhost:8000/mcp",
+      "headers": {
+        "Authorization": "ApiKey <your-kibana-api-key>"
+      }
+    }
+  }
+}

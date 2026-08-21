@@ -1,0 +1,53 @@
+version: 2
+updates:
+  # Keep the SHA-pinned GitHub Actions fresh. Bot commits are exempted from the
+  # provenance-trailer check in .github/workflows/checks.yml so these PRs pass CI.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "ci"
+    labels:
+      - "dependencies"
+    # One grouped PR instead of one PR per action. Ungrouped weekly bumps pile up,
+    # go stale against a moving main, and turn CONFLICTING — grouped, the whole
+    # sweep lands as a single reviewable PR.
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+
+  # Keep the container base images fresh. Without this the two pins in
+  # docker/Dockerfile — python:3.14-slim and ghcr.io/astral-sh/uv:0.9 — never
+  # move, so a base-image CVE would sit unnoticed indefinitely in an image the
+  # `image` job publishes to ghcr on every push to main. The uv.lock ecosystem
+  # below covers our Python dependencies only; it says nothing about the OS
+  # layer underneath them.
+  - package-ecosystem: "docker"
+    directory: "/docker"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "build"
+    labels:
+      - "dependencies"
+    groups:
+      docker:
+        patterns:
+          - "*"
+
+  # Keep the Python dependencies (uv.lock) fresh. One grouped PR per week; bot
+  # commits are exempt from the provenance-trailer check in checks.yml.
+  - package-ecosystem: "uv"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "build"
+    labels:
+      - "dependencies"
+    groups:
+      python:
+        patterns:
+          - "*"
