@@ -5,10 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-Until the first tagged release, everything lives under **[Unreleased]**; cutting
-`v0.1.0` moves it into a dated `## [0.1.0]` section.
+New entries go under **[Unreleased]**; cutting a release moves them into a dated
+version section.
 
 ## [Unreleased]
+
+## [0.1.0] - 2026-08-21
 
 ### Added
 
@@ -159,4 +161,5 @@ Until the first tagged release, everything lives under **[Unreleased]**; cutting
   `lms unload <identifier>`. It fails rather than skips, so the skip-green hole
   guarded in `tests/_stack_env.py` is not reopened here.
 
-[Unreleased]: https://github.com/pedro-angel/mcp-for-kibana/commits/main
+[Unreleased]: https://github.com/pedro-angel/mcp-for-kibana/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/pedro-angel/mcp-for-kibana/releases/tag/v0.1.0
