@@ -87,8 +87,8 @@ payload and cleaned up — three consecutive runs (16s/9s/7s wall). See
 ```bash
 export KIBANA_URL=https://your-kibana.example.com
 export KIBANA_API_KEY=<your Kibana API key>
-uvx mcp-for-kibana          # once published to PyPI
-# from a local checkout today:
+uvx mcp-for-kibana
+# or from a local checkout:
 uv run mcp-for-kibana
 ```
 
