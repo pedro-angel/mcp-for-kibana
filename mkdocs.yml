@@ -1,6 +1,6 @@
 site_name: mcp-for-kibana — an MCP server for Kibana
 site_description: "MCP server for Kibana: composable toolboxes over a hexagonal core, powered by kibana-py."
-# site_url: intentionally unset — set it when docs hosting (GitHub Pages vs ReadTheDocs) is chosen.
+site_url: https://mcp-for-kibana.readthedocs.io/en/latest/
 docs_dir: docs
 repo_url: https://github.com/pedro-angel/mcp-for-kibana
 repo_name: pedro-angel/mcp-for-kibana
