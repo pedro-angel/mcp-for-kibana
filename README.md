@@ -3,6 +3,8 @@
 An [MCP](https://modelcontextprotocol.io) server for [Kibana](https://www.elastic.co/kibana):
 composable toolboxes over a hexagonal core, powered by [kibana-py](https://github.com/pedro-angel/kibana-py).
 
+[![Documentation Status](https://readthedocs.org/projects/mcp-for-kibana/badge/?version=latest)](https://mcp-for-kibana.readthedocs.io/en/latest/?badge=latest)
+
 > **Disclaimer:** This is an independent, community-driven project and is **not**
 > officially affiliated with, endorsed by, or supported by Elastic N.V. or any of
 > its subsidiaries. "Kibana" and "Elasticsearch" are trademarks of Elastic N.V.
@@ -159,8 +161,8 @@ prefixed, matching how Kibana's own tooling names them):
 | `KIBANA_MCP_HOST` | `127.0.0.1` | Bind host (HTTP transport only). |
 | `KIBANA_MCP_PORT` | `8000` | Bind port (HTTP transport only). |
 | `KIBANA_MCP_ALLOW_ENV_KEY_HTTP` | `false` | HTTP mode only: opt in to letting `KIBANA_API_KEY` act as a shared fallback credential when a request has no `Authorization` header. A per-request `Authorization` header always takes precedence even when this is on — the env key is only a fallback for requests that omit one, never an override. Off by default so a single env key can't silently become a shared credential across callers. |
-| `KIBANA_MCP_ENV_FILE` | (none) | Path to a `KEY=value` file loaded at startup (setdefault — explicit process env wins) so a launcher can point at the machine-written `elastic-start-local/.env.seed` instead of hard-copying the ephemeral dev key. Additive and off by default; see [configuration docs](docs/configuration.md#loading-credentials-from-a-file). |
-| `KIBANA_MCP_OTEL_ENABLED` | `false` | Export an OpenTelemetry span per tool call. Off by default (spans are non-recording, no SDK imported); needs the `otel` extra. `KIBANA_MCP_OTEL_ENDPOINT` / `KIBANA_MCP_OTEL_SECRET_TOKEN` / `KIBANA_MCP_OTEL_SERVICE_NAME` tune the OTLP export — see [configuration docs](docs/configuration.md#opentelemetry). |
+| `KIBANA_MCP_ENV_FILE` | (none) | Path to a `KEY=value` file loaded at startup (setdefault — explicit process env wins) so a launcher can point at the machine-written `elastic-start-local/.env.seed` instead of hard-copying the ephemeral dev key. Additive and off by default; see [configuration docs](https://mcp-for-kibana.readthedocs.io/en/latest/configuration/#loading-credentials-from-a-file). |
+| `KIBANA_MCP_OTEL_ENABLED` | `false` | Export an OpenTelemetry span per tool call. Off by default (spans are non-recording, no SDK imported); needs the `otel` extra. `KIBANA_MCP_OTEL_ENDPOINT` / `KIBANA_MCP_OTEL_SECRET_TOKEN` / `KIBANA_MCP_OTEL_SERVICE_NAME` tune the OTLP export — see [configuration docs](https://mcp-for-kibana.readthedocs.io/en/latest/configuration/#opentelemetry). |
 
 ## Docker
 
