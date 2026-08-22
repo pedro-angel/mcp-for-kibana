@@ -1,0 +1,114 @@
+name: release
+
+# Tag-triggered publish. The tag is the trigger, but never the authority: every
+# claim the tag makes (this version, this changelog, this commit is on main, CI
+# was green) is re-verified below before anything leaves the runner.
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions: {}          # deny-all at workflow level; each job grants its own
+
+jobs:
+  validate:
+    name: Validate the tag against the tree
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0     # ancestry check below needs history
+
+      - name: Tagged commit is reachable from main
+        run: |
+          git fetch --no-tags origin main
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main \
+            || { echo "tagged commit $GITHUB_SHA is not on main"; exit 1; }
+
+      - name: Tag matches the package version
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          VERSION=$(grep -m1 '^version = ' pyproject.toml | cut -d'"' -f2)
+          [ "$TAG" = "v$VERSION" ] || { echo "tag $TAG != pyproject $VERSION"; exit 1; }
+
+      - name: CHANGELOG has a section for this version
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          grep -q "^## \[$VERSION\]" CHANGELOG.md \
+            || { echo "CHANGELOG.md has no '## [$VERSION]' section"; exit 1; }
+
+      # The tagged commit reached main through a push, so checks + integration
+      # already ran on these exact bytes. Assert it rather than assume it: a tag
+      # can be pushed at any commit, and "it was green last week" is not evidence.
+      - name: checks and integration are green on this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for wf in checks integration; do
+            c=$(gh run list -R "$GITHUB_REPOSITORY" --workflow "$wf.yml" \
+                  --commit "$GITHUB_SHA" --json conclusion --jq '.[0].conclusion // "none"')
+            [ "$c" = "success" ] || { echo "$wf on $GITHUB_SHA: $c"; exit 1; }
+          done
+
+  publish-pypi:
+    name: Publish to PyPI
+    needs: validate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write      # OIDC exchange for PyPI trusted publishing — no token stored anywhere
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install uv
+        run: curl -LsSf https://astral.sh/uv/install.sh | sh
+
+      - name: Build
+        run: uv build
+
+      # The wheel must carry the in-band docs the server serves as resources, and
+      # nothing else at top level. This is the same property scripts/checks/wheel-smoke.sh
+      # proves locally; asserting it here stops a release shipping a wheel whose
+      # docs:// resources are empty.
+      - name: Wheel content is exactly what ships
+        run: |
+          VERSION=$(grep -m1 '^version = ' pyproject.toml | cut -d'"' -f2)
+          unzip -l dist/mcp_for_kibana-*.whl | grep -q 'kibana_mcp/_docs/user-guide.md'
+          unzip -l dist/mcp_for_kibana-*.whl | grep -q 'kibana_mcp/_docs/tools.md'
+          top=$(unzip -Z1 dist/mcp_for_kibana-*.whl | awk -F/ '{print $1}' | sort -u | tr '\n' ' ')
+          expected="kibana_mcp mcp_for_kibana-${VERSION}.dist-info "
+          [ "$top" = "$expected" ] || { echo "unexpected top-level entries: $top"; exit 1; }
+
+      - name: Publish
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
+        with:
+          packages-dir: dist/
+
+  # After PyPI, deliberately. A PyPI failure then leaves only a tag — recoverable.
+  # The inverse order leaves a public release advertising a package nobody can install.
+  publish-github-release:
+    name: Publish the GitHub release
+    needs: publish-pypi
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Release notes from the CHANGELOG section
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          awk -v h="## [$VERSION]" '
+            index($0, h) == 1 { f = 1; next }
+            f && (/^## \[/ || /^\[[A-Za-z0-9.]+\]:/) { f = 0 }
+            f' CHANGELOG.md > notes.md
+          [ -s notes.md ] || { echo "empty release notes for $VERSION"; exit 1; }
+
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          gh release create "$TAG" --verify-tag --title "$TAG" --notes-file notes.md
