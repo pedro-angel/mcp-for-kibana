@@ -25,8 +25,13 @@ services:
       - "_JAVA_OPTIONS=-XX:UseSVE=0"
     ulimits:
       memlock:
-        soft: -1
-        hard: -1
+        # Overridable so the same file starts on a GitHub runner, which grants
+        # CAP_SYS_RESOURCE and resolves the -1 default, and inside a sandbox that
+        # drops it and pins the hard limit (Claude Code cloud sessions: 8388608).
+        # Never set this in .env.example — stack.sh copies that to .env, and the
+        # process environment has to stay authoritative.
+        soft: ${ES_LOCAL_MEMLOCK:--1}
+        hard: ${ES_LOCAL_MEMLOCK:--1}
     healthcheck:
       test:
         [
