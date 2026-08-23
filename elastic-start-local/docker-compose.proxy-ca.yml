@@ -1,0 +1,18 @@
+# Overlay for TLS-intercepting sandboxes (Claude Code cloud sessions).
+#
+# All session egress passes through a proxy that re-terminates TLS with its own CA.
+# The session VM trusts it; the stack containers do not, so every outbound HTTPS call
+# Kibana makes fails with "self-signed certificate in certificate chain" — including
+# the Elastic Package Registry calls Fleet depends on, and Fleet is always-on here
+# (scripts/stack.sh up delegates to scripts/fleet_stack.sh).
+#
+# scripts/stack.sh and scripts/fleet_stack.sh compose this file ONLY when the CA is
+# present on disk, so a laptop and a GitHub runner compose exactly what they do today.
+# Elasticsearch's own outbound TLS is untouched: that is the JVM truststore, a separate
+# job, and this server has no tools that make ES call out.
+services:
+  kibana:
+    volumes:
+      - ${KIBANA_MCP_PROXY_CA:-/root/.ccr/ca-bundle.crt}:/usr/share/kibana/config/proxy-ca.crt:ro
+    environment:
+      - NODE_EXTRA_CA_CERTS=/usr/share/kibana/config/proxy-ca.crt

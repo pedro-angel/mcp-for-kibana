@@ -41,6 +41,17 @@ case "${1:?$USAGE}" in
   up)
     # Regenerate stack config from the single source (lossless: constants).
     cp "$STACK_DIR/.env.example" "$STACK_DIR/.env"
+    # Inside a TLS-intercepting sandbox (Claude Code cloud session) the containers do
+    # not trust the proxy CA the VM trusts, so Kibana's outbound HTTPS fails. Compose
+    # the overlay only when that CA exists — a no-op on a laptop or a GitHub runner.
+    # start.sh is vendored and runs a bare `docker compose up`, so this travels as
+    # COMPOSE_FILE rather than an edit to it.
+    PROXY_CA="${KIBANA_MCP_PROXY_CA:-/root/.ccr/ca-bundle.crt}"
+    if [ -f "$PROXY_CA" ]; then
+      echo "proxy CA at $PROXY_CA — adding docker-compose.proxy-ca.yml"
+      export KIBANA_MCP_PROXY_CA="$PROXY_CA"
+      export COMPOSE_FILE="docker-compose.yml:docker-compose.proxy-ca.yml"
+    fi
     sh "$STACK_DIR/start.sh"
     # APM server is an opt-in project addition for OpenTelemetry work (Phase C):
     # only KIBANA_MCP_STACK_APM=1 starts it, so the common (non-opted-in) `up`

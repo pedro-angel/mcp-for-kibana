@@ -22,6 +22,14 @@ cd "$(dirname "$0")/.."
 STACK_DIR=elastic-start-local
 PROJECT=mcp-for-kibana-stack
 FLEETENV="$STACK_DIR/.env.fleet"
+# Same proxy-CA overlay as scripts/stack.sh: composed only where the CA exists.
+# Explicit -f flags here (unlike the vendored start.sh), so it is an argument.
+PROXY_CA="${KIBANA_MCP_PROXY_CA:-/root/.ccr/ca-bundle.crt}"
+PROXY_CA_ARG=""
+if [ -f "$PROXY_CA" ]; then
+  export KIBANA_MCP_PROXY_CA="$PROXY_CA"
+  PROXY_CA_ARG="-f docker-compose.proxy-ca.yml"
+fi
 
 [ -f "$STACK_DIR/.env" ] || { echo "FAIL: run 'scripts/stack.sh up' first (no $STACK_DIR/.env)" >&2; exit 1; }
 v() { grep "^$1=" "$STACK_DIR/.env" | cut -d= -f2-; }
@@ -66,8 +74,9 @@ mv "$TMP" "$FLEETENV"
 echo "fleet: starting fleet-server + demo agent..."
 # Both --env-file flags: once any is given, compose stops auto-reading .env, so
 # pass .env (stack constants) AND .env.fleet (the minted tokens) explicitly.
+# shellcheck disable=SC2086  # intentional split: PROXY_CA_ARG is empty or one flag pair
 ( cd "$STACK_DIR" && docker compose -p "$PROJECT" \
-    -f docker-compose.yml -f docker-compose.fleet.yml \
+    -f docker-compose.yml -f docker-compose.fleet.yml $PROXY_CA_ARG \
     --env-file .env --env-file .env.fleet up --wait fleet-server fleet-agent ) || true
 
 # --wait returns on "running" (no compose healthcheck on the agent image); poll
