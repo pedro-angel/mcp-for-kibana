@@ -59,6 +59,9 @@ repos:
       - id: check-one-pin-per-action
       - id: check-no-private-identifiers
       - id: check-commit-trailer
+      # Network-dependent, so it sits at the manual stage and never runs at commit time.
+      # A rev bump alone will not execute it — checks.yml invokes it explicitly.
+      - id: check-pin-comments-match
       # The shared cross-repo target vocabulary. The manifest travels with the
       # checker, so this consumes both at a pinned rev and vendors neither —
       # the checker's own two tiers are vendor-the-pair OR pin-the-hook, never
