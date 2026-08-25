@@ -31,6 +31,11 @@ jobs:
           python-version: "3.12"
       # Installs pre-commit into the setup-python environment; later steps reuse it.
       - uses: pre-commit/action@2c7b3805fd2a0fd8c1884dcaebf91fc102a13ecd # v3.0.1
+      # Manual-stage hook: it does live tag lookups, so it never runs at commit time and
+      # the default-stage pass above skips it. Without this step it would be listed in
+      # .pre-commit-config.yaml and never execute — coverage that is not.
+      - name: pin comments match their SHAs
+        run: pre-commit run check-pin-comments-match --hook-stage manual --all-files
       # `--all-files` does not exercise commit-msg hooks, so lint each commit in the PR range.
       - name: commit-msg checks (PR range)
         if: github.event_name == 'pull_request'
