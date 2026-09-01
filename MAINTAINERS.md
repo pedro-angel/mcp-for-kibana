@@ -11,7 +11,7 @@ This file defines ownership for `mcp-for-kibana` release and maintenance workflo
 - Review and merge pull requests
 - Maintain the changelog and versioning
 - Approve and monitor releases (the `ghcr.io/pedro-angel/mcp-for-kibana` container
-  image; PyPI once packaging lands, tracked in the roadmap)
+  image and the `mcp-for-kibana` package on PyPI)
 - Maintain CI/CD, security checks, and dependency policy
 - Triage issues and security reports
 
