@@ -2,7 +2,7 @@
 
 The one page you need to pick this project up: what is built, what is
 deliberately not, and the facts that cost something to learn. Open items are
-tracked as GitHub issues.
+tracked on this page, under *Open work*, not as GitHub issues.
 
 ## Where the project stands
 
@@ -39,7 +39,7 @@ KIBANA_MCP_DOD_CYCLE_STACK=1 make dod
 Day to day: `make check` for the fast gates, `make dod` before any completion or
 release claim, `make help` for the rest.
 
-## Open work — tracked as GitHub issues
+## Open work
 
 As of this page:
 
@@ -96,10 +96,14 @@ the connector **type** is the gate, not the model (confirmed live 2026-07-16):*
 
 An Elastic **trial** license (Enterprise-level, 30 days) unblocks all four at once.
 
-**Deferred by decision until all functionality is done + battle-tested:**
-
-- release: PyPI publishing + versioning/changelog
-- chore: public-flip checklist (docs hosting, site_url, badges) — includes **fork-PR CI hardening**: the `checks.yml` `image` job runs the built container on every event (`make build` → `image-smoke.sh` does `docker run`), so once public a fork PR would execute its own code in the runner; gate the smoke `docker run` to same-repo refs (build-only on untrusted forks) before flipping public. Small blast radius today (no secrets on fork PRs, ghcr push gated to `main`), but it belongs on this checklist.
+Closed with the **v0.1.0 public release (2026-08-21)** — the two items that
+had been deferred until all functionality was done and battle-tested: PyPI
+publishing + versioning/changelog (tag-triggered trusted publishing; `uvx
+mcp-for-kibana` is live) and the public-flip checklist (repo public, docs on
+ReadTheDocs with a canonical `site_url`, badges). The fork-PR CI hardening on
+that checklist shipped with it: the `checks.yml` `image` job — which runs the
+built container via `image-smoke.sh` — is restricted to same-repo refs, so an
+untrusted fork PR never executes its own code in the runner.
 
 Closed since this page's 2026-07-12 baseline: `platform-admin`
 write/destructive tier (logstash reads split out separately),
