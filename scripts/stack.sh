@@ -103,7 +103,7 @@ case "${1:?$USAGE}" in
       exit 1
     fi
     echo "loading flights sample data..."
-    # Kibana 9.4.3 enforces restrictInternalApis; /api/sample_data returns 400
+    # Kibana 9.4.x enforces restrictInternalApis; /api/sample_data returns 400
     # ("exists but is not available") without the internal-origin header (probe P8).
     curl -fsSu "elastic:${ESPW}" -X POST "$KB/api/sample_data/flights" \
       -H 'kbn-xsrf: true' -H 'x-elastic-internal-origin: Kibana'

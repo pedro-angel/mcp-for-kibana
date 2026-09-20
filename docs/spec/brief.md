@@ -83,8 +83,11 @@ and platform admin/health.
 - **Not a security boundary.** Toolbox and tier selection curate what a
   model sees; only the Kibana API key constrains what it can do.
 - **Not license-agnostic.** Basic license is the baseline; Platinum- and
-  Enterprise-gated surfaces are deferred with live-probed evidence, never
-  stubbed.
+  Enterprise-gated surfaces are **out of scope** — recorded with live-probed
+  evidence, never stubbed, never built. Kibana ships its own MCP server at the
+  Enterprise tier, so those surfaces are not worth duplicating here. The decision
+  is [D28](decisions.md); the reader-facing statement is
+  [Licensing and scope](../index.md#licensing-and-scope).
 
 ## Constraints
 

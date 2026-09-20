@@ -1,12 +1,13 @@
 # Decisions ledger
 
-Status: Draft v1.0 (2026-08-19) — regeneration corpus. Consumes
+Status: Draft v1.1 (2026-09-20) — regeneration corpus. Consumes
 [brief.md](brief.md); read alongside [design.md](design.md).
 
 Each entry is a decision a rewrite must not silently re-litigate: what was
 decided, when, and the evidence. Entries marked **probe** are live
-observations against a real stack (Kibana 9.4.3 unless noted) — observed
-behavior, not documentation. Raw probe records and the full process history
+observations against a real stack — observed behavior, not documentation.
+Probes were taken on Kibana 9.4.3 unless noted; the stack pin moved to 9.4.7 on
+2026-09-21 and the contract tier is green on it (D29). Raw probe records and the full process history
 leave the public tree at release and live on in the private development
 repository; every finding needed to rebuild is restated here in full, so
 this ledger stands without them.
@@ -30,6 +31,19 @@ this ledger stands without them.
   always say so.
 - **D4 (2026-07)** — Handle-based saved-object export/import: NDJSON stays
   server-side; a whole-space export never enters the model's context.
+
+- **D29 (2026-09-21)** — The reference stack tracks the newest patch of the 9.4
+  line: the pin moved 9.4.3 → 9.4.7 in `.env.example` and
+  `.env.ephemeral.example`. Why: a reference stack frozen on an older patch stops
+  proving anything about what users run, and kibana-py moved its own supported set
+  to the newest patch of each line. Evidence: contract tier green on 9.4.7 — 125
+  passed, 2026-09-21. **Kibana 9.5 is deliberately not adopted yet.** kibana-py's
+  supported-set module (`kibana/_compat.py`, declaring 9.5.4 and 9.4.7) is
+  unreleased — absent from v0.5.0, the newest release on PyPI — so copying the
+  "declare the set once, let CI read it" pattern would mean hardcoding version
+  literals instead. 9.5 also diverges on the streams upsert body (`queries`
+  required on 9.4, rejected on 9.5), which this server's `streams` toolbox wraps:
+  a second line needs version-conditional request shaping, not a second pin.
 
 ## Space targeting
 
@@ -132,6 +146,23 @@ this ledger stands without them.
   on a different client re-derives it against that client's surface. The
   gap list and its build order live in the [roadmap](../roadmap.md).
   Coverage claims are audited at method level, not toolbox level.
+- **D28 (2026-09-20)** — **Basic-only is the scope boundary, not a stage.**
+  Functionality that needs a paid Elastic subscription is out of scope and
+  will not be built: the surfaces D20 probed are recorded as *out of scope*,
+  never *deferred*, and the roadmap stopped carrying them as open work.
+  Why: this project runs on Basic, so it can neither build nor
+  contract-test against a paid subscription — a 30-day trial certifies
+  nothing that survives day 31 — and at the Enterprise tier Kibana ships
+  its own MCP server as part of Agent Builder, so those surfaces are not
+  worth duplicating. Consequences: `observability-sre` and `soc-analyst`
+  are **withdrawn** personas rather than planned ones; a rebuild must not
+  re-file SLO reads, logstash pipeline reads, the observability
+  AI-assistant tool, `security-ai`, `security-entity-analytics`,
+  `ai-automation`, or `alerting` maintenance windows. Licence *facts* stay
+  in the corpus (D20); only the intent to build them is retired. The
+  reader-facing statement is the *Licensing and scope* section carried by
+  both front doors ([README](https://github.com/pedro-angel/mcp-for-kibana#licensing-and-scope),
+  [docs](../index.md#licensing-and-scope)).
 - **D22 (2026-07-18)** — Kibana's detection-rule bulk-action and patch
   endpoints fail 403/500 under api-key auth; rule enable/disable ships via
   full-object update instead — the api-key path constrains which Kibana

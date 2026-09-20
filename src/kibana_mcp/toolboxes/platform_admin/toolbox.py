@@ -7,7 +7,7 @@ creates/updates spaces + creates-or-updates roles; the `destructive` tier delete
 them (delete_space wipes every saved object in the space — force-gated;
 delete_role revokes access for its assignees). Both delete tools refuse the
 reserved system objects (the default space, reserved roles). Logstash pipeline
-management (Platinum, 403 on Basic) and session invalidation stay deferred.
+management (Platinum, 403 on Basic) and session invalidation are out of scope.
 """
 
 from dataclasses import asdict

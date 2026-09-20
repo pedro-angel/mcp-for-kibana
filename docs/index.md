@@ -17,6 +17,19 @@ composable toolboxes over a hexagonal core, powered by
 > support SLA. This server targets **Kibana 9.4+ only**; earlier versions
 > don't expose these APIs publicly at all.
 
+## Licensing and scope
+
+Every tool this server registers works on a **Basic** (free) Kibana license, and
+that is the boundary: functionality that needs a paid Elastic subscription is out
+of scope and stays out. Kibana's own per-type gates still apply to the values you
+pass — a Gold+ connector type stays Gold+.
+
+The corollary is deliberate. Kibana ships its own MCP server as part of
+[Agent Builder](https://www.elastic.co/docs/explore-analyze/ai-features/agent-builder/mcp-server),
+whose APIs [require an Enterprise subscription](https://www.elastic.co/subscriptions).
+A deployment on that tier already has an official one, so the Enterprise-gated
+surfaces are not worth duplicating here.
+
 ## Developing
 
 ```bash
@@ -58,7 +71,7 @@ detections, fleet, streams, observability, and platform admin/health.
 ## Status
 
 **v0.1.0 — 10 toolboxes, 133 tools, live-tested.** Every tool is classified
-read / write / destructive and contract-tested against a live Kibana 9.4.3, and
+read / write / destructive and contract-tested against a live Kibana 9.4.7, and
 the server is packaged as a stdio and container-runnable server. The flagship
 path: an LLM goes from a plain-English request ("average ticket price by carrier,
 last 7 days") to a real Kibana dashboard through the whole read → validate →

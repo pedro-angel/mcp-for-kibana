@@ -37,7 +37,7 @@ ESPW=$(v ES_LOCAL_PASSWORD); KBPORT=$(v KIBANA_LOCAL_PORT); FLPORT=$(v FLEET_LOC
 FSNAME=$(v FLEET_LOCAL_CONTAINER_NAME)
 KB="http://localhost:${KBPORT}"
 
-# One Kibana Fleet API call with the internal-origin header 9.4.3 requires.
+# One Kibana Fleet API call with the internal-origin header 9.4.x requires.
 api() {  # api METHOD PATH [JSON]
   if [ -n "${3:-}" ]; then
     curl -s -u "elastic:${ESPW}" -H 'kbn-xsrf: true' -H 'x-elastic-internal-origin: Kibana' \

@@ -504,7 +504,7 @@ Returns:
 ```jsonc
 // get_kibana_status
 {"overall_level": "available", "overall_summary": "All services and plugins are available",
- "version": "9.4.3", "unhealthy": []}
+ "version": "9.4.7", "unhealthy": []}
 // ...unhealthy lists only services whose level != "available":
 // "unhealthy": [{"name": "reporting", "level": "unavailable", "summary": "..."}]
 
@@ -529,8 +529,9 @@ Synthetics monitoring, Uptime settings, and APM **configuration**.
     trace/service-map telemetry** — those are internal-only Kibana APIs
     (`/internal/apm/*`), unreachable by an external client on 9.x and not wrapped
     by kibana-py. It also does not expose **SLOs**, which require a Platinum
-    license (they return `403` on a Basic stack). Both are deferred to future
-    additive tiers of this same toolbox.
+    license (they return `403` on a Basic stack). Both are out of scope: the APM
+    telemetry has no supported external path, and subscription-gated surfaces are
+    not built here.
 
 | Tool | Tier | Description |
 |---|---|---|
@@ -587,8 +588,8 @@ ML-type *rules* need Platinum, and only to create them).
     privilege-gated on the deployment key at first pass (403/500 on
     `bulk_action_rules`/`patch_rule`), but `update_rule` (full-replace) works —
     `replace_detection_rule` and enable/disable all ride that read-modify-write
-    path. The `security-ai` assistant + attack-discovery surface is a
-    separate toolbox (needs an LLM connector). Some read object shapes (alerts,
+    path. The `security-ai` assistant + attack-discovery surface is
+    out of scope (needs an Enterprise-gated `.gen-ai` connector). Some read object shapes (alerts,
     timelines) could not be seeded, so their fields are mapped defensively.
 
 | Tool | Tier | Description |
@@ -699,10 +700,11 @@ default `write` tier; the two `destructive` deletes require `KIBANA_MCP_TIER=des
     existing role is rejected rather than silently dropping its other grants; pass
     `create_only=false` to deliberately overwrite.
 
-!!! note "Still deferred"
+!!! note "Out of scope"
     **Logstash pipeline** management needs a **Platinum** license (403 on Basic,
-    confirmed live); **session invalidation**, space object copy/move, feature-level
-    role grants, and avatar-image editing are out of scope. Reading roles surfaces
+    confirmed live), so it is out of scope like the rest of this list;
+    **session invalidation**, space object copy/move, feature-level role grants,
+    and avatar-image editing are out of scope too. Reading roles surfaces
     RBAC *configuration* (privilege grants), never secrets, and every write is
     bounded by the API key's own privileges.
 
