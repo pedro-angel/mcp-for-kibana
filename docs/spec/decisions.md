@@ -1,6 +1,6 @@
 # Decisions ledger
 
-Status: Draft v1.0 (2026-08-19) — regeneration corpus. Consumes
+Status: Draft v1.1 (2026-09-20) — regeneration corpus. Consumes
 [brief.md](brief.md); read alongside [design.md](design.md).
 
 Each entry is a decision a rewrite must not silently re-litigate: what was
@@ -132,6 +132,23 @@ this ledger stands without them.
   on a different client re-derives it against that client's surface. The
   gap list and its build order live in the [roadmap](../roadmap.md).
   Coverage claims are audited at method level, not toolbox level.
+- **D28 (2026-09-20)** — **Basic-only is the scope boundary, not a stage.**
+  Functionality that needs a paid Elastic subscription is out of scope and
+  will not be built: the surfaces D20 probed are recorded as *out of scope*,
+  never *deferred*, and the roadmap stopped carrying them as open work.
+  Why: this project runs on Basic, so it can neither build nor
+  contract-test against a paid subscription — a 30-day trial certifies
+  nothing that survives day 31 — and at the Enterprise tier Kibana ships
+  its own MCP server as part of Agent Builder, so those surfaces are not
+  worth duplicating. Consequences: `observability-sre` and `soc-analyst`
+  are **withdrawn** personas rather than planned ones; a rebuild must not
+  re-file SLO reads, logstash pipeline reads, the observability
+  AI-assistant tool, `security-ai`, `security-entity-analytics`,
+  `ai-automation`, or `alerting` maintenance windows. Licence *facts* stay
+  in the corpus (D20); only the intent to build them is retired. The
+  reader-facing statement is the *Licensing and scope* section carried by
+  both front doors ([README](https://github.com/pedro-angel/mcp-for-kibana#licensing-and-scope),
+  [docs](../index.md#licensing-and-scope)).
 - **D22 (2026-07-18)** — Kibana's detection-rule bulk-action and patch
   endpoints fail 403/500 under api-key auth; rule enable/disable ships via
   full-object update instead — the api-key path constrains which Kibana

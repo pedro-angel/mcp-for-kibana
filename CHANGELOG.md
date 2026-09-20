@@ -28,6 +28,10 @@ version section.
   pipeline reads, the observability AI-assistant tool, the `security-ai` toolbox,
   `security-entity-analytics`, the `ai-automation` toolbox, and `alerting`
   maintenance windows.
+- **The scope decision is in the ledger.** `docs/spec/decisions.md` gains **D28**
+  (Basic-only is the boundary, not a stage) under *Scope and licensing*, so a
+  rebuild does not re-file the dropped surfaces; `brief.md` and the roadmap cite
+  it. The ledger bumps to Draft v1.1.
 - **Two personas are withdrawn rather than planned.** `observability-sre` and
   `soc-analyst` can never graduate to a runnable profile — the capabilities that
   define them (Platinum SLOs; an Enterprise `.gen-ai` connector) are out of scope —

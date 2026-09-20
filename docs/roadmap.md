@@ -77,7 +77,8 @@ cuts, not tracked work).
 
 **Out of scope: anything that needs a paid Elastic subscription.** This project builds
 only what a Basic license can run, so subscription-gated work is not tracked here and
-will not be built — see [Licensing and scope](index.md#licensing-and-scope). Dropped under
+will not be built — decision [D28](spec/decisions.md), stated for readers under
+[Licensing and scope](index.md#licensing-and-scope). Dropped under
 that rule (previously filed as blocked): observability SLO reads, `platform-admin`
 logstash pipeline reads, the observability AI assistant tool, the `security-ai`
 toolbox, `security-entity-analytics`, the `ai-automation` toolbox, and `alerting`
