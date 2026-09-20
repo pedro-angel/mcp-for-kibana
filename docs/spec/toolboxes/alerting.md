@@ -1,6 +1,6 @@
 # alerting — behavior contract
 
-Status: Draft v1.0 (2026-08-19) — regeneration corpus, reconciled to shipped code
+Status: Draft v1.1 (2026-09-20) — regeneration corpus, reconciled to shipped code
 Surface reference: docs/tools.md#alerting-toolbox · Enforcement: named per section below
 
 ## Purpose & persona
@@ -9,10 +9,10 @@ Alert rules (scheduled condition checks, e.g. an ES query threshold) and the
 action connectors those rules — or a caller directly — fire through (Slack,
 email, webhook, index, server-log, ...). It is Wave 2's cross-persona
 toolbox, shipped alongside `cases` so an incident workflow (detect → notify →
-track) has both halves; it is the alerting half of the planned
-`observability-sre` profile (paired with `observability` + `cases`, blocked
-today only on the license-gated SLO reads elsewhere in that profile, not on
-this toolbox). It also stands alone: any deployment wanting rule/connector
+track) has both halves; it is the alerting half of the withdrawn
+`observability-sre` profile (paired with `observability` + `cases`; that persona is
+withdrawn because its SLO reads are Platinum-gated and out of scope, not because of
+anything in this toolbox). It also stands alone: any deployment wanting rule/connector
 CRUD and the ability to test-fire a connector can enable just `alerting`.
 
 ## Surface

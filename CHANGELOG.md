@@ -12,21 +12,27 @@ version section.
 
 ### Changed
 
-- **Scope is Basic-only, and the README says so.** A new *Licensing and scope*
-  section states the boundary: everything shipped runs on a Basic license, and
-  functionality that needs a paid Elastic subscription is out of scope. The
-  corollary is that Kibana ships its own MCP server as part of Agent Builder,
-  whose APIs require an Enterprise subscription — a deployment on that tier
-  already has an official one.
-
-### Removed
-
-- **The license-blocked backlog.** The roadmap no longer tracks work that cannot
-  be built on Basic; the spec corpus now records those surfaces as out of scope
-  rather than deferred: observability SLO reads, `platform-admin` logstash
-  pipeline reads, the observability AI-assistant tool, the `security-ai`
-  toolbox, `security-entity-analytics`, the `ai-automation` toolbox, and
-  `alerting` maintenance windows.
+- **Scope is Basic-only, and both front doors say so.** `README.md` and
+  `docs/index.md` gain a *Licensing and scope* section: every tool this server
+  registers works on a Basic license, and functionality that needs a paid Elastic
+  subscription is out of scope. The corollary is that Kibana ships its own MCP
+  server as part of Agent Builder, whose APIs require an Enterprise subscription,
+  so a deployment on that tier already has an official one.
+- **Subscription-gated surfaces are recorded as out of scope, not deferred.** The
+  roadmap no longer tracks them as open work, and the spec corpus
+  (`brief.md` non-goals; the `alerting`, `cases`, `observability`,
+  `security-detections` and `platform-admin` contracts, all bumped to Draft v1.1),
+  `docs/tools.md`, `profiles/README.md` and the three toolbox module docstrings
+  now say out of scope where they said deferred. Nothing was ever built for these
+  surfaces, so no tool changed: observability SLO reads, `platform-admin` logstash
+  pipeline reads, the observability AI-assistant tool, the `security-ai` toolbox,
+  `security-entity-analytics`, the `ai-automation` toolbox, and `alerting`
+  maintenance windows.
+- **Two personas are withdrawn rather than planned.** `observability-sre` and
+  `soc-analyst` can never graduate to a runnable profile — the capabilities that
+  define them (Platinum SLOs; an Enterprise `.gen-ai` connector) are out of scope —
+  so `profiles/README.md` gains a ⬛ *withdrawn* status instead of leaving them
+  listed as forthcoming.
 
 ## [0.1.0] - 2026-08-21
 

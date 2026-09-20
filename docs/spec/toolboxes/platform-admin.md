@@ -1,6 +1,6 @@
 # platform-admin — behavior contract
 
-Status: Draft v1.0 (2026-08-19) — regeneration corpus, reconciled to shipped code
+Status: Draft v1.1 (2026-09-20) — regeneration corpus, reconciled to shipped code
 Surface reference: docs/tools.md#platform-admin-toolbox · Enforcement: named per section below
 
 ## Purpose & persona
@@ -78,8 +78,8 @@ at call time. Full per-tool arguments and return shapes:
 
 ## Deliberate exclusions & caveats
 
-- **Logstash pipeline management** is filed and split out as its own follow-up, blocked on
-  Platinum licensing — confirmed `403` live on Basic, not merely undocumented.
+- **Logstash pipeline management is out of scope.** Platinum-gated — confirmed `403` live
+  on Basic, not merely undocumented — and subscription-gated surfaces are not built here.
 - **Session invalidation, space object copy/move (`spaces.copy_saved_objects` /
   `update_objects_spaces`), feature-level role grants, and avatar-image editing** are out of
   scope. The space-copy/move pair is unfiled backlog (a natural extension of space targeting);

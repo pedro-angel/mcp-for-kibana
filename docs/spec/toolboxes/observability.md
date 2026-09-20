@@ -1,6 +1,6 @@
 # observability — behavior contract
 
-Status: Draft v1.0 (2026-08-19) — regeneration corpus, reconciled to shipped code
+Status: Draft v1.1 (2026-09-20) — regeneration corpus, reconciled to shipped code
 Surface reference: docs/tools.md#observability-toolbox · Enforcement: named per section below
 
 ## Purpose & persona
@@ -70,10 +70,10 @@ exclusions, not repeated here.
   data lives behind internal-only Kibana endpoints on the targeted version, rejected for an external
   client — no supported path to wrap it. Only APM *configuration* is scoped.
 - **SLO reads are out of scope, license-gated** — Platinum-class, rejected on Basic, and
-  subscription-gated surfaces are not built here. `observability-sre` (this toolbox +
-  `alerting` + `cases`) stays planned permanently.
+  subscription-gated surfaces are not built here. `observability-sre` is **withdrawn**: its
+  three toolboxes are all built, but the SLOs that define the persona are out of scope.
 - **An observability AI-assistant tool is out of scope**, gated on an Enterprise-only
-  generative-AI connector.
+  generative-AI connector, and Tech-Preview besides.
 - **Space targeting is deliberately absent, not an oversight.** Synthetics and Uptime objects are
   space-scoped; APM central configuration is cluster-global. A uniform `space` parameter across all
   10 tools would misrepresent the APM tools' scope, so reconciling the mix is deferred rather than

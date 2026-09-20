@@ -85,8 +85,8 @@ and platform admin/health.
 - **Not license-agnostic.** Basic license is the baseline; Platinum- and
   Enterprise-gated surfaces are **out of scope** — recorded with live-probed
   evidence, never stubbed, never built. Kibana ships its own MCP server at the
-  Enterprise tier, so covering that ground adds nothing: see
-  [Licensing and scope](https://github.com/pedro-angel/mcp-for-kibana#licensing-and-scope).
+  Enterprise tier, so those surfaces are not worth duplicating here: see
+  [Licensing and scope](../index.md#licensing-and-scope).
 
 ## Constraints
 

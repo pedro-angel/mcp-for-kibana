@@ -17,9 +17,9 @@ catalog audit was toolbox-granular, and its "no Basic functionality left" claim
 did not survive the **2026-08-19 method-level audit**: the server touches 26 of
 the 27 kibana-py namespaces usable on Basic but wraps ~126 of their ~407
 methods. The remaining Basic surface worth building is now filed in build order
-under *Open work*; everything else still open is gated on a license this project
-has not got, on infrastructure it does not run, or on a decision that has not
-been taken.
+under *Open work*; everything else still open is gated on infrastructure this
+project does not run, or on a decision that has not been taken. Subscription-gated
+work is not open work at all — it is out of scope (below).
 
 Six test tiers back that claim: unit (fakes), contract (live stack), e2e-replay
 (a recorded model turn through a real MCP client), e2e (a real local model),
@@ -43,7 +43,7 @@ release claim, `make help` for the rest.
 
 As of this page:
 
-**Buildable now (Basic license, no LLM connector).** The *write-tier* campaign on the
+**Buildable now (Basic license).** The *write-tier* campaign on the
 existing read toolboxes is done, but a 2026-07-16 catalog audit found unbuilt
 Basic-buildable **toolboxes** that had never been filed. Now filed, in build order:
 
@@ -53,7 +53,7 @@ Basic-buildable **toolboxes** that had never been filed. Now filed, in build ord
 - feat: `alerting` rule-lifecycle follow-ups — **next up (ordered 2026-08-19)**. The kibana-py `alerting.rule` surface is 7/16 wrapped: missing `update` (rule edit), mute/unmute (per-alert and rule-wide), snooze/unsnooze, `update_api_key`, and a `rule_types` read. All Basic; same toolbox, additive tools.
 - feat: `synthetics` write tier — **second (ordered 2026-08-19)**. The observability toolbox reads monitors/params/private-locations (4/19 methods); the write tier adds monitor + param + private-location CRUD and `test_monitor`. The API is Basic (reads contract-tested); env-research must confirm the execution paths — private locations need a synthetics-capable Fleet agent, so run-side value may be infra-bounded like osquery below.
 - **Deprioritized, with the reason on record (2026-08-19):** `cases` depth (comments management, files, configuration, tags/reporters, alert linkage — 6/22 methods wrapped). Core case CRUD is Basic and shipped; the depth that makes cases compelling is license-locked — external push needs Gold+ connector types, assignees need Platinum — so the remaining Basic-buildable slice is thin workflow plumbing. Not revisited: the depth that would make it compelling is subscription-locked, which is out of scope.
-- **Parked as infra-gated (re-confirmed 2026-08-19):** `osquery` — the one whole Basic namespace with zero coverage (0/14 methods; live probe: saved-queries/packs answer 200 on Basic). Already classified under `security-response` above: useful only with the osquery_manager integration on an agent policy and hosts worth querying — the dockerized lab agents would return container-level trivia. Revisit when real endpoints enroll.
+- **Parked as infra-gated (re-confirmed 2026-08-19):** `osquery` — the one whole Basic namespace with zero coverage (0/14 methods; live probe: saved-queries/packs answer 200 on Basic). Already classified under `security-response` below: useful only with the osquery_manager integration on an agent policy and hosts worth querying — the dockerized lab agents would return container-level trivia. Revisit when real endpoints enroll.
 - feat: per-tool surface configuration — **filed 2026-08-20 (owner request,
   unordered)**. Today's selection axes are toolbox + tier only; a persona
   whose job crosses ownership boundaries must enable whole toolboxes
@@ -77,10 +77,11 @@ cuts, not tracked work).
 
 **Out of scope: anything that needs a paid Elastic subscription.** This project builds
 only what a Basic license can run, so subscription-gated work is not tracked here and
-will not be built — see [Licensing and scope](https://github.com/pedro-angel/mcp-for-kibana#licensing-and-scope). Dropped under
+will not be built — see [Licensing and scope](index.md#licensing-and-scope). Dropped under
 that rule (previously filed as blocked): observability SLO reads, `platform-admin`
 logstash pipeline reads, the observability AI assistant tool, the `security-ai`
-toolbox, `security-entity-analytics`, and the `ai-automation` toolbox.
+toolbox, `security-entity-analytics`, the `ai-automation` toolbox, and `alerting`
+maintenance windows.
 
 Closed with the **v0.1.0 public release (2026-08-21)** — the two items that
 had been deferred until all functionality was done and battle-tested: PyPI
@@ -104,7 +105,7 @@ earlier still.
 decided persona-first: a catalog of ~14 candidate toolboxes over all 40
 kibana-py namespaces, a set of
 shippable persona [`profiles/`](https://github.com/pedro-angel/mcp-for-kibana/tree/main/profiles)
-(2 live, the rest planned), and a leverage-first build order. **Wave 1
+(3 live), and a leverage-first build order. **Wave 1
 (`platform-health` + `data-management`) and Wave 2 (`alerting` + `cases`) are
 done** (2026-07-12 campaign). **Wave 3 `observability` v1 is done** (read-first:
 synthetics + uptime + apm-config reads; env-research → spec → adversarial review
@@ -113,13 +114,13 @@ honestly: the SRE-facing telemetry an operator expects is *not* buildable on the
 public/Basic surface — APM services/traces/service-maps are internal-only
 (`/internal/apm/*`, `400` externally, unwrapped by kibana-py) and SLOs need
 Platinum (`403` on Basic). SLOs and the obs-AI assistant are out of scope (subscription-gated), so
-`observability-sre` stays `planned` permanently. **Wave 3 `security-detections` v1 is done**
+`observability-sre` is withdrawn. **Wave 3 `security-detections` v1 is done**
 (read-first: detection rules + alerts + rule-tags/prepackaged-status + exception
 lists/items + value lists + timelines; 10 read tools; whole surface Basic-GA,
 seeded-and-captured rule/exception shapes; env-research → spec → adversarial
 review → live contract tests). Its AI half, `security-ai` (security_ai_assistant
 + attack_discovery), is out of scope — it needs an Enterprise-gated `.gen-ai`
-connector; the `soc-analyst` profile stays `planned` permanently. **Wave 3 core toolboxes are now
+connector; the `soc-analyst` profile is withdrawn. **Wave 3 core toolboxes are now
 complete.** (Wave 4 — `platform-admin` + `streams` read-first, then their
 write/destructive tiers plus the `security-detections` write tiers — has since landed;
 see the dated updates above through **2026-07-16**, the newest of which is the current
@@ -149,7 +150,7 @@ alerting, cases and security-detections on 2026-08-19.)
   `minimumLicenseRequired: 'enterprise'` on the connector type, so Basic 403s connector
   creation and a local OpenAI-compatible LLM (LM Studio) cannot substitute — the connector
   **type** is the gate, not the model. Confirmed live 2026-07-16. This is why those
-  features are out of scope rather than deferred: see [Licensing and scope](https://github.com/pedro-angel/mcp-for-kibana#licensing-and-scope).
+  features are out of scope rather than deferred: see [Licensing and scope](index.md#licensing-and-scope).
 - **Contract tests are the payload authority.** Live Kibana 9.4.3 rejects
   `time_range` inside Lens visualization configs (the OpenAPI spec
   suggested otherwise); type names are `data_table`, terms buckets use

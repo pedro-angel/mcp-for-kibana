@@ -1,6 +1,6 @@
 # security-detections — behavior contract
 
-Status: Draft v1.0 (2026-08-19) — regeneration corpus, reconciled to shipped code
+Status: Draft v1.1 (2026-09-20) — regeneration corpus, reconciled to shipped code
 Surface reference: docs/tools.md#security-detections-toolbox · Enforcement: named per section below
 
 ## Purpose & persona
@@ -10,9 +10,9 @@ detection rules, detection alerts (signals), rule tags and prepackaged-rule
 install status, exception lists/items, value lists/items, and investigation
 timelines. GA on a **Basic** license — only creating an ML-type rule needs
 Platinum, and this toolbox never creates one. It is the core of the
-`soc-analyst` persona, which stays "planned" permanently: its sibling
-`security-ai` toolbox (assistant + attack-discovery) needs an Enterprise-gated
-`.gen-ai` connector and is out of scope — `security-detections` itself is built,
+`soc-analyst` persona, which is **withdrawn**: its sibling `security-ai` toolbox
+(assistant + attack-discovery) needs an Enterprise-gated `.gen-ai` connector and is
+out of scope — `security-detections` itself is built,
 contract-tested, and usable standalone.
 
 ## Surface

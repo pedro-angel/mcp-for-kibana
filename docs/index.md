@@ -19,14 +19,16 @@ composable toolboxes over a hexagonal core, powered by
 
 ## Licensing and scope
 
-Everything this server ships runs on a **Basic** (free) Kibana license, and that
-is the boundary: functionality that needs a paid Elastic subscription is out of
-scope and stays out. The corollary is deliberate — Kibana ships its own MCP
-server as part of
+Every tool this server registers works on a **Basic** (free) Kibana license, and
+that is the boundary: functionality that needs a paid Elastic subscription is out
+of scope and stays out. Kibana's own per-type gates still apply to the values you
+pass — a Gold+ connector type stays Gold+.
+
+The corollary is deliberate. Kibana ships its own MCP server as part of
 [Agent Builder](https://www.elastic.co/docs/explore-analyze/ai-features/agent-builder/mcp-server),
 whose APIs [require an Enterprise subscription](https://www.elastic.co/subscriptions).
-A deployment on that tier already has an official, Elastic-supported MCP server;
-this project serves the deployments that do not.
+A deployment on that tier already has an official one, so the Enterprise-gated
+surfaces are not worth duplicating here.
 
 ## Developing
 

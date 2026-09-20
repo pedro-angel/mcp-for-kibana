@@ -26,7 +26,9 @@ surface is *more* capable, not less. Each profile below lists its tool count.
 
 Status legend: 🟩 **live** — boots today · ⬜ **planned** — documented target; the
 server fail-fasts on an unbuilt toolbox, so a planned profile has no runnable
-snippet until its toolboxes ship (it graduates to a `.mcp.json` then).
+snippet until its toolboxes ship (it graduates to a `.mcp.json` then) · ⬛
+**withdrawn** — the capability that defines the persona needs a paid Elastic
+subscription, which is out of scope, so it will never graduate.
 
 ## 🟩 Live profiles
 
@@ -64,26 +66,26 @@ Documented targets; each graduates to a runnable snippet when its toolboxes land
 Profiles are organised persona-first — the question is "what does this job need
 to see?", not "what does this API namespace expose" — so a profile ships only
 once every toolbox it names is built and contract-tested. What is built, what is
-deferred and why is in the [roadmap](../docs/roadmap.md); open work is tracked as
-GitHub issues.
+out of scope and why is in the [roadmap](../docs/roadmap.md), which also tracks the
+open work on the page itself rather than as GitHub issues.
 
 | Profile | Toolboxes (intended) | Tier | Prerequisites | Unblocked by |
 |---|---|---|---|---|
-| **observability-sre** | observability, alerting, cases | write | Platinum (SLOs); LLM connector (obs-AI) | Waves 2–3 |
-| **soc-analyst** | security-detections, cases, security-ai | write | LLM connector (security-AI) | Waves 2–3 |
+| ⬛ **observability-sre** | observability, alerting, cases | write | Platinum (SLOs) | **withdrawn** — all three toolboxes are built, but SLOs are out of scope |
+| ⬛ **soc-analyst** | security-detections, cases, security-ai | write | Enterprise `.gen-ai` connector | **withdrawn** — `security-ai` is out of scope |
 | **platform-admin** | platform-admin, data-management | **destructive** | admin API key; HTTP | Wave 4 |
 
 **Future variants** (documented, not first-cut): `detection-engineer`,
-`soc-responder` (+ endpoint response, destructive), `threat-hunter / insider-risk`,
-`logs-engineer` (+ Streams, tech-preview), `developer-automation` (Agent Builder /
-Workflows).
+`soc-responder` (+ endpoint response, destructive), `logs-engineer` (+ Streams,
+tech-preview). Variants that needed entity analytics or Agent Builder / Workflows
+are dropped — both are subscription-gated and out of scope.
 
 ## Build order (leverage-first)
 
 1. **Wave 1** — ✅ `platform-health` (read-only, live) · ✅ `data-management` (live — extracted `data_views` from `dashboards`; grew *read-only-explorer* to 8 and *dashboards-analyst* to 11; `saved_objects` export/import deferred, see the packaging design).
 2. **Wave 2** — `alerting` (#10) · `cases` (both cross-persona).
-3. **Wave 3** — `observability` · `security-detections` + `security-ai` (unlock the SRE & SOC profiles).
-4. **Wave 4** — `fleet` · `platform-admin` · `security-response` (☠️) · `security-entity-analytics` · `streams` (preview) · `ai-automation`.
+3. **Wave 3** — `observability` · `security-detections` (`security-ai` dropped: out of scope).
+4. **Wave 4** — `fleet` · `platform-admin` · `security-response` (☠️) · `streams` (preview). (`security-entity-analytics` and `ai-automation` dropped: out of scope.)
 
 **Not planned** (kibana-py 0.3.1 gaps): ML job/model management, the Search
 solution, and scheduled Reporting have no client surface to wrap.

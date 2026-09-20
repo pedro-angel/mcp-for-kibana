@@ -529,8 +529,9 @@ Synthetics monitoring, Uptime settings, and APM **configuration**.
     trace/service-map telemetry** — those are internal-only Kibana APIs
     (`/internal/apm/*`), unreachable by an external client on 9.x and not wrapped
     by kibana-py. It also does not expose **SLOs**, which require a Platinum
-    license (they return `403` on a Basic stack). Both are deferred to future
-    additive tiers of this same toolbox.
+    license (they return `403` on a Basic stack). Both are out of scope: the APM
+    telemetry has no supported external path, and subscription-gated surfaces are
+    not built here.
 
 | Tool | Tier | Description |
 |---|---|---|
@@ -699,10 +700,11 @@ default `write` tier; the two `destructive` deletes require `KIBANA_MCP_TIER=des
     existing role is rejected rather than silently dropping its other grants; pass
     `create_only=false` to deliberately overwrite.
 
-!!! note "Still deferred"
+!!! note "Out of scope"
     **Logstash pipeline** management needs a **Platinum** license (403 on Basic,
-    confirmed live); **session invalidation**, space object copy/move, feature-level
-    role grants, and avatar-image editing are out of scope. Reading roles surfaces
+    confirmed live), so it is out of scope like the rest of this list;
+    **session invalidation**, space object copy/move, feature-level role grants,
+    and avatar-image editing are out of scope too. Reading roles surfaces
     RBAC *configuration* (privilege grants), never secrets, and every write is
     bounded by the API key's own privileges.
 
