@@ -10,6 +10,24 @@ version section.
 
 ## [Unreleased]
 
+### Changed
+
+- **Scope is Basic-only, and the README says so.** A new *Licensing and scope*
+  section states the boundary: everything shipped runs on a Basic license, and
+  functionality that needs a paid Elastic subscription is out of scope. The
+  corollary is that Kibana ships its own MCP server as part of Agent Builder,
+  whose APIs require an Enterprise subscription — a deployment on that tier
+  already has an official one.
+
+### Removed
+
+- **The license-blocked backlog.** The roadmap no longer tracks work that cannot
+  be built on Basic; the spec corpus now records those surfaces as out of scope
+  rather than deferred: observability SLO reads, `platform-admin` logstash
+  pipeline reads, the observability AI-assistant tool, the `security-ai`
+  toolbox, `security-entity-analytics`, the `ai-automation` toolbox, and
+  `alerting` maintenance windows.
+
 ## [0.1.0] - 2026-08-21
 
 ### Added

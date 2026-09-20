@@ -114,9 +114,9 @@ docs/tools.md#alerting-toolbox.
 
 ## Deliberate exclusions & caveats
 
-- **`maintenance_windows` is deferred.** Platinum-gated in Kibana; the
-  reference/dev stack runs Basic, so there is no license to build or
-  contract-test it against.
+- **`maintenance_windows` is out of scope.** Platinum-gated in Kibana, and
+  subscription-gated surfaces are not built here; the reference/dev stack runs
+  Basic, so there is no license to build or contract-test it against either.
 - **Exactly one connector surface.** Connectors are managed through Kibana's
   current connector API only — never a deprecated legacy alias naming the
   same objects — so there is one path to create/list/delete/execute a

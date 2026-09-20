@@ -48,12 +48,11 @@ existing read toolboxes is done, but a 2026-07-16 catalog audit found unbuilt
 Basic-buildable **toolboxes** that had never been filed. Now filed, in build order:
 
 - feat: `fleet` toolbox — **DONE**. Read-first v1 (20 tools) + **write/destructive tier shipped 2026-07-18**: 15 tools (agent/package-policy + output CRUD, single+bulk agent actions), `fleet-admin` profile now `destructive`, a `fleet_ephemeral` 2-agent battle-test harness + DoD criterion. Enrollment-key mint/revoke deferred (unsafe under api-key auth — inline leaks to context, on-disk breaks HTTP transport).
-- feat: `ai-automation` toolbox — **Enterprise-gated (reclassified 2026-07-18)**. A live probe found `workflows` AND `agent_builder` reads both return 403 "requires an Enterprise license" on Basic — the "Basic half" premise was wrong. Blocked on Enterprise licensing (the same gate as the AI assistant tools below); a 30-day trial stack would unblock the ~12 GA read tools (`converse` additionally needs a `.gen-ai` connector). Read tools would use an `ai_*` prefix (fleet already owns `list_agents`/`get_agent`).
 - feat: `streams` write follow-ups — **shipped 2026-07-18**. 3 tools (9→12): `set_stream_processing` (RMW the processing.steps facet), `deactivate_fork` (write), `activate_fork` (**destructive + confirm** — activation diverts live docs; already-routed docs stay in the child, per env-research). ILM-mode retention (no ILM policy on-stack) and raw full-config `update_ingest` (footgun) + `space_id` deferred.
 - feat: `security-detections` write follow-ups — **shipped 2026-07-18**. 6 tools (19→25): value-list item CRUD, full-replace `replace_detection_rule` (RMW — omitting a field wipes it; also translates the `from_`↔`from` kwarg/body-key mismatch), and enable/disable. **Env-research corrected the "enable/disable is privilege-gated" premise**: `bulk_action`/`patch` do 403/500 under api-key auth, but `update_rule(enabled=…)` works (the path kibana-py's docstring recommends) — so it's buildable, and shipped.
 - feat: `alerting` rule-lifecycle follow-ups — **next up (ordered 2026-08-19)**. The kibana-py `alerting.rule` surface is 7/16 wrapped: missing `update` (rule edit), mute/unmute (per-alert and rule-wide), snooze/unsnooze, `update_api_key`, and a `rule_types` read. All Basic; same toolbox, additive tools.
 - feat: `synthetics` write tier — **second (ordered 2026-08-19)**. The observability toolbox reads monitors/params/private-locations (4/19 methods); the write tier adds monitor + param + private-location CRUD and `test_monitor`. The API is Basic (reads contract-tested); env-research must confirm the execution paths — private locations need a synthetics-capable Fleet agent, so run-side value may be infra-bounded like osquery below.
-- **Deprioritized, with the reason on record (2026-08-19):** `cases` depth (comments management, files, configuration, tags/reporters, alert linkage — 6/22 methods wrapped). Core case CRUD is Basic and shipped; the depth that makes cases compelling is license-locked — external push needs Gold+ connector types, assignees need Platinum — so the remaining Basic-buildable slice is thin workflow plumbing. Revisit if a license lands (same trigger as the Platinum/Enterprise items below).
+- **Deprioritized, with the reason on record (2026-08-19):** `cases` depth (comments management, files, configuration, tags/reporters, alert linkage — 6/22 methods wrapped). Core case CRUD is Basic and shipped; the depth that makes cases compelling is license-locked — external push needs Gold+ connector types, assignees need Platinum — so the remaining Basic-buildable slice is thin workflow plumbing. Not revisited: the depth that would make it compelling is subscription-locked, which is out of scope.
 - **Parked as infra-gated (re-confirmed 2026-08-19):** `osquery` — the one whole Basic namespace with zero coverage (0/14 methods; live probe: saved-queries/packs answer 200 on Basic). Already classified under `security-response` above: useful only with the osquery_manager integration on an agent policy and hosts worth querying — the dockerized lab agents would return container-level trivia. Revisit when real endpoints enroll.
 - feat: per-tool surface configuration — **filed 2026-08-20 (owner request,
   unordered)**. Today's selection axes are toolbox + tier only; a persona
@@ -69,32 +68,19 @@ Basic-buildable **toolboxes** that had never been filed. Now filed, in build ord
   splits are foot-guns.
 - **Unordered Basic backlog from the 2026-08-19 audit** (file individually when picked up): `spaces.copy_saved_objects` + `update_objects_spaces` (natural extension of space targeting), `timeline` depth (1/19 wrapped), data-view runtime fields + default get/set, exception-list update/duplicate/export/import, granular `saved_objects` reads (find/get — raw CRUD stays out: Kibana marks it deprecated), `apm` writes (agent-config upsert, annotations), fleet advanced ops (package install/uninstall, diagnostics, tags, k8s manifest), streams queries/attachments/content (significant-events likely needs an AI connector — verify before filing).
 
-The two formerly-unclassified catalog toolboxes are now **classified (2026-07-18) and
-deferred**:
-`security-entity-analytics` (license-gated: `entity_analytics` reads 403 "license does
-not support", Platinum-class, trial unblocks) and `security-response` (infra-gated:
+`security-entity-analytics` is **out of scope** (subscription-gated). `security-response`
+remains **classified (2026-07-18) and deferred** (infra-gated:
 endpoint/osquery reads are Basic-GA but empty without an enrolled Elastic Defend endpoint +
 osquery integration; `endpoint.get_actions_list` 403-privilege-gated; the response actions are
 ☠️ destructive on live hosts). `platform-admin`'s YAGNI non-goals stay unfiled (deliberate scope
 cuts, not tracked work).
 
-**Blocked on license (env-research done, can't build past it).** All 403 on Basic,
-confirmed live. Note the two tiers — Platinum ≠ Enterprise:
-
-*Platinum unblocks (a trial or Platinum license):*
-
-- feat: observability SLO reads (deferred from the observability toolbox)
-- feat: `platform-admin` logstash pipeline reads (split from the platform-admin write/destructive-tier work)
-
-*Enterprise-only — the Generative-AI (`.gen-ai`) connector these all need is hard-gated to
-Enterprise in Kibana (`minimumLicenseRequired: 'enterprise'`); Basic 403s connector creation
-("does not support it"), so a local OpenAI-compatible LLM like LM Studio can't substitute —
-the connector **type** is the gate, not the model (confirmed live 2026-07-16):*
-
-- feat: observability AI assistant tool (Tech-Preview; deferred from the observability toolbox)
-- feat: `security-ai` toolbox (`security_ai_assistant` + `attack_discovery`; deferred from security-detections)
-
-An Elastic **trial** license (Enterprise-level, 30 days) unblocks all four at once.
+**Out of scope: anything that needs a paid Elastic subscription.** This project builds
+only what a Basic license can run, so subscription-gated work is not tracked here and
+will not be built — see [Licensing and scope](https://github.com/pedro-angel/mcp-for-kibana#licensing-and-scope). Dropped under
+that rule (previously filed as blocked): observability SLO reads, `platform-admin`
+logstash pipeline reads, the observability AI assistant tool, the `security-ai`
+toolbox, `security-entity-analytics`, and the `ai-automation` toolbox.
 
 Closed with the **v0.1.0 public release (2026-08-21)** — the two items that
 had been deferred until all functionality was done and battle-tested: PyPI
@@ -126,15 +112,14 @@ synthetics + uptime + apm-config reads; env-research → spec → adversarial re
 honestly: the SRE-facing telemetry an operator expects is *not* buildable on the
 public/Basic surface — APM services/traces/service-maps are internal-only
 (`/internal/apm/*`, `400` externally, unwrapped by kibana-py) and SLOs need
-Platinum (`403` on Basic). SLOs and the obs-AI assistant are deferred as future
-additive tiers of the same toolbox; `observability-sre`
-stays `planned` until SLOs land. **Wave 3 `security-detections` v1 is done**
+Platinum (`403` on Basic). SLOs and the obs-AI assistant are out of scope (subscription-gated), so
+`observability-sre` stays `planned` permanently. **Wave 3 `security-detections` v1 is done**
 (read-first: detection rules + alerts + rule-tags/prepackaged-status + exception
 lists/items + value lists + timelines; 10 read tools; whole surface Basic-GA,
 seeded-and-captured rule/exception shapes; env-research → spec → adversarial
 review → live contract tests). Its AI half, `security-ai` (security_ai_assistant
-+ attack_discovery), is deferred — it needs an LLM connector, like obs-AI; the
-`soc-analyst` profile stays `planned` until it lands. **Wave 3 core toolboxes are now
++ attack_discovery), is out of scope — it needs an Enterprise-gated `.gen-ai`
+connector; the `soc-analyst` profile stays `planned` permanently. **Wave 3 core toolboxes are now
 complete.** (Wave 4 — `platform-admin` + `streams` read-first, then their
 write/destructive tiers plus the `security-detections` write tiers — has since landed;
 see the dated updates above through **2026-07-16**, the newest of which is the current
@@ -160,14 +145,11 @@ alerting, cases and security-detections on 2026-08-19.)
 
 - **Elastic AI features are Enterprise-gated, not just "needs a connector".** The
   Observability + Security AI Assistants, Attack Discovery, and the Generative-AI
-  (`.gen-ai`) connector all require an **Enterprise** license (not Platinum). The
-  `.gen-ai` connector is the binding constraint — Kibana sets `minimumLicenseRequired:
-  'enterprise'`, so Basic 403s connector creation ("does not support it") and a local
-  OpenAI-compatible LLM (LM Studio) can't substitute. So the AI assistant tools need
-  Enterprise; a Platinum trial (which unblocks SLOs + logstash reads) does not. A full
-  **trial** license is Enterprise-level and unblocks all four. Confirmed live 2026-07-16.
-  Build note: `agent_builder.converse` (GA since 9.2,
-  plain-JSON) is a cleaner surface than the Tech-Preview obs-AI SSE stream.
+  (`.gen-ai`) connector all require an **Enterprise** license (not Platinum). Kibana sets
+  `minimumLicenseRequired: 'enterprise'` on the connector type, so Basic 403s connector
+  creation and a local OpenAI-compatible LLM (LM Studio) cannot substitute — the connector
+  **type** is the gate, not the model. Confirmed live 2026-07-16. This is why those
+  features are out of scope rather than deferred: see [Licensing and scope](https://github.com/pedro-angel/mcp-for-kibana#licensing-and-scope).
 - **Contract tests are the payload authority.** Live Kibana 9.4.3 rejects
   `time_range` inside Lens visualization configs (the OpenAPI spec
   suggested otherwise); type names are `data_table`, terms buckets use

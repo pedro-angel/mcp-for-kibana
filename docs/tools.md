@@ -587,8 +587,8 @@ ML-type *rules* need Platinum, and only to create them).
     privilege-gated on the deployment key at first pass (403/500 on
     `bulk_action_rules`/`patch_rule`), but `update_rule` (full-replace) works —
     `replace_detection_rule` and enable/disable all ride that read-modify-write
-    path. The `security-ai` assistant + attack-discovery surface is a
-    separate toolbox (needs an LLM connector). Some read object shapes (alerts,
+    path. The `security-ai` assistant + attack-discovery surface is
+    out of scope (needs an Enterprise-gated `.gen-ai` connector). Some read object shapes (alerts,
     timelines) could not be seeded, so their fields are mapped defensively.
 
 | Tool | Tier | Description |

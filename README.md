@@ -22,6 +22,17 @@ The distribution is `mcp-for-kibana`; the Python import package is `kibana_mcp`.
 > support SLA. This server targets **Kibana 9.4+ only**; earlier versions
 > don't expose these APIs publicly at all.
 
+## Licensing and scope
+
+Everything this server ships runs on a **Basic** (free) Kibana license, and that
+is the boundary: functionality that needs a paid Elastic subscription is out of
+scope and stays out. The corollary is deliberate — Kibana ships its own MCP
+server as part of
+[Agent Builder](https://www.elastic.co/docs/explore-analyze/ai-features/agent-builder/mcp-server),
+whose APIs [require an Enterprise subscription](https://www.elastic.co/subscriptions).
+A deployment on that tier already has an official, Elastic-supported MCP server;
+this project serves the deployments that do not.
+
 ## Status
 
 **v0.1.0 — 10 toolboxes, 133 tools, live-tested.** The server exposes 133 tools

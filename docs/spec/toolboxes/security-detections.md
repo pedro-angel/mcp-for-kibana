@@ -10,9 +10,10 @@ detection rules, detection alerts (signals), rule tags and prepackaged-rule
 install status, exception lists/items, value lists/items, and investigation
 timelines. GA on a **Basic** license — only creating an ML-type rule needs
 Platinum, and this toolbox never creates one. It is the core of the
-`soc-analyst` persona, which stays "planned" until its sibling `security-ai`
-toolbox (assistant + attack-discovery, needs an LLM connector) lands —
-`security-detections` itself is built, contract-tested, and usable standalone.
+`soc-analyst` persona, which stays "planned" permanently: its sibling
+`security-ai` toolbox (assistant + attack-discovery) needs an Enterprise-gated
+`.gen-ai` connector and is out of scope — `security-detections` itself is built,
+contract-tested, and usable standalone.
 
 ## Surface
 
@@ -108,8 +109,8 @@ wording, not incidental phrasing.
 
 ## Deliberate exclusions & caveats
 
-- **`security-ai`** (assistant + attack-discovery) is a separate toolbox,
-  deferred on needing an LLM (`.gen-ai`) connector.
+- **`security-ai`** (assistant + attack-discovery) is out of scope: it needs
+  an Enterprise-gated `.gen-ai` connector.
 - **Only query-type rule creation is buildable.** Threshold, EQL, indicator-
   match, new-terms, ES|QL, and ML rule types can be read/updated/replaced/
   enabled/disabled/deleted once they exist, but never created here.

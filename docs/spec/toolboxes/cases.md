@@ -103,11 +103,12 @@ guidance, not a masking of the auth cause.
   case methods wrapped). Core CRUD is Basic-buildable and shipped; the rest
   is either license-gated (external push needs Gold+, assignees need
   Platinum) or thin workflow plumbing not worth building against a license
-  this project doesn't run. Revisit if a license lands.
+  this project doesn't run. Not revisited: subscription-gated surfaces are
+  out of scope.
 - **No live persona profile yet.** Both personas that want `cases`
-  (`observability-sre`, `soc-analyst`) stay "planned," blocked on their own
-  sibling toolboxes (Platinum SLOs; an LLM connector) — not on anything in
-  this toolbox.
+  (`observability-sre`, `soc-analyst`) stay "planned" permanently, blocked on
+  sibling toolboxes that are out of scope (Platinum SLOs; an Enterprise-gated
+  `.gen-ai` connector) — not on anything in this toolbox.
 
 ## Enforcement
 
