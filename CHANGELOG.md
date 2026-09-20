@@ -12,6 +12,12 @@ version section.
 
 ### Changed
 
+- **The reference stack tracks Kibana 9.4.7** (was 9.4.3), in `.env.example`,
+  `.env.ephemeral.example` and the cloud-setup fallback. The contract tier is
+  green on it (125 passed, 2026-09-21), so the version claims in the README, the
+  docs site, the architecture notes, the user guide and two toolbox contracts now
+  name 9.4.7. Kibana 9.5 is not adopted: see **D29** for why the supported-set
+  mechanism it would need is still unreleased in kibana-py.
 - **Scope is Basic-only, and both front doors say so.** `README.md` and
   `docs/index.md` gain a *Licensing and scope* section: every tool this server
   registers works on a Basic license, and functionality that needs a paid Elastic

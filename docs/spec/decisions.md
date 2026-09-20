@@ -5,8 +5,9 @@ Status: Draft v1.1 (2026-09-20) — regeneration corpus. Consumes
 
 Each entry is a decision a rewrite must not silently re-litigate: what was
 decided, when, and the evidence. Entries marked **probe** are live
-observations against a real stack (Kibana 9.4.3 unless noted) — observed
-behavior, not documentation. Raw probe records and the full process history
+observations against a real stack — observed behavior, not documentation.
+Probes were taken on Kibana 9.4.3 unless noted; the stack pin moved to 9.4.7 on
+2026-09-21 and the contract tier is green on it (D29). Raw probe records and the full process history
 leave the public tree at release and live on in the private development
 repository; every finding needed to rebuild is restated here in full, so
 this ledger stands without them.
@@ -30,6 +31,19 @@ this ledger stands without them.
   always say so.
 - **D4 (2026-07)** — Handle-based saved-object export/import: NDJSON stays
   server-side; a whole-space export never enters the model's context.
+
+- **D29 (2026-09-21)** — The reference stack tracks the newest patch of the 9.4
+  line: the pin moved 9.4.3 → 9.4.7 in `.env.example` and
+  `.env.ephemeral.example`. Why: a reference stack frozen on an older patch stops
+  proving anything about what users run, and kibana-py moved its own supported set
+  to the newest patch of each line. Evidence: contract tier green on 9.4.7 — 125
+  passed, 2026-09-21. **Kibana 9.5 is deliberately not adopted yet.** kibana-py's
+  supported-set module (`kibana/_compat.py`, declaring 9.5.4 and 9.4.7) is
+  unreleased — absent from v0.5.0, the newest release on PyPI — so copying the
+  "declare the set once, let CI read it" pattern would mean hardcoding version
+  literals instead. 9.5 also diverges on the streams upsert body (`queries`
+  required on 9.4, rejected on 9.5), which this server's `streams` toolbox wraps:
+  a second line needs version-conditional request shaping, not a second pin.
 
 ## Space targeting
 

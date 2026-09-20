@@ -41,7 +41,7 @@ surfaces are not worth duplicating here.
 across 10 composable toolboxes (dashboards, data management, alerting, cases,
 security detections, fleet, streams, observability, platform admin, and platform
 health), each classified read / write / destructive and contract-tested against a
-live Kibana 9.4.3. It's packaged as a stdio and container-runnable server. See the
+live Kibana 9.4.7. It's packaged as a stdio and container-runnable server. See the
 [Tool reference](#tool-reference) below.
 
 The flagship path is **dashboards from plain English**: an LLM goes from a request

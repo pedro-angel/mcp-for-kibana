@@ -40,7 +40,7 @@ registry="docker.elastic.co"
 # docker-compose.apm.yml (APM server, used by `make stack-start`), docker-compose.fleet.yml
 # (elastic-agent, used by `make fleet-ephemeral`).
 images="elasticsearch/elasticsearch kibana/kibana apm/apm-server elastic-agent/elastic-agent"
-fallback_version="9.4.3"
+fallback_version="9.4.7"
 budget="${KIBANA_MCP_PULL_BUDGET:-210}"
 
 # --- Version: read from the repo rather than duplicated here. raw.githubusercontent.com is

@@ -10,7 +10,7 @@ The server ships **10 toolboxes / 133 tools** (dashboards, data-management,
 alerting, cases, security-detections, fleet, streams, observability,
 platform-admin, platform-health) — see the [Tool reference](tools.md) for every
 one. Every tool is classified read / write / destructive and contract-tested
-against a live Kibana 9.4.3.
+against a live Kibana 9.4.7.
 
 **Toolbox-level Basic coverage is complete; method-level is not.** The 2026-07-16
 catalog audit was toolbox-granular, and its "no Basic functionality left" claim
@@ -152,10 +152,11 @@ alerting, cases and security-detections on 2026-08-19.)
   creation and a local OpenAI-compatible LLM (LM Studio) cannot substitute — the connector
   **type** is the gate, not the model. Confirmed live 2026-07-16. This is why those
   features are out of scope rather than deferred: see [Licensing and scope](index.md#licensing-and-scope).
-- **Contract tests are the payload authority.** Live Kibana 9.4.3 rejects
+- **Contract tests are the payload authority.** Live Kibana 9.4.x rejects
   `time_range` inside Lens visualization configs (the OpenAPI spec
   suggested otherwise); type names are `data_table`, terms buckets use
-  `fields` (plural) + `limit`, metric charts need `{"type": "primary"}`.
+  `fields` (plural) + `limit`, metric charts need `{"type": "primary"}`. First
+  probed on 9.4.3; re-verified green on 9.4.7 (2026-09-21).
 - **fastmcp 3.4.x:** `get_http_headers()` strips `authorization` unless
   `include={"authorization"}`; tier gating uses `mcp.disable(tags=...)`.
 - **kibana-py:** `ApiError.__init__` reads `meta.status` unconditionally —
