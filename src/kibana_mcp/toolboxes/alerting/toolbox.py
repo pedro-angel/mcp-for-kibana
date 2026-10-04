@@ -1,8 +1,8 @@
 """The alerting toolbox: alert rules + connectors.
 
 Wraps kibana-py's `alerting.rule` + `connectors` namespaces (NOT the deprecated
-`actions` alias). `maintenance_windows` is deferred (Platinum-gated; the stack is
-basic license). Two safety choices: rules are created **disabled by default**
+`actions` alias). `maintenance_windows` is out of scope (Platinum-gated;
+subscription-gated surfaces are not built here). Two safety choices: rules are created **disabled by default**
 (inert until an explicit enable), and `execute_connector` is **destructive-tier**
 because it fires the connector's real external action irreversibly.
 """

@@ -4,8 +4,8 @@ kibana-py — Synthetics monitoring, Uptime settings, and APM *configuration*.
 
 All tools are `read` tier. This toolbox does NOT expose APM service/transaction/
 trace/service-map telemetry (those are internal-only Kibana APIs, unreachable by
-an external client) or SLOs (which need a Platinum license). Those are deferred
-to future additive tiers of this same toolbox.
+an external client) or SLOs (which need a Platinum license). Both are out of
+scope: subscription-gated surfaces are not built here.
 """
 
 from dataclasses import asdict

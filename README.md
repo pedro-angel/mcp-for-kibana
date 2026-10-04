@@ -22,13 +22,26 @@ The distribution is `mcp-for-kibana`; the Python import package is `kibana_mcp`.
 > support SLA. This server targets **Kibana 9.4+ only**; earlier versions
 > don't expose these APIs publicly at all.
 
+## Licensing and scope
+
+Every tool this server registers works on a **Basic** (free) Kibana license, and
+that is the boundary: functionality that needs a paid Elastic subscription is out
+of scope and stays out. Kibana's own per-type gates still apply to the values you
+pass — a Gold+ connector type stays Gold+.
+
+The corollary is deliberate. Kibana ships its own MCP server as part of
+[Agent Builder](https://www.elastic.co/docs/explore-analyze/ai-features/agent-builder/mcp-server),
+whose APIs [require an Enterprise subscription](https://www.elastic.co/subscriptions).
+A deployment on that tier already has an official one, so the Enterprise-gated
+surfaces are not worth duplicating here.
+
 ## Status
 
 **v0.1.0 — 10 toolboxes, 133 tools, live-tested.** The server exposes 133 tools
 across 10 composable toolboxes (dashboards, data management, alerting, cases,
 security detections, fleet, streams, observability, platform admin, and platform
 health), each classified read / write / destructive and contract-tested against a
-live Kibana 9.4.3. It's packaged as a stdio and container-runnable server. See the
+live Kibana 9.4.7. It's packaged as a stdio and container-runnable server. See the
 [Tool reference](#tool-reference) below.
 
 The flagship path is **dashboards from plain English**: an LLM goes from a request
@@ -131,7 +144,7 @@ then hidden via FastMCP's visibility API).
 | `security-detections` | 25 | Detection rules, exception lists, value lists. |
 | `fleet` | 35 | Fleet agents, agent/package policies, outputs, enrollment. |
 | `streams` | 12 | Streams list / summary / ingest config + processing (Tech Preview). |
-| `observability` | 10 | SLOs, alerts, and observability reads. |
+| `observability` | 10 | Synthetics monitors, Uptime settings, APM agent config (no SLOs — Platinum-gated, out of scope). |
 | `platform-admin` | 10 | Spaces, roles, upgrade readiness. |
 | `platform-health` | 3 | Cluster and Kibana status / health reads. |
 

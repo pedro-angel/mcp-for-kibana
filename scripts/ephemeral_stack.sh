@@ -3,7 +3,7 @@
 #
 # disable_streams deletes ALL wired streams + data cluster-wide, so it can't run
 # against the shared dev stack. This spins up a throwaway single-node ES+Kibana
-# 9.4.3 under a DISTINCT compose project (mcp-for-kibana-ephemeral), with distinct
+# 9.4.7 under a DISTINCT compose project (mcp-for-kibana-ephemeral), with distinct
 # container names + ports (29200/25601) + creds from .env.ephemeral — so it never
 # collides with the dev stack (mcp-for-kibana-stack, 19200/15601) even when that is up.
 # Minted creds go to the test PROCESS ENV only, never elastic-start-local/.env.seed

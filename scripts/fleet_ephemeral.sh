@@ -4,7 +4,7 @@
 # The fleet write tools reassign / upgrade / unenroll REAL agents, so they can't
 # be certified against the shared dev stack (that would mutate the always-on demo
 # agent other contract tests depend on). This spins up a throwaway single-node
-# ES+Kibana 9.4.3 + a Fleet Server + TWO sacrificial enrolled agents under a
+# ES+Kibana 9.4.7 + a Fleet Server + TWO sacrificial enrolled agents under a
 # DISTINCT compose project (mcp-for-kibana-fleet-ephemeral), with distinct container
 # names + ports + creds from .env.ephemeral — so it never collides with the dev
 # stack (mcp-for-kibana-stack) even when that is up. Two agents so a lifecycle test can
@@ -102,7 +102,7 @@ done
 [ "$code" = "200" ] || { echo "FAIL: fleet-ephemeral Kibana not ready ($KB/api/status=$code)" >&2; exit 1; }
 
 # --- Fleet bootstrap (mirrors scripts/fleet_stack.sh, against the isolated KB) ---
-# One Kibana Fleet API call with the internal-origin header 9.4.3 requires.
+# One Kibana Fleet API call with the internal-origin header 9.4.x requires.
 api() {  # api METHOD PATH [JSON]
   if [ -n "${3:-}" ]; then
     curl -s -u "elastic:${ES_LOCAL_PASSWORD}" -H 'kbn-xsrf: true' -H 'x-elastic-internal-origin: Kibana' \

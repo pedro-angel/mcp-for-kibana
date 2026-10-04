@@ -209,7 +209,7 @@ builds the right shape:
   uniform** (e.g. `gauge`/`tag_cloud`/`region_map`/`mosaic` take a singular
   `metric`; `treemap`/`waffle` take a plural `metrics`; the bucket key varies:
   `tag_by`, `region`, `x`+`y`, `group_by`). Every shape was pinned by probing a
-  live Kibana 9.4.3 rather than read off the OpenAPI spec, and is contract-tested
+  live Kibana 9.4.7 rather than read off the OpenAPI spec, and is contract-tested
   against a running stack — the contract tests are the authority here.
 
 Each aggregation (`MetricSpec`) and bucket (`GroupBySpec`) becomes an

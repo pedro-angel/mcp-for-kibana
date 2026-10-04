@@ -1,6 +1,6 @@
 # platform-health — behavior contract
 
-Status: Draft v1.0 (2026-08-19) — regeneration corpus, reconciled to shipped code
+Status: Draft v1.1 (2026-09-21) — regeneration corpus, reconciled to shipped code
 Surface reference: docs/tools.md#platform-health-toolbox · Enforcement: named per section below
 
 ## Purpose & persona
@@ -124,7 +124,7 @@ Behavioral guarantees).
   composition with other toolboxes.
 - `tests/contract/test_gateway_contract.py` — `test_kibana_status_live`,
   `test_kibana_stats_live`, `test_task_manager_health_live` pin all three
-  gateway methods against a real, seeded Kibana 9.4.3 stack.
+  gateway methods against a real, seeded Kibana 9.4.7 stack.
 - No e2e-replay or live-model e2e transcript is pinned to this toolbox — it
   has no error-guidance strings and no multi-step flow to
   regression-protect at that tier; coverage is the unit and contract tiers
