@@ -4,8 +4,10 @@
 # Runs as root on the session VM (Ubuntu 24.04, x86_64) BEFORE Claude Code starts, once
 # per environment-cache generation. Anthropic snapshots the filesystem afterwards, so what
 # this script leaves on disk -- apt packages, pulled Docker images -- is already present in
-# every later session. Running processes are NOT snapshotted: the stack itself comes up per
-# session via scripts/stack.sh, scripts/ephemeral_stack.sh or scripts/fleet_stack.sh.
+# every later session. Running processes are NOT snapshotted: each session's SessionStart
+# hook (scripts/cloud-session-start.sh) restarts dockerd and runs `make setup`, and the stack
+# itself comes up per session via scripts/stack.sh, scripts/ephemeral_stack.sh or
+# scripts/fleet_stack.sh.
 #
 # Wire it up by pasting this bootstrap into the environment's "Setup script" field:
 #

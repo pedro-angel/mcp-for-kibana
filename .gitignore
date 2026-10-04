@@ -50,5 +50,10 @@ docs/experiments/*/scratch/
 # machine-local and must never become a dependency of the project: nothing in the
 # code, the docs or the build may reference it, and deleting it must change
 # nothing. Ignored so it cannot be committed by accident.
+# One exception: .claude/settings.json is project configuration, not scratch —
+# its SessionStart hook runs scripts/cloud-session-start.sh, which brings a
+# Claude Code cloud session up to a working Docker daemon and dev environment
+# (and exits at once everywhere else).
 .superpowers/
-.claude/
+.claude/*
+!.claude/settings.json
