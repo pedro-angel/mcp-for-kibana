@@ -36,6 +36,7 @@ from tests._alerting_space_ladder import (
     sweep_default_space_marker_rules,
 )
 from tests._space_ladder import FLIGHTS_INDEX, append_jsonl
+from tests._stack_env import LMSTUDIO_REFERENCE_MODEL
 
 pytestmark = pytest.mark.e2e
 
@@ -53,7 +54,7 @@ def lmstudio():
         # OPTIONAL by design elsewhere; this machine's LM Studio requires it
         # (probe record 2026-08-15) — send it whenever present.
         "token": os.environ.get("LMSTUDIO_API_TOKEN"),
-        "model": os.environ.get("LMSTUDIO_MODEL", "openai/gpt-oss-20b"),
+        "model": os.environ.get("LMSTUDIO_MODEL", LMSTUDIO_REFERENCE_MODEL),
     }
 
 

@@ -1,6 +1,6 @@
 # Decisions ledger
 
-Status: Draft v1.2 (2026-10-04) — regeneration corpus. Consumes
+Status: Draft v1.3 (2026-10-04) — regeneration corpus. Consumes
 [brief.md](brief.md); read alongside [design.md](design.md).
 
 Each entry is a decision a rewrite must not silently re-litigate: what was
@@ -124,7 +124,15 @@ this ledger stands without them.
   so that comparison is indicative, not controlled; the Study L dashboards
   numbers are the controlled ones. Space threading, tool-call discipline,
   and params authoring are three distinct model capabilities; gates must
-  exercise all three.
+  exercise all three. **Re-measured 2026-10-04 on Kibana 9.5.4**, same
+  build, five runs per cell (`scripts/experiment/runs/adhoc.jsonl`):
+  `gemma-4-12b-qat` 5/5 dashboards space chain and 5/5 alerting-space;
+  `gemma-4-26b-a4b-qat` 4/5 and 5/5 — faster (median 66 s and 28 s against
+  77 s and 84 s) but its one failure built the dashboard in the default space,
+  the capability the space gates exist to catch, so the reference stays
+  `gemma-4-12b-qat`. On that evidence `e2e_green` runs all three gates (the
+  flights dashboard and both space chains), and the reference model is the
+  `LMSTUDIO_MODEL` fallback in every live-model test.
 - **D19 (2026-08-19)** — Replay transcripts carry recorded bytes, never
   hand-written arguments; error steps are recorded with their guidance
   needles; server-generated ids (alert rules) bind at replay time from the

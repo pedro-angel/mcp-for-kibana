@@ -147,10 +147,15 @@ if req e2e_green; then
   if [ -f elastic-start-local/.env.seed ]; then
     # Env loading lives in tests/_stack_env.py (fixture-time) — the gate
     # only pre-checks that a stack is claimed at all.
-    # Deliberately ONLY the deterministic flights gate: the space gate
-    # (test_lmstudio_space.py) is an experiment driver whose default model
-    # passes 2/5 by measurement — a stochastic test cannot gate GO/NO-GO.
-    run_suite e2e_green uv run pytest tests/e2e/test_lmstudio.py -m e2e -q
+    # All three live-model gates, one per capability D18 names: the flights
+    # dashboard (tool-call discipline, params authoring) and the dashboards and
+    # alerting space chains (threading `space` through a chain of calls). The
+    # space gates are stochastic; they gate GO because the reference model
+    # passed them 10/10 on the pinned Kibana (D18). Their per-run records go to
+    # this gate's log dir, never into the tracked scripts/experiment/runs/.
+    run_suite e2e_green env KIBANA_MCP_EXPERIMENT_LOG="$logdir/e2e_green-runs.jsonl" \
+      uv run pytest tests/e2e/test_lmstudio.py tests/e2e/test_lmstudio_space.py \
+      tests/e2e/test_lmstudio_alerting_space.py -m e2e -q
   else
     echo "  NO-GO e2e_green  (no elastic-start-local/.env.seed — see docs/e2e-setup.md)"
     nogo=1

@@ -22,6 +22,15 @@ version section.
 
 ### Changed
 
+- **`e2e_green` runs all three live-model gates**: the flights dashboard plus
+  the dashboards and alerting space chains, one per capability D18 names. The
+  reference model `gemma-4-12b-qat` passed both space chains 5/5 on Kibana
+  9.5.4 (2026-10-04, `scripts/experiment/runs/adhoc.jsonl`) and is now the
+  `LMSTUDIO_MODEL` fallback in every live-model test (was `gpt-oss-20b`, which
+  fails the space gates). The gate writes its run records to its own log dir,
+  so `make dod` never modifies the tracked run files. `gemma-4-26b-a4b-qat` was
+  measured as a faster alternative and not adopted: it built one dashboard in
+  five in the default space.
 - **kibana-py 0.6.0 is the minimum** (was 0.5.0), and older releases are no
   longer supported: the project is pre-production and carries no compatibility
   burden for earlier client versions. 0.6.0 is the first release that supports
