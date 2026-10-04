@@ -42,7 +42,7 @@ cfg="${1:-dod.config}"
 # delete`). The value is anchored to the FIRST `=` so it matches `req()`'s
 # single-`=` grammar below. Keep `known` in sync with the criteria dispatched.
 known="unit_green ruff_clean types_clean import_contracts hygiene_hooks docs_strict \
-audit_clean sast_clean vocabulary_conformant image_smoke contract_green e2e_replay_green e2e_green streams_ephemeral fleet_ephemeral changelog_entry"
+audit_clean sast_clean vocabulary_conformant image_smoke contract_green e2e_replay_green wheel_replay_green e2e_green streams_ephemeral fleet_ephemeral changelog_entry"
 seen=" "
 while IFS= read -r line || [ -n "$line" ]; do            # tolerate a missing final newline
   line=$(printf '%s' "$line" | tr -d '\r')               # CRLF-safe
@@ -139,6 +139,19 @@ if req e2e_replay_green; then
     run_suite e2e_replay_green uv run pytest -m e2e_replay -q
   else
     echo "  NO-GO e2e_replay_green  (no elastic-start-local/.env.seed — run: scripts/stack.sh up && scripts/stack.sh seed)"
+    nogo=1
+  fi
+fi
+
+if req wheel_replay_green; then
+  # The same replay, with the server launched from the built wheel installed
+  # into a fresh venv: the artifact a PyPI user installs, its dependencies
+  # resolved the way that user's install resolves them. Every other live tier
+  # runs the checkout. Same seeded-stack precondition as e2e_replay_green.
+  if [ -f elastic-start-local/.env.seed ]; then
+    run_suite wheel_replay_green scripts/checks/wheel-replay.sh
+  else
+    echo "  NO-GO wheel_replay_green  (no elastic-start-local/.env.seed — run: scripts/stack.sh up && scripts/stack.sh seed)"
     nogo=1
   fi
 fi

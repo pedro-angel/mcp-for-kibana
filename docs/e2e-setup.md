@@ -239,6 +239,13 @@ a real `fastmcp.Client` over real stdio replays the recorded turn above against
 the real server and real Kibana. It needs only the docker stack, so unlike this
 page's live harness it runs on every PR (`e2e_replay_green`).
 
+`wheel_replay_green` runs the same replay against the **installed package**
+rather than the checkout: `scripts/checks/wheel-replay.sh` builds the wheel,
+installs it into a fresh venv with `pip` (dependencies resolved from the
+`pyproject.toml` ranges, as a PyPI install resolves them), and points the suite
+at that venv's `mcp-for-kibana` through `KIBANA_MCP_SERVER_BIN`. It is the only
+live tier that exercises what `pip install mcp-for-kibana` delivers.
+
 It certifies that the tools still exist under the same names, that arguments a
 real model produced still validate against the live input schemas, that
 arguments the runtime rejected are still rejected, that the guidance strings

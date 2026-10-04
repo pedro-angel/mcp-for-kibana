@@ -188,17 +188,30 @@ def mcp_client(transcript):
     two pinned keys, so a transcript can select toolboxes but can never move
     the tier: it stays `write`, and leaving `destructive` off means a replay can
     never delete anything even if a transcript is later edited carelessly.
+
+    KIBANA_MCP_SERVER_BIN swaps the checkout for an installed artifact
+    (scripts/checks/wheel-replay.sh): the server is that executable, started
+    from its own venv directory, so no file in the repo can stand in for one
+    the package fails to ship.
     """
+    server_bin = os.environ.get("KIBANA_MCP_SERVER_BIN")
+    if server_bin:
+        command, args = server_bin, []
+        cwd = str(Path(server_bin).resolve().parents[1])
+    else:
+        command, args = "uv", ["--directory", str(_REPO_ROOT), "run", "mcp-for-kibana"]
+        cwd = None
     return Client(
         StdioTransport(
-            command="uv",
-            args=["--directory", str(_REPO_ROOT), "run", "mcp-for-kibana"],
+            command=command,
+            args=args,
             env={
                 **os.environ,
                 **transcript["extra_env"],
                 "KIBANA_MCP_ENV_FILE": str(_REPO_ROOT / "elastic-start-local" / ".env.seed"),
                 "KIBANA_MCP_TIER": "write",
             },
+            cwd=cwd,
         )
     )
 
