@@ -10,6 +10,15 @@ version section.
 
 ## [Unreleased]
 
+### Added
+
+- **Cloud sessions start ready to work.** A SessionStart hook in
+  `.claude/settings.json` runs `scripts/cloud-session-start.sh`, which starts
+  `dockerd` (the environment snapshot keeps the images, not the daemon) and runs
+  `make setup` (the clone is fresh each session). It exits at once outside a
+  Claude Code cloud session. Ported from kibana-py. `.claude/settings.json` is
+  the one tracked file under `.claude/`; the rest stays ignored.
+
 ### Changed
 
 - **The Definition of Done needs no LLM** (D31). `e2e_green` is `n/a` in
