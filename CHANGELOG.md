@@ -21,6 +21,13 @@ version section.
   one script provisions either line (`CONTRIBUTING.md` shows how). No server code
   changed: on 9.5.4 the contract tier passed 125 tests, the e2e replay 4 and the
   live-model gate 1 (2026-10-04).
+- **`wheel_replay_green`: the replay tier against the installed package.** Every
+  other live tier runs the checkout; this DoD criterion builds the wheel,
+  installs it into a fresh venv with `pip` (dependencies resolved from the
+  `pyproject.toml` ranges, as a PyPI install resolves them, not from `uv.lock`)
+  and replays the recorded sessions with the server launched from that venv
+  (`scripts/checks/wheel-replay.sh`, `KIBANA_MCP_SERVER_BIN`). Required locally
+  and in CI's contract job, on every supported Kibana line.
 
 ### Changed
 

@@ -6,10 +6,10 @@ name: integration
 # the SAME Definition-of-Done gate (scripts/checks/definition-of-done.sh) with
 # a per-tier config from .github/dod/ — so CI's verdicts and `make dod` cannot
 # drift, and CI inherits the gate's anti-skip guard (an empty or all-skipped
-# suite reads NO-GO, not green). Tier coverage here: contract_green and
-# e2e_replay_green on every supported Kibana line, streams_ephemeral and
-# fleet_ephemeral on the pinned (newest) line. The fast criteria run in
-# checks.yml via the make leaves.
+# suite reads NO-GO, not green). Tier coverage here: contract_green,
+# e2e_replay_green and wheel_replay_green on every supported Kibana line;
+# streams_ephemeral and fleet_ephemeral on the pinned (newest) line. The fast
+# criteria run in checks.yml via the make leaves.
 #
 # e2e_green stays local-only and `n/a` in every .github/dod config: it needs a
 # provisioned LM Studio runtime + a loaded model (docs/e2e-setup.md), which a
@@ -95,7 +95,7 @@ jobs:
       # Two criteria over the one provisioned stack: contract_green and
       # e2e_replay_green (a recorded real-model turn replayed through a real
       # MCP client — no LLM, so it is deterministic enough for CI).
-      - name: DoD gate — seeded-stack tier (contract + e2e replay)
+      - name: DoD gate — seeded-stack tier (contract + e2e replay + wheel replay)
         run: |
           uv sync --group dev
           scripts/checks/definition-of-done.sh .github/dod/ci-contract.config
