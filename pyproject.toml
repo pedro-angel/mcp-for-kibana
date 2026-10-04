@@ -28,7 +28,7 @@ classifiers = [
 ]
 dependencies = [
     "fastmcp>=3.4.7,<4",
-    "kibana-py[async]>=0.5.0",
+    "kibana-py[async]>=0.6.0",
     "pydantic>=2.7",
     "pydantic-settings>=2.15.0",
 ]
