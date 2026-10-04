@@ -279,7 +279,7 @@ audit, SAST, unit across Python 3.12–3.14, docs, image build+smoke), and
 through *this same gate script* with per-tier configs in `.github/dod/` — so CI
 verdicts and `make dod` cannot drift.
 
-`make dod` needs the dev stack up for `contract`/`e2e`/`e2e_replay`/`wheel_replay` and down for
+`make dod` needs the dev stack up for `contract`/`e2e_replay`/`wheel_replay` and down for
 the ephemeral tiers, so a plain run cannot satisfy both halves. To get a
 one-shot GO, let the gate cycle the stack for you (default-off, so it never
 touches infrastructure unasked):
@@ -289,10 +289,10 @@ scripts/stack.sh up && scripts/stack.sh seed
 KIBANA_MCP_DOD_CYCLE_STACK=1 make dod
 ```
 
-`e2e_green` is the one criterion CI cannot certify — it needs a real model. It
-stays `required` in `dod.config` and `n/a` in every `.github/dod` tier, so the
-local gate remains a strict superset of CI rather than CI quietly becoming the
-definition of done.
+`e2e_green` — a real model choosing the calls — is `n/a` in `dod.config` as in
+every `.github/dod` tier (D31): the DoD reaches GO without an LLM, and a pass
+would certify only the model that ran. Run the live-model tests on demand with
+`make test-e2e` when a change touches tool names, descriptions or schemas.
 
 ## License
 

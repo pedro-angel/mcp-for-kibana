@@ -162,10 +162,10 @@ if req e2e_green; then
     # only pre-checks that a stack is claimed at all.
     # All three live-model gates, one per capability D18 names: the flights
     # dashboard (tool-call discipline, params authoring) and the dashboards and
-    # alerting space chains (threading `space` through a chain of calls). The
-    # space gates are stochastic; they gate GO because the reference model
-    # passed them 10/10 on the pinned Kibana (D18). Their per-run records go to
-    # this gate's log dir, never into the tracked scripts/experiment/runs/.
+    # alerting space chains (threading `space` through a chain of calls). n/a
+    # in dod.config (D31); this runs only where a config declares it required.
+    # Its per-run records go to this gate's log dir, never into the tracked
+    # scripts/experiment/runs/.
     run_suite e2e_green env KIBANA_MCP_EXPERIMENT_LOG="$logdir/e2e_green-runs.jsonl" \
       uv run pytest tests/e2e/test_lmstudio.py tests/e2e/test_lmstudio_space.py \
       tests/e2e/test_lmstudio_alerting_space.py -m e2e -q

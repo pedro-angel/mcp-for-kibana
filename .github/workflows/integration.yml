@@ -11,8 +11,8 @@ name: integration
 # streams_ephemeral and fleet_ephemeral on the pinned (newest) line. The fast
 # criteria run in checks.yml via the make leaves.
 #
-# e2e_green stays local-only and `n/a` in every .github/dod config: it needs a
-# provisioned LM Studio runtime + a loaded model (docs/e2e-setup.md), which a
+# e2e_green is `n/a` in every DoD config, dod.config included (D31): it needs
+# a provisioned LM Studio runtime + a loaded model (docs/e2e-setup.md), which a
 # GitHub runner has not got. What CI *can* run is e2e_replay_green — the same
 # MCP surface driven by a recorded real-model turn instead of a live one. That
 # closes the per-PR gap without pretending a model ran.
