@@ -93,6 +93,16 @@ make fleet-ephemeral   # fleet agent-lifecycle on an isolated 2-agent stack
 The destructive `*-ephemeral` tiers spin up an isolated stack and tear it down,
 so they never touch your dev stack. Stop the dev stack first (RAM).
 
+The stack runs the newest supported Kibana (the `.env.example` pin). CI runs the
+contract tier on every line in `kibana.SUPPORTED_VERSIONS`; to run another line
+locally, destroy the stack first (Elasticsearch cannot open a newer version's
+data), then pass the version:
+
+```bash
+make stack-destroy
+ES_LOCAL_VERSION=9.4.7 make test-contract
+```
+
 ## Code Quality & Gates
 
 ```bash

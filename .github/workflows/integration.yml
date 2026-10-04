@@ -6,9 +6,10 @@ name: integration
 # the SAME Definition-of-Done gate (scripts/checks/definition-of-done.sh) with
 # a per-tier config from .github/dod/ — so CI's verdicts and `make dod` cannot
 # drift, and CI inherits the gate's anti-skip guard (an empty or all-skipped
-# suite reads NO-GO, not green). Tier coverage here: contract_green,
-# e2e_replay_green, streams_ephemeral, fleet_ephemeral. The fast criteria run
-# in checks.yml via the make leaves.
+# suite reads NO-GO, not green). Tier coverage here: contract_green and
+# e2e_replay_green on every supported Kibana line, streams_ephemeral and
+# fleet_ephemeral on the pinned (newest) line. The fast criteria run in
+# checks.yml via the make leaves.
 #
 # e2e_green stays local-only and `n/a` in every .github/dod config: it needs a
 # provisioned LM Studio runtime + a loaded model (docs/e2e-setup.md), which a
@@ -32,12 +33,47 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  contract:
+  # The supported Kibana set is declared once, by the locked kibana-py
+  # (`kibana.SUPPORTED_VERSIONS`, D30); the contract job fans out over it
+  # instead of restating version literals here.
+  versions:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      kibana: ${{ steps.read.outputs.kibana }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install uv
+        run: curl -LsSf https://astral.sh/uv/install.sh | sh
+
+      - name: Read the supported set from kibana-py
+        id: read
+        run: |
+          kibana=$(uv run --frozen --no-dev python -c \
+            'import json, kibana; print(json.dumps([v for _, v in kibana.SUPPORTED_VERSIONS]))')
+          echo "supported Kibana versions: $kibana"
+          echo "kibana=$kibana" >> "$GITHUB_OUTPUT"
+
+  contract:
+    needs: versions
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    name: contract (${{ matrix.kibana }})
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
       contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        kibana: ${{ fromJSON(needs.versions.outputs.kibana) }}
+    # scripts/stack.sh up writes this over the .env.example pin, so one job
+    # definition provisions every supported line.
+    env:
+      ES_LOCAL_VERSION: ${{ matrix.kibana }}
     steps:
       # Pinned to the SAME SHA as every other workflow (checks.yml) — the
       # check-one-pin-per-action hook enforces one pin per action repo-wide.

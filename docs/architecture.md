@@ -28,7 +28,7 @@ flowchart LR
         Toolboxes --> Gateway
     end
     ES[("Elasticsearch")]
-    Kibana[("Kibana 9.4+")]
+    Kibana[("Kibana 9.4 / 9.5")]
 
     Claude & LMS & Other -->|"MCP + per-request Kibana API key"| Transport
     Gateway -->|"kibana-py<br/>(caller's API key)"| Kibana
@@ -52,7 +52,7 @@ flowchart TD
     Toolboxes --> Ports["ports/gateway.py — KibanaGateway protocol"]
     Toolboxes --> Core["core/ — VizSpec, validate, translate, compose (pure, no framework imports)"]
     Ports -. implemented by .-> KibanaAdapter["adapters/kibana — KibanaPyGateway (only module importing kibana-py)"]
-    KibanaAdapter -->|kibana-py| Kibana[("Kibana 9.4+\nDashboards & Visualizations API")]
+    KibanaAdapter -->|kibana-py| Kibana[("Kibana 9.4 / 9.5\nDashboards & Visualizations API")]
 ```
 
 The layer contract (`[[tool.importlinter.contracts]]`, `type = "layers"`)

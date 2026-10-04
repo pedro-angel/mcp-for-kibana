@@ -4,7 +4,7 @@
 # The fleet write tools reassign / upgrade / unenroll REAL agents, so they can't
 # be certified against the shared dev stack (that would mutate the always-on demo
 # agent other contract tests depend on). This spins up a throwaway single-node
-# ES+Kibana 9.4.7 + a Fleet Server + TWO sacrificial enrolled agents under a
+# ES+Kibana (the .env.ephemeral.example pin) + a Fleet Server + TWO sacrificial enrolled agents under a
 # DISTINCT compose project (mcp-for-kibana-fleet-ephemeral), with distinct container
 # names + ports + creds from .env.ephemeral — so it never collides with the dev
 # stack (mcp-for-kibana-stack) even when that is up. Two agents so a lifecycle test can

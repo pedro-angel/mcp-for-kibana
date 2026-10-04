@@ -91,7 +91,8 @@ and platform admin/health.
 
 ## Constraints
 
-- **Kibana 9.4+ only** — the dashboards toolbox is built on the 9.4 public
+- **Kibana 9.4 and 9.5** — the lines kibana-py supports (D30); nothing older can
+  work, because the dashboards toolbox is built on the 9.4 public
   Dashboards and Visualizations APIs (Elastic marks both Technical Preview;
   shapes may change without notice).
 - **Trademark posture**: the name leads with the generic (MCP) and uses

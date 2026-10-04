@@ -20,7 +20,7 @@ No Kibana or Lens knowledge required. That's the point.
 From the repo root:
 
 ```bash
-scripts/stack.sh up      # Elasticsearch + Kibana 9.4.7 (first run pulls ~2GB)
+scripts/stack.sh up      # Elasticsearch + Kibana 9.5.4 (first run pulls ~2GB)
 scripts/stack.sh seed    # loads the flights sample dataset; mints an API key only if needed
 ```
 
@@ -145,7 +145,7 @@ why small local models handle this reliably.
 
 ## Using your own Kibana instead
 
-Needs **Kibana 9.4 or newer** (the modern Dashboards API is a 9.4
+Needs **Kibana 9.4 or 9.5** (the modern Dashboards API is a 9.4
 Technical Preview). Create an API key in Kibana (Stack Management → API
 keys), then point the client env at it:
 

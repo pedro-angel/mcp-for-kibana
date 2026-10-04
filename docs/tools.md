@@ -504,7 +504,7 @@ Returns:
 ```jsonc
 // get_kibana_status
 {"overall_level": "available", "overall_summary": "All services and plugins are available",
- "version": "9.4.7", "unhealthy": []}
+ "version": "9.5.4", "unhealthy": []}
 // ...unhealthy lists only services whose level != "available":
 // "unhealthy": [{"name": "reporting", "level": "unavailable", "summary": "..."}]
 

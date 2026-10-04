@@ -10,6 +10,16 @@ version section.
 
 ## [Unreleased]
 
+### Added
+
+- **Kibana 9.5 is supported alongside 9.4** (D30, superseding D29). The
+  supported set is kibana-py's `kibana.SUPPORTED_VERSIONS` — today 9.5.4 and
+  9.4.7 — and the CI contract job runs once per version in it, contract tier and
+  e2e replay both. `scripts/stack.sh up` takes an `ES_LOCAL_VERSION` override, so
+  one script provisions either line (`CONTRIBUTING.md` shows how). No server code
+  changed: on 9.5.4 the contract tier passed 125 tests, the e2e replay 4 and the
+  live-model gate 1 (2026-10-04).
+
 ### Changed
 
 - **kibana-py 0.6.0 is the minimum** (was 0.5.0), and older releases are no
@@ -21,12 +31,13 @@ version section.
   four Fleet routes whose answers changed in 0.6.0 and the significant-events
   methods that now raise `KibanaVersionError` on 9.5 are not called by this
   server. Contract tier green on 9.4.7 — 125 passed, 2026-10-04.
-- **The reference stack tracks Kibana 9.4.7** (was 9.4.3), in `.env.example`,
-  `.env.ephemeral.example` and the cloud-setup fallback. The contract tier is
-  green on it (125 passed, 2026-09-21), so the version claims in the README, the
-  docs site, the architecture notes, the user guide and two toolbox contracts now
-  name 9.4.7. Kibana 9.5 is not adopted: see **D29** for why the supported-set
-  mechanism it would need is still unreleased in kibana-py.
+- **The reference stack tracks the newest supported Kibana, 9.5.4** (was
+  9.4.3), in `.env.example`, `.env.ephemeral.example` and the cloud-setup
+  fallback — the line the dev stack, both ephemeral tiers and the live-model gate
+  run on. `tests/unit/test_stack_pin.py` fails when a kibana-py release moves its
+  newest supported version, until both pins follow. The version claims in the
+  README, the docs site, the architecture notes, the user guide, the brief and
+  two toolbox contracts now name 9.4 and 9.5 (tested on 9.4.7 and 9.5.4).
 - **Scope is Basic-only, and both front doors say so.** `README.md` and
   `docs/index.md` gain a *Licensing and scope* section: every tool this server
   registers works on a Basic license, and functionality that needs a paid Elastic
