@@ -17,6 +17,10 @@ import re
 import warnings
 from pathlib import Path
 
+# D18's reference model: the LMSTUDIO_MODEL fallback for every live-model gate,
+# so `make dod` drives the measured model even when .env.local names none.
+LMSTUDIO_REFERENCE_MODEL = "google/gemma-4-12b-qat"
+
 _KEY_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _MACHINE_KEYS = ("KIBANA_URL", "KIBANA_TEST_API_KEY")
 # Seed creds live foldered with the stack env (elastic-start-local/), not at root.

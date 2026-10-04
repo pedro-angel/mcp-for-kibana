@@ -20,17 +20,21 @@ model, through our server, into a real Kibana dashboard.
    unrelated local Kibana on 5601/9200).
 
 2. In LM Studio (GUI): load a tool-use-capable model —
-   `google/gemma-4-12b-qat` is the reference model (measured 5/5 on the
-   dashboards space chain and 2/2 on the alerting-space gate; the code
-   fallback default remains `openai/gpt-oss-20b`, which drops the `space`
-   parameter mid-chain 3/5 and fails the space gates — override with
-   `LMSTUDIO_MODEL`). Put your machine's choice in `.env.local`
-   (user-owned; no script ever writes or deletes it) as
-   `LMSTUDIO_MODEL=<model-id>`.
-   Its native tool grammar is parser-enforced, which made it 3/3 reliable
-   on this gate; `qwen/qwen2.5-coder-14b` also completes the flow but
-   corrupts its tool-call markers roughly one run in three
-   (`tool_format_generation_error` 500 from LM Studio).
+   `google/gemma-4-12b-qat` is the reference model and the code fallback
+   when `LMSTUDIO_MODEL` is unset (measured 5/5 on the dashboards space
+   chain and 5/5 on the alerting-space gate on Kibana 9.5.4 — D18). To drive
+   another model, put it in `.env.local` (user-owned; no script ever writes
+   or deletes it) as `LMSTUDIO_MODEL=<model-id>`. Known alternatives:
+   `openai/gpt-oss-20b` drops the `space` parameter mid-chain 3/5 and fails
+   the space gates; `google/gemma-4-26b-a4b-qat` is faster but built one
+   dashboard in 5 in the default space; `qwen/qwen2.5-coder-14b` completes
+   the flights flow but corrupts its tool-call markers roughly one run in
+   three (`tool_format_generation_error` 500 from LM Studio).
+
+   `make dod`'s `e2e_green` runs all three gates — the flights dashboard
+   (`test_lmstudio.py`) and the dashboards and alerting space chains — so it
+   needs both server entries from step 5 and takes about four minutes with
+   the reference model.
 
    **The context you load with is the context the test gets.** The harness
    deliberately sends no `context_length`, so it reuses whatever you loaded
@@ -163,7 +167,7 @@ by `scripts/stack.sh seed`); the `LMSTUDIO_*` vars belong in `.env.local`
 |---|---|---|
 | `LMSTUDIO_URL` | `http://localhost:1234` | no |
 | `LMSTUDIO_API_TOKEN` | (none) | no — sent as `Bearer` only if set |
-| `LMSTUDIO_MODEL` | `openai/gpt-oss-20b` (code fallback; `google/gemma-4-12b-qat` is the measured reference — see step 2) | no |
+| `LMSTUDIO_MODEL` | `google/gemma-4-12b-qat` (the measured reference — see step 2) | no |
 | `KIBANA_URL` | (none) | yes — from `elastic-start-local/.env.seed` |
 | `KIBANA_TEST_API_KEY` | (none) | yes — from `elastic-start-local/.env.seed` |
 
