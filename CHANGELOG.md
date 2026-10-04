@@ -10,6 +10,15 @@ version section.
 
 ## [Unreleased]
 
+### Changed
+
+- **The Definition of Done needs no LLM** (D31). `e2e_green` is `n/a` in
+  `dod.config`, as it already was in every `.github/dod` config, so `make dod`
+  can reach GO on CI and in a Claude Code cloud session. The replay tiers
+  (`e2e_replay_green`, `wheel_replay_green`) carry the per-change guarantee; the
+  three live-model tests run on demand with `make test-e2e` when a change
+  touches tool names, descriptions or schemas.
+
 ## [0.2.0] - 2026-10-04
 
 ### Added

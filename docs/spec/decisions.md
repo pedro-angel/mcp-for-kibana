@@ -1,6 +1,6 @@
 # Decisions ledger
 
-Status: Draft v1.3 (2026-10-04) — regeneration corpus. Consumes
+Status: Draft v1.4 (2026-10-04) — regeneration corpus. Consumes
 [brief.md](brief.md); read alongside [design.md](design.md).
 
 Each entry is a decision a rewrite must not silently re-litigate: what was
@@ -132,7 +132,8 @@ this ledger stands without them.
   the capability the space gates exist to catch, so the reference stays
   `gemma-4-12b-qat`. On that evidence `e2e_green` runs all three gates (the
   flights dashboard and both space chains), and the reference model is the
-  `LMSTUDIO_MODEL` fallback in every live-model test.
+  `LMSTUDIO_MODEL` fallback in every live-model test. Since D31 the criterion
+  is `n/a` in `dod.config`; the three tests run on demand.
 - **D19 (2026-08-19)** — Replay transcripts carry recorded bytes, never
   hand-written arguments; error steps are recorded with their guidance
   needles; server-generated ids (alert rules) bind at replay time from the
@@ -141,6 +142,18 @@ this ledger stands without them.
   space-dashboard sequence) has a hand-chosen call ORDER over real
   recorded wire bytes — its order carries no evidence about model behavior
   and each transcript's `recorded` block says which kind it is.
+- **D31 (2026-10-04)** — The Definition of Done needs no LLM: `e2e_green` is
+  `n/a` in `dod.config` as in every `.github/dod` config. Why: the gate must
+  reach GO wherever the project is worked on — CI runners and Claude Code
+  cloud sessions have no LM Studio runtime — and a live-model pass certifies
+  only the model that ran, not the models users bring (D18's own numbers: one
+  model 5/5 where another drops `space` 1 run in 5). The replay tiers carry
+  the per-change guarantee: `e2e_replay_green` (recorded real-model turns
+  through a real MCP client and live Kibana) and `wheel_replay_green` (the same
+  against the installed wheel). What they cannot show is whether a model still
+  chooses the right tools after a change to what models see, so the three
+  live-model tests run on demand (`make test-e2e`) when a change touches tool
+  names, descriptions or schemas — a written rule, not an automated check.
 
 ## Scope and licensing (probed on Basic)
 

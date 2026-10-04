@@ -31,10 +31,12 @@ model, through our server, into a real Kibana dashboard.
    the flights flow but corrupts its tool-call markers roughly one run in
    three (`tool_format_generation_error` 500 from LM Studio).
 
-   `make dod`'s `e2e_green` runs all three gates — the flights dashboard
-   (`test_lmstudio.py`) and the dashboards and alerting space chains — so it
-   needs both server entries from step 5 and takes about four minutes with
-   the reference model.
+   These tests are not part of `make dod`: `e2e_green` is `n/a` in
+   `dod.config` (D31). Run them on demand with `make test-e2e` when a change
+   touches tool names, descriptions or schemas. It runs all three — the
+   flights dashboard (`test_lmstudio.py`) and the dashboards and alerting
+   space chains — needs both server entries from step 5, and takes about four
+   minutes with the reference model.
 
    **The context you load with is the context the test gets.** The harness
    deliberately sends no `context_length`, so it reuses whatever you loaded
