@@ -1,6 +1,6 @@
 [project]
 name = "mcp-for-kibana"
-version = "0.1.0"
+version = "0.2.0"
 description = "MCP server for Kibana: composable toolboxes over a hexagonal core"
 readme = "README.md"
 license = "Apache-2.0"

@@ -70,7 +70,7 @@ detections, fleet, streams, observability, and platform admin/health.
 
 ## Status
 
-**v0.1.0 — 10 toolboxes, 133 tools, live-tested.** Every tool is classified
+**v0.2.0 — 10 toolboxes, 133 tools, live-tested.** Every tool is classified
 read / write / destructive and contract-tested against live Kibana 9.4.7 and 9.5.4, and
 the server is packaged as a stdio and container-runnable server. The flagship
 path: an LLM goes from a plain-English request ("average ticket price by carrier,

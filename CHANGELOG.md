@@ -10,6 +10,8 @@ version section.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-04
+
 ### Added
 
 - **Kibana 9.5 is supported alongside 9.4** (D30, superseding D29). The
@@ -22,15 +24,6 @@ version section.
 
 ### Changed
 
-- **`e2e_green` runs all three live-model gates**: the flights dashboard plus
-  the dashboards and alerting space chains, one per capability D18 names. The
-  reference model `gemma-4-12b-qat` passed both space chains 5/5 on Kibana
-  9.5.4 (2026-10-04, `scripts/experiment/runs/adhoc.jsonl`) and is now the
-  `LMSTUDIO_MODEL` fallback in every live-model test (was `gpt-oss-20b`, which
-  fails the space gates). The gate writes its run records to its own log dir,
-  so `make dod` never modifies the tracked run files. `gemma-4-26b-a4b-qat` was
-  measured as a faster alternative and not adopted: it built one dashboard in
-  five in the default space.
 - **kibana-py 0.6.0 is the minimum** (was 0.5.0), and older releases are no
   longer supported: the project is pre-production and carries no compatibility
   burden for earlier client versions. 0.6.0 is the first release that supports
@@ -40,6 +33,9 @@ version section.
   four Fleet routes whose answers changed in 0.6.0 and the significant-events
   methods that now raise `KibanaVersionError` on 9.5 are not called by this
   server. Contract tier green on 9.4.7 — 125 passed, 2026-10-04.
+- **fastmcp 4 is supported**: the range is `fastmcp>=3.4.7,<5` (was `<4`),
+  and the lock and the container image use 4.0.10. No server code changed;
+  the unit, contract, ephemeral and live-model tiers are green on it.
 - **The reference stack tracks the newest supported Kibana, 9.5.4** (was
   9.4.3), in `.env.example`, `.env.ephemeral.example` and the cloud-setup
   fallback — the line the dev stack, both ephemeral tiers and the live-model gate
@@ -72,14 +68,24 @@ version section.
   define them (Platinum SLOs; an Enterprise `.gen-ai` connector) are out of scope —
   so `profiles/README.md` gains a ⬛ *withdrawn* status instead of leaving them
   listed as forthcoming.
+- **`e2e_green` runs all three live-model gates**: the flights dashboard plus
+  the dashboards and alerting space chains, one per capability D18 names. The
+  reference model `gemma-4-12b-qat` passed both space chains 5/5 on Kibana
+  9.5.4 (2026-10-04, `scripts/experiment/runs/adhoc.jsonl`) and is now the
+  `LMSTUDIO_MODEL` fallback in every live-model test (was `gpt-oss-20b`, which
+  fails the space gates). The gate writes its run records to its own log dir,
+  so `make dod` never modifies the tracked run files. `gemma-4-26b-a4b-qat` was
+  measured as a faster alternative and not adopted: it built one dashboard in
+  five in the default space.
 
 ### Security
 
-- **`make audit` is clean again.** Three transitive dependencies carried
-  published advisories; the lock moves each past every fixed version: pyjwt
-  2.13.0 → 2.15.1 (12 advisories), urllib3 2.7.0 → 2.8.0 (3), virtualenv
-  21.6.0 → 21.14.5 (4; python-discovery 1.4.4 → 1.6.1 follows it). None is a
-  direct dependency, so `pyproject.toml` does not change for them.
+- **`make audit` is clean again.** Four transitive dependencies carried
+  published advisories; the lock moves each past every fixed version: anyio
+  4.14.1 → 4.15.1 (3 advisories), pyjwt 2.13.0 → 2.15.1 (12), urllib3 2.7.0 →
+  2.8.0 (3), virtualenv 21.6.0 → 21.14.5 (4; python-discovery 1.4.4 → 1.6.1
+  follows it). None is a direct dependency, so `pyproject.toml` does not change
+  for them.
 
 ## [0.1.0] - 2026-08-21
 
@@ -232,5 +238,6 @@ version section.
   `lms unload <identifier>`. It fails rather than skips, so the skip-green hole
   guarded in `tests/_stack_env.py` is not reopened here.
 
-[Unreleased]: https://github.com/pedro-angel/mcp-for-kibana/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/pedro-angel/mcp-for-kibana/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/pedro-angel/mcp-for-kibana/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/pedro-angel/mcp-for-kibana/releases/tag/v0.1.0
