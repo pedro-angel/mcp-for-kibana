@@ -1,5 +1,5 @@
 """The authority on payload shapes: every golden translation must be accepted
-by a real Kibana 9.4.3. If a test here fails while unit goldens pass, fix
+by a real Kibana on each supported line. If a test here fails while unit goldens pass, fix
 translate.py AND the golden test together."""
 
 import contextlib

@@ -9,6 +9,10 @@
 # rest of the stack env, kibana-py-style). User config (LMSTUDIO_*) lives in
 # .env.local (human-written, never touched here).
 #
+# Another supported line: `ES_LOCAL_VERSION=9.4.7 scripts/stack.sh up` overrides
+# the pin for that stack. Destroy the stack first when moving to an OLDER
+# version — Elasticsearch cannot open data written by a newer one.
+#
 # Opt-in APM: `KIBANA_MCP_STACK_APM=1 scripts/stack.sh up` also starts the
 # apm-server overlay (elastic-start-local/docker-compose.apm.yml) — the local
 # OpenTelemetry backend. Off by default so the contract/E2E path stays cheap.
@@ -41,6 +45,17 @@ case "${1:?$USAGE}" in
   up)
     # Regenerate stack config from the single source (lossless: constants).
     cp "$STACK_DIR/.env.example" "$STACK_DIR/.env"
+    # Either supported Kibana line from one script: an ES_LOCAL_VERSION already in
+    # the environment (the CI contract matrix sets it) replaces the .env.example
+    # pin in the regenerated .env, which start.sh and every compose file read.
+    # Unset, the pin stands and nothing is logged.
+    if [ -n "${ES_LOCAL_VERSION:-}" ]; then
+      case "$ES_LOCAL_VERSION" in
+        *[!0-9.]*) echo "FAIL: ES_LOCAL_VERSION='$ES_LOCAL_VERSION' is not a version like 9.5.4" >&2; exit 1 ;;
+      esac
+      sed "s/^ES_LOCAL_VERSION=.*/ES_LOCAL_VERSION=$ES_LOCAL_VERSION/" "$STACK_DIR/.env.example" > "$STACK_DIR/.env"
+      echo "ES_LOCAL_VERSION=$ES_LOCAL_VERSION (environment override of the .env.example pin)"
+    fi
     # Inside a TLS-intercepting sandbox (Claude Code cloud session) the containers do
     # not trust the proxy CA the VM trusts, so Kibana's outbound HTTPS fails. Compose
     # the overlay only when that CA exists — a no-op on a laptop or a GitHub runner.

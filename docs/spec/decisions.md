@@ -1,13 +1,14 @@
 # Decisions ledger
 
-Status: Draft v1.1 (2026-09-20) — regeneration corpus. Consumes
+Status: Draft v1.2 (2026-10-04) — regeneration corpus. Consumes
 [brief.md](brief.md); read alongside [design.md](design.md).
 
 Each entry is a decision a rewrite must not silently re-litigate: what was
 decided, when, and the evidence. Entries marked **probe** are live
 observations against a real stack — observed behavior, not documentation.
-Probes were taken on Kibana 9.4.3 unless noted; the stack pin moved to 9.4.7 on
-2026-09-21 and the contract tier is green on it (D29). Raw probe records and the full process history
+Probes were taken on Kibana 9.4.3 unless noted; the stack pin is the newest
+supported Kibana (9.5.4 since 2026-10-04) and the contract tier runs on every
+supported line (D30). Raw probe records and the full process history
 leave the public tree at release and live on in the private development
 repository; every finding needed to rebuild is restated here in full, so
 this ledger stands without them.
@@ -32,18 +33,22 @@ this ledger stands without them.
 - **D4 (2026-07)** — Handle-based saved-object export/import: NDJSON stays
   server-side; a whole-space export never enters the model's context.
 
-- **D29 (2026-09-21)** — The reference stack tracks the newest patch of the 9.4
-  line: the pin moved 9.4.3 → 9.4.7 in `.env.example` and
-  `.env.ephemeral.example`. Why: a reference stack frozen on an older patch stops
-  proving anything about what users run, and kibana-py moved its own supported set
-  to the newest patch of each line. Evidence: contract tier green on 9.4.7 — 125
-  passed, 2026-09-21. **Kibana 9.5 is deliberately not adopted yet.** kibana-py's
-  supported-set module (`kibana/_compat.py`, declaring 9.5.4 and 9.4.7) is
-  unreleased — absent from v0.5.0, the newest release on PyPI — so copying the
-  "declare the set once, let CI read it" pattern would mean hardcoding version
-  literals instead. 9.5 also diverges on the streams upsert body (`queries`
-  required on 9.4, rejected on 9.5), which this server's `streams` toolbox wraps:
-  a second line needs version-conditional request shaping, not a second pin.
+- **D30 (2026-10-04)** — The supported Kibana set is kibana-py's, and the
+  stack pin is its newest version. `kibana.SUPPORTED_VERSIONS` (kibana-py ≥
+  0.6.0; today 9.5.4 and 9.4.7) is the one declaration: the CI contract job fans
+  out over it — contract tier and e2e replay on every line — and
+  `scripts/stack.sh up` takes an `ES_LOCAL_VERSION` override, so one script
+  provisions either line. The pin in `.env.example` and `.env.ephemeral.example`
+  is always the newest supported version (owner rule); the local tiers, both
+  ephemeral tiers and the live-model gate run on it, and
+  `tests/unit/test_stack_pin.py` fails when a kibana-py bump moves the set until
+  both pins follow. kibana-py below 0.6.0 is unsupported: on 9.5, 0.5.0 makes
+  `search_dashboards` return an empty list without an error, because 9.5
+  rewrapped the dashboards search envelope and only 0.6.0 restores the
+  `dashboards`/`total` keys the gateway reads. Evidence (2026-10-04): contract
+  tier 125 passed on 9.4.7 and 125 passed on 9.5.4; on 9.5.4 the e2e replay 4
+  passed and the live-model gate (`gemma-4-12b-qat`) 1 passed — no gateway
+  change. Supersedes D29.
 
 ## Space targeting
 
@@ -199,6 +204,12 @@ this ledger stands without them.
   a safe regeneration unit because contracts cannot overlap.
 ## Superseded
 
+- ~~D29 (2026-09-21): track the newest 9.4 patch and defer Kibana 9.5~~ —
+  deferred 9.5 until kibana-py released its supported-set module, and on the
+  premise that the `streams` toolbox wraps `streams.upsert`, whose body 9.4
+  requires `queries` in and 9.5 rejects. The module shipped in kibana-py 0.6.0,
+  and the premise was wrong: the toolbox never calls `streams.upsert` (its
+  writes go through `fork` and `update_ingest`). Superseded by D30.
 - ~~Space scoping via base-URL suffixing (probe P1)~~ — worked but
   validated nothing; superseded by D5/D6 (validate-at-construction) once
   P7 exposed the silent-orphan hazard.

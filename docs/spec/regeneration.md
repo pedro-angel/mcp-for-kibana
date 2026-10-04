@@ -53,7 +53,7 @@ trust the observation, and **reconcile the contract in the same change**
 ## Environment
 
 - Live stack: `scripts/stack.sh up && scripts/stack.sh seed` (Elasticsearch
-  + Kibana 9.4 + Fleet from `elastic-start-local/`); seed **after every**
+  + Kibana on the newest supported line (D30) + Fleet from `elastic-start-local/`); seed **after every**
   stack start — the API key dies with the stack.
 - Fast gates: `make check`. Full certification: `KIBANA_MCP_DOD_CYCLE_STACK=1
   make dod` → must print `VERDICT: GO`. Criteria in `dod.config`; the gate,

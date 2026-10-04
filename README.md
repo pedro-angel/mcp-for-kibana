@@ -19,7 +19,7 @@ The distribution is `mcp-for-kibana`; the Python import package is `kibana_mcp`.
 > 9.4's new public Dashboards API and Visualizations API, both marked
 > `x-state: Technical Preview` by Elastic — their request/response shapes may
 > still change in a later Kibana release without notice, and they carry no
-> support SLA. This server targets **Kibana 9.4+ only**; earlier versions
+> support SLA. This server supports **Kibana 9.4 and 9.5**; earlier versions
 > don't expose these APIs publicly at all.
 
 ## Licensing and scope
@@ -40,8 +40,8 @@ surfaces are not worth duplicating here.
 **v0.1.0 — 10 toolboxes, 133 tools, live-tested.** The server exposes 133 tools
 across 10 composable toolboxes (dashboards, data management, alerting, cases,
 security detections, fleet, streams, observability, platform admin, and platform
-health), each classified read / write / destructive and contract-tested against a
-live Kibana 9.4.7. It's packaged as a stdio and container-runnable server. See the
+health), each classified read / write / destructive and contract-tested against
+live Kibana 9.4.7 and 9.5.4. It's packaged as a stdio and container-runnable server. See the
 [Tool reference](#tool-reference) below.
 
 The flagship path is **dashboards from plain English**: an LLM goes from a request
@@ -89,7 +89,7 @@ Design pillars:
 - For the dev workflow (Makefile, scripts, local stack): a POSIX shell, GNU make,
   and Docker with ~5 GB free memory for the Elasticsearch + Kibana stack.
   Windows: use WSL2.
-- A Kibana 9.4+ deployment (or the bundled disposable local stack).
+- A Kibana 9.4 or 9.5 deployment (or the bundled disposable local stack).
 
 ## Quick start
 

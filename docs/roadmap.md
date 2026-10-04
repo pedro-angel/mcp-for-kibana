@@ -10,7 +10,7 @@ The server ships **10 toolboxes / 133 tools** (dashboards, data-management,
 alerting, cases, security-detections, fleet, streams, observability,
 platform-admin, platform-health) — see the [Tool reference](tools.md) for every
 one. Every tool is classified read / write / destructive and contract-tested
-against a live Kibana 9.4.7.
+against live Kibana 9.4.7 and 9.5.4.
 
 **Toolbox-level Basic coverage is complete; method-level is not.** The 2026-07-16
 catalog audit was toolbox-granular, and its "no Basic functionality left" claim
