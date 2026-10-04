@@ -12,6 +12,15 @@ version section.
 
 ### Changed
 
+- **kibana-py 0.6.0 is the minimum** (was 0.5.0), and older releases are no
+  longer supported: the project is pre-production and carries no compatibility
+  burden for earlier client versions. 0.6.0 is the first release that supports
+  Kibana 9.5 — it gives `dashboards.get_all()` the same `dashboards`/`total`
+  envelope on 9.5 that `search_dashboards` reads on 9.4, where 0.5.0 on 9.5
+  would return an empty list without an error. No gateway code changed: the
+  four Fleet routes whose answers changed in 0.6.0 and the significant-events
+  methods that now raise `KibanaVersionError` on 9.5 are not called by this
+  server. Contract tier green on 9.4.7 — 125 passed, 2026-10-04.
 - **The reference stack tracks Kibana 9.4.7** (was 9.4.3), in `.env.example`,
   `.env.ephemeral.example` and the cloud-setup fallback. The contract tier is
   green on it (125 passed, 2026-09-21), so the version claims in the README, the
@@ -43,6 +52,14 @@ version section.
   define them (Platinum SLOs; an Enterprise `.gen-ai` connector) are out of scope —
   so `profiles/README.md` gains a ⬛ *withdrawn* status instead of leaving them
   listed as forthcoming.
+
+### Security
+
+- **`make audit` is clean again.** Three transitive dependencies carried
+  published advisories; the lock moves each past every fixed version: pyjwt
+  2.13.0 → 2.15.1 (12 advisories), urllib3 2.7.0 → 2.8.0 (3), virtualenv
+  21.6.0 → 21.14.5 (4; python-discovery 1.4.4 → 1.6.1 follows it). None is a
+  direct dependency, so `pyproject.toml` does not change for them.
 
 ## [0.1.0] - 2026-08-21
 
