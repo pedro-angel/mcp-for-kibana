@@ -25,7 +25,10 @@ The runner never touches objects that existed before the run.
 When HONEYCOMB_API_KEY is set, each run is also sent as one OpenTelemetry
 trace (OTLP/HTTP JSON): a root span carrying the outcome and metrics, and one
 child span per tool call. Without the key the trace is skipped and the
-record says so.
+record says so. HONEYCOMB_OTLP_ENDPOINT picks the region (default: EU,
+https://api.eu1.honeycomb.io/v1/traces; US is https://api.honeycomb.io/v1/traces).
+The server's own span export stays off in the with-mcp arm, so the arms
+differ only by the server.
 """
 
 import argparse
@@ -471,7 +474,7 @@ def send_trace(record: dict) -> str:
     key = os.environ.get("HONEYCOMB_API_KEY")
     if not key:
         return "skipped: no HONEYCOMB_API_KEY"
-    endpoint = os.environ.get("HONEYCOMB_OTLP_ENDPOINT", "https://api.honeycomb.io/v1/traces")
+    endpoint = os.environ.get("HONEYCOMB_OTLP_ENDPOINT", "https://api.eu1.honeycomb.io/v1/traces")
     dataset = os.environ.get("HONEYCOMB_DATASET", "kibana-efficiency")
     trace_id = secrets.token_hex(16)
     root_id = secrets.token_hex(8)
@@ -548,7 +551,13 @@ def send_trace(record: dict) -> str:
         endpoint,
         data=json.dumps(body).encode(),
         method="POST",
-        headers={"Content-Type": "application/json", "x-honeycomb-team": key},
+        # Classic keys need the dataset header; ingest keys ignore it and name
+        # the dataset after service.name, which is the same value.
+        headers={
+            "Content-Type": "application/json",
+            "x-honeycomb-team": key,
+            "x-honeycomb-dataset": dataset,
+        },
     )
     try:
         with urllib.request.urlopen(req, timeout=30) as resp:
