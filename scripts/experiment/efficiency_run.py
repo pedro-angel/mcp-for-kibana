@@ -218,13 +218,18 @@ def score(kb: Kibana, marker: str, before: dict) -> tuple[dict, dict]:
     }
     artifacts: dict = {"dashboards": [], "rules": []}
 
-    status, found = kb.call(
-        "GET", f"/api/dashboards?query={urllib.request.quote(marker)}&per_page=100"
-    )
-    for summary in (found or {}).get("dashboards", []) if status == 200 else []:
-        dash_id = summary.get("id")
-        _, full = kb.call("GET", f"/api/dashboards/{dash_id}")
-        artifacts["dashboards"].append(full)
+    # New dashboards come from the snapshot diff, not a title search: Kibana's
+    # search tokenises the marker, and 9.5 wraps results in data/meta.
+    existing = {tuple(o) for o in before["objects"]}
+    new_ids = [
+        so_id
+        for so_type, so_id in kb.snapshot()["objects"]
+        if so_type == "dashboard" and (so_type, so_id) not in existing
+    ]
+    for dash_id in new_ids:
+        status, full = kb.call("GET", f"/api/dashboards/{dash_id}")
+        if status == 200 and marker in json.dumps(full):
+            artifacts["dashboards"].append(full)
     if artifacts["dashboards"]:
         best = max(artifacts["dashboards"], key=lambda d: len(_panels(d)))
         outcome["dashboard_found"] = True
