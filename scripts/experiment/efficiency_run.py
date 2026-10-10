@@ -12,8 +12,9 @@ shorter? Two arms, one identical prompt:
     no-mcp     no MCP server
 
 Both arms get the same built-in tools, confined to a fresh working directory
-that holds Kibana's pinned API reference (kibana-api/): Bash limited to curl
-and jq, plus Read, Write, Glob and Grep. Only the server varies.
+that holds Kibana's pinned API reference (kibana-api/): Bash, Read, Write,
+Glob and Grep, with settings, skills and inherited MCP servers off. Only the
+server varies.
 
 Every run writes a directory under --out: the prompt, the full stream-json
 transcript, metrics, the success check and the dashboard and rule it
@@ -67,7 +68,7 @@ SPECS = {
 _SPEC_CACHE = Path.home() / ".cache" / "mcp-for-kibana-efficiency" / "specs"
 
 BUILTIN_TOOLS = "Bash,Read,Write,Glob,Grep"
-ALLOWED_TOOLS = ["Bash(curl:*)", "Bash(jq:*)", "Read", "Write", "Glob", "Grep"]
+ALLOWED_TOOLS = ["Bash", "Read", "Write", "Glob", "Grep"]
 
 SAVED_OBJECT_TYPES = ("dashboard", "lens", "visualization", "index-pattern", "search", "map")
 
@@ -394,7 +395,6 @@ def run_once(model: str, arm: str, block: str, out_root: Path) -> dict:
             "--output-format",
             "stream-json",
             "--verbose",
-            "--safe-mode",
             "--restricted",
             "--disable-slash-commands",
             "--tools",
