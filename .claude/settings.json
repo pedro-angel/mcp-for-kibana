@@ -1,4 +1,7 @@
 {
+  "permissions": {
+    "allow": ["Bash(uv run python scripts/experiment/efficiency_run.py:*)"]
+  },
   "hooks": {
     "SessionStart": [
       {

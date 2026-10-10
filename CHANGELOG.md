@@ -25,7 +25,8 @@ version section.
   transcript, metrics, success check and produced objects under
   `scripts/experiment/runs/efficiency/`, resets Kibana to its pre-run state,
   and sends one OpenTelemetry trace to Honeycomb when `HONEYCOMB_API_KEY` is
-  set.
+  set. `.claude/settings.json` allows that one command, so a cloud session can
+  launch the runs.
 
 ### Changed
 
