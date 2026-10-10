@@ -18,6 +18,14 @@ version section.
   `make setup` (the clone is fresh each session). It exits at once outside a
   Claude Code cloud session. Ported from kibana-py. `.claude/settings.json` is
   the one tracked file under `.claude/`; the rest stays ignored.
+- **Efficiency study runner.** `scripts/experiment/efficiency_run.py` drives
+  `claude -p` through one end-to-end web-logs task (explore the data view,
+  build a dashboard, create a 5xx alert rule) with and without the server, on
+  an identical prompt and identical built-in tools. Each run keeps its
+  transcript, metrics, success check and produced objects under
+  `scripts/experiment/runs/efficiency/`, resets Kibana to its pre-run state,
+  and sends one OpenTelemetry trace to Honeycomb when `HONEYCOMB_API_KEY` is
+  set.
 
 ### Changed
 
