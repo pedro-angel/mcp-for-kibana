@@ -1,0 +1,7 @@
+A local Kibana 9.5 is available. Its URL is in the environment variable KIBANA_URL and an API key in KIBANA_TEST_API_KEY. Kibana's API reference is in ./kibana-api/ (kibana.yaml for the whole API, dashboards-api.yaml for the Dashboards and Visualizations APIs).
+
+Using Kibana's web-logs sample data (data view 'Kibana Sample Data Logs', index kibana_sample_data_logs):
+1. Explore the data view's fields to understand what the data holds.
+2. Build a dashboard titled 'EFF-569371b0 Web logs overview' with at least three panels showing the key metrics of this traffic.
+3. Create an alert rule named 'EFF-569371b0 5xx spike' that checks every minute and fires when more than 10 requests with a 5xx response code arrive within 5 minutes.
+Finish when the dashboard and the rule both exist.
