@@ -1,0 +1,94 @@
+{
+  "run_id": "20261010T185054Z-claude-sonnet-5-5-no-mcp-aeb7dd",
+  "block": "b01",
+  "model_requested": "claude-sonnet-5-5",
+  "arm": "no-mcp",
+  "marker": "EFF-b75f3c52",
+  "kibana_version": "9.5.5",
+  "toolboxes": null,
+  "claude_cli": "2.1.296 (Claude Code)",
+  "git_sha": "0d97f11",
+  "ts_start": "2026-10-10T18:50:54.630858+00:00",
+  "wall_s": 740.7,
+  "init_tools": [
+    "Bash",
+    "Glob",
+    "Grep",
+    "Read",
+    "Write"
+  ],
+  "init_mcp_tools": [],
+  "init_mcp_servers": [],
+  "tool_calls": [
+    "Bash",
+    "Bash",
+    "Bash",
+    "Bash",
+    "Bash",
+    "Bash",
+    "Bash",
+    "Bash",
+    "Bash",
+    "Bash",
+    "Bash"
+  ],
+  "n_tool_calls": 11,
+  "n_mcp_calls": 0,
+  "n_bash_calls": 11,
+  "num_turns": 1,
+  "total_cost_usd": 0.12071810000000001,
+  "duration_ms": 4352,
+  "duration_api_ms": 37992,
+  "input_tokens": 4,
+  "output_tokens": 104,
+  "cache_read_input_tokens": 18426,
+  "cache_creation_input_tokens": 1653,
+  "model_usage": {
+    "claude-sonnet-5-5": {
+      "inputTokens": 26,
+      "outputTokens": 4307,
+      "cacheReadInputTokens": 154041,
+      "cacheCreationInputTokens": 15548,
+      "webSearchRequests": 0,
+      "costUSD": 0.12071810000000001,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 300,
+      "canonicalModel": "claude-sonnet-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "models_reported": [
+    "claude-sonnet-5-5"
+  ],
+  "permission_denials": [],
+  "is_error": false,
+  "terminal_reason": "completed",
+  "final_text": "The background command from my first dashboard attempt has been stopped after hitting its time limit. It's the one that hung on a stray `cat` waiting for stdin, and it never created anything. I'm not restarting it.\n\nThe dashboard and the rule were created by the later commands, and both still exist. There's only one dashboard with that title.",
+  "timed_out": false,
+  "valid": true,
+  "dashboard_found": true,
+  "dashboard_panels": 3,
+  "dashboard_uses_logs": true,
+  "rule_found": true,
+  "rule_enabled": true,
+  "rule_uses_logs": true,
+  "rule_type_id": ".es-query",
+  "success": true,
+  "failure_reason": null,
+  "reset_removed": {
+    "objects": [
+      [
+        "dashboard",
+        "3c974a03-8b4e-4b37-b0c4-1738eab99dea"
+      ]
+    ],
+    "rules": [
+      "6e888c96-ad5f-4da0-b362-87677f8dfda5"
+    ],
+    "connectors": []
+  },
+  "ts_end": "2026-10-10T19:03:17.035613+00:00",
+  "otel": "sent: HTTP 200, trace ae957914b8a7d910aa0a958f481275f1"
+}
