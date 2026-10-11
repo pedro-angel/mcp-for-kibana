@@ -171,6 +171,12 @@ version section.
   to `create_visualization`, `add_panel` and `update_panel` too. Tool names,
   descriptions and schemas are unchanged (D32).
 
+### Security
+
+- **multidict 6.7.1 → 6.9.1** (CVE-2026-104874; reached through
+  `kibana-py[async]` → `aiohttp`/`yarl`). Lockfile regenerated with
+  `uv lock --upgrade-package multidict`; `make audit` is clean again.
+
 ## [0.2.0] - 2026-10-04
 
 ### Added
