@@ -57,6 +57,10 @@ version section.
   traces carrying these signals. It redacts content, refuses to send if the
   key or any credential pattern remains, checks token and tool-call totals
   against `analysis.json`, and has `--check` and `--dry-run` modes.
+- **The study names the agent, not just the models.** The results page and
+  the design record state that every run drove the Claude Code agent headless
+  (`claude -p`), so the numbers describe Claude Code with each model, not the
+  bare models.
 - **Efficiency study design record.** `scripts/experiment/STUDY_DESIGN.md`
   holds the study's ten decisions with the question, the options considered
   and what was settled, the background research (brief, statistics for

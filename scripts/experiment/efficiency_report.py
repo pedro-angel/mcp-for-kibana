@@ -898,18 +898,18 @@ a{{color:var(--with)}} a:focus-visible{{outline:2px solid var(--with);outline-of
 <main>
 <p><span class="draft">Draft · private until published</span></p>
 <p class="eyebrow">mcp-for-kibana · efficiency study · Kibana {e(", ".join(kib))} · {n_runs} runs</p>
-<h1>Does mcp-for-kibana make Claude's Kibana work cheaper?</h1>
-<p class="lede">Yes, for each of the three Claude models tested. On one end-to-end Kibana task, a run <b>with the server</b> cost {pct(1 - cost_hi)}–{pct(1 - cost_lo)} less at list price than a run <b>without it</b> (median, per model) and finished sooner. The saving comes from making fewer model calls, not from cheaper calls. Both arms nearly always completed the task, and the Kibana API key reached the model only in runs without the server.</p>
+<h1>Does mcp-for-kibana make Claude Code's Kibana work cheaper?</h1>
+<p class="lede">Yes, for Claude Code with each of the three Claude models tested. On one end-to-end Kibana task, a run <b>with the server</b> cost {pct(1 - cost_hi)}–{pct(1 - cost_lo)} less at list price than a run <b>without it</b> (median, per model) and finished sooner. The saving comes from making fewer model calls, not from cheaper calls. Both arms nearly always completed the task, and the Kibana API key reached the model only in runs without the server. These are measurements of the Claude Code agent with each model (its system prompt, built-in tools, tool loop and prompt caching), not of the models alone; another agent on the same models could come out differently.</p>
 <div class="facts">{tiles}</div>
 
 <h2>What was compared</h2>
-<p>Each run gave Claude the same prompt: explore the data view of Kibana's web-logs sample data, build a dashboard of at least three panels, and create an alert rule that checks every minute and fires when more than 10 requests with a 5xx response arrive within 5 minutes. The prompt named the environment variables holding Kibana's URL and an API key, and pointed to Kibana's OpenAPI reference in the working directory.</p>
+<p>Each run gave Claude Code, run headless (<code>claude -p</code>), the same prompt: explore the data view of Kibana's web-logs sample data, build a dashboard of at least three panels, and create an alert rule that checks every minute and fires when more than 10 requests with a 5xx response arrive within 5 minutes. The prompt named the environment variables holding Kibana's URL and an API key, and pointed to Kibana's OpenAPI reference in the working directory.</p>
 <div class="arms">
   <div class="arm w"><h3>With the server</h3>
-    <div class="flow"><span class="node">Claude</span><span class="edge">MCP</span><span class="node mid">mcp-for-kibana<small>{e(", ".join(map(str, n_tools)))} tools · its own copy of the key</small></span><span class="edge">HTTP</span><span class="node">Kibana {e(", ".join(kib))}</span></div>
+    <div class="flow"><span class="node">Claude Code</span><span class="edge">MCP</span><span class="node mid">mcp-for-kibana<small>{e(", ".join(map(str, n_tools)))} tools · its own copy of the key</small></span><span class="edge">HTTP</span><span class="node">Kibana {e(", ".join(kib))}</span></div>
     <p>Toolboxes {e("; ".join(t.replace(",", ", ") for t in toolboxes))} at the default write tier. The shell, curl and file tools of the other arm were also available.</p></div>
   <div class="arm o"><h3>Without the server</h3>
-    <div class="flow"><span class="node">Claude</span><span class="edge">tool call</span><span class="node mid">Shell + curl<small>OpenAPI reference · key in the environment</small></span><span class="edge">HTTP</span><span class="node">Kibana HTTP API</span></div>
+    <div class="flow"><span class="node">Claude Code</span><span class="edge">tool call</span><span class="node mid">Shell + curl<small>OpenAPI reference · key in the environment</small></span><span class="edge">HTTP</span><span class="node">Kibana HTTP API</span></div>
     <p>Built-in shell and file tools only. The model reads the API reference and writes the requests itself.</p></div>
 </div>
 <p>Three models (Haiku 5.5, Sonnet 5.5 and Opus 5.5) ran in both arms, {n_cell} runs per model and arm: {n_runs} runs in {len(blocks)} blocks of {e(", ".join(map(str, sorted(set(per_block.values())))))}, each block running every model × arm once, with the arm order alternating between blocks. All runs used Claude Code {e(", ".join(cli))}. Kibana was reset after every run. A run passed when Kibana held a dashboard with at least three panels on the web-logs data and an enabled alert rule on that data. The check does not grade the rule's query or the dashboard's design.</p>
@@ -975,7 +975,7 @@ a{{color:var(--with)}} a:focus-visible{{outline:2px solid var(--with);outline-of
 <li><b>A logging fault, corrected.</b> In {sum(S[m]["no-mcp"]["runs_with_multiple_result_events"] for m, _ in MODELS)} runs without the server, a hung shell command was killed after the model had finished and Claude Code logged a second, late result. The run records kept the last result, so their turns, time and tokens were wrong; the transcripts are complete, and every number here comes from them. No run with the server was affected ({sum(S[m]["with-mcp"]["runs_with_multiple_result_events"] for m, _ in MODELS)}).</li>
 <li><b>Refused commands.</b> {denials} run had a command refused by the permission system, which the run record did not show and the transcript does.</li>
 <li><b>Timing.</b> Model-call bars are measured from the transcript's timestamps and are approximate; per-call output tokens are not in the transcript.</li>
-<li><b>Scope.</b> One task, one dataset, one Kibana version, Claude models only. Cost is list price and leaves out the cost of running the server.</li>
+<li><b>Scope.</b> One task, one dataset, one Kibana version, one agent: Claude Code with Claude models. The results describe the agent and model together. Cost is list price and leaves out the cost of running the server.</li>
 </ul>
 
 <footer>

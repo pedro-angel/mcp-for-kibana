@@ -52,6 +52,8 @@ Considered:
 
 **Decision.** Claude part: Haiku, Sonnet, Opus at their current versions, exact model string recorded per run. Local models decided separately.
 
+**Clarified after the runs.** The runs drive the Claude Code agent headless (`claude -p`) with each model, so the results describe Claude Code and the model together (its system prompt, built-in tools, tool loop and prompt caching), not the bare models.
+
 Considered:
 
 - Claude part: Haiku, Sonnet and Opus, all three tiers.
