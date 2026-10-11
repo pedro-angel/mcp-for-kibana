@@ -63,6 +63,18 @@ version section.
   repeated agent runs, Kibana release check), the findings from the runs and
   the facts checked during the design. The study's working board keeps only
   the current state and links here.
+- **Efficiency study results page.** `scripts/experiment/efficiency_report.py`
+  (stdlib only, deterministic) writes `<out>/index.html`, a claude.ai artifact
+  body, and copies the chosen snapshot PNGs to `<out>/img/`. Every number is
+  read from `analysis.json`, the run records or the snapshots directory, and
+  the page stamps the commit and SHA-256 of the `analysis.json` it read. It
+  answers first, then covers what was compared (with a diagram of both arms),
+  results by model with a ratio chart, why the server arm is cheaper (model
+  calls against tokens per call, a to-scale timeline of a typical Opus run per
+  arm built from its transcript, and a time-split chart), reliability, safety,
+  the snapshots, and method. Tokens per call are reported as measured (1.13×
+  pooled, 1.45× for Sonnet), and the page notes that the API key was also in
+  the shell environment of the server arm.
 
 ### Changed
 
