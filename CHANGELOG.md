@@ -145,6 +145,19 @@ version section.
   three live-model tests run on demand with `make test-e2e` when a change
   touches tool names, descriptions or schemas.
 
+### Fixed
+
+- **`create_dashboard` accepts a time-series panel without `time_field`.**
+  The panel schema says `time_field` is filled in from the data view when
+  omitted, but a `date_histogram` panel without it was rejected before the
+  server could fill it in. In the efficiency study this failed the first
+  `create_dashboard` call in all 90 with-server runs. The server now fills
+  in the data view's time field first. The pre-flight rejects a
+  `date_histogram` only when the data view has no default time field, and
+  the error names the field to set (`time_field: '<field>'`). This applies
+  to `create_visualization`, `add_panel` and `update_panel` too. Tool names,
+  descriptions and schemas are unchanged (D32).
+
 ## [0.2.0] - 2026-10-04
 
 ### Added

@@ -197,6 +197,30 @@ async def test_long_title_derives_acceptable_id_live(gateway):
         _delete_if_exists(gateway, did)
 
 
+async def test_date_histogram_without_time_field_auto_fills_live(gateway):
+    # The efficiency study's first-call shape (90/90 runs): a date_histogram
+    # panel that omits time_field. Kibana must accept the auto-filled panel
+    # and round-trip it losslessly.
+    title = "contract date histogram auto time field"
+    did = derive_dashboard_id(title)
+    _delete_if_exists(gateway, did)
+    panel = {
+        "title": "Flights over time", "chart_type": "line", "data_view": FLIGHTS,
+        "metrics": [{"agg": "count"}],
+        "group_by": [{"field": "timestamp", "kind": "date_histogram"}],
+    }
+    try:
+        async with Client(_tool_server()) as client:
+            r = await client.call_tool("create_dashboard", {"title": title, "panels": [panel]})
+        assert r.data["status"] == "created"
+        data, warnings = gateway.get_dashboard_data(did)
+        assert warnings == []
+        layer = data["panels"][0]["config"]["layers"][0]
+        assert layer["data_source"]["time_field"] == "timestamp"
+    finally:
+        _delete_if_exists(gateway, did)
+
+
 def test_get_dashboard_data_missing_raises_notfound(gateway):
     with pytest.raises(KibanaNotFound):
         gateway.get_dashboard_data("no-such-dashboard-id-xyz")

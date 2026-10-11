@@ -1,3 +1,5 @@
+from dataclasses import replace
+
 from kibana_mcp.core.models import DataViewDetail
 from kibana_mcp.core.visualizations.spec import (
     ChartType, FilterSpec, GroupBySpec, MetricAgg, MetricSpec, VizSpec,
@@ -69,3 +71,23 @@ def test_unknown_field_without_close_match_lists_available():
     assert len(errors) == 1
     assert "available fields include" in errors[0]
     assert "Carrier" in errors[0]
+
+
+def test_date_histogram_without_any_time_field_names_the_fix():
+    errors = validate_spec(
+        spec_with(time_field=None, group_by=[GroupBySpec(field="timestamp", kind="date_histogram")]),
+        replace(DV, time_field=None),
+    )
+    assert errors == [
+        "group_by date_histogram on 'timestamp' needs a time field, and data view 'flights' "
+        "has no default time field — set time_field on this panel to a date field, "
+        "e.g. time_field: 'timestamp'"
+    ]
+
+
+def test_date_histogram_with_explicit_time_field_on_untimed_view_passes():
+    errors = validate_spec(
+        spec_with(group_by=[GroupBySpec(field="timestamp", kind="date_histogram")]),
+        replace(DV, time_field=None),
+    )
+    assert errors == []
