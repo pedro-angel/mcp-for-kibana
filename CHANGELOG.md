@@ -17,6 +17,10 @@ version section.
   REST API and unloads the previous study model, so the study runs with JIT
   loading off; `local_run.py send-pending` sends the stored spans of runs made
   without the Honeycomb key.
+- **Local-model study results page.** `scripts/experiment/local_report.py`
+  builds the page from `runs/local/<phase>/analysis.json`, the config and the
+  recorded environment: pass rate by chain length per model with Wilson
+  intervals, where chains break, tool-call failures and cost per step.
 
 - **Live telemetry for the efficiency study rerun** (opt-in).
   `efficiency_run.py --live-telemetry` gets every signal at run time from the
