@@ -47,6 +47,10 @@ DEFAULT_ROOT = HERE / "runs" / "efficiency" / "full"
 SEED = 20261011
 RESAMPLES = 10_000
 ARMS = ("with-mcp", "no-mcp")
+# The rerun's third arm and the comparisons it adds (A versus B, A in the
+# with-mcp role), computed only when its runs are present.
+EXTRA_ARMS = ("with-mcp-es",)
+EXTRA_PAIRS = (("with-mcp-es", "no-mcp"), ("with-mcp-es", "with-mcp"))
 MCP_PREFIX = "mcp__"
 ENABLE_TOOL = "mcp__mcp-for-kibana__enable_alert_rule"
 CREATE_TOOL = "mcp__mcp-for-kibana__create_alert_rule"
@@ -1143,12 +1147,16 @@ def main() -> int:
     def cell(model: str, arm: str) -> list[dict]:
         return [r for r in runs if r["model"] == model and r["arm"] == arm]
 
+    # The third arm (with-mcp-es, LIVE_RERUN.md) joins the summaries when its
+    # runs are present; its comparisons go to "pairs" with their own RNG
+    # streams, so the two-arm outputs are unchanged.
+    arms = ARMS + tuple(a for a in EXTRA_ARMS if any(r["arm"] == a for r in runs))
     rng = random.Random(SEED)
     srng = random.Random(SEED + 1)
-    summary = {m: {a: summarise(cell(m, a)) for a in ARMS} for m in models}
+    summary = {m: {a: summarise(cell(m, a)) for a in arms} for m in models}
     per_model = {m: comparisons(rng, [(cell(m, "with-mcp"), cell(m, "no-mcp"))]) for m in models}
     pooled = {
-        "summary": {a: summarise([r for r in runs if r["arm"] == a]) for a in ARMS},
+        "summary": {a: summarise([r for r in runs if r["arm"] == a]) for a in arms},
         "comparison": comparisons(rng, [(cell(m, "with-mcp"), cell(m, "no-mcp")) for m in models]),
     }
 
@@ -1185,19 +1193,40 @@ def main() -> int:
                 "known_secret_scan": known is not None,
                 "comparison": "as meta.comparison, on all runs; RNG seed bootstrap_seed + 1",
             },
-            "summary": {m: {a: signal_summary(cell(m, a)) for a in ARMS} for m in models},
+            "summary": {m: {a: signal_summary(cell(m, a)) for a in arms} for m in models},
             "comparison": {
                 m: signal_comparisons(srng, [(cell(m, "with-mcp"), cell(m, "no-mcp"))])
                 for m in models
             },
             "pooled": {
-                "summary": {a: signal_summary([r for r in runs if r["arm"] == a]) for a in ARMS},
+                "summary": {a: signal_summary([r for r in runs if r["arm"] == a]) for a in arms},
                 "comparison": signal_comparisons(
                     srng, [(cell(m, "with-mcp"), cell(m, "no-mcp")) for m in models]
                 ),
             },
         },
     }
+    pairs = {}
+    for i, (w_arm, o_arm) in enumerate(p for p in EXTRA_PAIRS if p[0] in arms and p[1] in arms):
+        prng = random.Random(SEED + 2 + 2 * i)
+        psrng = random.Random(SEED + 3 + 2 * i)
+        strata = [(cell(m, w_arm), cell(m, o_arm)) for m in models]
+        pairs[f"{w_arm}/{o_arm}"] = {
+            "comparison": {m: comparisons(prng, [st]) for m, st in zip(models, strata)},
+            "pooled": comparisons(prng, strata),
+            "signals": {
+                "comparison": {m: signal_comparisons(psrng, [st]) for m, st in zip(models, strata)},
+                "pooled": signal_comparisons(psrng, strata),
+            },
+            "rng_seeds": [SEED + 2 + 2 * i, SEED + 3 + 2 * i],
+        }
+    if pairs:
+        analysis["meta"]["arms"] = list(arms)
+        analysis["meta"]["pairs"] = (
+            "pairs[<A>/<B>]: as comparison and signals.comparison with A in the "
+            "role of with-mcp and B in the role of no-mcp (A minus B, A / B)"
+        )
+        analysis["pairs"] = pairs
     out_path.write_text(json.dumps(analysis, indent=2, sort_keys=True) + "\n")
     print(f"wrote {out_path} ({len(runs)} runs, models={models})")
     return 0

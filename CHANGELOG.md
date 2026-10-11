@@ -12,6 +12,14 @@ version section.
 
 ### Added
 
+- **Three-arm analysis and the live cross-check for the rerun.**
+  `efficiency_analyze.py` adds `with-mcp-es` to the summaries when its runs
+  are present and writes its comparisons with `no-mcp` and `with-mcp` under
+  `pairs` (own RNG streams; two-arm output byte-identical to before).
+  `live_crosscheck.py` (`specs`, `capture`, `build`) compares the transcript
+  pipeline with what Claude Code, the hook and the runner emitted live into
+  the Honeycomb dataset `mcp-for-kibana-live`, and the hook's per-run rollups
+  with the transcript values, run by run.
 - **`run_blocks.sh --skip-done`** (additive): skips a cell whose run directory
   already holds a `record.json`, so an interrupted chunk of the efficiency
   study resumes where it stopped.
