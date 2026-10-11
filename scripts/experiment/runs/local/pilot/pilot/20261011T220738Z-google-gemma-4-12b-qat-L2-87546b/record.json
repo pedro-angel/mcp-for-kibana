@@ -1,0 +1,107 @@
+{
+ "study": "local-models",
+ "run_id": "20261011T220738Z-google-gemma-4-12b-qat-L2-87546b",
+ "cell": "pilot/pilot/google-gemma-4-12b-qat/L2",
+ "phase": "pilot",
+ "block": "pilot",
+ "model": "google/gemma-4-12b-qat",
+ "level": "L2",
+ "chain_length": 2,
+ "arm": "server",
+ "attempt": 1,
+ "marker": "LOC-af6c8e5d",
+ "prompt": "Using the kibana tools, work on Kibana's web-logs sample data (data view 'Kibana Sample Data Logs', index kibana_sample_data_logs). Do these steps in order:\n1. Describe the data view 'Kibana Sample Data Logs': look up its fields and name its time field. End your reply with a line of the form TIME_FIELD: <field name>.\n2. Build a dashboard titled 'LOC-af6c8e5d Web logs' on that data view with exactly two panels: the number of requests over time, and the number of requests by HTTP response code.\nUse only the kibana tools. When every step is done, reply with a short summary.",
+ "kibana_version": "9.5.5",
+ "toolboxes": "dashboards,data-management,alerting",
+ "tier": "write",
+ "server_entry": "mcp-for-kibana-study",
+ "stream": true,
+ "git_sha": "48b865b",
+ "config_sha": "a2433840567b",
+ "ts_start": "2026-10-11T22:07:38.268690+00:00",
+ "harness_load": null,
+ "wall_ms": 34753.7,
+ "ts_end_model": "2026-10-11T22:08:13.022412+00:00",
+ "http_status": 200,
+ "timed_out": false,
+ "valid": true,
+ "invalid_reason": null,
+ "end_reason": "completed",
+ "tool_names": [
+  "describe_data_view",
+  "create_dashboard"
+ ],
+ "model_calls": 3,
+ "n_tool_calls": 2,
+ "n_invalid_tool_calls": 0,
+ "n_failed_tool_calls": 0,
+ "n_distinct_tools": 2,
+ "failure_classes": {},
+ "tool_result_bytes": 1310,
+ "tool_ms": 5872.9,
+ "first_tool_ms": 9128.0,
+ "input_tokens": 5807,
+ "output_tokens": 1027,
+ "reasoning_tokens": 671,
+ "tokens_per_second": 31.159597279967322,
+ "ttft_s": 0.23845,
+ "model_load_s": null,
+ "stats": {
+  "input_tokens": 5807,
+  "total_output_tokens": 1027,
+  "reasoning_output_tokens": 671,
+  "tokens_per_second": 31.159597279967322,
+  "time_to_first_token_seconds": 0.23845
+ },
+ "response_model": "google/gemma-4-12b-qat",
+ "end_events": 1,
+ "stream_events": 855,
+ "permission_denials": 0,
+ "output_rebuilt_from_stream": false,
+ "final_text": "I have completed the following steps:\n1. **Described the 'Kibana Sample Data Logs' data view**: Identified the available fields and confirmed that the time field is `timestamp`.\n2. **Created the 'LOC-af6c8e5d Web logs' dashboard**: Built a new dashboard containing two panels: a line chart showing the number of requests over time and a bar chart showing the number of requests by HTTP response code.",
+ "stream_final_event": "ok",
+ "known_secret_exposures": 0,
+ "success": true,
+ "failure_reason": null,
+ "first_failed_step": null,
+ "steps_passed": 2,
+ "criteria": [
+  {
+   "step": "describe",
+   "check": "tool_ok:describe_data_view",
+   "ok": true,
+   "detail": "ok"
+  },
+  {
+   "step": "describe",
+   "check": "answer",
+   "ok": true,
+   "detail": "ok"
+  },
+  {
+   "step": "dashboard",
+   "check": "dashboard",
+   "ok": true,
+   "detail": "ok"
+  }
+ ],
+ "n_dashboards": 1,
+ "n_rules": 0,
+ "rule_enabled": false,
+ "reset_removed": {
+  "objects": [
+   [
+    "dashboard",
+    "loc-af6c8e5d-web-logs-e211b2285abd"
+   ]
+  ],
+  "rules": [],
+  "connectors": []
+ },
+ "model_loaded_context": 262144,
+ "model_max_context": 262144,
+ "ts_end": "2026-10-11T22:08:13.458861+00:00",
+ "n_spans": 6,
+ "otel": "skipped: HONEYCOMB_API_KEY is not set",
+ "complete": true
+}

@@ -55,7 +55,7 @@
         "text": "Describe the data view '{data_view}': look up its fields and name its time field. End your reply with a line of the form TIME_FIELD: <field name>.",
         "checks": {
           "tool_ok": [["describe_data_view"]],
-          "answer": {"pattern": "TIME_FIELD:\\s*[`'\"*]*([\\w.@]+)", "equals": "timestamp", "ignore_case": false}
+          "answer": {"pattern": "TIME_FIELD[`'\"*]*:[\\s`'\"*]*([\\w.@]+)", "equals": "timestamp", "ignore_case": false}
         }
       },
       {
@@ -69,7 +69,7 @@
         "id": "rule",
         "text": "Create an alert rule named '{marker} 5xx errors' on the web-logs data for the signal of the response-code panel: it checks every minute and fires when more than 10 requests with a 5xx response code arrive within 5 minutes. The rule must be enabled when you finish: if it is created disabled, enable it.",
         "checks": {
-          "rule": {"enabled": true, "uses_logs": true, "interval": "1m", "params_regex": ["response", "5\\d\\d|5xx|5\\*"]}
+          "rule": {"enabled": true, "uses_logs": true, "interval": "1m", "params_regex": ["response", "5\\d\\d|5xx|5\\*|5\\[0-9\\]"]}
         }
       },
       {
@@ -79,7 +79,7 @@
           "tool_ok": [["update_panel"], ["get_alert_rule", "list_alert_rules"]],
           "panel_title": "Responses by code",
           "rule": {"enabled": true},
-          "answer": {"pattern": "RULE_ENABLED:\\s*[`'\"*]*(\\w+)", "equals": "yes", "ignore_case": true}
+          "answer": {"pattern": "RULE_ENABLED[`'\"*]*:[\\s`'\"*]*(\\w+)", "equals": "yes", "ignore_case": true}
         }
       }
     ],
@@ -93,7 +93,7 @@
 
   "runs": {
     "pilot_per_cell": 1,
-    "per_cell": 10,
+    "per_cell": 12,
     "order": "rotate",
     "max_attempts": 3,
     "budget_hours": 12,
