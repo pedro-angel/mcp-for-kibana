@@ -20,6 +20,10 @@ version section.
   pipeline with what Claude Code, the hook and the runner emitted live into
   the Honeycomb dataset `mcp-for-kibana-live`, and the hook's per-run rollups
   with the transcript values, run by run.
+- **`live_report.py`**: the live rerun's results page (three arms, the live
+  telemetry and what Honeycomb reproduced), every number read from
+  `runs/efficiency/live/analysis.json`, `honeycomb_crosscheck.json` and the
+  run records; reuses `efficiency_report.py`'s helpers and style.
 - **`run_blocks.sh --skip-done`** (additive): skips a cell whose run directory
   already holds a `record.json`, so an interrupted chunk of the efficiency
   study resumes where it stopped.
