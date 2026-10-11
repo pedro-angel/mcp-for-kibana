@@ -89,6 +89,26 @@ version section.
   the cross-check as a report page (verdict, method-difference chart, each
   query explained with its link, the full table, gaps and instrumentation
   recommendations).
+- **Local-model study harness.** `scripts/experiment/local_run.py` drives LM
+  Studio models through mcp-for-kibana on a web-logs chain of growing length
+  (L1 describe the data view; L2 adds a two-panel dashboard; L3 adds an enabled
+  5xx alert rule; L4 adds a panel edit and a read-back of the rule), with a
+  strict check per step. Every study value lives in one config,
+  `scripts/experiment/local_study.json`. `preflight` runs read-only checks and
+  names the fix for each failure (it reads `~/.lmstudio/mcp.json` and never
+  writes it). `pilot` and `run` resume after a crash, reset Kibana after every
+  run, retry runs where the environment failed, and keep each run's prompt,
+  stream, response, artifacts and spans. Each run is sent live to Honeycomb as
+  an OpenTelemetry GenAI trace with the agent.* and study.* signals, after
+  redaction and a check that no secret remains. The runner reads the first
+  final stream event, counts denials from the stream, checks sample data with
+  `GET /api/sample_data` instead of reinstalling it per run, and keeps the
+  Kibana key out of the prompt. `scripts/experiment/local_analyze.py` writes
+  pass rates per model × level with Wilson intervals, pass^k, medians per step
+  and the chain-length breakdown, and supports the Honeycomb cross-check.
+  `scripts/experiment/LOCAL_STUDY.md` is the runbook for the Mac session. The
+  harness is tested end to end against fake LM Studio, Kibana and Honeycomb
+  servers (`tests/unit/test_local_study.py`); the real pilot runs on the Mac.
 
 ### Changed
 
