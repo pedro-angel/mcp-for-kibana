@@ -131,6 +131,8 @@ def tool_attributes(call: dict, sig: dict) -> dict:
         "gen_ai.tool.call.id": call["id"],
         "gen_ai.tool.type": "extension" if call["name"].startswith("mcp__") else "function",
     }
+    if call["name"].startswith("mcp__"):  # mcp__<server>__<tool>: which server answered
+        attrs["agent.tool.mcp_server"] = call["name"].split("__")[1]
     for k, v in sig.items():
         if k.startswith("agent.secret.") or v is None:
             continue

@@ -12,6 +12,19 @@ version section.
 
 ### Added
 
+- **A third arm for the efficiency study rerun**, `with-mcp-es` (additive;
+  `with-mcp` and `no-mcp` are unchanged). `efficiency_run.py --arm with-mcp-es`
+  registers mcp-for-kibana plus Elastic's Elasticsearch MCP server
+  (elastic/mcp-server-elasticsearch v0.4.6, Docker image pinned by digest,
+  stdio) so the model can look at the data through a tool instead of curling
+  Kibana's console proxy. The runner mints a per-run Elasticsearch API key that
+  can only read the web-logs data stream, passes it only to that server's
+  config and invalidates it after the run; the relay scrubs it and the record
+  keeps the key id, privileges and whether it was invalidated or seen. The
+  agent-signals hook names the answering server (`agent.tool.mcp_server`).
+  `run_blocks.sh --three-arms` runs nine cells per block with the arm order
+  rotated by block, and passes extra runner flags after `--`. Setup, the
+  server's caveats and the smoke run: `scripts/experiment/LIVE_RERUN.md`.
 - **Live telemetry for the efficiency study rerun** (opt-in).
   `efficiency_run.py --live-telemetry` gets every signal at run time from the
   component that owns it: Claude Code's own spans and log events (prompt,

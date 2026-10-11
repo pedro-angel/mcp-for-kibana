@@ -143,6 +143,18 @@ Considered:
 - Includes a few (not all) snapshots of a resulting dashboard and alert rule, as examples of what was achieved.
 - Statistics are not fixed in advance: with the data in hand we add or remove them so the report faithfully answers the questions that come up.
 
+### 11. A third arm for the live rerun (R8)
+
+**Question.** In 49 of 90 with-server runs the model curled Kibana's console proxy, `/api/esql/query` or `/internal/search/es|esql` to look at the data before choosing panels and a 5xx threshold. Should the rerun measure the server with a proper data-exploration tool next to it?
+
+**Decision.** Settled: yes, as a third arm, `with-mcp-es`: mcp-for-kibana plus Elastic's Elasticsearch MCP server (elastic/mcp-server-elasticsearch v0.4.6, pinned by image digest), composed in the run's MCP config. Additive: `with-mcp` and `no-mcp` are unchanged, and a block runs all three arms in an order rotated by block. Setup and caveats: [LIVE_RERUN.md](LIVE_RERUN.md#the-third-arm-with-mcp-es-r8).
+
+Considered:
+
+- mcp-for-kibana stays Kibana-only (brief: "Not an Elasticsearch client"); the arm composes a separate server rather than adding Elasticsearch tools to this one.
+- The Elasticsearch server gets a per-run API key that can only read the web-logs data stream (index `read`, `view_index_metadata`, `monitor`; cluster `monitor`), minted by the runner and invalidated after the run. Writes with it answer 403. The key reaches only that server's config, never the model's environment.
+- The standalone server is deprecated in favour of Kibana's Agent Builder MCP endpoint, which needs an Enterprise licence; the local stack is basic. Its `get_mappings` cannot decode the web-logs mapping (object fields); `esql`, `search`, `list_indices` and `get_shards` work. It emits no OpenTelemetry; Claude Code's tool spans and the hook cover its calls.
+
 ## Background research
 
 Looked up before or during the design.

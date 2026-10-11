@@ -7,14 +7,20 @@ the end-to-end web-logs chain and keep the evidence of every run.
 The question: does mcp-for-kibana make Claude's Kibana work cheaper or
 shorter? Two arms, one identical prompt:
 
-    with-mcp   mcp-for-kibana registered (dashboards, data-management,
-               alerting at the write tier)
-    no-mcp     no MCP server
+    with-mcp     mcp-for-kibana registered (dashboards, data-management,
+                 alerting at the write tier)
+    no-mcp       no MCP server
 
-Both arms get the same built-in tools, confined to a fresh working directory
+and a third, added for the live rerun (additive; the two above are unchanged):
+
+    with-mcp-es  mcp-for-kibana plus Elastic's Elasticsearch MCP server
+                 (ES_MCP_IMAGE, stdio in Docker) on a read-only API key minted
+                 per run for the web-logs index and invalidated after it
+
+All arms get the same built-in tools, confined to a fresh working directory
 that holds Kibana's pinned API reference (kibana-api/): Bash, Read, Write,
 Glob and Grep, with settings, skills and inherited MCP servers off. Only the
-server varies.
+servers vary.
 
 Every run writes a directory under --out: the prompt, the full stream-json
 transcript, metrics, the success check and the dashboard and rule it
@@ -82,6 +88,29 @@ SPECS = {
     ),
 }
 _SPEC_CACHE = Path.home() / ".cache" / "mcp-for-kibana-efficiency" / "specs"
+
+ARMS = ("with-mcp", "no-mcp", "with-mcp-es")
+SERVER_ARMS = ("with-mcp", "with-mcp-es")  # arms that run mcp-for-kibana
+
+# The third arm's Elasticsearch MCP server: elastic/mcp-server-elasticsearch
+# v0.4.6 (the latest tag; the repository is deprecated in favour of Kibana's
+# Agent Builder MCP endpoint, which needs an Enterprise licence the local
+# stack's basic licence lacks). Pinned by digest; `latest` was the same image
+# on 2026-10-11. Tools: list_indices, get_mappings, search, esql, get_shards.
+ES_MCP_IMAGE = (
+    "docker.elastic.co/mcp/elasticsearch:0.4.6"
+    "@sha256:d57ea11dcb3451ca332cb6d3bb8c4bb1ea29f15e498937ad6c2eada9f88eb003"
+)
+ES_MCP_SERVER = "elasticsearch"  # tools are mcp__elasticsearch__<tool>
+# Read-only on the web-logs data stream (and its backing indices): search and
+# ES|QL (read), mappings (view_index_metadata), _cat indices/shards (monitor).
+# Nothing that writes data, manages indices or mints keys.
+ES_KEY_PRIVILEGES = ("read", "view_index_metadata", "monitor")
+# _cat/indices and _cat/shards (list_indices, get_shards) also need the
+# read-only `monitor` cluster privilege; without it both tools answer 403.
+ES_KEY_CLUSTER_PRIVILEGES = ("monitor",)
+ES_KEY_EXPIRATION = "2h"  # a backstop; the runner invalidates the key after the run
+_STACK_ENV = _REPO_ROOT / "elastic-start-local" / ".env"
 
 BUILTIN_TOOLS = "Bash,Read,Write,Glob,Grep"
 ALLOWED_TOOLS = ["Bash", "Read", "Write", "Glob", "Grep"]
@@ -205,6 +234,95 @@ def load_seed() -> tuple[str, str]:
     return values["KIBANA_URL"], values["KIBANA_TEST_API_KEY"]
 
 
+def load_es_admin(env_file: Path = _STACK_ENV) -> tuple[str, str]:
+    """Elasticsearch URL and the elastic user's password from the local
+    stack's .env (as scripts/stack.sh seed reads them). The password only
+    mints and invalidates the third arm's read-only key; it reaches no model,
+    server or telemetry."""
+    values = {}
+    for line in env_file.read_text().splitlines():
+        if "=" in line and not line.lstrip().startswith("#"):
+            k, v = line.split("=", 1)
+            values[k.strip()] = v.strip()
+    port, password = values.get("ES_LOCAL_PORT"), values.get("ES_LOCAL_PASSWORD")
+    if not port or not password:
+        raise SystemExit(
+            f"FAIL: ES_LOCAL_PORT or ES_LOCAL_PASSWORD missing from {env_file} — the "
+            "with-mcp-es arm needs the local stack: scripts/stack.sh up && scripts/stack.sh seed"
+        )
+    return f"http://localhost:{port}", password
+
+
+def es_key_request(name: str) -> dict:
+    """Body of POST /_security/api_key for the third arm's read-only key."""
+    return {
+        "name": name,
+        "expiration": ES_KEY_EXPIRATION,
+        "role_descriptors": {
+            "efficiency-es-read": {
+                "cluster": list(ES_KEY_CLUSTER_PRIVILEGES),
+                "indices": [{"names": [LOGS_INDEX], "privileges": list(ES_KEY_PRIVILEGES)}],
+            }
+        },
+        "metadata": {"purpose": "mcp-for-kibana efficiency study, with-mcp-es arm"},
+    }
+
+
+def _es_call(url: str, password: str, method: str, path: str, body: dict) -> tuple[int, dict]:
+    import base64
+
+    auth = base64.b64encode(f"elastic:{password}".encode()).decode()
+    req = urllib.request.Request(
+        url.rstrip("/") + path,
+        data=json.dumps(body).encode(),
+        method=method,
+        headers={"Authorization": f"Basic {auth}", "Content-Type": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            return resp.status, json.loads(resp.read() or b"{}")
+    except urllib.error.HTTPError as e:
+        try:
+            return e.code, json.loads(e.read() or b"{}")
+        except ValueError:
+            return e.code, {}
+
+
+def mint_es_key(url: str, password: str, name: str) -> tuple[str, str]:
+    """(key id, encoded key) of a fresh read-only key (es_key_request)."""
+    status, body = _es_call(url, password, "POST", "/_security/api_key", es_key_request(name))
+    if status != 200 or not body.get("encoded"):
+        reason = (body.get("error") or {}).get("reason") if isinstance(body, dict) else None
+        raise SystemExit(
+            f"FAIL: could not mint the with-mcp-es arm's read-only Elasticsearch key "
+            f"(HTTP {status}: {reason}) — check the stack with scripts/stack.sh status"
+        )
+    return body["id"], body["encoded"]
+
+
+def invalidate_es_key(url: str, password: str, key_id: str) -> bool:
+    status, body = _es_call(url, password, "DELETE", "/_security/api_key", {"ids": [key_id]})
+    return status == 200 and key_id in (body.get("invalidated_api_keys") or [])
+
+
+def es_mcp_server(es_url: str, es_key: str, container: str) -> dict:
+    """The Elasticsearch MCP server's entry in the MCP config: stdio in Docker
+    on the host network (the stack publishes Elasticsearch on loopback). The
+    key goes only into this entry's env, which `docker run -e NAME` forwards
+    to the container: it is in no argv and not in the model's environment."""
+    # The image rewrites a 'localhost' host to host.docker.internal; on the
+    # host network the loopback address is the right one.
+    es_url = es_url.replace("://localhost", "://127.0.0.1")
+    return {
+        "command": "docker",
+        "args": [
+            *("run", "-i", "--rm", "--name", container, "--network", "host"),
+            *("-e", "ES_URL", "-e", "ES_API_KEY", ES_MCP_IMAGE, "stdio"),
+        ],
+        "env": {"ES_URL": es_url, "ES_API_KEY": es_key},
+    }
+
+
 def ensure_logs_sample(kb: Kibana) -> None:
     status, _ = kb.call("GET", f"/api/index_management/indices/{LOGS_INDEX}", internal=True)
     if status == 200:
@@ -318,7 +436,13 @@ def _mentions_logs(kb: Kibana, obj: dict, before: dict) -> bool:
 # ---------------------------------------------------------------- one run
 
 
-def mcp_config(path: Path, kibana_url: str, api_key: str, extra_env: dict | None = None) -> Path:
+def mcp_config(
+    path: Path,
+    kibana_url: str,
+    api_key: str,
+    extra_env: dict | None = None,
+    extra_servers: dict | None = None,
+) -> Path:
     cfg = {
         "mcpServers": {
             "mcp-for-kibana": {
@@ -331,11 +455,38 @@ def mcp_config(path: Path, kibana_url: str, api_key: str, extra_env: dict | None
                     "KIBANA_MCP_TIER": "write",
                     **(extra_env or {}),
                 },
-            }
+            },
+            **(extra_servers or {}),
         }
     }
     path.write_text(json.dumps(cfg))
+    path.chmod(0o600)
     return path
+
+
+def arm_mcp(
+    arm: str,
+    path: Path,
+    kibana_url: str,
+    api_key: str,
+    server_otel: dict | None = None,
+    es: dict | None = None,
+) -> tuple[list[str], list[str]]:
+    """(--mcp-config arguments, MCP entries for --allowedTools) of an arm.
+    es (with-mcp-es only): url, api_key and container of the Elasticsearch
+    MCP server."""
+    if arm == "no-mcp":
+        return [], []
+    if arm not in SERVER_ARMS:
+        raise ValueError(f"unknown arm {arm!r}; one of {', '.join(ARMS)}")
+    allowed, extra = ["mcp__mcp-for-kibana"], None
+    if arm == "with-mcp-es":
+        if not es:
+            raise ValueError("the with-mcp-es arm needs the Elasticsearch url, key and container")
+        extra = {ES_MCP_SERVER: es_mcp_server(es["url"], es["api_key"], es["container"])}
+        allowed.append(f"mcp__{ES_MCP_SERVER}")
+    cfg = mcp_config(path, kibana_url, api_key, server_otel, extra)
+    return ["--mcp-config", str(cfg)], allowed
 
 
 def parse_stream(lines: list[str], first_result: bool = False) -> dict:
@@ -445,7 +596,7 @@ def run_once(
         "arm": arm,
         "marker": marker,
         "kibana_version": KIBANA_VERSION,
-        "toolboxes": TOOLBOXES if arm == "with-mcp" else None,
+        "toolboxes": TOOLBOXES if arm in SERVER_ARMS else None,
         "claude_cli": subprocess.run(
             ["claude", "--version"], capture_output=True, text=True, check=False
         ).stdout.strip(),
@@ -457,11 +608,29 @@ def run_once(
         ).stdout.strip(),
         "ts_start": datetime.now(UTC).isoformat(),
     }
+    es = None
+    if arm == "with-mcp-es":
+        es_url, es_password = load_es_admin()
+        es_key_id, es_key = mint_es_key(es_url, es_password, f"eff-{run_id}")
+        es = {
+            "url": es_url,
+            "api_key": es_key,
+            "container": f"eff-es-mcp-{uuid.uuid4().hex[:8]}",
+            "password": es_password,
+            "key_id": es_key_id,
+        }
+        record.update(
+            {
+                "es_mcp_image": ES_MCP_IMAGE,
+                "es_key_id": es_key_id,
+                "es_key_privileges": f"{LOGS_INDEX}:{','.join(ES_KEY_PRIVILEGES)}",
+            }
+        )
     lt = tel = None
     if live:
         import live_telemetry as lt
 
-        key_in_env = not (arm == "with-mcp" and live.get("key_out_of_model_env"))
+        key_in_env = not (arm in SERVER_ARMS and live.get("key_out_of_model_env"))
         record.update(
             {
                 "prompt_version": prompt_version,
@@ -469,15 +638,15 @@ def run_once(
                 "dataset": live["dataset"],
                 "key_in_model_env": key_in_env,
                 "sample_data_installed": sample_data_installed(kb),
-                **(server_revision() if arm == "with-mcp" else {}),
+                **(server_revision() if arm in SERVER_ARMS else {}),
             }
         )
-        if live.get("server_label") and arm == "with-mcp":
+        if live.get("server_label") and arm in SERVER_ARMS:
             record["server_label"] = live["server_label"]
         trace_id, root_id = lt.new_trace()
         attrs = lt.resource_attributes(run_id, model, arm, block)
         scrubber = lt.Scrubber(
-            [api_key, live.get("api_key") or ""],
+            [api_key, live.get("api_key") or "", (es or {}).get("api_key") or ""],
             drop_keys=() if live.get("keep_identity") else lt.IDENTITY_ATTRS,
         )
         relay = lt.Relay(
@@ -528,14 +697,11 @@ def run_once(
         if tel and live.get("agent_hook", True):
             hook_cfg = write_hook_config(tmp, tel["relay"].url, live["dataset"], tel["attrs"], api_key)
             cmd += ["--settings", json.dumps(hook_settings(hook_cfg))]
-        if arm == "with-mcp":
-            cmd += [
-                "--mcp-config",
-                str(mcp_config(tmp / "mcp.json", kibana_url, api_key, server_otel)),
-            ]
-            cmd[cmd.index("--allowedTools") + 1 : cmd.index("--allowedTools") + 1] = [
-                "mcp__mcp-for-kibana"
-            ]
+        mcp_cfg = tmp / "mcp.json"
+        mcp_args, mcp_allowed = arm_mcp(arm, mcp_cfg, kibana_url, api_key, server_otel, es)
+        cmd += mcp_args
+        at = cmd.index("--allowedTools") + 1
+        cmd[at:at] = mcp_allowed
         env = {k: v for k, v in os.environ.items() if k not in _STRIP_ENV}
         env.update({"KIBANA_URL": kibana_url, "KIBANA_TEST_API_KEY": api_key})
         if tel:
@@ -565,6 +731,10 @@ def run_once(
             stdout = e.stdout.decode() if isinstance(e.stdout, bytes) else (e.stdout or "")
             stderr = e.stderr.decode() if isinstance(e.stderr, bytes) else (e.stderr or "")
             timed_out = True
+        if es:  # a stdio container normally ends with claude; never leave one behind
+            subprocess.run(
+                ["docker", "rm", "-f", es["container"]], capture_output=True, check=False
+            )
         if hook_cfg:
             record["agent_live"] = read_hook_rollups(hook_cfg, api_key, run_dir)
     record["wall_s"] = round(time.monotonic() - started, 1)
@@ -580,6 +750,11 @@ def run_once(
         parsed.pop("permission_denials_stream")
     record.update(parsed)
     record["timed_out"] = timed_out
+    if es:
+        es_prefix = f"mcp__{ES_MCP_SERVER}__"
+        record["n_es_mcp_calls"] = sum(n.startswith(es_prefix) for n in parsed["tool_calls"])
+        record["es_tools_listed"] = [t for t in parsed["init_mcp_tools"] if t.startswith(es_prefix)]
+        record["es_key_in_output"] = es["api_key"] in stdout or es["api_key"] in stderr
     if live:
         record["n_permission_denials"] = len(parsed["permission_denials_stream"])
         record["valid"] = not parsed["permission_denials_stream"]
@@ -599,6 +774,13 @@ def run_once(
         record["reset_removed"] = kb.reset_to(before)
     except Exception as e:
         record["reset_error"] = repr(e)
+    if es:
+        try:
+            key_id = es["key_id"]
+            record["es_key_invalidated"] = invalidate_es_key(es["url"], es["password"], key_id)
+        except Exception as e:
+            record["es_key_invalidated"] = False
+            record["reset_error"] = (record.get("reset_error", "") + f" es key: {e!r}").strip()
     phases["reset"] = (phases["score"][1], time.time())
     record["ts_end"] = datetime.now(UTC).isoformat()
     if tel:
@@ -793,7 +975,7 @@ def main() -> int:
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     ap.add_argument("--model", required=True)
-    ap.add_argument("--arm", required=True, choices=["with-mcp", "no-mcp"])
+    ap.add_argument("--arm", required=True, choices=list(ARMS))
     ap.add_argument("--runs", type=int, default=1)
     ap.add_argument("--block", default="adhoc")
     ap.add_argument(
@@ -822,7 +1004,8 @@ def main() -> int:
     live_g.add_argument(
         "--key-out-of-model-env",
         action="store_true",
-        help="with-mcp arm only: do not put KIBANA_TEST_API_KEY in the model's environment (R4)",
+        help="with-mcp and with-mcp-es arms: do not put KIBANA_TEST_API_KEY in the model's "
+        "environment (R4)",
     )
     live_g.add_argument(
         "--server-label",

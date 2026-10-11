@@ -189,6 +189,110 @@ come from the same function. Two known differences: calls are ordered by
 completion, not by `tool_use` order (parallel calls), and model text is
 scanned per reply by the relay rather than per message.
 
+## The third arm: `with-mcp-es` (R8)
+
+In 49 of the first study's 90 with-server runs the model curled Kibana's
+`/api/console/proxy`, `/api/esql/query` or `/internal/search/es|esql` to look
+at the data before choosing panels and a 5xx threshold. The third arm gives it
+a proper tool for that: mcp-for-kibana **plus** Elastic's Elasticsearch MCP
+server, composed side by side in the run's MCP config. mcp-for-kibana itself
+stays Kibana-only (brief: "Not an Elasticsearch client"). The arm is additive:
+`with-mcp` and `no-mcp` are unchanged.
+
+**The server.** [elastic/mcp-server-elasticsearch](https://github.com/elastic/mcp-server-elasticsearch)
+**v0.4.6** (latest tag), image
+`docker.elastic.co/mcp/elasticsearch:0.4.6@sha256:d57ea11dcb3451ca332cb6d3bb8c4bb1ea29f15e498937ad6c2eada9f88eb003`
+(`latest` was the same digest on 2026-10-11; `ES_MCP_IMAGE` in
+`efficiency_run.py`). The README recommends the Docker image over stdio or
+streamable HTTP, configured by `ES_URL` and `ES_API_KEY` (or
+`ES_USERNAME`/`ES_PASSWORD`). The runner uses stdio:
+`docker run -i --rm --name eff-es-mcp-<id> --network host -e ES_URL -e ES_API_KEY <image> stdio`,
+with the values in the MCP config's `env` only. Tools (all `readOnlyHint`):
+`list_indices`, `get_mappings`, `search` (Query DSL), `esql`, `get_shards`,
+reached as `mcp__elasticsearch__<tool>`; `--allowedTools` gains
+`mcp__elasticsearch` next to `mcp__mcp-for-kibana`, built-ins unchanged.
+
+Caveats, all checked live against the 9.5.5 stack:
+
+- The repository is **deprecated** ("will only receive critical security
+  updates"), superseded by Kibana's Agent Builder MCP endpoint (9.2+). That
+  endpoint needs an Enterprise licence; the local stack runs basic, so the
+  standalone server is the one that runs here.
+- `get_mappings` fails on the web-logs data stream with `error decoding
+  response body`: the server decodes every mapped field as having a `type`,
+  and object fields (`geo`, `machine`) have none. `esql`, `search`,
+  `list_indices` and `get_shards` work.
+- No OpenTelemetry: the server logs with Rust `tracing` to stderr only, so it
+  emits no spans. Its calls are still covered by Claude Code's
+  `claude_code.tool` spans and by the hook, whose spans now carry
+  `agent.tool.mcp_server` (`elasticsearch` or `mcp-for-kibana`; category
+  `mcp`, as before by the `mcp__` prefix).
+
+**The key.** Per run, the runner mints an Elasticsearch API key with the
+`elastic` user from `elastic-start-local/.env` (the Kibana test key cannot:
+Elasticsearch only lets an API key derive keys without privileges), named
+`eff-<run id>`, expiring in 2 h, and invalidates it after the reset. Role:
+index privileges `read`, `view_index_metadata`, `monitor` on
+`kibana_sample_data_logs` only, cluster privilege `monitor` (read-only; without
+it `list_indices` and `get_shards` answer 403). Checked with the key: indexing a
+document, creating an index, `_delete_by_query` and minting an API key all
+answer **403**; `list_indices` on the flights index answers 403. `get_shards`
+lists the shards of every index (cluster `monitor`), metadata only.
+The key goes only into the Elasticsearch server's config entry: not into the
+model's environment, any argv, the hook config or the record (which keeps the
+key id, `es_key_privileges`, `es_key_invalidated`, `es_key_in_output`,
+`es_tools_listed`, `n_es_mcp_calls`). The relay scrubs it like the Kibana key.
+`--key-out-of-model-env` applies to this arm as to `with-mcp`.
+
+**Running it.** One run:
+
+```bash
+uv run python scripts/experiment/efficiency_run.py --live-telemetry \
+  --dataset mcp-for-kibana-live --model claude-haiku-5-5 --arm with-mcp-es \
+  --runs 1 --block pilot --key-out-of-model-env
+```
+
+Blocks of nine (3 models x 3 arms, arm order rotated by block so each arm
+takes each position once every three blocks):
+
+```bash
+scripts/experiment/runs/efficiency/full/run_blocks.sh --three-arms 1 30 -- \
+  --live-telemetry --dataset mcp-for-kibana-live --key-out-of-model-env \
+  --out scripts/experiment/runs/efficiency/live
+```
+
+Needs Docker and the image (`docker pull` of the pinned reference).
+
+**Where the key can still be reached.** The model's shell runs as the same
+user as the runner, so it could read the run's `mcp.json` (outside the working
+directory, mode 600, as in `with-mcp`) or `docker inspect` the server's
+container. Neither happened in the smoke run; the hook's `outside_workdir`
+signals would show the first. The key can only read the sample data and dies
+with the run.
+
+**Smoke run (2026-10-11, Claude Code 2.1.296, claude-haiku-5-5, live mode,
+`--key-out-of-model-env`, dataset `mcp-for-kibana-smoke-live`).**
+`20261011T215437Z-claude-haiku-5-5-with-mcp-es-3ef06e`, trace
+`a08e9e8089e5c5999a6a4842dc8ae79f`: **PASS** (6 panels, rule enabled), 12 tool
+calls, 13 turns, 45.6 s. Both servers connected; all five Elasticsearch tools
+listed; the model called `mcp__elasticsearch__esql` 3 times (time range, the
+response codes 200/404/503) next to 8 mcp-for-kibana calls and one Bash call
+(checking whether the variables are set; the key was not). Hook spans:
+`agent.tool.mcp_server` = `elasticsearch` 3, `mcp-for-kibana` 8. Secrets: the
+Elasticsearch key is not in the transcript or stderr (`es_key_in_output`
+false), the relay replaced nothing (`secrets_redacted` 0, so neither key
+reached any telemetry), the Kibana key is in none of the run's files. Reset
+deleted the run's dashboard and rule; the key was invalidated and no
+`eff-es-mcp-*` container was left. Records are in the session's scratch
+directory, not committed.
+
+**Runs must not overlap on one stack.** A first smoke attempt ran while another
+`efficiency_run.py` used the same Kibana: that runner's reset deleted this
+run's dashboard and rule before scoring ("no dashboard; no rule"; the
+transcript shows both created). The reset deletes everything created since
+its own snapshot, so concurrent runs corrupt each other's scores. Run blocks
+one at a time.
+
 ## Command sequence for the fresh session
 
 ```bash
@@ -199,17 +303,17 @@ export HONEYCOMB_API_KEY=...            # never echo it
 # 1. Smoke: one probe run, all checks must PASS (dataset: a new one per attempt)
 uv run python scripts/experiment/live_smoke.py --dataset mcp-for-kibana-live-smoke
 
-# 2. Pilot: one run per model and arm (6 runs)
+# 2. Pilot: one run per model and arm (9 runs)
 for m in claude-haiku-5-5 claude-sonnet-5-5 claude-opus-5-5; do
-  for a in with-mcp no-mcp; do
+  for a in with-mcp no-mcp with-mcp-es; do
     uv run python scripts/experiment/efficiency_run.py --live-telemetry \
       --dataset mcp-for-kibana-live --model $m --arm $a --runs 1 --block pilot \
       --server-label <R3 choice> [--key-out-of-model-env]
   done
 done
 
-# 3. Full: 30 blocks of 6 (3 models x 2 arms), order within a block as in the
-#    first study (STUDY_DESIGN.md), same flags, --block b01 ... b30. Output:
+# 3. Full: 30 blocks of 9 (3 models x 3 arms), arm order rotated by block:
+#    run_blocks.sh --three-arms 1 30 -- <same flags> (see the third arm). Output:
 #    scripts/experiment/runs/efficiency/live/<block>/<run_id>/
 #    (record.json, transcript.jsonl, telemetry.jsonl, artifacts.json)
 
@@ -220,6 +324,9 @@ uv run python scripts/experiment/efficiency_analyze.py --root scripts/experiment
 ```
 
 ## Decisions for the owner
+
+- **R8, a third arm (settled).** `with-mcp-es`: mcp-for-kibana plus Elastic's
+  Elasticsearch MCP server on a per-run read-only key (above).
 
 - **R3, server build.** Run the server as in study 1, or after the
   `create_dashboard` first-call fix. Either way the root span records
