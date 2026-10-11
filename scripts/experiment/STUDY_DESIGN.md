@@ -178,7 +178,7 @@ _2026-10-10_
 Sources:
 
 - https://arxiv.org/html/2411.00640v1
-- https://www.anthropic.com/research/statistical-approach-to-model-evals
+- Anthropic, "A statistical approach to model evaluations" (anthropic.com, 2024)
 - https://arxiv.org/html/2503.01747
 - https://arxiv.org/html/2406.12045v1
 - https://arxiv.org/html/2407.01502v1
