@@ -323,6 +323,20 @@ def es_mcp_server(es_url: str, es_key: str, container: str) -> dict:
     }
 
 
+TRACE_ANCHOR_SERVER = "trace-anchor"
+
+
+def trace_anchor_server() -> dict:
+    """The no-mcp arm's tool-less MCP server entry (live mode). Without any
+    MCP server Claude Code 2.1.296 starts its first query before its tracer
+    is ready: no claude_code.interaction span, TRACEPARENT ignored, every
+    span its own trace (LIVE_RERUN.md, "The no-mcp trace anchor")."""
+    return {
+        "command": sys.executable,
+        "args": ["-I", "-S", str(Path(__file__).resolve().parent / "trace_anchor_server.py")],
+    }
+
+
 def ensure_logs_sample(kb: Kibana) -> None:
     status, _ = kb.call("GET", f"/api/index_management/indices/{LOGS_INDEX}", internal=True)
     if status == 200:
@@ -471,12 +485,19 @@ def arm_mcp(
     api_key: str,
     server_otel: dict | None = None,
     es: dict | None = None,
+    trace_anchor: bool = False,
 ) -> tuple[list[str], list[str]]:
     """(--mcp-config arguments, MCP entries for --allowedTools) of an arm.
     es (with-mcp-es only): url, api_key and container of the Elasticsearch
-    MCP server."""
+    MCP server. trace_anchor (no-mcp only, live mode): connect the tool-less
+    trace_anchor_server.py so Claude Code's spans join the run's trace; it
+    adds no tools and nothing to --allowedTools."""
     if arm == "no-mcp":
-        return [], []
+        if not trace_anchor:
+            return [], []
+        path.write_text(json.dumps({"mcpServers": {TRACE_ANCHOR_SERVER: trace_anchor_server()}}))
+        path.chmod(0o600)
+        return ["--mcp-config", str(path)], []
     if arm not in SERVER_ARMS:
         raise ValueError(f"unknown arm {arm!r}; one of {', '.join(ARMS)}")
     allowed, extra = ["mcp__mcp-for-kibana"], None
@@ -637,6 +658,7 @@ def run_once(
                 "live_telemetry": True,
                 "dataset": live["dataset"],
                 "key_in_model_env": key_in_env,
+                "trace_anchor": arm == "no-mcp" and live.get("trace_anchor", True),
                 "sample_data_installed": sample_data_installed(kb),
                 **(server_revision() if arm in SERVER_ARMS else {}),
             }
@@ -698,7 +720,9 @@ def run_once(
             hook_cfg = write_hook_config(tmp, tel["relay"].url, live["dataset"], tel["attrs"], api_key)
             cmd += ["--settings", json.dumps(hook_settings(hook_cfg))]
         mcp_cfg = tmp / "mcp.json"
-        mcp_args, mcp_allowed = arm_mcp(arm, mcp_cfg, kibana_url, api_key, server_otel, es)
+        mcp_args, mcp_allowed = arm_mcp(
+            arm, mcp_cfg, kibana_url, api_key, server_otel, es, trace_anchor=record.get("trace_anchor", False)
+        )
         cmd += mcp_args
         at = cmd.index("--allowedTools") + 1
         cmd[at:at] = mcp_allowed
@@ -1020,6 +1044,12 @@ def main() -> int:
         "'metrics' dataset, not --dataset)",
     )
     live_g.add_argument(
+        "--no-trace-anchor",
+        action="store_true",
+        help="no-mcp arm: leave out the tool-less MCP server that makes Claude Code's spans "
+        "join the run's trace (without it they are orphan traces)",
+    )
+    live_g.add_argument(
         "--no-agent-hook",
         action="store_true",
         help="leave out the silent hook that emits the agent.* signals per tool call",
@@ -1049,6 +1079,7 @@ def main() -> int:
             "server_label": args.server_label,
             "prompt_version": args.prompt_version,
             "agent_hook": not args.no_agent_hook,
+            "trace_anchor": not args.no_trace_anchor,
             "metrics": args.with_metrics,
         }
     elif args.key_out_of_model_env or args.server_label or args.keep_identity:

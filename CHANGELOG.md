@@ -12,6 +12,9 @@ version section.
 
 ### Added
 
+- **`run_blocks.sh --skip-done`** (additive): skips a cell whose run directory
+  already holds a `record.json`, so an interrupted chunk of the efficiency
+  study resumes where it stopped.
 - **A third arm for the efficiency study rerun**, `with-mcp-es` (additive;
   `with-mcp` and `no-mcp` are unchanged). `efficiency_run.py --arm with-mcp-es`
   registers mcp-for-kibana plus Elastic's Elasticsearch MCP server
@@ -160,6 +163,15 @@ version section.
 
 ### Fixed
 
+- **No-mcp runs in live mode now land in one trace.** Claude Code 2.1.296
+  starts its first query before its tracer is ready when it has no MCP server
+  to connect: no `claude_code.interaction` span, `TRACEPARENT` ignored, every
+  model and tool span its own trace (found in the rerun's smoke run). In live
+  mode the runner now connects a tool-less stdio MCP server
+  (`scripts/experiment/trace_anchor_server.py`) in the no-mcp arm; the model's
+  tools and first prompt are unchanged (5,047 tokens with and without it).
+  `--no-trace-anchor` leaves it out; the record says `trace_anchor`.
+  Details: `scripts/experiment/LIVE_RERUN.md`, "The no-mcp trace anchor".
 - **`create_dashboard` accepts a time-series panel without `time_field`.**
   The panel schema says `time_field` is filled in from the data view when
   omitted, but a `date_histogram` panel without it was rejected before the

@@ -130,6 +130,38 @@ probe, trace `0236ecd391ebaba5f966c76fb71072e9`, all checks PASS: the curl
 server changes (`study.server_dirty=true`). The metrics of the second run were
 sent twice (a manual replay while finding where metrics land).
 
+## The no-mcp trace anchor (found in the rerun's smoke, 2026-10-11)
+
+The first live no-mcp run (`20261011T230054Z-claude-haiku-5-5-no-mcp-b23f83`,
+trace `69a734c72d1b8dcf5f11254a9e0e88b1`) passed, but in Honeycomb its trace
+held only the runner's spans and the hook's: Claude Code sent **no**
+`claude_code.interaction` span, and each of its 36 `llm_request` and 34
+`tool` spans was the root of its own trace (no parent, a fresh trace id), so
+`TRACEPARENT` was ignored. A second no-mcp run reproduced it; the two
+with-server smoke runs had the interaction span and every child under it.
+
+Probes against the local sink (`claude -p`, Claude Code 2.1.296, haiku, three
+model calls each) isolated it:
+
+| Setup | interaction span | Claude Code spans in the run's trace |
+|---|---|---|
+| no `--mcp-config` | no | none |
+| `--mcp-config` with `{"mcpServers": {}}` | no | none |
+| one stdio server, no tools | yes | all |
+| one stdio server, one tool | yes | all |
+| no server, SessionStart hook `sleep 2` | yes | all but one extra side call (1,183 input tokens) |
+
+So it is a start-up race: without an MCP server to wait for, the first query
+starts before the tracer is ready. The fix is the tool-less
+`trace_anchor_server.py` (stdlib JSON-RPC on stdio: `initialize`, `ping`,
+empty `tools/list`, `prompts/list`, `resources/list`; no instructions). In live
+mode the runner connects it in the no-mcp arm (`--no-trace-anchor` leaves it
+out); the record says `trace_anchor: true`. It changes nothing the model sees:
+the init event still lists `tools: ["Bash"]` (probe) and the first request
+was 5,047 tokens with and without it. The init event's `mcp_servers` lists
+`trace-anchor`; no tool call can reach it. The sleep hook was rejected because
+its extra model call would add cost to the measurement.
+
 ## The agent.* signals: who produces each one live
 
 Producers: **A** Claude Code's own telemetry, **B** the hook, **C** the MCP
