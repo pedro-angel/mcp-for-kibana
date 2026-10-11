@@ -12,6 +12,28 @@ version section.
 
 ### Added
 
+- **Live telemetry for the efficiency study rerun** (opt-in).
+  `efficiency_run.py --live-telemetry` gets every signal at run time from the
+  component that owns it: Claude Code's own spans and log events (prompt,
+  response and tool content; never raw API bodies), the server's tool-call
+  spans, a silent Claude Code hook (`agent_signals_hook.py`) that emits the
+  `agent.*` signals of SIGNALS.md per tool call with the same classifier as
+  the transcript pipeline, and a runner root span with the outcome and per-run
+  rollups, all in one trace per run. A loopback relay (`live_telemetry.py`)
+  scrubs the Kibana and Honeycomb keys and the account identity attributes,
+  keeps a copy per run and forwards to a study dataset; the Honeycomb key
+  never reaches Claude Code, the model's shell or the server. The mode also
+  turns on the fixes parked after the first study (first result event, denials
+  from the whole stream, sample data checked not reinstalled, prompt v2) and
+  offers `--key-out-of-model-env` and `--server-label` for the open decisions.
+  `live_smoke.py` proves the path in one probe run; `otlp_sink.py` records
+  what any OTLP exporter sends. Findings and the command sequence:
+  `scripts/experiment/LIVE_RERUN.md`. Without the flag the runner is unchanged.
+- **`KIBANA_MCP_OTEL_TRACEPARENT_FROM_ENV`** (default off): with OTel export
+  on, the server parents all its spans under the W3C `TRACEPARENT` it was
+  started with, so a stdio client that passes trace context only through the
+  environment (Claude Code in `-p` mode) sees the server's spans in its trace.
+
 - **Cloud sessions start ready to work.** A SessionStart hook in
   `.claude/settings.json` runs `scripts/cloud-session-start.sh`, which starts
   `dockerd` (the environment snapshot keeps the images, not the daemon) and runs

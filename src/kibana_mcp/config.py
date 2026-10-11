@@ -90,6 +90,11 @@ class Settings(BaseSettings):
     otel_endpoint: str = "http://localhost:18200"
     otel_secret_token: str | None = None
     otel_service_name: str = "mcp-for-kibana"
+    # Parent every span under the W3C TRACEPARENT the server was started with
+    # (additive, default-off). A stdio client that passes its trace context only
+    # through the environment (Claude Code -p does) then sees the server's spans
+    # in its own trace. Ignored unless otel_enabled.
+    otel_traceparent_from_env: bool = False
 
     @classmethod
     def load(cls) -> "Settings":

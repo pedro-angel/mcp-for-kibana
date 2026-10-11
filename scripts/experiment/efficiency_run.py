@@ -29,14 +29,26 @@ record says so. HONEYCOMB_OTLP_ENDPOINT picks the region (default: EU,
 https://api.eu1.honeycomb.io/v1/traces; US is https://api.honeycomb.io/v1/traces).
 The server's own span export stays off in the with-mcp arm, so the arms
 differ only by the server.
+
+--live-telemetry (off by default; the first study's behaviour is unchanged
+without it) replaces that after-the-fact trace with signals emitted at run
+time: Claude Code's own spans, log events and metrics, the server's tool-call
+spans and a runner root span, all in one trace per run, through a local
+scrubbing relay to Honeycomb (live_telemetry.py, LIVE_RERUN.md). The mode also
+switches on the fixes parked after the first study: the first result event is
+read, permission denials are counted from the whole stream, the sample data is
+checked before every run, and the prompt (version 2) says the rule must be
+enabled.
 """
 
 import argparse
+import contextlib
 import json
 import os
 import secrets
 import shutil
 import subprocess
+import sys
 import tempfile
 import time
 import urllib.error
@@ -48,6 +60,7 @@ from pathlib import Path
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _SEED = _REPO_ROOT / "elastic-start-local" / ".env.seed"
 _DEFAULT_OUT = Path(__file__).resolve().parent / "runs" / "efficiency"
+_DEFAULT_LIVE_OUT = _DEFAULT_OUT / "live"
 _TIMEOUT_S = 1200
 
 KIBANA_VERSION = "9.5.5"
@@ -84,8 +97,14 @@ _STRIP_ENV = (
 )
 
 
-def task_prompt(marker: str) -> str:
-    """The task, identical in both arms."""
+def task_prompt(marker: str, version: int = 1) -> str:
+    """The task, identical in both arms. Version 2 (the live rerun's default)
+    states that the rule must be enabled, which the success check requires."""
+    finish = (
+        "Finish when the dashboard and the rule both exist."
+        if version == 1
+        else "Finish when the dashboard and the rule both exist and the rule is enabled."
+    )
     return (
         "A local Kibana 9.5 is available. Its URL is in the environment "
         "variable KIBANA_URL and an API key in KIBANA_TEST_API_KEY. Kibana's "
@@ -98,8 +117,7 @@ def task_prompt(marker: str) -> str:
         "least three panels showing the key metrics of this traffic.\n"
         f"3. Create an alert rule named '{marker} 5xx spike' that checks every "
         "minute and fires when more than 10 requests with a 5xx response code "
-        "arrive within 5 minutes.\n"
-        "Finish when the dashboard and the rule both exist."
+        "arrive within 5 minutes.\n" + finish
     )
 
 
@@ -194,6 +212,15 @@ def ensure_logs_sample(kb: Kibana) -> None:
     status, body = kb.call("POST", "/api/sample_data/logs", {}, internal=True)
     if status not in (200, 201):
         raise SystemExit(f"FAIL: could not load the web-logs sample data ({status}): {body}")
+
+
+def sample_data_installed(kb: Kibana) -> bool:
+    """The web-logs sample set's status from Kibana's own sample-data API
+    (read only; nothing is reinstalled)."""
+    status, body = kb.call("GET", "/api/sample_data", internal=True)
+    if status != 200 or not isinstance(body, list):
+        return False
+    return any(d.get("id") == "logs" and d.get("status") == "installed" for d in body)
 
 
 def ensure_specs() -> Path:
@@ -291,7 +318,7 @@ def _mentions_logs(kb: Kibana, obj: dict, before: dict) -> bool:
 # ---------------------------------------------------------------- one run
 
 
-def mcp_config(path: Path, kibana_url: str, api_key: str) -> Path:
+def mcp_config(path: Path, kibana_url: str, api_key: str, extra_env: dict | None = None) -> Path:
     cfg = {
         "mcpServers": {
             "mcp-for-kibana": {
@@ -302,6 +329,7 @@ def mcp_config(path: Path, kibana_url: str, api_key: str) -> Path:
                     "KIBANA_API_KEY": api_key,
                     "KIBANA_MCP_TOOLBOXES": TOOLBOXES,
                     "KIBANA_MCP_TIER": "write",
+                    **(extra_env or {}),
                 },
             }
         }
@@ -310,7 +338,11 @@ def mcp_config(path: Path, kibana_url: str, api_key: str) -> Path:
     return path
 
 
-def parse_stream(lines: list[str]) -> dict:
+def parse_stream(lines: list[str], first_result: bool = False) -> dict:
+    """Metrics of one stream-json transcript. first_result=True reads the
+    first result event (the model's own end of turn); the default, kept for
+    the first study, reads the last one, which a late CLI cleanup result can
+    replace."""
     events = []
     for line in lines:
         line = line.strip()
@@ -320,7 +352,8 @@ def parse_stream(lines: list[str]) -> dict:
             except json.JSONDecodeError:
                 continue
     init = next((e for e in events if e.get("subtype") == "init"), {})
-    result = next((e for e in reversed(events) if e.get("type") == "result"), {})
+    results = [e for e in events if e.get("type") == "result"]
+    result = (results[0] if first_result else results[-1]) if results else {}
     tool_uses = [
         b
         for e in events
@@ -350,18 +383,56 @@ def parse_stream(lines: list[str]) -> dict:
         "model_usage": result.get("modelUsage"),
         "models_reported": sorted((result.get("modelUsage") or {}).keys()),
         "permission_denials": result.get("permission_denials") or [],
+        "n_result_events": len(results),
+        "permission_denials_stream": _stream_denials(events, results),
         "is_error": result.get("is_error"),
         "terminal_reason": result.get("terminal_reason") or result.get("subtype"),
         "final_text": result.get("result"),
     }
 
 
-def run_once(model: str, arm: str, block: str, out_root: Path) -> dict:
+def _stream_denials(events: list[dict], results: list[dict]) -> list[str]:
+    """Every denied tool_use id in the stream: permission_denied system events
+    unioned with the lists of all result events."""
+    denied = {
+        e.get("tool_use_id") or e.get("uuid")
+        for e in events
+        if e.get("type") == "system" and e.get("subtype") == "permission_denied"
+    }
+    for r in results:
+        denied.update(d.get("tool_use_id") for d in r.get("permission_denials") or [])
+    denied.discard(None)
+    return sorted(denied)
+
+
+def server_revision() -> dict:
+    """The server source the with-mcp arm runs: commit and whether src/ has
+    uncommitted changes (recorded on the root span; decision R3)."""
+
+    def git(*args: str) -> str:
+        return subprocess.run(
+            ["git", "-C", str(_REPO_ROOT), *args], capture_output=True, text=True, check=False
+        ).stdout.strip()
+
+    return {
+        "server_rev": git("rev-parse", "--short", "HEAD"),
+        "server_dirty": bool(git("status", "--porcelain", "--", "src")),
+    }
+
+
+def run_once(
+    model: str, arm: str, block: str, out_root: Path, live: dict | None = None
+) -> dict:
+    """One run. live=None is the first study's runner, unchanged. A dict turns
+    on live telemetry and the parked fixes: keys dataset, endpoint (None keeps
+    the relay's copy only), api_key, keep_identity, key_out_of_model_env,
+    server_label, prompt_version."""
     kibana_url, api_key = load_seed()
     kb = Kibana(kibana_url, api_key)
     specs = ensure_specs()
     marker = f"EFF-{secrets.token_hex(4)}"
-    prompt = task_prompt(marker)
+    prompt_version = live.get("prompt_version", 2) if live else 1
+    prompt = task_prompt(marker, prompt_version)
     run_id = f"{datetime.now(UTC):%Y%m%dT%H%M%SZ}-{model}-{arm}-{uuid.uuid4().hex[:6]}"
     run_dir = out_root / block / run_id
     run_dir.mkdir(parents=True)
@@ -386,8 +457,44 @@ def run_once(model: str, arm: str, block: str, out_root: Path) -> dict:
         ).stdout.strip(),
         "ts_start": datetime.now(UTC).isoformat(),
     }
+    lt = tel = None
+    if live:
+        import live_telemetry as lt
+
+        key_in_env = not (arm == "with-mcp" and live.get("key_out_of_model_env"))
+        record.update(
+            {
+                "prompt_version": prompt_version,
+                "live_telemetry": True,
+                "dataset": live["dataset"],
+                "key_in_model_env": key_in_env,
+                "sample_data_installed": sample_data_installed(kb),
+                **(server_revision() if arm == "with-mcp" else {}),
+            }
+        )
+        if live.get("server_label") and arm == "with-mcp":
+            record["server_label"] = live["server_label"]
+        trace_id, root_id = lt.new_trace()
+        attrs = lt.resource_attributes(run_id, model, arm, block)
+        scrubber = lt.Scrubber(
+            [api_key, live.get("api_key") or ""],
+            drop_keys=() if live.get("keep_identity") else lt.IDENTITY_ATTRS,
+        )
+        relay = lt.Relay(
+            run_dir / "telemetry.jsonl",
+            scrubber,
+            upstream=live.get("endpoint"),
+            api_key=live.get("api_key"),
+            dataset=live["dataset"],
+            agent_name=f"claude-code {arm}",
+            known=api_key,
+        ).start()
+        tel = {"trace_id": trace_id, "root_id": root_id, "attrs": attrs, "relay": relay}
+        record["trace_id"] = trace_id
+    phases: dict[str, tuple[float, float]] = {}
     before = kb.snapshot()
     started = time.monotonic()
+    t_agent = time.time()
     with tempfile.TemporaryDirectory(prefix="eff-") as tmpdir:
         tmp = Path(tmpdir)
         workdir = tmp / "work"
@@ -414,13 +521,34 @@ def run_once(model: str, arm: str, block: str, out_root: Path) -> dict:
             "--allowedTools",
             *ALLOWED_TOOLS,
         ]
+        server_otel = (
+            lt.server_env(tel["relay"].url, live["dataset"], tel["attrs"]) if tel else None
+        )
+        hook_cfg = None
+        if tel and live.get("agent_hook", True):
+            hook_cfg = write_hook_config(tmp, tel["relay"].url, live["dataset"], tel["attrs"], api_key)
+            cmd += ["--settings", json.dumps(hook_settings(hook_cfg))]
         if arm == "with-mcp":
-            cmd += ["--mcp-config", str(mcp_config(tmp / "mcp.json", kibana_url, api_key))]
+            cmd += [
+                "--mcp-config",
+                str(mcp_config(tmp / "mcp.json", kibana_url, api_key, server_otel)),
+            ]
             cmd[cmd.index("--allowedTools") + 1 : cmd.index("--allowedTools") + 1] = [
                 "mcp__mcp-for-kibana"
             ]
         env = {k: v for k, v in os.environ.items() if k not in _STRIP_ENV}
         env.update({"KIBANA_URL": kibana_url, "KIBANA_TEST_API_KEY": api_key})
+        if tel:
+            if not record["key_in_model_env"]:
+                env.pop("KIBANA_TEST_API_KEY")
+            env = lt.claude_env(
+                env,
+                tel["relay"].url,
+                live["dataset"],
+                tel["attrs"],
+                lt.traceparent(tel["trace_id"], tel["root_id"]),
+                metrics=live.get("metrics", False),
+            )
         try:
             proc = subprocess.run(
                 cmd,
@@ -437,16 +565,27 @@ def run_once(model: str, arm: str, block: str, out_root: Path) -> dict:
             stdout = e.stdout.decode() if isinstance(e.stdout, bytes) else (e.stdout or "")
             stderr = e.stderr.decode() if isinstance(e.stderr, bytes) else (e.stderr or "")
             timed_out = True
+        if hook_cfg:
+            record["agent_live"] = read_hook_rollups(hook_cfg, api_key, run_dir)
     record["wall_s"] = round(time.monotonic() - started, 1)
+    phases["agent"] = (t_agent, time.time())
     (run_dir / "transcript.jsonl").write_text(stdout)
     if stderr.strip():
         (run_dir / "stderr.txt").write_text(stderr)
 
-    parsed = parse_stream(stdout.splitlines())
+    parsed = parse_stream(stdout.splitlines(), first_result=bool(live))
     parsed.pop("events")
+    if not live:  # the first study's record shape, unchanged
+        parsed.pop("n_result_events")
+        parsed.pop("permission_denials_stream")
     record.update(parsed)
     record["timed_out"] = timed_out
-    record["valid"] = not parsed["permission_denials"]
+    if live:
+        record["n_permission_denials"] = len(parsed["permission_denials_stream"])
+        record["valid"] = not parsed["permission_denials_stream"]
+    else:
+        record["valid"] = not parsed["permission_denials"]
+    t_score = time.time()
 
     try:
         outcome, artifacts = score(kb, marker, before)
@@ -455,12 +594,17 @@ def run_once(model: str, arm: str, block: str, out_root: Path) -> dict:
     except Exception as e:  # a scoring fault is data, never a lost record
         record["harness_error"] = repr(e)
         record["success"] = False
+    phases["score"] = (t_score, time.time())
     try:
         record["reset_removed"] = kb.reset_to(before)
     except Exception as e:
         record["reset_error"] = repr(e)
+    phases["reset"] = (phases["score"][1], time.time())
     record["ts_end"] = datetime.now(UTC).isoformat()
-    record["otel"] = send_trace(record)
+    if tel:
+        record["otel"] = finish_live(record, tel, phases, live["dataset"])
+    else:
+        record["otel"] = send_trace(record)
     (run_dir / "record.json").write_text(json.dumps(record, indent=2))
     with (out_root / "runs.jsonl").open("a") as f:
         f.write(json.dumps(record) + "\n")
@@ -468,6 +612,84 @@ def run_once(model: str, arm: str, block: str, out_root: Path) -> dict:
 
 
 # ---------------------------------------------------------------- OTel
+
+_HOOK = Path(__file__).resolve().parent / "agent_signals_hook.py"
+_HOOK_EVENTS = ("PostToolUse", "PostToolUseFailure", "PermissionDenied", "Stop")
+
+
+def write_hook_config(tmp: Path, relay_url: str, dataset: str, attrs: dict, known: str) -> Path:
+    """The agent-signals hook's per-run config, outside the model's working
+    directory and readable by the owner only (it holds the Kibana key for
+    exact-match exposure detection, as mcp.json next to it does)."""
+    cfg = tmp / "agent_hook.json"
+    cfg.write_text(
+        json.dumps(
+            {
+                "relay": relay_url,
+                "service": dataset,
+                "resource": attrs,
+                "state": str(tmp / "agent_hook_state.json"),
+                "known_secret": known,
+            }
+        )
+    )
+    cfg.chmod(0o600)
+    return cfg
+
+
+def hook_settings(cfg: Path) -> dict:
+    """--settings for the measured run: the silent agent-signals hook on every
+    tool call and at the end of the turn, nothing else."""
+    import shlex
+
+    # -I -S: isolated, no site packages; the hook needs the standard library only.
+    command = " ".join(shlex.quote(str(x)) for x in (sys.executable, "-I", "-S", _HOOK, cfg))
+    entry = [{"matcher": "*", "hooks": [{"type": "command", "command": command, "timeout": 30}]}]
+    return {"hooks": {event: entry for event in _HOOK_EVENTS}}
+
+
+def read_hook_rollups(cfg: Path, known: str, run_dir: Path) -> dict:
+    """Run-level agent.* rollups from the hook's state, before the temporary
+    directory goes. The state itself (tool results) is not kept; hook errors
+    are, for diagnosis."""
+    import agent_signals_hook as hook
+
+    errors = Path(str(cfg) + ".errors")
+    if errors.exists():
+        (run_dir / "hook_errors.txt").write_text(errors.read_text())
+    state_path = Path(json.loads(cfg.read_text())["state"])
+    if not state_path.exists():
+        return {"agent.hook.invocations": 0}
+    try:
+        return hook.rollups(json.loads(state_path.read_text()), known)
+    except Exception as e:  # rollups are data; a fault is recorded, not raised
+        return {"agent.hook.rollup_error": repr(e)}
+
+
+def finish_live(record: dict, tel: dict, phases: dict, dataset: str) -> str:
+    """Send the runner's root span through the relay, give the server's batch
+    exporter a moment, stop the relay and report what went through."""
+    import live_telemetry as lt
+
+    relay = tel["relay"]
+    body = lt.runner_spans(
+        record, tel["trace_id"], tel["root_id"], phases, dataset, tel["attrs"],
+        extra=record.get("agent_live"),
+    )
+    status = relay.post_json("/v1/traces", body)
+    time.sleep(1.0)  # late server flushes (OTEL_BSP_SCHEDULE_DELAY=500 ms)
+    with contextlib.suppress(Exception):
+        relay.stop()
+    st = relay.stats
+    record["telemetry"] = {
+        **st,
+        "secrets_redacted": relay.scrubber.replaced,
+        "identity_attrs_dropped": relay.scrubber.dropped,
+    }
+    return (
+        f"live: root span HTTP {status}, {st['requests']} requests "
+        f"({st['forwarded']} forwarded, {st['failed']} failed), trace {tel['trace_id']}"
+    )
 
 
 def send_trace(record: dict) -> str:
@@ -574,19 +796,102 @@ def main() -> int:
     ap.add_argument("--arm", required=True, choices=["with-mcp", "no-mcp"])
     ap.add_argument("--runs", type=int, default=1)
     ap.add_argument("--block", default="adhoc")
-    ap.add_argument("--out", type=Path, default=_DEFAULT_OUT)
+    ap.add_argument(
+        "--out",
+        type=Path,
+        default=None,
+        help=f"study directory (default {_DEFAULT_OUT}; with --live-telemetry {_DEFAULT_LIVE_OUT})",
+    )
+    live_g = ap.add_argument_group("live telemetry (off by default)")
+    live_g.add_argument(
+        "--live-telemetry",
+        action="store_true",
+        help="emit Claude Code, server and runner telemetry at run time (LIVE_RERUN.md)",
+    )
+    live_g.add_argument("--dataset", default="mcp-for-kibana-live", help="Honeycomb dataset")
+    live_g.add_argument(
+        "--telemetry-endpoint",
+        default=os.environ.get("HONEYCOMB_OTLP_BASE", "https://api.eu1.honeycomb.io"),
+        help="OTLP/HTTP base URL the relay forwards to; 'none' keeps only the local copy",
+    )
+    live_g.add_argument(
+        "--keep-identity",
+        action="store_true",
+        help="keep Claude Code's user.email/account/organization attributes",
+    )
+    live_g.add_argument(
+        "--key-out-of-model-env",
+        action="store_true",
+        help="with-mcp arm only: do not put KIBANA_TEST_API_KEY in the model's environment (R4)",
+    )
+    live_g.add_argument(
+        "--server-label",
+        default=None,
+        help="free-text label of the server build, recorded on the root span (R3)",
+    )
+    live_g.add_argument("--prompt-version", type=int, choices=[1, 2], default=2)
+    live_g.add_argument(
+        "--with-metrics",
+        action="store_true",
+        help="also export Claude Code's metrics (they land in the environment's shared "
+        "'metrics' dataset, not --dataset)",
+    )
+    live_g.add_argument(
+        "--no-agent-hook",
+        action="store_true",
+        help="leave out the silent hook that emits the agent.* signals per tool call",
+    )
     args = ap.parse_args()
 
+    live = None
+    if args.live_telemetry:
+        endpoint = None if args.telemetry_endpoint == "none" else args.telemetry_endpoint
+        hc_key = os.environ.get("HONEYCOMB_API_KEY")
+        if endpoint and not hc_key:
+            raise SystemExit(
+                "FAIL: --live-telemetry forwards to Honeycomb but HONEYCOMB_API_KEY is not "
+                "set — export it, or pass --telemetry-endpoint none for a local-only run"
+            )
+        if args.dataset in ("claude-code", "kibana-efficiency", "mcp-for-kibana-study"):
+            raise SystemExit(
+                f"FAIL: dataset {args.dataset!r} already holds other data — pick a new one "
+                "with --dataset"
+            )
+        live = {
+            "dataset": args.dataset,
+            "endpoint": endpoint,
+            "api_key": hc_key if endpoint else None,
+            "keep_identity": args.keep_identity,
+            "key_out_of_model_env": args.key_out_of_model_env,
+            "server_label": args.server_label,
+            "prompt_version": args.prompt_version,
+            "agent_hook": not args.no_agent_hook,
+            "metrics": args.with_metrics,
+        }
+    elif args.key_out_of_model_env or args.server_label or args.keep_identity:
+        raise SystemExit("FAIL: these options need --live-telemetry")
+    out = args.out or (_DEFAULT_LIVE_OUT if live else _DEFAULT_OUT)
+
     kibana_url, api_key = load_seed()
-    ensure_logs_sample(Kibana(kibana_url, api_key))
+    kb = Kibana(kibana_url, api_key)
+    if not live:
+        ensure_logs_sample(kb)
+    elif not sample_data_installed(kb):  # load once, then only check
+        status, body = kb.call("POST", "/api/sample_data/logs", {}, internal=True)
+        if status not in (200, 201) or not sample_data_installed(kb):
+            raise SystemExit(
+                f"FAIL: the web-logs sample data is not installed and loading it failed "
+                f"({status}: {str(body)[:200]}) — check Kibana with scripts/stack.sh status"
+            )
     for i in range(args.runs):
-        r = run_once(args.model, args.arm, args.block, args.out)
+        r = run_once(args.model, args.arm, args.block, out, live)
         status = "PASS" if r.get("success") else f"FAIL ({r.get('failure_reason')})"
         print(
             f"[{i + 1}/{args.runs}] {args.model} {args.arm} {status} "
             f"turns={r.get('num_turns')} tools={r.get('n_tool_calls')} "
             f"cost=${r.get('total_cost_usd')} {r.get('wall_s')}s "
-            f"denials={len(r.get('permission_denials') or [])}",
+            f"denials={len(r.get('permission_denials_stream', r.get('permission_denials')) or [])}"
+            + (f" telemetry={r.get('otel')}" if live else ""),
             flush=True,
         )
     return 0
