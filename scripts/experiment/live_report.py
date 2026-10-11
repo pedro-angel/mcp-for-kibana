@@ -309,8 +309,20 @@ def build(root: Path, out_dir: Path) -> None:
     )
     lvt = X["live_vs_transcript_per_run"]
     lvt_full = sum(1 for v in lvt.values() if v["differ"] == 0)
+    cause_label = {
+        "blocked_call": "a call the harness blocked before running (no hook event)",
+        "clock": "timing: the hook sums Claude Code's per-call durations, the transcript "
+        "measures between event timestamps",
+        "hook_workdir": "the hook took the work dir from the cwd after a leading cd",
+        "result_representation": "the hook sizes the raw tool response, the transcript "
+        "the text the model was shown",
+        "unexplained": "unexplained",
+    }
     lvt_rows = "".join(
-        f'<tr><th scope="row"><code>{e(k)}</code></th><td class="n">{v["agree"]}</td><td class="n">{v["differ"]}</td></tr>'
+        f'<tr><th scope="row"><code>{e(k)}</code></th><td class="n">{v["agree"]}</td>'
+        f'<td class="n">{v["differ"]}</td><td>'
+        + "; ".join(f"{e(cause_label.get(c, c))} ({n})" for c, n in v.get("causes", {}).items())
+        + "</td></tr>"
         for k, v in lvt.items()
         if v["differ"]
     )
@@ -386,7 +398,7 @@ def build(root: Path, out_dir: Path) -> None:
 {"<p>Checks that disagree:</p><ul>" + dis_list + "</ul>" if disagree else ""}
 <h3>The hook against the transcripts, run by run</h3>
 <p>The hook classifies each call live with the same function the transcript pipeline uses. {lvt_full} of {len(lvt)} run-level signals agree in every run.{" Where they differ:" if lvt_rows else ""}</p>
-{'<div class="scroll"><table class="compact"><thead><tr><th scope="col">Signal</th><th class="n" scope="col">Runs equal</th><th class="n" scope="col">Runs differing</th></tr></thead><tbody>' + lvt_rows + "</tbody></table></div>" if lvt_rows else ""}
+{'<div class="scroll"><table class="results"><thead><tr><th scope="col">Signal</th><th class="n" scope="col">Runs equal</th><th class="n" scope="col">Runs differing</th><th scope="col">Cause (runs)</th></tr></thead><tbody>' + lvt_rows + "</tbody></table></div>" if lvt_rows else ""}
 
 <h2>Method and caveats</h2>
 <ul>

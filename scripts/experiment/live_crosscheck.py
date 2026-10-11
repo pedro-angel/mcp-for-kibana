@@ -33,6 +33,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from collections import Counter
 import urllib.request
 from pathlib import Path
 
@@ -406,14 +407,59 @@ def checks(a: dict, run_dirs: dict[str, Path]) -> list[dict]:
     return out
 
 
+# Timing signals: the hook sums Claude Code's per-call duration_ms; the
+# transcript pipeline measures tool_use -> tool_result between event
+# timestamps. Different clocks, never expected to be equal.
+CLOCK_SIGNALS = {"agent.time.tool_ms", "agent.time.tool_busy_ms", "agent.time.wait_ms"}
+WORKDIR_SIGNALS = {
+    "agent.fs.outside_workdir_calls",
+    "agent.fs.outside_workdir_paths",
+    "agent.fs.outside_workdir_kinds",
+}
+
+
+def hook_flagged_workdir(run_dir: Path, cwd: str | None) -> bool:
+    """True when a hook span in the run's telemetry copy names the run's own
+    work directory as outside it: the hook took its work dir from the first
+    hook payload's cwd, Claude Code's current directory after the first call,
+    which a leading `cd sub` moves."""
+    path = run_dir / "telemetry.jsonl.gz"
+    if not cwd or not (path.exists() or (run_dir / "telemetry.jsonl").exists()):
+        return False
+    import gzip
+
+    opener = gzip.open(path, "rt") if path.exists() else open(run_dir / "telemetry.jsonl")
+    with opener as fh:
+        for line in fh:
+            if '"agent.tool.outside_workdir_paths"' not in line:
+                continue
+            for rs in json.loads(line)["body"].get("resourceSpans", []):
+                for ss in rs.get("scopeSpans", []):
+                    for sp in ss.get("spans", []):
+                        for at in sp.get("attributes", []):
+                            if at["key"] == "agent.tool.outside_workdir_paths":
+                                v = next(iter(at["value"].values()), "")
+                                if cwd in str(v).split(","):
+                                    return True
+    return False
+
+
 def live_vs_transcript(a: dict, run_dirs: dict[str, Path]) -> dict:
     """Per signal, how many runs have the hook's live rollup (record.json
-    agent_live) equal to the transcript pipeline's value."""
+    agent_live) equal to the transcript pipeline's value, and for each
+    differing run the cause found in its files: "blocked_call" (a call the
+    harness blocked before running has no hook event), "clock" (timing
+    signals, different clocks), "hook_workdir" (see hook_flagged_workdir),
+    "result_representation" (tool output sizes) or "unexplained"."""
     agree: dict[str, list[int]] = {}
     diffs: dict[str, list[dict]] = {}
+    causes: dict[str, Counter] = {}
     for r in a["runs"]:
-        rec = json.loads((run_dirs[r["run_id"]] / "record.json").read_text())
+        d = run_dirs[r["run_id"]]
+        rec = json.loads((d / "record.json").read_text())
         live = rec.get("agent_live") or {}
+        blocked = transcript_facts(d)["blocked_tool_calls"]
+        workdir = None
         for k, v in live.items():
             if k.startswith("agent.hook.") or k not in r["agent"]:
                 continue
@@ -421,12 +467,46 @@ def live_vs_transcript(a: dict, run_dirs: dict[str, Path]) -> dict:
             ok = (v == t) if not isinstance(v, (int, float)) or isinstance(v, bool) else same(v, t)
             a_ = agree.setdefault(k, [0, 0])
             a_[0 if ok else 1] += 1
-            if not ok and len(diffs.setdefault(k, [])) < 5:
-                diffs[k].append({"run_id": r["run_id"], "live": v, "transcript": t})
+            if ok:
+                continue
+            if k in CLOCK_SIGNALS:
+                cause = "clock"
+            elif k in WORKDIR_SIGNALS:
+                if workdir is None:
+                    workdir = hook_flagged_workdir(d, init_cwd(d))
+                cause = "hook_workdir" if workdir else "unexplained"
+            elif blocked:
+                cause = "blocked_call"
+            elif k == "agent.usage.tool_result_bytes":
+                # The hook sizes Claude Code's raw tool_response (a Read's file
+                # text without the line numbers the model is shown; Bash stdout
+                # and stderr as separate fields); the transcript sizes the text
+                # the model was shown.
+                cause = "result_representation"
+            else:
+                cause = "unexplained"
+            causes.setdefault(k, Counter())[cause] += 1
+            if len(diffs.setdefault(k, [])) < 5:
+                diffs[k].append({"run_id": r["run_id"], "live": v, "transcript": t, "cause": cause})
     return {
-        k: {"agree": v[0], "differ": v[1], "examples": diffs.get(k, [])}
+        k: {
+            "agree": v[0],
+            "differ": v[1],
+            "causes": dict(sorted(causes.get(k, Counter()).items())),
+            "examples": diffs.get(k, []),
+        }
         for k, v in sorted(agree.items())
     }
+
+
+def init_cwd(run_dir: Path) -> str | None:
+    for line in (run_dir / "transcript.jsonl").read_text().splitlines():
+        if '"subtype":"init"' in line.replace(" ", ""):
+            try:
+                return json.loads(line).get("cwd")
+            except ValueError:
+                return None
+    return None
 
 
 def build() -> int:
