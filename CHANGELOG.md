@@ -27,6 +27,18 @@ version section.
   and sends one OpenTelemetry trace to Honeycomb when `HONEYCOMB_API_KEY` is
   set. `.claude/settings.json` allows that one command, so a cloud session can
   launch the runs.
+- **Efficiency study analysis.** `scripts/experiment/efficiency_analyze.py`
+  (stdlib only) re-derives every full-study run's metrics from its transcript
+  and writes `scripts/experiment/runs/efficiency/full/analysis.json`: per-run
+  metrics, a per model × arm summary (strict and lenient pass counts; median,
+  mean and IQR of cost, tokens, turns, tool calls and duration) and the
+  with-minus-without difference and ratio of medians per model and pooled,
+  with a seeded 95% bootstrap CI on all runs and on passing runs. It measures
+  at the first `result` event, because `parse_stream` keeps only the last one
+  and 8 no-mcp runs carry a second, one-turn result after a hung background
+  task was killed; the all-results totals are kept as a sensitivity check.
+  Permission denials are counted from the stream, and each run records how its
+  alert rule got enabled.
 
 ### Changed
 
