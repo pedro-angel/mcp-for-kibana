@@ -789,7 +789,7 @@ def build(analysis_path: Path, out_dir: Path) -> None:
         f"{' (with uncommitted changes)' if prov['dirty'] else ''}, SHA-256 "
         f"<code>{e(prov['sha256'])}</code>"
     )
-    page = f"""<title>Kibana MCP Efficiency Study</title>
+    page = f"""<title>mcp-for-kibana Efficiency Study</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,500;6..72,600&family=Public+Sans:wght@400;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
