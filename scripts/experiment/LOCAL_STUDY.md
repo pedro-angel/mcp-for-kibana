@@ -35,6 +35,7 @@ below are the proposal the file ships with.
 | `runs.order` | `rotate` | Block *b* rotates the model order and the level order by *b* |
 | `runs.max_attempts` | 3 | Tries per cell when the environment fails (an invalid run) |
 | `runs.budget_hours` | 12 | Machine time that `status` sizes N against |
+| `lmstudio.load` | `harness` | `harness`: the harness loads each model at its maximum context before its runs (`POST /api/v1/models/load`) and unloads the previous study model, for an LM Studio with JIT loading off. `jit` (the default when absent): the request loads the model |
 | `lmstudio.stream` | `true` | Stream the chat, for tool timings. `false` falls back to one JSON response |
 | `lmstudio.run_timeout_s`, `idle_timeout_s` | 1800, 600 | Per-run limit, and the limit on silence in the stream |
 | `kibana.version` | 9.5.5 | Preflight fails on any other version |
@@ -124,9 +125,11 @@ These follow [docs/e2e-setup.md](../../docs/e2e-setup.md), steps 3 and 4.
 2. **Manage Tokens** > **Create Token** with the **Use MCP Servers**
    permission. Put it in `.env.local` as `LMSTUDIO_API_TOKEN=...` (the file
    is yours, and the harness only reads it), or export it in the shell.
-3. Leave JIT loading and Auto-Evict on. The harness loads each model by
-   naming it in the request, and Auto-Evict keeps one JIT model in memory.
-   Keep the default context length at its maximum
+3. With `lmstudio.load: harness` the JIT setting does not matter: the
+   harness loads each model at its maximum context and unloads the previous
+   study model, never any other model. With `jit`, leave JIT loading and
+   Auto-Evict on: the request loads the model, and Auto-Evict keeps one JIT
+   model in memory. Keep the default context length at its maximum
    (`defaultContextLength: {"type": "max"}`).
 4. Check what is resident with `lms ps`. Unload any study model loaded with
    a small context, and anything the study does not need, with
@@ -175,8 +178,17 @@ git commit -m "chore(experiment): set the local study's models"
 export HONEYCOMB_API_KEY=...   # an ingest key for the 'test' environment (EU)
 ```
 
-The key stays in the shell and is never written to disk. The dataset
-`mcp-for-kibana-local` is created by the first send.
+The key stays in the shell and is never written to disk; a
+`HONEYCOMB_API_KEY=` line in `.env.local` (yours) works too, and is read on
+each send. The dataset `mcp-for-kibana-local` is created by the first send.
+
+With `honeycomb.required: false` runs start without the key; each run's
+spans stay in its `spans.json` and its record says `otel: skipped`. Once the
+key is there, send them:
+
+```bash
+uv run python scripts/experiment/local_run.py send-pending
+```
 
 ### 6. Preflight
 

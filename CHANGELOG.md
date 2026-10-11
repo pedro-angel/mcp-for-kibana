@@ -12,6 +12,12 @@ version section.
 
 ### Added
 
+- **Local-model study: harness loading and late sends.** `lmstudio.load:
+  harness` loads each study model at its maximum context through LM Studio's
+  REST API and unloads the previous study model, so the study runs with JIT
+  loading off; `local_run.py send-pending` sends the stored spans of runs made
+  without the Honeycomb key.
+
 - **Live telemetry for the efficiency study rerun** (opt-in).
   `efficiency_run.py --live-telemetry` gets every signal at run time from the
   component that owns it: Claude Code's own spans and log events (prompt,
@@ -147,6 +153,9 @@ version section.
 
 ### Fixed
 
+- **Local-study preflight reads Kibana's version with the key.** Real Kibana
+  answers an anonymous `/api/status` without the version, so preflight failed
+  on a correct 9.5.5 stack.
 - **`create_dashboard` accepts a time-series panel without `time_field`.**
   The panel schema says `time_field` is filled in from the data view when
   omitted, but a `date_histogram` panel without it was rejected before the
