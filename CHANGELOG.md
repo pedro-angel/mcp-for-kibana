@@ -39,6 +39,24 @@ version section.
   task was killed; the all-results totals are kept as a sensitivity check.
   Permission denials are counted from the stream, and each run records how its
   alert rule got enabled.
+- **Agent observability signals for the efficiency study.**
+  `scripts/experiment/SIGNALS.md` defines a three-tier signal catalogue:
+  OpenTelemetry GenAI semconv 1.41 attributes, generic `agent.*` agent-health
+  signals grouped by operator question (outcome; effort and cost; where time
+  goes; tool reliability with error classes, hidden failures, retries and
+  recovery; safety: secret exposure, environment enumeration, permission
+  denials, out-of-workdir paths, curated-tool bypass; harness anomalies), and
+  `study.*` dimensions. `efficiency_analyze.py` now derives these signals for
+  every run and writes them to `analysis.json`, together with per model × arm
+  summaries and bootstrap comparisons; the existing metrics and comparisons
+  are unchanged. The secret scan matches the runs' Kibana API key exactly
+  (without writing it anywhere) and generic credential patterns. It finds the
+  key in 2 of 90 no-mcp runs and in 0 with-mcp runs. The new
+  `scripts/experiment/efficiency_honeycomb.py` sends the study to the Honeycomb
+  dataset `mcp-for-kibana-study` as `invoke_agent`/`chat`/`execute_tool`
+  traces carrying these signals. It redacts content, refuses to send if the
+  key or any credential pattern remains, checks token and tool-call totals
+  against `analysis.json`, and has `--check` and `--dry-run` modes.
 
 ### Changed
 
