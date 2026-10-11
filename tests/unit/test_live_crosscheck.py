@@ -16,7 +16,7 @@ def test_specs_cover_the_study_blocks_only():
     q = lc.specs(("2026-10-11T23:00:00Z", "2026-10-12T12:00:00Z"))
     assert {"q01_roots", "q03_api_request", "q06_interaction", "q08_hook_tool"} <= set(q)
     for spec in q.values():
-        assert spec["breakdowns"] == ["study.model", "study.arm"]
+        assert spec["breakdowns"][:2] == ["study.model", "study.arm"]
         assert {"column": "study.block", "op": "starts-with", "value": "b"} in spec["filters"]
         named = [c for c in spec["calculations"] if c.get("filters")]
         assert all(c.get("name") for c in named)

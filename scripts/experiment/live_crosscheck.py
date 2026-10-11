@@ -109,6 +109,9 @@ def specs(window: tuple[str, str]) -> dict[str, dict]:
         },
         "q03_api_request": {
             **base,
+            # query_source: "sdk" is the agent loop; Claude Code adds one
+            # "generate_session_title" call per run (a Haiku call, ~1,490 input tokens).
+            "breakdowns": [*BY_CELL, "query_source"],
             "filters": [{"column": "event.name", "op": "=", "value": "api_request"}, *STUDY],
             "calculations": [
                 {"op": "COUNT"},
@@ -205,12 +208,18 @@ def hc_meta(qid: str) -> dict:
     return {"run_pk": d["run_pk"], "query_url": d["query_url"], "spec": d["template"]}
 
 
-def hc_cell(qid: str, col: str, model: str, arm: str, absent=0):
-    for row in hc_rows(qid):
-        if row.get("study.model") == model and row.get("study.arm") == arm:
-            v = row.get(col)
-            return absent if v is None else v
-    return absent
+def hc_cell(qid: str, col: str, model: str, arm: str, absent=0, **sel):
+    """Column col of the cell's row, summed over rows when a further breakdown
+    (e.g. query_source) splits the cell; sel narrows those rows."""
+    vals = [
+        row.get(col)
+        for row in hc_rows(qid)
+        if row.get("study.model") == model
+        and row.get("study.arm") == arm
+        and all(row.get(k) == v for k, v in sel.items())
+    ]
+    vals = [v for v in vals if v is not None]
+    return sum(vals) if vals else absent
 
 
 def hc_pct(values: list, p: float):
@@ -314,7 +323,8 @@ def checks(a: dict, run_dirs: dict[str, Path]) -> list[dict]:
             add("Cost and tokens", f"cost.{m}.{arm}", f"{tag}: total cost (USD)", cost,
                 "sum of runs[].cost_usd (first result event)",
                 hc_cell("q03_api_request", "SUM(cost_usd)", m, arm), "q03_api_request",
-                "SUM(cost_usd) of Claude Code's api_request log events (one per API call).")
+                "SUM(cost_usd) of Claude Code's api_request log events (one per API call), all "
+                "query sources: the CLI's total_cost_usd includes the session-title call.")
             for ours, col, label in (
                 ("output_tokens", "SUM(output_tokens)", "output tokens"),
                 ("cache_read_input_tokens", "SUM(cache_read_tokens)", "cache-read tokens"),
@@ -323,18 +333,25 @@ def checks(a: dict, run_dirs: dict[str, Path]) -> list[dict]:
             ):
                 add("Cost and tokens", f"{ours}.{m}.{arm}", f"{tag}: {label}",
                     sum(r[ours] for r in rs), f"sum of runs[].{ours}",
-                    hc_cell("q03_api_request", col, m, arm), "q03_api_request",
-                    f"{col} of api_request log events.")
+                    hc_cell("q03_api_request", col, m, arm, query_source="sdk"), "q03_api_request",
+                    f"{col} of api_request log events with query_source = sdk (the agent loop; "
+                    "the result event's usage leaves out the session-title call).")
 
             calls = sum(r["agent"]["agent.model.calls"] for r in rs)
             add("Model calls", f"model_calls_api.{m}.{arm}", f"{tag}: model calls",
                 calls, "sum of runs[].agent['agent.model.calls'] (distinct assistant message ids)",
-                hc_cell("q03_api_request", "COUNT", m, arm), "q03_api_request",
-                "COUNT of api_request log events.")
+                hc_cell("q03_api_request", "COUNT", m, arm, query_source="sdk"), "q03_api_request",
+                "COUNT of api_request log events with query_source = sdk.")
+            add("Model calls", f"title_calls.{m}.{arm}", f"{tag}: session-title side calls",
+                len(rs), f"{s}/n (one per run expected)",
+                hc_cell("q03_api_request", "COUNT", m, arm, query_source="generate_session_title"),
+                "q03_api_request",
+                "COUNT of api_request events with query_source = generate_session_title.")
             add("Model calls", f"model_calls_span.{m}.{arm}", f"{tag}: model calls (spans)",
                 calls, "sum of runs[].agent['agent.model.calls']",
                 hc_cell("q04_llm_request", "COUNT", m, arm), "q04_llm_request",
-                "COUNT of claude_code.llm_request spans.")
+                "COUNT of claude_code.llm_request spans.", calls + len(rs),
+                "Claude Code also traces the one session-title call per run as an llm_request")
             add("Trace", f"llm_in_trace.{m}.{arm}", f"{tag}: model-call spans inside the "
                 "run's trace", hc_cell("q04_llm_request", "COUNT", m, arm),
                 "q04_llm_request (all llm_request spans)",
