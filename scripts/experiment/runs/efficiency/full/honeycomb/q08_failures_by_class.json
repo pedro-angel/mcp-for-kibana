@@ -1,0 +1,152 @@
+{
+ "elapsed_str": "109.79457ms",
+ "header": [
+  {
+   "alias": "study.arm",
+   "derived": false,
+   "key_name": "study.arm",
+   "per_time": 0,
+   "type": "string"
+  },
+  {
+   "alias": "agent.tool.error_class",
+   "derived": false,
+   "key_name": "agent.tool.error_class",
+   "per_time": 0,
+   "type": "string"
+  },
+  {
+   "alias": "COUNT",
+   "derived": false,
+   "key_name": "COUNT",
+   "per_time": 0,
+   "type": ""
+  }
+ ],
+ "info": {
+  "granularity_seconds": 1800,
+  "mean_sample_rate": 1,
+  "rows_examined": 4723
+ },
+ "other_by_aggregate": {
+  "data": {
+   "COUNT": 0
+  }
+ },
+ "query_url": "https://ui.eu1.honeycomb.io/pedro-angel/environments/test/datasets/mcp-for-kibana-study/result/j2-652wKaXJ",
+ "results": [
+  {
+   "data": {
+    "COUNT": 202,
+    "agent.tool.error_class": "http_4xx",
+    "study.arm": "no-mcp"
+   }
+  },
+  {
+   "data": {
+    "COUNT": 37,
+    "agent.tool.error_class": "command_failed",
+    "study.arm": "no-mcp"
+   }
+  },
+  {
+   "data": {
+    "COUNT": 27,
+    "agent.tool.error_class": "validation",
+    "study.arm": "no-mcp"
+   }
+  },
+  {
+   "data": {
+    "COUNT": 14,
+    "agent.tool.error_class": "timeout",
+    "study.arm": "no-mcp"
+   }
+  },
+  {
+   "data": {
+    "COUNT": 9,
+    "agent.tool.error_class": "http_5xx",
+    "study.arm": "no-mcp"
+   }
+  },
+  {
+   "data": {
+    "COUNT": 6,
+    "agent.tool.error_class": "refused",
+    "study.arm": "no-mcp"
+   }
+  },
+  {
+   "data": {
+    "COUNT": 118,
+    "agent.tool.error_class": "validation",
+    "study.arm": "with-mcp"
+   }
+  },
+  {
+   "data": {
+    "COUNT": 98,
+    "agent.tool.error_class": "http_4xx",
+    "study.arm": "with-mcp"
+   }
+  },
+  {
+   "data": {
+    "COUNT": 3,
+    "agent.tool.error_class": "command_failed",
+    "study.arm": "with-mcp"
+   }
+  },
+  {
+   "data": {
+    "COUNT": 1,
+    "agent.tool.error_class": "unknown_tool",
+    "study.arm": "with-mcp"
+   }
+  }
+ ],
+ "run_pk": "j2-652wKaXJ",
+ "template": {
+  "breakdowns": [
+   "study.arm",
+   "agent.tool.error_class"
+  ],
+  "calculations": [
+   {
+    "op": "COUNT"
+   }
+  ],
+  "end_time": 1791684000,
+  "filters": [
+   {
+    "column": "gen_ai.operation.name",
+    "join_column": "",
+    "op": "=",
+    "value": "execute_tool"
+   },
+   {
+    "column": "agent.tool.failed",
+    "join_column": "",
+    "op": "=",
+    "value": true
+   }
+  ],
+  "granularity": 1800,
+  "orders": [
+   {
+    "column": "study.arm"
+   },
+   {
+    "op": "COUNT",
+    "order": "descending"
+   }
+  ],
+  "start_time": 1791655200
+ },
+ "total_by_aggregate": {
+  "data": {
+   "COUNT": 515
+  }
+ }
+}

@@ -1,0 +1,206 @@
+{
+ "elapsed_str": "107.744097ms",
+ "header": [
+  {
+   "alias": "gen_ai.conversation.id",
+   "derived": false,
+   "key_name": "gen_ai.conversation.id",
+   "per_time": 0,
+   "type": "string"
+  },
+  {
+   "alias": "gen_ai.agent.name",
+   "derived": false,
+   "key_name": "gen_ai.agent.name",
+   "per_time": 0,
+   "type": "string"
+  },
+  {
+   "alias": "service.name",
+   "derived": false,
+   "key_name": "service.name",
+   "per_time": 0,
+   "type": "string"
+  },
+  {
+   "alias": "COUNT",
+   "derived": false,
+   "key_name": "COUNT",
+   "per_time": 0,
+   "type": ""
+  },
+  {
+   "alias": "SUM(conversation.hasError)",
+   "derived": false,
+   "key_name": "SUM(conversation.hasError)",
+   "per_time": 0,
+   "type": ""
+  },
+  {
+   "alias": "SUM(conversation.totalTokens)",
+   "derived": false,
+   "key_name": "SUM(conversation.totalTokens)",
+   "per_time": 0,
+   "type": ""
+  },
+  {
+   "alias": "MIN(timestamp)",
+   "derived": false,
+   "key_name": "MIN(timestamp)",
+   "per_time": 0,
+   "type": ""
+  },
+  {
+   "alias": "MAX(timestamp)",
+   "derived": false,
+   "key_name": "MAX(timestamp)",
+   "per_time": 0,
+   "type": ""
+  }
+ ],
+ "info": {
+  "granularity_seconds": 0.5,
+  "mean_sample_rate": 1,
+  "rows_examined": 5435
+ },
+ "other_by_aggregate": {
+  "data": {
+   "COUNT": 0,
+   "MAX(timestamp)": 0,
+   "MIN(timestamp)": 0,
+   "SUM(conversation.hasError)": 0,
+   "SUM(conversation.totalTokens)": 0
+  }
+ },
+ "query_url": "https://ui.eu1.honeycomb.io/pedro-angel/environments/test/datasets/mcp-for-kibana-study/result/bP-BFERsoKQb",
+ "results": [
+  {
+   "data": {
+    "COUNT": 41,
+    "MAX(timestamp)": 1791658214.277,
+    "MIN(timestamp)": 1791658100.503541,
+    "SUM(conversation.hasError)": 7,
+    "SUM(conversation.totalTokens)": 410534,
+    "gen_ai.agent.name": "claude-code no-mcp",
+    "gen_ai.conversation.id": "20261010T184820Z-claude-haiku-5-5-no-mcp-36729c",
+    "service.name": "mcp-for-kibana-study"
+   }
+  },
+  {
+   "data": {
+    "COUNT": 12,
+    "MAX(timestamp)": 1791658270.473,
+    "MIN(timestamp)": 1791658254.630858,
+    "SUM(conversation.hasError)": 1,
+    "SUM(conversation.totalTokens)": 51445,
+    "gen_ai.agent.name": "claude-code no-mcp",
+    "gen_ai.conversation.id": "20261010T185054Z-claude-sonnet-5-5-no-mcp-aeb7dd",
+    "service.name": "mcp-for-kibana-study"
+   }
+  },
+  {
+   "data": {
+    "COUNT": 10,
+    "MAX(timestamp)": 1791658243.29,
+    "MIN(timestamp)": 1791658226.584831,
+    "SUM(conversation.hasError)": 1,
+    "SUM(conversation.totalTokens)": 78567,
+    "gen_ai.agent.name": "claude-code with-mcp",
+    "gen_ai.conversation.id": "20261010T185026Z-claude-sonnet-5-5-with-mcp-9f67f5",
+    "service.name": "mcp-for-kibana-study"
+   }
+  }
+ ],
+ "run_pk": "bP-BFERsoKQb",
+ "template": {
+  "breakdowns": [
+   "gen_ai.conversation.id",
+   "gen_ai.agent.name",
+   "service.name"
+  ],
+  "calculations": [
+   {
+    "op": "COUNT"
+   },
+   {
+    "column": "conversation.hasError",
+    "op": "SUM"
+   },
+   {
+    "column": "conversation.totalTokens",
+    "op": "SUM"
+   },
+   {
+    "column": "timestamp",
+    "op": "MIN"
+   },
+   {
+    "column": "timestamp",
+    "op": "MAX"
+   }
+  ],
+  "derived": [
+   {
+    "ad_hoc": true,
+    "virtualcolumn": "::::hnycolumn:error"
+   },
+   {
+    "ad_hoc": true,
+    "expression": "IF(OR(AND(EXISTS($error.type), NOT(EQUALS($error.type, \"\"))), AND(EXISTS($exception.type), NOT(EQUALS($exception.type, \"\"))), EQUALS($::::hnycolumn:error, true), EQUALS($::::hnycolumn:error, \"true\")), 1, 0)",
+    "virtualcolumn": "conversation.hasError"
+   },
+   {
+    "ad_hoc": true,
+    "expression": "EVENT_TIMESTAMP()",
+    "virtualcolumn": "timestamp"
+   },
+   {
+    "ad_hoc": true,
+    "expression": "IF(IN($gen_ai.operation.name, \"chat\", \"chat_completion\", \"embeddings\", \"generate_content\", \"retrieval\", \"text_completion\"), SUM(IF(EXISTS($gen_ai.usage.input_tokens), $gen_ai.usage.input_tokens, 0), IF(EXISTS($gen_ai.usage.output_tokens), $gen_ai.usage.output_tokens, 0)), 0)",
+    "virtualcolumn": "conversation.totalTokens"
+   }
+  ],
+  "end_time": 1791658320,
+  "filters": [
+   {
+    "column": "gen_ai.conversation.id",
+    "join_column": "",
+    "op": "exists"
+   },
+   {
+    "column": "gen_ai.conversation.id",
+    "join_column": "",
+    "op": "!=",
+    "value": ""
+   },
+   {
+    "column": "gen_ai.operation.name",
+    "join_column": "",
+    "op": "exists"
+   },
+   {
+    "column": "gen_ai.operation.name",
+    "join_column": "",
+    "op": "!=",
+    "value": ""
+   }
+  ],
+  "limit": 5,
+  "orders": [
+   {
+    "op": "COUNT",
+    "order": "descending"
+   }
+  ],
+  "start_time": 1791658080
+ },
+ "total_by_aggregate": {
+  "data": {
+   "COUNT": 63,
+   "MAX(timestamp)": 1791658270.473,
+   "MIN(timestamp)": 1791658100.503541,
+   "SUM(conversation.hasError)": 9,
+   "SUM(conversation.totalTokens)": 540546
+  }
+ }
+}

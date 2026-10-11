@@ -75,6 +75,20 @@ version section.
   the snapshots, and method. Tokens per call are reported as measured (1.13×
   pooled, 1.45× for Sonnet), and the page notes that the API key was also in
   the shell environment of the server arm.
+- **Honeycomb cross-check of the efficiency study.**
+  `scripts/experiment/efficiency_crosscheck.py` recomputes 320 of the study's
+  numbers with 18 Honeycomb queries over the run traces: `capture` stores each
+  query result (spec, rows, run link) under
+  `scripts/experiment/runs/efficiency/full/honeycomb/`, and `build` compares
+  them with `analysis.json` into `honeycomb_crosscheck.json`. 153 match
+  exactly, 156 differ only by Honeycomb's percentile rule (the observation at
+  index floor(p·n), verified against our runs), 2 differ for an explained
+  reason (COUNT_DISTINCT is an estimate; the AI conversation view counts tokens
+  on chat spans only), 8 bootstrap CIs are not expressible and 1 value was
+  never sent; none disagrees. `scripts/experiment/honeycomb_report.py` renders
+  the cross-check as a report page (verdict, method-difference chart, each
+  query explained with its link, the full table, gaps and instrumentation
+  recommendations).
 
 ### Changed
 

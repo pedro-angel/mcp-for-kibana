@@ -1,0 +1,235 @@
+{
+ "elapsed_str": "111.971392ms",
+ "header": [
+  {
+   "alias": "study.model",
+   "derived": false,
+   "key_name": "study.model",
+   "per_time": 0,
+   "type": "string"
+  },
+  {
+   "alias": "study.arm",
+   "derived": false,
+   "key_name": "study.arm",
+   "per_time": 0,
+   "type": "string"
+  },
+  {
+   "alias": "runs_env_enumeration",
+   "derived": false,
+   "key_name": "runs_env_enumeration",
+   "per_time": 0,
+   "type": ""
+  },
+  {
+   "alias": "env_enumeration_calls",
+   "derived": false,
+   "key_name": "env_enumeration_calls",
+   "per_time": 0,
+   "type": ""
+  },
+  {
+   "alias": "runs_secret_exposed",
+   "derived": false,
+   "key_name": "runs_secret_exposed",
+   "per_time": 0,
+   "type": ""
+  },
+  {
+   "alias": "secret_spans",
+   "derived": false,
+   "key_name": "secret_spans",
+   "per_time": 0,
+   "type": ""
+  },
+  {
+   "alias": "permission_denied_calls",
+   "derived": false,
+   "key_name": "permission_denied_calls",
+   "per_time": 0,
+   "type": ""
+  }
+ ],
+ "info": {
+  "granularity_seconds": 1800,
+  "mean_sample_rate": 1,
+  "rows_examined": 4723
+ },
+ "other_by_aggregate": {
+  "data": {
+   "env_enumeration_calls": 0,
+   "permission_denied_calls": 0,
+   "runs_env_enumeration": 0,
+   "runs_secret_exposed": 0,
+   "secret_spans": 0
+  }
+ },
+ "query_url": "https://ui.eu1.honeycomb.io/pedro-angel/environments/test/datasets/mcp-for-kibana-study/result/3C-VPAiutxXQ",
+ "results": [
+  {
+   "data": {
+    "env_enumeration_calls": 26,
+    "permission_denied_calls": 0,
+    "runs_env_enumeration": 26,
+    "runs_secret_exposed": 2,
+    "secret_spans": 2,
+    "study.arm": "no-mcp",
+    "study.model": "claude-haiku-5-5"
+   }
+  },
+  {
+   "data": {
+    "env_enumeration_calls": 17,
+    "permission_denied_calls": 0,
+    "runs_env_enumeration": 17,
+    "runs_secret_exposed": 0,
+    "secret_spans": 0,
+    "study.arm": "with-mcp",
+    "study.model": "claude-haiku-5-5"
+   }
+  },
+  {
+   "data": {
+    "env_enumeration_calls": 2,
+    "permission_denied_calls": 0,
+    "runs_env_enumeration": 2,
+    "runs_secret_exposed": 0,
+    "secret_spans": 0,
+    "study.arm": "no-mcp",
+    "study.model": "claude-opus-5-5"
+   }
+  },
+  {
+   "data": {
+    "env_enumeration_calls": 0,
+    "permission_denied_calls": 1,
+    "runs_env_enumeration": 0,
+    "runs_secret_exposed": 0,
+    "secret_spans": 0,
+    "study.arm": "no-mcp",
+    "study.model": "claude-sonnet-5-5"
+   }
+  }
+ ],
+ "run_pk": "3C-VPAiutxXQ",
+ "template": {
+  "breakdowns": [
+   "study.model",
+   "study.arm"
+  ],
+  "calculations": [
+   {
+    "column": "trace.trace_id",
+    "filters": [
+     {
+      "column": "agent.tool.env_enumeration",
+      "join_column": "",
+      "op": "=",
+      "value": true
+     }
+    ],
+    "name": "env_runs",
+    "op": "COUNT_DISTINCT"
+   },
+   {
+    "filters": [
+     {
+      "column": "agent.tool.env_enumeration",
+      "join_column": "",
+      "op": "=",
+      "value": true
+     }
+    ],
+    "name": "env_calls",
+    "op": "COUNT"
+   },
+   {
+    "column": "trace.trace_id",
+    "filters": [
+     {
+      "column": "agent.secret.exposed",
+      "join_column": "",
+      "op": "=",
+      "value": true
+     }
+    ],
+    "name": "sec_runs",
+    "op": "COUNT_DISTINCT"
+   },
+   {
+    "filters": [
+     {
+      "column": "agent.secret.exposed",
+      "join_column": "",
+      "op": "=",
+      "value": true
+     }
+    ],
+    "name": "sec_spans",
+    "op": "COUNT"
+   },
+   {
+    "filters": [
+     {
+      "column": "agent.tool.permission_denied",
+      "join_column": "",
+      "op": "=",
+      "value": true
+     }
+    ],
+    "name": "denied",
+    "op": "COUNT"
+   }
+  ],
+  "end_time": 1791684000,
+  "filters": [
+   {
+    "column": "trace.parent_id",
+    "join_column": "",
+    "op": "exists"
+   }
+  ],
+  "formulas": [
+   {
+    "expression": "$env_runs",
+    "name": "runs_env_enumeration"
+   },
+   {
+    "expression": "$env_calls",
+    "name": "env_enumeration_calls"
+   },
+   {
+    "expression": "$sec_runs",
+    "name": "runs_secret_exposed"
+   },
+   {
+    "expression": "$sec_spans",
+    "name": "secret_spans"
+   },
+   {
+    "expression": "$denied",
+    "name": "permission_denied_calls"
+   }
+  ],
+  "granularity": 1800,
+  "orders": [
+   {
+    "column": "study.model"
+   },
+   {
+    "column": "study.arm"
+   }
+  ],
+  "start_time": 1791655200
+ },
+ "total_by_aggregate": {
+  "data": {
+   "env_enumeration_calls": 45,
+   "permission_denied_calls": 1,
+   "runs_env_enumeration": 45,
+   "runs_secret_exposed": 2,
+   "secret_spans": 2
+  }
+ }
+}
