@@ -57,6 +57,12 @@ version section.
   traces carrying these signals. It redacts content, refuses to send if the
   key or any credential pattern remains, checks token and tool-call totals
   against `analysis.json`, and has `--check` and `--dry-run` modes.
+- **Efficiency study design record.** `scripts/experiment/STUDY_DESIGN.md`
+  holds the study's ten decisions with the question, the options considered
+  and what was settled, the background research (brief, statistics for
+  repeated agent runs, Kibana release check), the findings from the runs and
+  the facts checked during the design. The study's working board keeps only
+  the current state and links here.
 
 ### Changed
 
