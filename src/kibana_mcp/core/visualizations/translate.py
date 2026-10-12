@@ -223,3 +223,89 @@ def _xy(spec: VizSpec) -> dict[str, Any]:
     if breakdown:
         layer["breakdown_by"] = _bucket_dim(breakdown[0])
     return {"type": "xy", **_common(spec), "layers": [layer]}
+
+
+# --- Reading a stored Lens config back into VizSpec terms ---------------------
+# The inverse direction, for get_visualization / search_visualizations. Kibana
+# returns the config it stored, normalized (probed on 9.5.4: a bar chart with a
+# breakdown reads back as layer type "bar_stacked", terms buckets gain rank_by,
+# empty filters drop `query`). Library items may also come from the Kibana UI,
+# so every read is defensive: an unknown shape yields fewer entries, never an
+# error.
+
+_XY_LAYER_CHART = (("bar", "bar"), ("line", "line"), ("area", "area"))
+_TYPE_TO_CHART = {"data_table": "table"}
+
+
+def lens_chart_type(config: dict[str, Any]) -> str:
+    """The VizSpec chart_type a stored config shows (Kibana's own type name
+    when it has no VizSpec equivalent, e.g. 'legacy_metric')."""
+    kind = str(config.get("type", "unknown"))
+    if kind == "xy":
+        layers = config.get("layers") or [{}]
+        layer_type = str((layers[0] or {}).get("type", ""))
+        return next((c for prefix, c in _XY_LAYER_CHART if layer_type.startswith(prefix)), "xy")
+    return _TYPE_TO_CHART.get(kind, kind)
+
+
+def _read_metric(dim: dict[str, Any]) -> dict[str, Any]:
+    out: dict[str, Any] = {"agg": dim.get("operation", dim.get("column", "unknown"))}
+    for key in ("field", "label"):
+        if dim.get(key):
+            out[key] = dim[key]
+    return out
+
+
+def _read_bucket(dim: dict[str, Any]) -> dict[str, Any]:
+    fields = dim.get("fields") or ([dim["field"]] if dim.get("field") else [])
+    out: dict[str, Any] = {
+        "field": fields[0] if fields else dim.get("column", ""),
+        "kind": dim.get("operation", "unknown"),
+    }
+    if dim.get("operation") == "terms" and "limit" in dim:
+        out["limit"] = dim["limit"]
+    return out
+
+
+def _dicts(value: Any) -> list[dict[str, Any]]:
+    if isinstance(value, dict):
+        return [value]
+    if isinstance(value, list):
+        return [v for v in value if isinstance(v, dict)]
+    return []
+
+
+def describe_lens_config(config: dict[str, Any]) -> dict[str, Any]:
+    """chart_type, data_view (index pattern), time_field, metrics, group_by and
+    query of a stored Lens config, keyed as in VizSpec."""
+    layers = _dicts(config.get("layers"))
+    sources = [config] + layers
+    data_source: dict[str, Any] = next(
+        (s["data_source"] for s in sources if isinstance(s.get("data_source"), dict)), {}
+    )
+    metrics: list[dict[str, Any]] = []
+    group_by: list[dict[str, Any]] = []
+    for layer in layers:
+        metrics += [_read_metric(m) for m in _dicts(layer.get("y"))]
+        buckets = _dicts(layer.get("x")) + _dicts(layer.get("breakdown_by"))
+        group_by += [_read_bucket(b) for b in buckets]
+    if not layers:
+        # metric/pie/table/treemap/waffle hold `metrics`; gauge, heatmap,
+        # tag_cloud, region_map and mosaic a singular `metric`. Buckets sit
+        # under x+y (heatmap), group_by, rows (table), tag_by or region.
+        dims = _dicts(config.get("metrics")) + _dicts(config.get("metric"))
+        metrics += [_read_metric(m) for m in dims]
+        for key in ("x", "y", "group_by", "rows", "tag_by", "region"):
+            group_by += [_read_bucket(b) for b in _dicts(config.get(key))]
+    query = config.get("query")
+    return {
+        "chart_type": lens_chart_type(config),
+        "data_view": str(
+            data_source.get("index_pattern") or data_source.get("ref_id")
+            or data_source.get("id") or ""
+        ),
+        "time_field": data_source.get("time_field") or None,
+        "metrics": metrics,
+        "group_by": group_by,
+        "query": str(query.get("expression", "")) if isinstance(query, dict) else "",
+    }

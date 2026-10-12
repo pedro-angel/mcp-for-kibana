@@ -1,4 +1,4 @@
-"""Dashboard, alert-rule, connector and data-view ids: an empty id or one that matches nothing names
+"""Dashboard, visualization, alert-rule, connector and data-view ids: an empty id or one that matches nothing names
 the fix (D17) — where a valid id comes from — instead of kibana-py's bare
 "Parameter 'id' is required" (unmapped, so the caller saw only "Error calling
 tool") or Kibana's "Saved object [alert/<name>] not found"."""
@@ -32,6 +32,11 @@ def _rule_gw(fn):
 
 def _conn_gw(fn):
     return KibanaPyGateway(make_fake_client(connectors=SimpleNamespace(get=fn, update=fn)))
+
+
+def _viz_gw(fn, space=None):
+    viz = SimpleNamespace(get=fn, update=fn, delete=fn)
+    return KibanaPyGateway(make_fake_client(visualizations=viz), space=space)
 
 
 _DASH_CALLS = [
@@ -155,3 +160,44 @@ def test_unknown_view_id_in_a_space_carries_the_suffix_once():
 def test_update_data_view_missing_space_is_still_the_space():
     with pytest.raises(KibanaSpaceNotFound):
         _dv_gw(_no_space).update_data_view("x", "renamed", None, None)
+
+
+_VIZ_CALLS = [
+    lambda gw, i: gw.get_visualization(i),
+    lambda gw, i: gw.update_visualization(i, {"type": "metric"}),
+    lambda gw, i: gw.delete_visualization(i),
+]
+
+
+@pytest.mark.parametrize("call", _VIZ_CALLS)
+@pytest.mark.parametrize("empty", ["", "  "])
+def test_empty_visualization_id_names_where_ids_come_from(call, empty):
+    with pytest.raises(
+        KibanaRejected,
+        match=r"^visualization_id is empty — pass the id that create_visualization or "
+              r"search_visualizations returns$",
+    ):
+        call(_viz_gw(_missing), empty)
+
+
+@pytest.mark.parametrize("call", _VIZ_CALLS)
+def test_unknown_visualization_id_says_it_is_not_the_title(call):
+    with pytest.raises(
+        KibanaNotFound,
+        match=r"^visualization 'Avg price' not found — visualization_id is the id that "
+              r"create_visualization or search_visualizations returns, not the "
+              r"visualization's title; call search_visualizations to find it$",
+    ):
+        call(_viz_gw(_missing), "Avg price")
+
+
+def test_unknown_visualization_in_a_space_carries_the_suffix_once():
+    with pytest.raises(KibanaNotFound) as exc:
+        _viz_gw(_missing, space="sales").get_visualization("nope")
+    assert exc.value.message.endswith(" (in space 'sales')")
+    assert exc.value.message.count("(in space") == 1
+
+
+def test_a_missing_space_on_a_visualization_is_still_the_space():
+    with pytest.raises(KibanaSpaceNotFound):
+        _viz_gw(_no_space).get_visualization("x")

@@ -8,7 +8,7 @@ Toolboxes are selected via
 **[observability](#observability-toolbox)**,
 **[security-detections](#security-detections-toolbox)**,
 **[platform-admin](#platform-admin-toolbox)**,
-**[streams](#streams-toolbox)**, and **[fleet](#fleet-toolbox)** — 138 tools in
+**[streams](#streams-toolbox)**, and **[fleet](#fleet-toolbox)** — 143 tools in
 all. This reference details every toolbox in full. A drift-guard test
 (`tests/unit/test_docs_tool_reference.py`) asserts that every registered tool
 name appears on this page, so it cannot silently fall behind the code.
@@ -26,10 +26,15 @@ FastMCP's visibility API).
 | [`search_dashboards`](#search_dashboards) | read | Search dashboards by title/description. |
 | [`get_dashboard`](#get_dashboard) | read | Get a dashboard summary: title, description, and its panels. |
 | [`create_dashboard`](#create_dashboard) | write | Create a dashboard from one or more visualization specs; re-creating the same title overwrites it in place instead of duplicating. |
+| [`search_visualizations`](#search_visualizations) | read | Search library visualizations by title. |
+| [`get_visualization`](#get_visualization) | read | Get a library visualization in VizSpec terms: chart type, data view, metrics, group_by, filter query. |
 | [`create_visualization`](#create_visualization) | write | Create a reusable visualization in the library (not on a dashboard). |
+| [`update_visualization`](#update_visualization) | write | Replace a library visualization with a new spec, same id; dashboards that show it by reference change too. |
+| [`add_library_panel`](#add_library_panel) | write | Show a library visualization on an existing dashboard, linked (by reference), not copied. |
 | [`add_panel`](#add_panel) | write | Add a visualization panel to an existing dashboard. |
 | [`update_panel`](#update_panel) | write | Replace the visualization at a given panel index. |
 | [`delete_dashboard`](#delete_dashboard) | destructive | Permanently delete a dashboard. |
+| [`delete_visualization`](#delete_visualization) | destructive | Permanently delete a library visualization; dashboards that show it keep a broken panel. |
 | [`delete_panel`](#delete_panel) | destructive | Permanently remove one panel from a dashboard. |
 
 A tier includes everything below it: `write` (the default) registers
@@ -47,10 +52,10 @@ gating:
 
 | Tier | Tools | `readOnlyHint` | `destructiveHint` | `idempotentHint` |
 |---|---|---|---|---|
-| read | `list_data_views`, `describe_data_view`, `search_dashboards`, `get_dashboard` | `true` | — | — |
-| write | `create_visualization`, `add_panel` | `false` | `false` | `false` |
-| write (upsert) | `create_dashboard`, `update_panel` | `false` | `false` | `true` — `update_panel`: replacing the same index twice is a no-op; `create_dashboard`: re-creating the same title overwrites, never duplicates. |
-| destructive | `delete_dashboard`, `delete_panel` | `false` | `true` | `true` |
+| read | `list_data_views`, `describe_data_view`, `search_dashboards`, `get_dashboard`, `search_visualizations`, `get_visualization` | `true` | — | — |
+| write | `create_visualization`, `add_library_panel`, `add_panel` | `false` | `false` | `false` |
+| write (upsert) | `create_dashboard`, `update_panel`, `update_visualization` | `false` | `false` | `true` — `update_panel`/`update_visualization`: replacing with the same spec twice is a no-op; `create_dashboard`: re-creating the same title overwrites, never duplicates. |
+| destructive | `delete_dashboard`, `delete_visualization`, `delete_panel` | `false` | `true` | `true` |
 
 All tools also set `openWorldHint=False` (Kibana is a closed, known system,
 not an open web search).
@@ -221,9 +226,47 @@ Returns a dashboard summary with its panel list, each panel's index used by
 ```json
 {
   "id": "...", "title": "...", "description": "...",
-  "panels": [{"index": 0, "type": "vis", "title": "..."}]
+  "panels": [
+    {"index": 0, "type": "vis", "title": "..."},
+    {"index": 1, "type": "vis", "title": "...", "visualization_id": "..."}
+  ]
 }
 ```
+
+Only a panel placed with [`add_library_panel`](#add_library_panel) carries
+`visualization_id` (the library item it shows by reference); its `title` is
+the library item's title, or `""` once that item has been deleted. Inline
+panels never carry the key.
+
+### `search_visualizations`
+
+Returns a list of library-visualization summaries (no `space` echo, like
+every list-returning tool); `query` matches whole title words,
+case-insensitively, and an empty query lists all:
+
+```json
+[{"id": "...", "title": "...", "description": "", "chart_type": "bar"}]
+```
+
+### `get_visualization`
+
+Returns one library visualization read back in [VizSpec](#the-vizspec-input)
+terms, so it can be edited and passed to `update_visualization`:
+
+```json
+{
+  "id": "...", "title": "...", "description": "", "chart_type": "bar",
+  "data_view": "kibana_sample_data_flights", "time_field": "timestamp",
+  "metrics": [{"agg": "average", "field": "AvgTicketPrice"}],
+  "group_by": [{"field": "Carrier", "kind": "terms", "limit": 10}],
+  "query": "Cancelled: false"
+}
+```
+
+`data_view` is the index pattern the chart embeds; `query` is the KQL its
+`filters` became (pass them back as `filters`). A chart made in the Kibana UI
+in a shape VizSpec does not have reports Kibana's own type name (e.g.
+`legacy_metric`) and only the metrics and groupings it can read.
 
 All write/destructive tools below return a small dict with the `id` and,
 where a dashboard is involved, a human-clickable `url` built as
@@ -249,6 +292,29 @@ outside this tool are preserved).
 
 No dashboard is involved, so there is no `url`.
 
+### `update_visualization`
+
+```json
+{"id": "...", "title": "..."}
+```
+
+The library item keeps its id; its whole config is replaced by the new spec,
+after the same [pre-flight validation](#pre-flight-spec-validation) as
+`create_visualization`. A wrong id is refused before validation and never
+creates an item (Kibana's PUT alone would). Every dashboard panel placed with
+`add_library_panel` shows the change; panels added with `add_panel` or
+`create_dashboard` are separate copies and do not.
+
+### `add_library_panel`
+
+```json
+{"id": "...", "url": "...", "panel_index": 2}
+```
+
+The dashboard's `id`/`url` and the new panel's index. The visualization must
+exist in the same space (Kibana itself would store a reference to nothing);
+the panel is appended at the bottom, half width.
+
 ### `add_panel`
 
 ```json
@@ -270,6 +336,16 @@ by id, only by index; see `get_dashboard`).
 {"id": "...", "deleted": true}
 ```
 
+### `delete_visualization`
+
+```json
+{"id": "...", "deleted": true}
+```
+
+Kibana deletes a library visualization even while dashboards show it. Their
+panels stay behind, broken (`get_dashboard` reports them with an empty
+`title`); remove each with `delete_panel`.
+
 ### `delete_panel`
 
 ```json
@@ -280,8 +356,8 @@ by id, only by index; see `get_dashboard`).
 
 ### Pre-flight spec validation
 
-Before any of `create_dashboard`, `create_visualization`, `add_panel`, or
-`update_panel` touch Kibana, `_prepare_config` calls
+Before any of `create_dashboard`, `create_visualization`,
+`update_visualization`, `add_panel`, or `update_panel` touch Kibana, `_prepare_config` calls
 `validate_spec(spec, data_view)`
 (`src/kibana_mcp/core/visualizations/validate.py`) against the real,
 just-fetched data view. If validation finds any problems, the tool raises
@@ -317,8 +393,9 @@ The specific checks, each producing its own bullet:
 
 ### The unsupported-panels refusal
 
-`add_panel`, `update_panel`, and `delete_panel` all read-modify-write an
-*existing* dashboard via `_checked_dashboard_data`
+`add_panel`, `add_library_panel`, the `add_esql_*_panel` tools,
+`update_panel`, and `delete_panel` all read-modify-write an *existing*
+dashboard via `_checked_dashboard_data`
 (`toolbox.py`), which calls `get_dashboard_data` and inspects the
 `warnings` it returns. If Kibana's own response carries warnings, or the
 dashboard has top-level fields the update API doesn't accept (anything
@@ -344,6 +421,17 @@ This is a deliberate fail-closed guard — see
 - `update_panel` targeting a non-visualization panel (e.g. a text/markdown
   panel at that index): `"panel {i} is type '{type}', not a visualization —
   only vis panels can be updated"`.
+- `update_panel` targeting a panel placed with `add_library_panel`: `"panel
+  {i} shows library visualization '{id}' — change it with
+  update_visualization, which updates every dashboard that shows it"`
+  (replacing it would silently unlink it from the library item). A by-reference
+  panel does not trip the unsupported-panels refusal: the other tools carry
+  it through unchanged.
+- A `visualization_id` that is empty: `"visualization_id is empty — pass the
+  id that create_visualization or search_visualizations returns"`; one that
+  matches nothing: `"visualization '{id}' not found — visualization_id is the
+  id that create_visualization or search_visualizations returns, not the
+  visualization's title; call search_visualizations to find it"`.
 - Any error surfaced by Kibana itself (auth, not-found, schema rejection,
   connectivity) is translated from the gateway's domain exceptions
   (`KibanaAuthError`, `KibanaNotFound`, `KibanaRejected`,
@@ -353,9 +441,9 @@ This is a deliberate fail-closed guard — see
 
 ## Space targeting
 
-Every one of the 68 tools in the **dashboards**, **data-management**,
+Every one of the 73 tools in the **dashboards**, **data-management**,
 **alerting**, **cases**, and **security-detections** toolboxes — including
-the 14 destructive-tier ones — accepts an optional `space` parameter that
+the 15 destructive-tier ones — accepts an optional `space` parameter that
 targets a Kibana space by id:
 
 ```
@@ -383,7 +471,8 @@ sets `space`:
   [Configuration](configuration.md#space-targeting)).
 - **Result echo.** Every **dict-returning** tool's result gains
   `"space": "<the value passed>"` so the model can see where it acted. The
-  **list-returning** tools — `search_dashboards`, `list_data_views`,
+  **list-returning** tools — `search_dashboards`, `search_visualizations`,
+  `list_data_views`,
   `list_alert_rules`, `list_connectors`, `list_rule_types`, `list_cases`,
   `find_detection_rules`, `list_detection_rule_tags` (a bare string array),
   `search_detection_alerts`, `find_exception_lists`, `find_exception_items`,

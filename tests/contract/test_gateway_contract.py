@@ -1522,6 +1522,180 @@ def test_visualization_and_short_url_scoped_live(gateway):
             gw.delete_visualization(viz_id)
 
 
+def _delete_viz_if_exists(gateway, viz_id):
+    if viz_id is None:
+        return
+    with contextlib.suppress(KibanaNotFound):
+        gateway.delete_visualization(viz_id)
+
+
+def test_library_visualization_read_update_delete_live(gateway):
+    # The gateway half of D37: search finds by title word, get reads the stored
+    # config back in VizSpec terms, update replaces in place and refuses an id
+    # that matches nothing (Kibana's PUT would have created it), delete names
+    # the fix for a miss.
+    marker = uuid.uuid4().hex[:8]
+    viz_id = None
+    try:
+        viz_id = gateway.create_visualization(
+            to_lens_config(flights_spec(title=f"ct library {marker}"))
+        )
+        assert [v.id for v in gateway.search_visualizations(marker)] == [viz_id]
+        found = gateway.search_visualizations(marker)[0]
+        assert (found.title, found.chart_type) == (f"ct library {marker}", "bar")
+        got = gateway.get_visualization(viz_id)
+        assert (got.chart_type, got.data_view, got.time_field) == ("bar", FLIGHTS, "timestamp")
+        assert got.metrics == ({"agg": "average", "field": "AvgTicketPrice"},)
+        assert got.group_by == ({"field": "Carrier", "kind": "terms", "limit": 10},)
+        line = flights_spec(
+            title=f"ct library {marker} v2", chart_type=ChartType.LINE,
+            metrics=[MetricSpec(agg=MetricAgg.COUNT)],
+            group_by=[GroupBySpec(field="timestamp", kind="date_histogram")],
+        )
+        gateway.update_visualization(viz_id, to_lens_config(line))
+        after = gateway.get_visualization(viz_id)
+        assert (after.id, after.title, after.chart_type) == (viz_id, f"ct library {marker} v2", "line")
+        stray = f"ct-no-such-viz-{marker}"
+        with pytest.raises(KibanaNotFound, match="call search_visualizations to find it"):
+            gateway.update_visualization(stray, to_lens_config(line))
+        with pytest.raises(KibanaNotFound):
+            gateway.get_visualization(stray)  # the refused update created nothing
+        gateway.delete_visualization(viz_id)
+        with pytest.raises(KibanaNotFound, match="call search_visualizations to find it"):
+            gateway.delete_visualization(viz_id)
+        viz_id = None
+    finally:
+        _delete_viz_if_exists(gateway, viz_id)
+
+
+async def test_library_panel_keeps_the_dashboard_editable_live(gateway):
+    # D37 on the live stack, through the MCP tools: a by-reference panel
+    # round-trips with zero warnings, the other dashboards tools keep working
+    # around it, update_panel refuses it naming update_visualization, an edit to
+    # the library item reaches the panel, and deleting the item (which Kibana
+    # allows) leaves a dangling panel the tools can still edit around and remove.
+    marker = uuid.uuid4().hex[:8]
+    title = f"ct library panel {marker}"
+    dash_id = derive_dashboard_id(title)
+    viz_id = None
+    _delete_if_exists(gateway, dash_id)
+    try:
+        async with Client(_tool_server()) as client:
+            viz_id = (await client.call_tool("create_visualization", {
+                "spec": dict(_PANEL, title=f"ct library viz {marker}"),
+            })).data["id"]
+            found = (await client.call_tool("search_visualizations", {"query": marker})).data
+            assert [v["id"] for v in found] == [viz_id]
+            await client.call_tool("create_dashboard", {"title": title, "panels": [_PANEL]})
+            placed = (await client.call_tool(
+                "add_library_panel", {"dashboard_id": dash_id, "visualization_id": viz_id}
+            )).data
+            assert placed["panel_index"] == 1
+            data, warnings = gateway.get_dashboard_data(dash_id)
+            assert warnings == []  # a by-reference panel round-trips losslessly
+            assert data["panels"][1]["config"] == {"ref_id": viz_id}
+
+            await client.call_tool("add_panel", {"dashboard_id": dash_id, "panel": _PANEL})
+            data, warnings = gateway.get_dashboard_data(dash_id)
+            assert warnings == [] and len(data["panels"]) == 3
+            assert data["panels"][1]["config"] == {"ref_id": viz_id}  # kept through the RMW
+
+            with pytest.raises(ToolError, match="change it with update_visualization"):
+                await client.call_tool("update_panel", {
+                    "dashboard_id": dash_id, "panel_index": 1, "panel": _PANEL,
+                })
+            assert gateway.get_dashboard_data(dash_id)[0]["panels"][1]["config"] == {
+                "ref_id": viz_id
+            }
+
+            await client.call_tool("update_visualization", {
+                "visualization_id": viz_id, "spec": dict(_PANEL, title=f"ct renamed {marker}"),
+            })
+            panels = (await client.call_tool("get_dashboard", {"dashboard_id": dash_id})).data[
+                "panels"
+            ]
+            assert panels[1] == {
+                "index": 1, "type": "vis", "title": f"ct renamed {marker}",
+                "visualization_id": viz_id,
+            }
+            assert "visualization_id" not in panels[0]
+
+            await client.call_tool("delete_visualization", {"visualization_id": viz_id})
+            deleted_id, viz_id = viz_id, None
+            data, warnings = gateway.get_dashboard_data(dash_id)
+            assert warnings == []
+            assert data["panels"][1]["config"] == {"ref_id": deleted_id}  # dangling, kept
+            panels = (await client.call_tool("get_dashboard", {"dashboard_id": dash_id})).data[
+                "panels"
+            ]
+            assert panels[1]["title"] == "" and panels[1]["visualization_id"] == deleted_id
+            await client.call_tool("add_panel", {"dashboard_id": dash_id, "panel": _PANEL})
+            await client.call_tool("delete_panel", {"dashboard_id": dash_id, "panel_index": 1})
+            data, warnings = gateway.get_dashboard_data(dash_id)
+            assert warnings == [] and len(data["panels"]) == 3
+            assert all("ref_id" not in (p.get("config") or {}) for p in data["panels"])
+
+            with pytest.raises(ToolError, match=r"visualization '.+' not found"):
+                await client.call_tool(  # a ref Kibana would store is refused first
+                    "add_library_panel",
+                    {"dashboard_id": dash_id, "visualization_id": deleted_id},
+                )
+    finally:
+        _delete_viz_if_exists(gateway, viz_id)
+        _delete_if_exists(gateway, dash_id)
+
+
+async def test_library_tools_scoped_live(gateway):
+    # The five tools in a space: results echo it, the dashboard URL carries
+    # /s/<id>, the library item is invisible from the default space, and a miss
+    # carries the scoped suffix once.
+    marker = uuid.uuid4().hex[:8]
+    title = f"ct scoped library {marker}"
+    dash_id = derive_dashboard_id(title)
+    with _temp_space(gateway, "mcp-for-kibana-ct-lib") as space_id:
+        with _live_gateway(space_id) as gw:
+            gw.create_data_view(FLIGHTS, f"ct-flights-{marker}", "timestamp")
+        async with Client(_tool_server()) as client:
+            viz_id = (await client.call_tool("create_visualization", {
+                "spec": dict(_PANEL, title=f"ct scoped viz {marker}"), "space": space_id,
+            })).data["id"]
+            found = (await client.call_tool(
+                "search_visualizations", {"query": marker, "space": space_id}
+            )).data
+            assert [v["id"] for v in found] == [viz_id] and "space" not in found[0]
+            assert (await client.call_tool("search_visualizations", {"query": marker})).data == []
+            got = (await client.call_tool(
+                "get_visualization", {"visualization_id": viz_id, "space": space_id}
+            )).data
+            assert got["space"] == space_id and got["chart_type"] == "bar"
+            with pytest.raises(ToolError, match=r"call search_visualizations to find it$"):
+                await client.call_tool("get_visualization", {"visualization_id": viz_id})
+            await client.call_tool(
+                "create_dashboard", {"title": title, "panels": [_PANEL], "space": space_id}
+            )
+            placed = (await client.call_tool("add_library_panel", {
+                "dashboard_id": dash_id, "visualization_id": viz_id, "space": space_id,
+            })).data
+            assert placed["space"] == space_id
+            assert f"/s/{space_id}/app/dashboards#/view/{dash_id}" in placed["url"]
+            updated = (await client.call_tool("update_visualization", {
+                "visualization_id": viz_id, "spec": dict(_PANEL, title=f"ct v2 {marker}"),
+                "space": space_id,
+            })).data
+            assert updated == {"id": viz_id, "title": f"ct v2 {marker}", "space": space_id}
+            with pytest.raises(ToolError) as miss:
+                await client.call_tool(
+                    "delete_visualization",
+                    {"visualization_id": f"ct-no-such-{marker}", "space": space_id},
+                )
+            assert str(miss.value).endswith(f" (in space '{space_id}')")
+            assert str(miss.value).count("(in space") == 1
+            deleted = (await client.call_tool(
+                "delete_visualization", {"visualization_id": viz_id, "space": space_id}
+            )).data
+            assert deleted == {"id": viz_id, "deleted": True, "space": space_id}
+
+
 def test_cross_space_import_clones(gateway, tmp_path):
     # export from space a -> import into space b WITHOUT overwrite = a clone:
     # every id is regenerated and space a keeps its originals.

@@ -48,6 +48,25 @@ version section.
   `field_count` 0. A wrong id names `list_data_views`. Takes `space`.
   Decision D36. The `dashboards-analyst` profile now lists 17 tools and the
   local study's server entry 29; `local_study.json` and its runbook follow.
+- **Library visualizations: `search_visualizations`, `get_visualization`
+  (read), `update_visualization`, `add_library_panel` (write) and
+  `delete_visualization` (destructive), in the dashboards toolbox.** The id
+  `create_visualization` returns can now be used: find a library chart by
+  title, read it back as a VizSpec (chart type, data view, metrics,
+  group_by, filter query), replace it in place with a new spec (validated
+  against the real data view first, like every chart tool; a wrong id is
+  refused and never creates one), delete it, and show it on an existing
+  dashboard. `add_library_panel` links the chart by reference rather than
+  copying it, so `update_visualization` changes it on every dashboard that
+  shows it. A dashboard holding such a panel stays editable by every other
+  dashboards tool; `get_dashboard` reports the panel with a
+  `visualization_id` (inline panels are unchanged); `update_panel` on it
+  refuses and names `update_visualization`. Kibana lets a chart be deleted
+  while dashboards show it, leaving a broken panel there;
+  `delete_visualization`'s description says so and names `delete_panel`.
+  All five take `space`. Decision D37. The `dashboards-analyst` profile now
+  lists 21 tools, `read-only-explorer` 11, and the local study's server
+  entry 33; `local_study.json` and its runbook follow.
 
 ## [0.3.0] - 2026-10-12
 

@@ -55,6 +55,17 @@ def _prepare_config(gw: KibanaGateway, spec: VizSpec) -> dict[str, Any]:
     return to_lens_config(spec)
 
 
+def _dashboard_summary(gw: KibanaGateway, dashboard_id: str) -> dict[str, Any]:
+    # visualization_id appears only on by-reference panels, so a dashboard of
+    # inline panels keeps its pre-library result shape byte for byte.
+    detail = asdict(gw.get_dashboard(dashboard_id))
+    detail["panels"] = [
+        {k: v for k, v in p.items() if k != "visualization_id" or v is not None}
+        for p in detail["panels"]
+    ]
+    return detail
+
+
 def _checked_dashboard_data(gw: KibanaGateway, dashboard_id: str) -> dict[str, Any]:
     data, warnings = gw.get_dashboard_data(dashboard_id)
     if warnings:
@@ -99,7 +110,31 @@ class DashboardsToolbox:
 
             `space` targets a Kibana space by id (default: the default space)."""
             with gateway_errors(), deps.gateway_factory(space) as gw:
-                return with_space(asdict(gw.get_dashboard(dashboard_id)), space)
+                return with_space(_dashboard_summary(gw, dashboard_id), space)
+
+        @mcp.tool(tags={self.name, "read"}, annotations=_READ)
+        def search_visualizations(
+            query: str | None = None,
+            space: Annotated[str, Field(pattern=SPACE_ID_PATTERN)] | None = None,
+        ) -> list[dict[str, Any]]:
+            """Search library visualizations (from create_visualization) by title.
+            Empty query lists all.
+
+            `space` targets a Kibana space by id (default: the default space)."""
+            with gateway_errors(), deps.gateway_factory(space) as gw:
+                return [asdict(v) for v in gw.search_visualizations(query)]
+
+        @mcp.tool(tags={self.name, "read"}, annotations=_READ)
+        def get_visualization(
+            visualization_id: str,
+            space: Annotated[str, Field(pattern=SPACE_ID_PATTERN)] | None = None,
+        ) -> dict[str, Any]:
+            """Get a library visualization: title, chart type, data view, metrics,
+            group_by and filter query.
+
+            `space` targets a Kibana space by id (default: the default space)."""
+            with gateway_errors(), deps.gateway_factory(space) as gw:
+                return with_space(asdict(gw.get_visualization(visualization_id)), space)
 
     def _register_write(self, mcp: FastMCP, deps: ToolboxDeps) -> None:
         def dashboard_url(dashboard_id: str, space: str | None) -> str:
@@ -171,6 +206,44 @@ class DashboardsToolbox:
             with gateway_errors(), deps.gateway_factory(space) as gw:
                 new_id = gw.create_visualization(_prepare_config(gw, spec))
             return with_space({"id": new_id, "title": spec.title}, space)
+
+        @mcp.tool(tags={self.name, "write"}, annotations=_UPSERT)
+        def update_visualization(
+            visualization_id: str,
+            spec: VizSpec,
+            space: Annotated[str, Field(pattern=SPACE_ID_PATTERN)] | None = None,
+        ) -> dict[str, Any]:
+            """Replace a library visualization with a new spec; its id stays the same.
+            Dashboards that show it through add_library_panel change too; panels
+            added with add_panel or create_dashboard are separate copies and do not.
+
+            `space` targets a Kibana space by id (default: the default space)."""
+            with gateway_errors(), deps.gateway_factory(space) as gw:
+                gw.get_visualization(visualization_id)  # a wrong id fails before the pre-flight
+                gw.update_visualization(visualization_id, _prepare_config(gw, spec))
+            return with_space({"id": visualization_id, "title": spec.title}, space)
+
+        @mcp.tool(tags={self.name, "write"}, annotations=_WRITE)
+        def add_library_panel(
+            dashboard_id: str,
+            visualization_id: str,
+            space: Annotated[str, Field(pattern=SPACE_ID_PATTERN)] | None = None,
+        ) -> dict[str, Any]:
+            """Show a library visualization on an existing dashboard. The panel is
+            linked, not copied: update_visualization changes it on every dashboard.
+
+            `space` targets a Kibana space by id (default: the default space)."""
+            with gateway_errors(), deps.gateway_factory(space) as gw:
+                data = _checked_dashboard_data(gw, dashboard_id)
+                # Kibana stores a ref_id that names nothing (probed on 9.5.4), so
+                # the item is checked here, in the same space, before the write.
+                gw.get_visualization(visualization_id)
+                new = append_panel(data, {"ref_id": visualization_id})
+                gw.update_dashboard(dashboard_id, new)
+            return with_space({
+                "id": dashboard_id, "url": dashboard_url(dashboard_id, space),
+                "panel_index": len(new["panels"]) - 1,
+            }, space)
 
         @mcp.tool(tags={self.name, "write"}, annotations=_WRITE)
         def add_panel(
@@ -283,11 +356,34 @@ class DashboardsToolbox:
                         f"panel {panel_index} is type '{existing_type}', not a visualization — "
                         "only vis panels can be updated"
                     )
+                ref = (panels[panel_index].get("config") or {}).get("ref_id")
+                if ref:
+                    # Replacing the config would silently unlink the panel from
+                    # the library item; the chart is edited where it lives (D37).
+                    raise ToolError(
+                        f"panel {panel_index} shows library visualization '{ref}' — "
+                        "change it with update_visualization, which updates every "
+                        "dashboard that shows it"
+                    )
                 new = replace_panel_config(data, panel_index, _prepare_config(gw, panel))
                 gw.update_dashboard(dashboard_id, new)
             return with_space({"id": dashboard_id, "panel_index": panel_index}, space)
 
     def _register_destructive(self, mcp: FastMCP, deps: ToolboxDeps) -> None:
+        @mcp.tool(tags={self.name, "destructive"}, annotations=_DESTRUCTIVE)
+        def delete_visualization(
+            visualization_id: str,
+            space: Annotated[str, Field(pattern=SPACE_ID_PATTERN)] | None = None,
+        ) -> dict[str, Any]:
+            """Permanently delete a library visualization. Kibana does not check
+            dashboards first: a panel added with add_library_panel stays behind,
+            broken; remove it with delete_panel.
+
+            `space` targets a Kibana space by id (default: the default space)."""
+            with gateway_errors(), deps.gateway_factory(space) as gw:
+                gw.delete_visualization(visualization_id)
+            return with_space({"id": visualization_id, "deleted": True}, space)
+
         @mcp.tool(tags={self.name, "destructive"}, annotations=_DESTRUCTIVE)
         def delete_dashboard(
             dashboard_id: Annotated[str, Field(min_length=1)],

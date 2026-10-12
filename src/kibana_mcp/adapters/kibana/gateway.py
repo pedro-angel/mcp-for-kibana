@@ -91,7 +91,10 @@ from kibana_mcp.core.models import (
     UptimeSettings,
     ValueList,
     ValueListItem,
+    VisualizationDetail,
+    VisualizationSummary,
 )
+from kibana_mcp.core.visualizations.translate import describe_lens_config, lens_chart_type
 from kibana_mcp.ports.gateway import KibanaGateway
 
 
@@ -151,6 +154,9 @@ _ID_SOURCES = {
     "alert rule": ("rule_id", "create_alert_rule or list_alert_rules", "name"),
     "connector": ("connector_id", "create_connector or list_connectors", "name"),
     "data view": ("view_id", "create_data_view or list_data_views", "name or index pattern"),
+    "visualization": (
+        "visualization_id", "create_visualization or search_visualizations", "title"
+    ),
 }
 
 # How many date fields a time-field rejection lists before eliding the rest.
@@ -1340,18 +1346,37 @@ class KibanaPyGateway:
             page += 1
         return found
 
+    def _library_title(self, visualization_id: str) -> str:
+        # A by-reference panel stores only {"ref_id": ...} (plus an optional
+        # title override); its title lives on the library item. Kibana keeps the
+        # ref after the item is deleted (probed on 9.5.4), so a miss reads "".
+        try:
+            body = self._client.visualizations.get(id=visualization_id).body
+        except NotFoundError:
+            return ""
+        return str((body.get("data") or {}).get("title", ""))
+
+    def _panel_summary(self, index: int, panel: dict[str, Any]) -> PanelSummary:
+        config = panel.get("config") or {}
+        ref = config.get("ref_id")
+        if not ref:
+            return PanelSummary(
+                index=index, type=panel.get("type", "unknown"), title=config.get("title", "")
+            )
+        return PanelSummary(
+            index=index,
+            type=panel.get("type", "unknown"),
+            title=config.get("title") or self._library_title(ref),
+            visualization_id=ref,
+        )
+
     @_translate_errors
     def get_dashboard(self, dashboard_id: str) -> DashboardDetail:
         with _known_id("dashboard", dashboard_id):
             body = self._client.dashboards.get(id=dashboard_id).body
         data = body["data"]
         panels = tuple(
-            PanelSummary(
-                index=i,
-                type=p.get("type", "unknown"),
-                title=(p.get("config") or {}).get("title", ""),
-            )
-            for i, p in enumerate(data.get("panels", []))
+            self._panel_summary(i, p) for i, p in enumerate(data.get("panels", []))
         )
         return DashboardDetail(
             id=body["id"],
@@ -1400,13 +1425,71 @@ class KibanaPyGateway:
         return visualization_id
 
     @_translate_errors
+    def search_visualizations(self, query: str | None) -> list[VisualizationSummary]:
+        # Same walk as search_dashboards. `query` matches title words
+        # case-insensitively (probed on 9.5.4). kibana-py's `fields` and
+        # `search_fields` parameters 500 on live Kibana, so whole items come back.
+        base: dict[str, Any] = {"per_page": 100}
+        if query:
+            base["query"] = query
+        found: list[VisualizationSummary] = []
+        page = 1
+        while True:
+            body = self._client.visualizations.get_all(**base, page=page).body
+            batch = body.get("data", [])
+            found.extend(
+                VisualizationSummary(
+                    id=item["id"],
+                    title=item["data"].get("title", ""),
+                    description=item["data"].get("description", ""),
+                    chart_type=lens_chart_type(item["data"]),
+                )
+                for item in batch
+            )
+            total = (body.get("meta") or {}).get("total")
+            if not batch or (isinstance(total, int) and len(found) >= total):
+                break
+            page += 1
+        return found
+
+    @_translate_errors
+    def get_visualization(self, visualization_id: str) -> VisualizationDetail:
+        with _known_id("visualization", visualization_id):
+            body = self._client.visualizations.get(id=visualization_id).body
+        data = body["data"]
+        described = describe_lens_config(data)
+        return VisualizationDetail(
+            id=body["id"],
+            title=data.get("title", ""),
+            description=data.get("description", ""),
+            chart_type=described["chart_type"],
+            data_view=described["data_view"],
+            time_field=described["time_field"],
+            metrics=tuple(described["metrics"]),
+            group_by=tuple(described["group_by"]),
+            query=described["query"],
+        )
+
+    @_translate_errors
+    def update_visualization(self, visualization_id: str, config: dict[str, Any]) -> None:
+        # PUT /api/visualizations/{id} is an upsert: an unknown id would CREATE
+        # a visualization under it (kibana-py documents the 201). Reading first
+        # turns a wrong id into guidance instead of a stray library item.
+        with _known_id("visualization", visualization_id):
+            self._client.visualizations.get(id=visualization_id)
+            self._client.visualizations.update(id=visualization_id, data=config)
+
+    @_translate_errors
     def delete_dashboard(self, dashboard_id: str) -> None:
         with _known_id("dashboard", dashboard_id):
             self._client.dashboards.delete(id=dashboard_id)
 
     @_translate_errors
     def delete_visualization(self, visualization_id: str) -> None:
-        self._client.visualizations.delete(id=visualization_id)
+        # Kibana deletes a visualization that dashboards still reference (204,
+        # probed on 9.5.4); their panels keep a dangling ref_id.
+        with _known_id("visualization", visualization_id):
+            self._client.visualizations.delete(id=visualization_id)
 
     @_translate_errors
     def get_kibana_status(self) -> KibanaStatus:

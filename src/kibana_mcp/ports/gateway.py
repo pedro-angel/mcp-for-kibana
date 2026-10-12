@@ -55,6 +55,8 @@ from kibana_mcp.core.models import (
     UptimeSettings,
     ValueList,
     ValueListItem,
+    VisualizationDetail,
+    VisualizationSummary,
 )
 
 
@@ -85,6 +87,16 @@ class KibanaGateway(Protocol):
     def upsert_dashboard(self, dashboard_id: str, data: dict[str, Any]) -> str: ...
 
     def create_visualization(self, config: dict[str, Any]) -> str: ...
+
+    def search_visualizations(self, query: str | None) -> list[VisualizationSummary]: ...
+
+    def get_visualization(self, visualization_id: str) -> VisualizationDetail: ...
+
+    def update_visualization(self, visualization_id: str, config: dict[str, Any]) -> None:
+        """Replace a library visualization's config. Must refuse an id that
+        matches nothing (KibanaNotFound), never create one: Kibana's PUT is an
+        upsert."""
+        ...
 
     def delete_dashboard(self, dashboard_id: str) -> None: ...
 

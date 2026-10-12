@@ -1,6 +1,7 @@
 """DTOs crossing the gateway port. Deliberately thin and Kibana-agnostic."""
 
 from dataclasses import dataclass
+from typing import Any
 
 
 @dataclass(frozen=True, slots=True)
@@ -32,6 +33,9 @@ class PanelSummary:
     index: int
     type: str
     title: str
+    # Set only on a panel that shows a library visualization by reference
+    # (add_library_panel); None on an inline panel, whose result shape is unchanged.
+    visualization_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -47,6 +51,31 @@ class DashboardDetail:
     title: str
     description: str
     panels: tuple[PanelSummary, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class VisualizationSummary:
+    id: str
+    title: str
+    description: str
+    chart_type: str
+
+
+@dataclass(frozen=True, slots=True)
+class VisualizationDetail:
+    """A library visualization in VizSpec terms: `metrics` entries carry
+    agg/field/label, `group_by` entries field/kind/limit; `query` is the KQL
+    its filters became."""
+
+    id: str
+    title: str
+    description: str
+    chart_type: str
+    data_view: str
+    time_field: str | None
+    metrics: tuple[dict[str, Any], ...]
+    group_by: tuple[dict[str, Any], ...]
+    query: str
 
 
 @dataclass(frozen=True, slots=True)

@@ -42,22 +42,25 @@ The first two prove the two-axis model: they differ in **both** their toolbox se
 (read-only-explorer adds `platform-health`; dashboards-analyst raises the tier)
 and their tier. `fleet-admin` adds the `fleet` toolbox (read-first v1).
 
-### [`read-only-explorer.mcp.json`](./read-only-explorer.mcp.json) — 9 tools · `read`
-The small-/local-model reference. Explore existing dashboards and data views and
-check stack health; change nothing. Toolboxes: `dashboards` (read) +
-`platform-health` + `data-management` (read). Tools: `list_data_views`,
-`describe_data_view`, `resolve_short_url`, `search_dashboards`, `get_dashboard`,
+### [`read-only-explorer.mcp.json`](./read-only-explorer.mcp.json) — 11 tools · `read`
+The small-/local-model reference. Explore existing dashboards, library
+visualizations and data views and check stack health; change nothing. Toolboxes:
+`dashboards` (read) + `platform-health` + `data-management` (read). Tools:
+`list_data_views`, `describe_data_view`, `resolve_short_url`, `search_dashboards`,
+`get_dashboard`, `search_visualizations`, `get_visualization`,
 `export_saved_objects`, `get_kibana_status`, `get_kibana_stats`, `get_task_manager_health`.
 *Persona:* an analyst or on-device model browsing what's already in Kibana.
 
-### [`dashboards-analyst.mcp.json`](./dashboards-analyst.mcp.json) — 17 tools · `write`
+### [`dashboards-analyst.mcp.json`](./dashboards-analyst.mcp.json) — 21 tools · `write`
 Turn plain-English asks into real Lens visualizations and dashboards (idempotent —
 re-creating the same title updates rather than duplicates). Toolboxes: `dashboards`
-+ `data-management`. Adds `create_dashboard`, `create_visualization`, `add_panel`,
-`update_panel`, `create_data_view`, `update_data_view`, `create_short_url` to the read tools. This is
++ `data-management`. Adds `create_dashboard`, `create_visualization`,
+`update_visualization`, `add_library_panel`, `add_panel`, `update_panel`,
+`create_data_view`, `update_data_view`, `create_short_url` to the read tools. This is
 the project's MVP default. *Persona:* data/BI analyst, dashboard builder.
 *(Deletion tools exist but are `destructive`-tier — raise `KIBANA_MCP_TIER` to
-`destructive` only if you want the model to delete dashboards/panels.)*
+`destructive` only if you want the model to delete dashboards, panels or library
+visualizations.)*
 
 ### [`fleet-admin.mcp.json`](./fleet-admin.mcp.json) — 35 tools · `destructive`
 Administer the Elastic Agent fleet: agents, agent + integration policies, enrolled

@@ -15,7 +15,9 @@ from kibana_mcp.core.models import (
     RoleIndexPrivilege, RoleKibanaPrivilege, SavedObjectImportResult, ShortUrl, Space, Stream,
     StreamIngest, StreamSummary, StreamWriteResult, SyntheticMonitor, SyntheticParam, SyntheticPrivateLocation,
     TaskManagerHealth, Timeline, UpgradeReadiness, UptimeSettings, ValueList, ValueListItem,
+    VisualizationDetail, VisualizationSummary,
 )
+from kibana_mcp.core.visualizations.translate import describe_lens_config, lens_chart_type
 
 # Mirrors kibana_mcp.adapters.kibana.gateway._UPDATABLE_KEYS. Copied rather than
 # imported so this fake doesn't pull in the adapters.kibana layer (would violate
@@ -484,10 +486,7 @@ class FakeGateway:
 
     def get_dashboard(self, dashboard_id):
         d = self._get(dashboard_id)
-        panels = tuple(
-            PanelSummary(index=i, type=p["type"], title=(p.get("config") or {}).get("title", ""))
-            for i, p in enumerate(d.get("panels", []))
-        )
+        panels = tuple(self._panel_summary(i, p) for i, p in enumerate(d.get("panels", [])))
         return DashboardDetail(
             id=dashboard_id, title=d["title"], description=d.get("description", ""), panels=panels
         )
@@ -517,18 +516,61 @@ class FakeGateway:
         self.dashboards[dashboard_id] = data  # create-if-absent (no _get)
         return dashboard_id
 
+    def _panel_summary(self, index, panel):
+        # Mirrors the adapter: a by-reference panel reports its library item's
+        # id and title ("" once that item is deleted).
+        config = panel.get("config") or {}
+        ref = config.get("ref_id")
+        if not ref:
+            return PanelSummary(index=index, type=panel["type"], title=config.get("title", ""))
+        title = config.get("title") or self.visualizations.get(ref, {}).get("title", "")
+        return PanelSummary(index=index, type=panel["type"], title=title, visualization_id=ref)
+
     def create_visualization(self, config):
         new_id = f"viz-{next(self._ids)}"
         self.visualizations[new_id] = config
         return new_id
+
+    def _viz(self, visualization_id):
+        if not visualization_id.strip():
+            raise KibanaRejected(
+                "visualization_id is empty — pass the id that create_visualization or "
+                "search_visualizations returns"
+            )
+        if visualization_id not in self.visualizations:
+            raise KibanaNotFound(f"visualization '{visualization_id}' not found")
+        return self.visualizations[visualization_id]
+
+    def search_visualizations(self, query):
+        return [
+            VisualizationSummary(
+                id=k, title=c.get("title", ""), description=c.get("description", ""),
+                chart_type=lens_chart_type(c),
+            )
+            for k, c in self.visualizations.items()
+            if not query or query.lower() in c.get("title", "").lower()
+        ]
+
+    def get_visualization(self, visualization_id):
+        config = self._viz(visualization_id)
+        d = describe_lens_config(config)
+        return VisualizationDetail(
+            id=visualization_id, title=config.get("title", ""),
+            description=config.get("description", ""), chart_type=d["chart_type"],
+            data_view=d["data_view"], time_field=d["time_field"], metrics=tuple(d["metrics"]),
+            group_by=tuple(d["group_by"]), query=d["query"],
+        )
+
+    def update_visualization(self, visualization_id, config):
+        self._viz(visualization_id)  # never creates: the port refuses an unknown id
+        self.visualizations[visualization_id] = config
 
     def delete_dashboard(self, dashboard_id):
         self._get(dashboard_id)
         del self.dashboards[dashboard_id]
 
     def delete_visualization(self, visualization_id):
-        if visualization_id not in self.visualizations:
-            raise KibanaNotFound(f"visualization '{visualization_id}' not found")
+        self._viz(visualization_id)
         del self.visualizations[visualization_id]
 
     def get_kibana_status(self):

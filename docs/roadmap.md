@@ -6,7 +6,7 @@ tracked on this page, under *Open work*, not as GitHub issues.
 
 ## Where the project stands
 
-The server ships **10 toolboxes / 138 tools** (dashboards, data-management,
+The server ships **10 toolboxes / 143 tools** (dashboards, data-management,
 alerting, cases, security-detections, fleet, streams, observability,
 platform-admin, platform-health) — see the [Tool reference](tools.md) for every
 one. Every tool is classified read / write / destructive and contract-tested
@@ -66,6 +66,17 @@ Basic-buildable **toolboxes** that had never been filed. Now filed, in build ord
   names a tool set — with coherence warnings for lists that split working
   pairs (read-modify-write partners, fork lifecycles); today the docs name
   the foot-gun and the server does not check it.
+- feat: dashboards library loop — **shipped 2026-10-12** (D37):
+  `search_visualizations`, `get_visualization`, `update_visualization`,
+  `add_library_panel` (by reference) and `delete_visualization` make the id
+  `create_visualization` returns usable. **Still open:** telling
+  `delete_visualization`'s caller which dashboards still show the item
+  (Kibana answers only through the deprecated saved-objects `has_reference`
+  search; a scan of every dashboard per delete was not built), and a
+  two-`group_by` `mosaic`, which VizSpec accepts but Kibana 9.5.4 rejects
+  ("Only a single non-collapsed dimension is allowed for group_by", observed
+  while probing D37) — either tighten the VizSpec rule to one or send the
+  second as a collapsed dimension, after a probe on both lines.
 - **Unordered Basic backlog from the 2026-08-19 audit** (file individually when picked up): `spaces.copy_saved_objects` + `update_objects_spaces` (natural extension of space targeting), `timeline` depth (1/19 wrapped), data-view runtime fields + default get/set (in-place data-view edit shipped 2026-10-12 as `update_data_view`, D36), exception-list update/duplicate/export/import, granular `saved_objects` reads (find/get — raw CRUD stays out: Kibana marks it deprecated), `apm` writes (agent-config upsert, annotations), fleet advanced ops (package install/uninstall, diagnostics, tags, k8s manifest), streams queries/attachments/content (significant-events likely needs an AI connector — verify before filing).
 
 `security-entity-analytics` is **out of scope** (subscription-gated). `security-response`

@@ -28,7 +28,7 @@ at call time. Full per-tool arguments and return shapes:
 
 ## Behavioral guarantees
 
-- **Not space-targeted.** None of these ten tools accept the `space` parameter that 68 tools
+- **Not space-targeted.** None of these ten tools accept the `space` parameter that 73 tools
   elsewhere carry — spaces and roles are the instance-global objects that parameter routes
   *into*, so a space echo in results here would be circular. This is the deliberate negative case of
   the space-targeting contract, not an oversight.

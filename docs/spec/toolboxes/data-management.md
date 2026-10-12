@@ -190,7 +190,7 @@ and docs/tools.md#saved-objects-exportimport-data-management.
   date fields, keeps the `Kibana rejected the payload:` prefix, and turns an
   empty or unknown `view_id` into guidance (scoped suffix once).
 - **Unit — `tests/unit/toolboxes/test_space_threading.py`.** All 11 tools
-  inside the shared 68-tool cross-toolbox matrix: threading (the factory
+  inside the shared 73-tool cross-toolbox matrix: threading (the factory
   sees exactly the caller's space), schema (space present, optional,
   correctly patterned), echo (dict rows only, only when set), and the two
   shared error-path cases (space-not-found guidance, auth-error passthrough).

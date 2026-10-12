@@ -1,6 +1,6 @@
 # Decisions ledger
 
-Status: Draft v1.7 (2026-10-12) — regeneration corpus. Consumes
+Status: Draft v1.8 (2026-10-12) — regeneration corpus. Consumes
 [brief.md](brief.md); read alongside [design.md](design.md).
 
 Each entry is a decision a rewrite must not silently re-litigate: what was
@@ -159,6 +159,31 @@ this ledger stands without them.
   route (internal, and absent from kibana-py). An empty field list skips the
   check, matching `create_data_view`'s acceptance of a pattern for data not
   yet ingested. Contract: [data-management](toolboxes/data-management.md).
+- **D37 (2026-10-12, probes on 9.5.4)** — Library visualizations are placed
+  on dashboards by reference, and every dashboards tool keeps working on a
+  dashboard that holds one. Observed: the public Dashboards API stores a panel
+  `{"type": "vis", "config": {"ref_id": "<visualization id>"}}` (plus an
+  optional `title` override), records it as a `lens` saved-object reference,
+  and reads it back unchanged with no warnings, so the unsupported-panels
+  refusal does not trip and the existing read-modify-write tools carry it
+  through untouched; it also stores a `ref_id` that names no visualization.
+  Deleting a visualization a dashboard references succeeds (204), and the
+  dashboard keeps the dangling ref and still round-trips. The visualization
+  PUT is an upsert (an unknown id creates one). So `add_library_panel` checks
+  the visualization exists, in the same scoped gateway, before it writes;
+  `update_visualization` reads first, then fully pre-flights the new VizSpec
+  against the real data view, and never creates; `get_dashboard` adds
+  `visualization_id` to a by-reference panel only (inline panels keep their
+  shape) and names it by the library item's title, `""` once that item is
+  gone; `delete_visualization`'s description says a panel stays behind,
+  broken. `update_panel` refuses a by-reference panel, naming
+  `update_visualization`, rather than silently unlinking it by writing an
+  inline copy over it: the owner wants charts reused, and the change a user
+  asks of a linked chart belongs on the chart. Rejected alternative: placing
+  a by-value copy of the library config (it would work, but later edits to
+  the library item would not reach the dashboard, which is what reuse means).
+  Kibana 9.4.7 was not probed by hand; the contract tier covers it in CI
+  (D30). Contract: [dashboards](toolboxes/dashboards.md).
 
 ## Reliability and models (measured)
 

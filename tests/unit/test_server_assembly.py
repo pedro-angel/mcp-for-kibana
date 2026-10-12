@@ -9,16 +9,18 @@ from tests.fakes import FakeGateway
 
 # dashboards toolbox (data-view tools moved to data-management in #28).
 DASHBOARDS_TOOLS = {
-    "search_dashboards", "get_dashboard",
-    "create_dashboard", "create_visualization", "add_panel", "update_panel",
+    "search_dashboards", "get_dashboard", "search_visualizations", "get_visualization",
+    "create_dashboard", "create_visualization", "update_visualization", "add_library_panel",
+    "add_panel", "update_panel",
     "add_esql_metric_panel", "add_esql_table_panel", "add_esql_xy_panel",
-    "delete_dashboard", "delete_panel",
+    "delete_dashboard", "delete_visualization", "delete_panel",
 }
 DASHBOARDS_WRITE = {
-    "create_dashboard", "create_visualization", "add_panel", "update_panel",
+    "create_dashboard", "create_visualization", "update_visualization", "add_library_panel",
+    "add_panel", "update_panel",
     "add_esql_metric_panel", "add_esql_table_panel", "add_esql_xy_panel",
 }
-DASHBOARDS_DESTRUCTIVE = {"delete_dashboard", "delete_panel"}
+DASHBOARDS_DESTRUCTIVE = {"delete_dashboard", "delete_visualization", "delete_panel"}
 
 # data-management toolbox (#28).
 DATA_MGMT_TOOLS = {
@@ -247,16 +249,20 @@ async def test_platform_health_combines_with_dashboards():
     assert names == DASHBOARDS_TOOLS | PLATFORM_HEALTH_TOOLS
 
 
-async def test_read_only_explorer_profile_is_nine_read_tools():
+async def test_read_only_explorer_profile_is_eleven_read_tools():
     # read-only-explorer: dashboards + platform-health + data-management at read tier
-    # (data-management read grew by export_saved_objects with #37).
+    # (data-management read grew by export_saved_objects with #37; dashboards read by
+    # search_visualizations + get_visualization, D37).
     names = await visible_tools(
         Settings(
             toolboxes=["dashboards", "platform-health", "data-management"], tier=Tier.READ
         )
     )
-    assert names == {"search_dashboards", "get_dashboard"} | PLATFORM_HEALTH_TOOLS | DATA_MGMT_READ
-    assert len(names) == 9
+    dashboards_read = {
+        "search_dashboards", "get_dashboard", "search_visualizations", "get_visualization",
+    }
+    assert names == dashboards_read | PLATFORM_HEALTH_TOOLS | DATA_MGMT_READ
+    assert len(names) == 11
 
 
 def _probe_toolbox(box_name, retval):

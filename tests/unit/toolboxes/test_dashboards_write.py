@@ -358,7 +358,7 @@ async def test_add_esql_panels_reject_empty_string_columns(mcp, gateway):
             )
 
 
-# --- Task 5: space parameter on all 11 dashboards tools ---
+# --- Task 5: space parameter on all 16 dashboards tools ---
 
 
 async def test_create_dashboard_in_space_scopes_factory_url_and_echo(gateway):
@@ -432,6 +432,7 @@ _URL_TOOLS = [
     ("add_esql_xy_panel",
      lambda did: {"dashboard_id": did, "title": "x", "esql": "Q", "x_column": "h",
                   "y_columns": ["c"]}),
+    ("add_library_panel", lambda did: {"dashboard_id": did, "visualization_id": "viz-url"}),
 ]
 
 
@@ -440,6 +441,7 @@ _URL_TOOLS = [
     "space,prefix", [("sales", "/s/sales/"), ("default", "/s/default/"), (None, None)]
 )
 async def test_url_matrix_space_prefix(mcp, gateway, tool_name, args_builder, space, prefix):
+    gateway.visualizations["viz-url"] = {"type": "metric", "title": "URL matrix viz"}
     async with Client(mcp) as client:
         seed = await client.call_tool("create_dashboard", {"title": "Seed", "panels": [BAR_PANEL]})
         args = args_builder(seed.data["id"])
