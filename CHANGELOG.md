@@ -107,6 +107,11 @@ version section.
   traces carrying these signals. It redacts content, refuses to send if the
   key or any credential pattern remains, checks token and tool-call totals
   against `analysis.json`, and has `--check` and `--dry-run` modes.
+- **Study wrap-up.** `scripts/experiment/WRAP_UP.md` is the single overview
+  after the 10–12 October sessions: the three studies' status (study 1
+  complete; the live-telemetry rerun and the local study stopped early), what
+  study 1 showed, the lessons for designing and running the next studies, the
+  owner's open items and where every file lives.
 - **The study names the agent, not just the models.** The results page and
   the design record state that every run drove the Claude Code agent headless
   (`claude -p`), so the numbers describe Claude Code with each model, not the
