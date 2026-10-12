@@ -184,6 +184,24 @@ Considered:
 - Tested before any pilot (`study_tasks.py replay`, live stack, Kibana 9.5.5): of the 469 rules stored from the earlier runs, 465 pass the filter and time-field checks. The four rejected: a term filter on 503 only; a terms list of 500 to 509, which misses 510 to 599; a regexp with `^…$` anchors on the analysed `response` text field, which matches nothing; a `match` query on `_source.response.keyword` with an operator Elasticsearch does not have. Every correct form passes, including filters with their own `now-5m` range and ES|QL rules that carry the threshold in the query.
 - On the live stack, correct runs of all four tasks pass, and each of these fails at its step: a 503-only filter, `utc_time` as the time field, a disabled rule, a wrong TIME_FIELD answer, a panel not retitled, a change run that left the rule disabled, a wrong ENABLED answer, and a lookup run that enabled the rule.
 
+### 13. Study 5: local models in two stages
+
+_2026-10-12_
+
+**Question.** How reliably do local models that can do the work complete the four tasks through mcp-for-kibana, and how long do they take?
+
+**Decision.** Three models: `nvidia/nemotron-3-nano-4b`, `google/gemma-4-12b-qat`, `qwen/qwen3.8-27b` (three vendors and architectures, each already seen completing a Kibana task). With the server only, frozen at one commit after the pilot. Two stages, run by `local_run.py stage1` and `stage2` from [local_study.json](local_study.json); runbook [LOCAL_STUDY.md](LOCAL_STUDY.md).
+
+- Stage 1: the web-logs task, 20 runs per model. Pass mark, set before any run: at least 14 of 20 (the Wilson lower bound is then above 0.5).
+- Stage 2: the change, lookup and flights tasks, 20 runs each, only for the models that passed stage 1. The runner refuses to start it before stage 1 is complete.
+- Pilot: the web-logs task, 3 runs per model, to confirm the checks, the telemetry and the stall alert before the harness is frozen.
+- Main measures: pass rate with its Wilson interval, time per run, steps reached. 20 of 20 shows a pass rate of at least 0.84.
+- The report covers only the models that passed stage 1, on all four tasks, stated as chosen because preliminary tests showed they can complete the tasks.
+
+Considered:
+
+- The earlier local design (one task cut into chain lengths L1 to L4, to find where a model loses track) is replaced; its records stay in `runs/local/` with the config they ran with (`local_study_levels.json`). Study 5 writes to `runs/study5/`.
+
 ## Background research
 
 Looked up before or during the design.

@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Analyse the local-model study: pass rates per model x level with Wilson
-intervals, medians per step, and the chain-length breakdown.
+"""Analyse the local-model study (study 5): pass rates per model x task with
+Wilson intervals, medians per step, and the stage-1 verdict.
 
-    uv run python scripts/experiment/local_analyze.py                # full runs
+    uv run python scripts/experiment/local_analyze.py                # stage 1
+    uv run python scripts/experiment/local_analyze.py --phase stage2
     uv run python scripts/experiment/local_analyze.py --phase pilot
     uv run python scripts/experiment/local_analyze.py queries         # Honeycomb query specs
     uv run python scripts/experiment/local_analyze.py capture q01_runs RUN_PK RESULT_JSON_URL
@@ -16,12 +17,12 @@ from the stored ``response.json`` and ``events.jsonl`` with
 ``consistency``. Invalid runs (the environment failed, not the model) are
 counted and excluded from rates and metrics.
 
-Per model x level: runs, passes, rate, Wilson 95% interval, pass^k (Yao et
+Per model x task: runs, passes, rate, Wilson 95% interval, pass^k (Yao et
 al.: the chance that k runs drawn from the cell all pass), which step failed
 first, which checks failed, and median / IQR of time, tokens and tool calls,
-per run and per chain step. Per model: the pass rate by chain length and
-``lose_track_at``, the shortest level whose rate falls below
-``analysis.lose_track_threshold``.
+per run and per task step. For stage 1, the verdict per model: its
+successes on every stage-1 task against ``tasks.pass_mark``, which decides
+whether the model goes on to stage 2.
 
 The Honeycomb cross-check follows efficiency_crosscheck.py: ``queries``
 prints the query specs to run (Honeycomb MCP ``run_query``); ``capture``
@@ -113,14 +114,14 @@ def _div(a, b):
 
 def run_row(rec: dict, parsed: dict) -> dict:
     wall_s = rec["wall_ms"] / 1000 if rec.get("wall_ms") is not None else None
-    steps = rec["chain_length"]
+    steps = rec["steps_total"]
     calls = parsed["n_tool_calls"]
     return {
         "run_id": rec["run_id"],
         "block": rec["block"],
         "model": rec["model"],
-        "level": rec["level"],
-        "chain_length": steps,
+        "task": rec["task"],
+        "steps_total": steps,
         "attempt": rec.get("attempt"),
         "valid": bool(rec.get("valid")),
         "invalid_reason": rec.get("invalid_reason"),
@@ -181,7 +182,7 @@ def summarise(rows: list[dict], ks: list[int]) -> dict:
     }
 
 
-def analyze(cfg: dict, phase: str = "full") -> dict:
+def analyze(cfg: dict, phase: str = "stage1") -> dict:
     out = lr.repo_path(cfg["runs"]["out_dir"]) / phase
     rows, mismatches = [], []
     for rec_path in sorted(out.glob("*/*/record.json")):
@@ -199,64 +200,31 @@ def analyze(cfg: dict, phase: str = "full") -> dict:
                 )
         rows.append(run_row(rec, parsed))
     ks = cfg["analysis"]["pass_hat_k"]
-    levels = [lv["id"] for lv in cfg["task"]["levels"]]
+    tasks = lr.phase_tasks(cfg, phase)
     models = sorted(
         {r["model"] for r in rows},
         key=lambda m: (cfg["models"].index(m) if m in cfg["models"] else 1e9, m),
     )
     cells = {
-        m: {
-            lv: summarise([r for r in rows if r["model"] == m and r["level"] == lv], ks)
-            for lv in levels
-        }
+        m: {t: summarise([r for r in rows if r["model"] == m and r["task"] == t], ks) for t in tasks}
         for m in models
     }
-    pooled = {lv: summarise([r for r in rows if r["level"] == lv], ks) for lv in levels}
-    thr = cfg["analysis"]["lose_track_threshold"]
-    chain = {}
-    for m in models:
-        rates = [cells[m][lv]["rate"] for lv in levels]
-        lose = next(
-            (lv for lv, rate in zip(levels, rates, strict=True) if rate is not None and rate < thr),
-            None,
-        )
-        chain[m] = {
-            "levels": levels,
-            "rates": rates,
-            "wilson95": [cells[m][lv]["wilson95"] for lv in levels],
-            "lose_track_at": lose,
-            "median_steps_passed": [
-                ea.describe(
-                    [
-                        r["steps_passed"]
-                        for r in rows
-                        if r["model"] == m
-                        and r["level"] == lv
-                        and r["valid"]
-                        and r["steps_passed"] is not None
-                    ]
-                ).get("median")
-                for lv in levels
-            ],
-            "median_s_per_step": [
-                cells[m][lv]["metrics"]["s_per_step"].get("median") for lv in levels
-            ],
-            "median_output_tokens_per_step": [
-                cells[m][lv]["metrics"]["output_tokens_per_step"].get("median") for lv in levels
-            ],
-        }
+    pooled = {t: summarise([r for r in rows if r["task"] == t], ks) for t in tasks}
+    verdict = None
+    if phase == "stage1":
+        verdict = lr.stage1_verdict(cfg, lr.load_records(lr.repo_path(cfg["runs"]["out_dir"]), "stage1"))
     return {
         "phase": phase,
         "question": cfg["question"],
         "config_sha": hashlib.sha256(Path(cfg["_path"]).read_bytes()).hexdigest()[:12],
-        "lose_track_threshold": thr,
+        "pass_mark": cfg["tasks"]["pass_mark"],
         "n_runs": len(rows),
         "n_valid": sum(1 for r in rows if r["valid"]),
         "models": models,
-        "levels": levels,
+        "tasks": tasks,
         "cells": cells,
         "pooled": pooled,
-        "chain": chain,
+        "stage1_verdict": verdict,
         "consistency": {"checked": [k for k, _ in CONSISTENCY], "mismatches": mismatches},
         "runs": rows,
     }
@@ -265,7 +233,7 @@ def analyze(cfg: dict, phase: str = "full") -> dict:
 # ---------------------------------------------------------------- Honeycomb
 
 
-def honeycomb_queries(cfg: dict, phase: str = "full") -> dict:
+def honeycomb_queries(cfg: dict, phase: str = "stage1") -> dict:
     """Query specs for the cross-check, in the Honeycomb query JSON the MCP
     ``run_query`` takes. Set start/end time to cover the runs."""
     base = [
@@ -273,7 +241,7 @@ def honeycomb_queries(cfg: dict, phase: str = "full") -> dict:
         {"column": "study.phase", "op": "=", "value": phase},
         {"column": "study.valid", "op": "=", "value": True},
     ]
-    bd = ["study.model", "study.level"]
+    bd = ["study.model", "study.task"]
     return {
         "q01_runs": {
             "breakdowns": bd,
@@ -292,7 +260,7 @@ def honeycomb_queries(cfg: dict, phase: str = "full") -> dict:
                 {"name": "conversations", "expression": "$conv"},
                 {"name": "passes", "expression": "$ok"},
             ],
-            "orders": [{"column": "study.model"}, {"column": "study.level"}],
+            "orders": [{"column": "study.model"}, {"column": "study.task"}],
         },
         "q02_sums": {
             "breakdowns": bd,
@@ -303,10 +271,10 @@ def honeycomb_queries(cfg: dict, phase: str = "full") -> dict:
                 {"op": "SUM", "column": "agent.tool.calls_mcp"},
                 {"op": "SUM", "column": "agent.tool.invalid_calls"},
             ],
-            "orders": [{"column": "study.model"}, {"column": "study.level"}],
+            "orders": [{"column": "study.model"}, {"column": "study.task"}],
         },
         "q03_spans": {
-            "breakdowns": ["study.model", "study.level", "gen_ai.operation.name"],
+            "breakdowns": ["study.model", "study.task", "gen_ai.operation.name"],
             "filters": [base[1]],
             "calculations": [{"op": "COUNT"}],
         },
@@ -326,7 +294,7 @@ def capture(cfg: dict, phase: str, qid: str, run_pk: str, url: str) -> int:
     return 0
 
 
-def crosscheck(cfg: dict, phase: str = "full") -> dict:
+def crosscheck(cfg: dict, phase: str = "stage1") -> dict:
     base = lr.repo_path(cfg["runs"]["out_dir"]) / phase
     a = json.loads((base / "analysis.json").read_text())
     raw = base / "honeycomb"
@@ -335,18 +303,18 @@ def crosscheck(cfg: dict, phase: str = "full") -> dict:
         p = raw / f"{qid}.json"
         return [r["data"] for r in json.loads(p.read_text())["results"]] if p.exists() else None
 
-    def cell(rs, model, level, col):
+    def cell(rs, model, task, col):
         for r in rs or []:
-            if r.get("study.model") == model and r.get("study.level") == level:
+            if r.get("study.model") == model and r.get("study.task") == task:
                 return r.get(col)
         return None
 
     checks = []
     q1, q2 = rows("q01_runs"), rows("q02_sums")
     for m in a["models"]:
-        for lv in a["levels"]:
-            c = a["cells"][m][lv]
-            valid = [r for r in a["runs"] if r["model"] == m and r["level"] == lv and r["valid"]]
+        for t in a["tasks"]:
+            c = a["cells"][m][t]
+            valid = [r for r in a["runs"] if r["model"] == m and r["task"] == t and r["valid"]]
             ours = {
                 ("q01_runs", "runs"): c["n_valid"],
                 ("q01_runs", "conversations"): c["n_valid"],
@@ -364,7 +332,7 @@ def crosscheck(cfg: dict, phase: str = "full") -> dict:
             }
             for (qid, col), our in ours.items():
                 rs = q1 if qid == "q01_runs" else q2
-                hc = cell(rs, m, lv, col) if rs is not None else None
+                hc = cell(rs, m, t, col) if rs is not None else None
                 if rs is None:
                     verdict = "not captured"
                 elif hc is None and our == 0:
@@ -374,7 +342,7 @@ def crosscheck(cfg: dict, phase: str = "full") -> dict:
                 checks.append(
                     {
                         "model": m,
-                        "level": lv,
+                        "task": t,
                         "query": qid,
                         "column": col,
                         "ours": our,
@@ -398,7 +366,7 @@ def main(argv: list[str] | None = None) -> int:
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     ap.add_argument("--config", type=Path, default=lr.CONFIG)
-    ap.add_argument("--phase", default="full", choices=["pilot", "full"])
+    ap.add_argument("--phase", default="stage1", choices=["pilot", "stage1", "stage2"])
     sub = ap.add_subparsers(dest="cmd")
     sub.add_parser("analyze")
     sub.add_parser("queries")
@@ -423,9 +391,10 @@ def main(argv: list[str] | None = None) -> int:
     path.write_text(json.dumps(a, indent=1, sort_keys=True) + "\n")
     print(f"wrote {path}: {a['n_runs']} runs, {a['n_valid']} valid")
     for m in a["models"]:
-        ch = a["chain"][m]
-        rates = " ".join(f"{lv}={c['passes']}/{c['n_valid']}" for lv, c in a["cells"][m].items())
-        print(f"  {m}: {rates}  lose_track_at={ch['lose_track_at']}")
+        rates = " ".join(f"{t}={c['passes']}/{c['n_valid']}" for t, c in a["cells"][m].items())
+        v = (a["stage1_verdict"] or {}).get(m)
+        tail = f"  stage 1 (pass mark {a['pass_mark']}): {'PASSED' if v['passed'] else 'not passed'}" if v else ""
+        print(f"  {m}: {rates}{tail}")
     if a["consistency"]["mismatches"]:
         print(
             f"WARN: {len(a['consistency']['mismatches'])} record values differ from the re-derivation"

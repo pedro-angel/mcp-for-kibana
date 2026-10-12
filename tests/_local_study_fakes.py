@@ -1,7 +1,7 @@
 """HTTP fakes for the local-model study runner (scripts/experiment/local_run.py):
 a fake Kibana REST API, a fake LM Studio ``/api/v1`` server with scripted model
-behaviours, and a fake Honeycomb OTLP intake. A loader-parsed helper module,
-never a test module.
+behaviours, a fake Honeycomb OTLP intake, and an in-memory stand-in for the
+checker's Elasticsearch. A loader-parsed helper module, never a test module.
 
 tests/fakes.py fakes the gateway port in memory; the runner speaks HTTP to
 Kibana, LM Studio and Honeycomb, so these fakes are HTTP servers on
@@ -185,7 +185,12 @@ class FakeKibana:
                 return h._send(200, [])
             if path == "/api/data_views":
                 dvs = [
-                    {"id": i, "title": LOGS_INDEX, "name": "Kibana Sample Data Logs"}
+                    {
+                        "id": i,
+                        "title": LOGS_INDEX,
+                        "name": "Kibana Sample Data Logs",
+                        "timeFieldName": "timestamp",
+                    }
                     for t, i in self.other
                     if t == "index-pattern"
                 ]
@@ -207,6 +212,11 @@ class FakeKibana:
             if m and method == "DELETE":
                 self.rules.pop(m.group(1), None)
                 return h._send(204, {})
+            if m and method == "GET":
+                rule = self.rules.get(m.group(1))
+                if rule is None:
+                    return h._send(404, {"statusCode": 404, "error": "Not Found"})
+                return h._send(200, rule)
             m = re.fullmatch(r"/api/saved_objects/([^/]+)/([^/]+)", path)
             if m and method == "DELETE":
                 self.other.discard((m.group(1), m.group(2)))
@@ -515,6 +525,38 @@ class FakeLMStudio:
             lines.append("RULE_ENABLED: yes")
         items.append({"type": "message", "content": "\n".join(lines)})
         return items
+
+
+# ---------------------------------------------------------------- Elasticsearch
+
+
+class FakeElastic:
+    """The checker's Elasticsearch (study_tasks.Elastic) in memory: the
+    web-logs mapping, and the same count for every query, so every rule
+    filter evaluates as correct. The filter evaluation itself is exercised
+    on the live stack (study_tasks.py replay; STUDY_DESIGN.md decision 12)."""
+
+    MAPPING = {
+        "@timestamp": {"type": "date"},
+        "timestamp": {"type": "alias", "path": "@timestamp"},
+        "response": {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
+    }
+
+    def __init__(self):
+        self.calls: list[tuple[str, str]] = []
+
+    def call(self, method, path, body=None, ndjson=None):
+        self.calls.append((method, path))
+        if path == "/":
+            return 200, {"version": {"number": "9.5.5"}}
+        if path.endswith("/_mapping"):
+            index = path.strip("/").split("/")[0]
+            return 200, {index: {"mappings": {"properties": self.MAPPING}}}
+        if path.endswith("/_count"):
+            return 200, {"count": 5}
+        if path == "/_query":
+            return 200, {"columns": [{"name": "c"}], "values": [[5]]}
+        return 200, {}
 
 
 # ---------------------------------------------------------------- Honeycomb
