@@ -189,11 +189,17 @@ def test_steps_passed_counts_leading_steps_only():
 
 
 def test_change_correct_run_passes():
-    seeded = _seeded_state("Site health overview", 3,
-                           _rule("Server errors", "study-seed-server-errors", threshold=20))
+    seeded = _seeded_state("Site health", 3, _rule("Server errors", "study-seed-server-errors"))
     state = _weblogs_state(task="change", dashboards=[], rules=[], seeded=seeded, filters={})
     out = st.score(CFG, "change", M, state, "Done.")
     assert out["success"], out["failure_reason"]
+
+
+def test_change_with_the_rule_still_disabled_fails_at_enable():
+    seeded = _seeded_state("Site health", 3)
+    state = _weblogs_state(task="change", dashboards=[], rules=[], seeded=seeded, filters={})
+    out = st.score(CFG, "change", M, state, "Done.")
+    assert out["steps_passed"] == 1 and out["first_failed_step"] == "enable"
 
 
 def test_change_that_recreates_objects_fails():
@@ -204,7 +210,7 @@ def test_change_that_recreates_objects_fails():
     assert "nothing_new" in out["failure_reason"]
 
 
-LOOKUP = "PANELS: 2\nRULE_NAME: Server errors\nTHRESHOLD: 10\nINTERVAL: 1m\nENABLED: no"
+LOOKUP = "PANELS: 2\nRULE_NAME: Server errors\nINTERVAL: 1m\nENABLED: no"
 
 
 def test_lookup_correct_answers_pass_and_a_change_fails():
