@@ -21,6 +21,22 @@ version section.
   index; `study_tasks.py replay` scores stored runs' rules against the live
   stack. Every check's expected and actual value is exported as root-span
   attributes for Honeycomb. STUDY_DESIGN.md decision 12.
+- **Study 4 in the efficiency runner** (default off). `efficiency_run.py
+  --task <id>` runs one of the four tasks with prompt, seed and checks from
+  `study_tasks.py`, writes `outcome.json`, and puts every check on the run's
+  root span (`study_tasks.span_attributes`). `--blocks FIRST LAST` drives
+  every (task, model, arm) cell once per block in an order rotated by block,
+  resumes with `--skip-done`, and raises a stall alert (stderr and
+  `stalls.jsonl`) after 40 minutes without progress. Two Haiku smoke runs
+  are kept in `runs/efficiency/study4/smoke`.
+
+### Fixed
+
+- **The agent-signals hook judges paths against the run's work directory.**
+  It took the work directory from the first hook payload's `cwd`, which a
+  leading `cd sub` moves, so later calls inside the work directory were
+  flagged as outside it. The runner now writes the work directory into the
+  hook's config.
 
 ## [0.3.0] - 2026-10-12
 
