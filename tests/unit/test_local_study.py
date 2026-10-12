@@ -451,9 +451,11 @@ def test_stage2_waits_for_stage1_then_runs_only_the_models_that_passed(env, monk
         lr.run_matrix(cfg, "stage2")
     assert lr.run_matrix(cfg, "stage1") == 0
     verdict = lr.stage1_verdict(cfg, _records(env.out, "stage1"))
-    assert verdict["fake/pass"] == {
+    assert {k: verdict["fake/pass"][k] for k in ("successes", "done", "cells", "complete", "passed")} == {
         "successes": {"weblogs": 2}, "done": 2, "cells": 2, "complete": True, "passed": True,
     }
+    assert verdict["fake/pass"]["median_s"] > 0
+    assert lr.stage2_model(cfg, verdict) == "fake/pass"
     assert verdict["fake/fail"]["passed"] is False
 
     restored = []
@@ -469,6 +471,24 @@ def test_stage2_waits_for_stage1_then_runs_only_the_models_that_passed(env, monk
     assert all(
         (env.out / "stage2" / r["block"] / r["run_id"] / "seed.json").exists() for r in seeded
     )
+
+
+def test_stage2_model_is_the_best_that_passed_with_time_breaking_ties(env):
+    env.cfg["models"] = ["a/x", "b/y", "c/z"]
+    cfg = env.write()
+
+    def v(passes, median_s, passed=True):
+        return {"successes": {"weblogs": passes}, "passed": passed, "complete": True,
+                "median_s": median_s}
+
+    # most passes wins, even when slower
+    assert lr.stage2_model(cfg, {"a/x": v(15, 50), "b/y": v(18, 200), "c/z": v(9, 10, False)}) == "b/y"
+    # tie on passes: the faster median wins
+    assert lr.stage2_model(cfg, {"a/x": v(18, 120), "b/y": v(18, 90), "c/z": v(18, 95)}) == "b/y"
+    # full tie: the config order decides
+    assert lr.stage2_model(cfg, {"a/x": v(18, 90), "b/y": v(18, 90), "c/z": v(5, 1, False)}) == "a/x"
+    # a model below the pass mark never goes on, however fast
+    assert lr.stage2_model(cfg, {m: v(13, 1, False) for m in cfg["models"]}) is None
 
 
 def test_status_estimates_stage1_from_the_pilot(env, capsys):
