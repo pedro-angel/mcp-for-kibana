@@ -102,6 +102,18 @@ class Connector:
 
 
 @dataclass(frozen=True, slots=True)
+class RuleType:
+    id: str                      # the rule_type_id create_alert_rule takes
+    name: str
+    category: str
+    producer: str
+    consumers: tuple[str, ...]   # consumers the caller may create this type under (Kibana "all")
+    enabled_in_license: bool     # False: the licence does not allow creating it
+    minimum_license_required: str
+    internally_managed: bool     # Kibana's is_internally_managed flag, passed through
+
+
+@dataclass(frozen=True, slots=True)
 class AlertingHealth:
     status: str
     has_permanent_encryption_key: bool

@@ -137,7 +137,7 @@ model, through our server, into a real Kibana dashboard.
    The alerting-space gate (`test_lmstudio_alerting_space.py`) needs a
    **second** entry named `mcp-for-kibana-alerting` — same command and env,
    but `KIBANA_MCP_TOOLBOXES: "alerting,platform-admin"`. Each gate keeps its
-   own frozen tool surface (24 tools for the dashboards gate, 16 for
+   own frozen tool surface (24 tools for the dashboards gate, 17 for
    alerting); one shared entry cannot satisfy both experiment designs.
 
    > Need a fresh API key? Delete `elastic-start-local/.env.seed` (or its `KIBANA_TEST_API_KEY`

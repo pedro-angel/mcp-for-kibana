@@ -28,6 +28,12 @@ version section.
 
 ### Added
 
+- **`list_rule_types` (alerting, read).** Lists the rule types this Kibana
+  offers with the consumers the caller may create each under and its licence
+  status, so `create_alert_rule`'s `rule_type_id` and `consumer` no longer have
+  to be known in advance. It does not describe `params`: Kibana's API publishes
+  no params schema. Shipped from the alerting toolbox's recorded next work.
+
 - **Cloud sessions start ready to work.** A SessionStart hook in
   `.claude/settings.json` runs `scripts/cloud-session-start.sh`, which starts
   `dockerd` (the environment snapshot keeps the images, not the daemon) and runs

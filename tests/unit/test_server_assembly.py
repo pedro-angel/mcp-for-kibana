@@ -61,10 +61,13 @@ async def test_destructive_tier_shows_everything():
 
 ALERTING_TOOLS = {
     "list_alert_rules", "get_alert_rule", "get_alerting_health", "list_connectors",
-    "create_alert_rule", "enable_alert_rule", "disable_alert_rule", "create_connector",
+    "list_rule_types", "create_alert_rule", "enable_alert_rule", "disable_alert_rule", "create_connector",
     "delete_alert_rule", "delete_connector", "execute_connector",
 }
-ALERTING_READ = {"list_alert_rules", "get_alert_rule", "get_alerting_health", "list_connectors"}
+ALERTING_READ = {
+    "list_alert_rules", "get_alert_rule", "get_alerting_health", "list_connectors",
+    "list_rule_types",
+}
 
 
 async def test_unknown_toolbox_fails_fast():

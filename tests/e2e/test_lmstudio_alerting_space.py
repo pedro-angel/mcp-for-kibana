@@ -7,7 +7,7 @@ prompt, the pass criterion, and the progress ladder this gate implements
 were frozen before any run. The LM Studio server entry `mcp-for-kibana-alerting`
 (its own entry — the dashboards gate's `mcp-for-kibana` keeps its frozen
 24-tool surface; one shared entry cannot satisfy both designs) must expose
-KIBANA_MCP_TOOLBOXES=alerting,platform-admin (16 tools at tier=write, counted
+KIBANA_MCP_TOOLBOXES=alerting,platform-admin (17 tools at tier=write, counted
 from the toolbox registrations — create_space lives in platform-admin, the
 rule tools in alerting; this gate was authored in a session that could not run
 the stack, so the first local run is the count's live confirmation).

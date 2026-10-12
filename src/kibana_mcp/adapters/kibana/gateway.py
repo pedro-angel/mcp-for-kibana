@@ -34,6 +34,7 @@ from kibana_mcp.core.errors import (
 )
 from kibana_mcp.core.models import (
     AlertingHealth,
+    RuleType,
     AlertRule,
     ApiDeprecation,
     ApmAgentConfig,
@@ -227,6 +228,20 @@ def _to_short_url(body: dict[str, Any]) -> ShortUrl:
         slug=body.get("slug", ""),
         locator_id=(body.get("locator") or {}).get("id", ""),
         url=body.get("url"),
+    )
+
+
+def _to_rule_type(raw: dict[str, Any]) -> RuleType:
+    consumers = raw.get("authorized_consumers") or {}
+    return RuleType(
+        id=raw["id"],
+        name=raw.get("name", ""),
+        category=raw.get("category") or "",
+        producer=raw.get("producer") or "",
+        consumers=tuple(sorted(c for c, p in consumers.items() if (p or {}).get("all"))),
+        enabled_in_license=bool(raw.get("enabled_in_license")),
+        minimum_license_required=raw.get("minimum_license_required") or "",
+        internally_managed=bool(raw.get("is_internally_managed")),
     )
 
 
@@ -970,6 +985,10 @@ class KibanaPyGateway:
     def get_alert_rule(self, rule_id: str) -> AlertRule:
         with _known_id("alert rule", rule_id):
             return _to_alert_rule(self._client.alerting.rule.get(id=rule_id).body)
+
+    @_translate_errors
+    def list_rule_types(self) -> list[RuleType]:
+        return [_to_rule_type(r) for r in self._client.alerting.rule_types().body]
 
     @_translate_errors
     def get_alerting_health(self) -> AlertingHealth:

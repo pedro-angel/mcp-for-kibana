@@ -354,7 +354,7 @@ This is a deliberate fail-closed guard — see
 
 ## Space targeting
 
-Every one of the 63 tools in the **dashboards**, **data-management**,
+Every one of the 64 tools in the **dashboards**, **data-management**,
 **alerting**, **cases**, and **security-detections** toolboxes — including
 the 14 destructive-tier ones — accepts an optional `space` parameter that
 targets a Kibana space by id:
@@ -385,7 +385,7 @@ sets `space`:
 - **Result echo.** Every **dict-returning** tool's result gains
   `"space": "<the value passed>"` so the model can see where it acted. The
   **list-returning** tools — `search_dashboards`, `list_data_views`,
-  `list_alert_rules`, `list_connectors`, `list_cases`,
+  `list_alert_rules`, `list_connectors`, `list_rule_types`, `list_cases`,
   `find_detection_rules`, `list_detection_rule_tags` (a bare string array),
   `search_detection_alerts`, `find_exception_lists`, `find_exception_items`,
   `find_value_lists`, `find_value_list_items`, and `find_timelines` — keep
@@ -463,6 +463,7 @@ Alerting rules and action connectors.
 | `get_alert_rule` | read | Get one alerting rule's summary by id. |
 | `get_alerting_health` | read | Kibana alerting framework health status. |
 | `list_connectors` | read | List configured action connectors (id, name, connector_type_id). |
+| `list_rule_types` | read | List rule types: `id` (the `rule_type_id`), the `consumers` the caller may create it under, licence status. No `params` schema (Kibana's API has none). |
 | `create_alert_rule` | write | Create an alerting rule (e.g. `rule_type_id` `.es-query`). |
 | `enable_alert_rule` | write | Enable (start running) an alerting rule. |
 | `disable_alert_rule` | write | Disable (stop running) an alerting rule. |
