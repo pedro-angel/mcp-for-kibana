@@ -37,7 +37,7 @@ surfaces are not worth duplicating here.
 
 ## Status
 
-**v0.2.0 — 10 toolboxes, 133 tools, live-tested.** The server exposes 133 tools
+**v0.2.0 — 10 toolboxes, 134 tools, live-tested.** The server exposes 134 tools
 across 10 composable toolboxes (dashboards, data management, alerting, cases,
 security detections, fleet, streams, observability, platform admin, and platform
 health), each classified read / write / destructive and contract-tested against
@@ -59,7 +59,7 @@ tool-call markers about one run in three.
 ## What it does
 
 Lets an LLM work with Kibana through a small, reliable, purpose-built tool surface
-instead of ~610 raw endpoints — 133 tools grouped into 10 composable toolboxes you
+instead of ~610 raw endpoints — 134 tools grouped into 10 composable toolboxes you
 enable per deployment. The flagship **dashboards** toolbox lets a user describe the
 chart they want, and the server translates a simple declarative spec into real
 Kibana Lens visualizations and dashboards via the modern Dashboards API (Kibana
@@ -129,7 +129,7 @@ for running the HTTP server.
 
 ## Tool reference
 
-**133 tools across 10 toolboxes**, each tool classified by tier — read / write /
+**134 tools across 10 toolboxes**, each tool classified by tier — read / write /
 destructive (64 / 40 / 29). Enable toolboxes per deployment with
 `KIBANA_MCP_TOOLBOXES`; cap the tier with `KIBANA_MCP_TIER`. A tool above the cap
 is not merely denied at call time — it never appears in the tool list (registered,
@@ -139,7 +139,7 @@ then hidden via FastMCP's visibility API).
 |---|--:|---|
 | `dashboards` | 11 | Build Lens visualizations + dashboards from a declarative spec — the flagship plain-English → dashboard path. |
 | `data-management` | 10 | Data views + short URLs (the datasets you visualize). |
-| `alerting` | 11 | Alerting rules and connectors. |
+| `alerting` | 12 | Alerting rules and connectors. |
 | `cases` | 6 | Kibana Cases: create, comment, update status. |
 | `security-detections` | 25 | Detection rules, exception lists, value lists. |
 | `fleet` | 35 | Fleet agents, agent/package policies, outputs, enrollment. |

@@ -6,7 +6,7 @@ import functools
 import inspect
 import re
 import urllib.parse
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from types import TracebackType
 from typing import Any
 
@@ -34,6 +34,7 @@ from kibana_mcp.core.errors import (
 )
 from kibana_mcp.core.models import (
     AlertingHealth,
+    RuleType,
     AlertRule,
     ApiDeprecation,
     ApmAgentConfig,
@@ -142,6 +143,34 @@ def _translated(e: BaseException, space: str | None) -> BaseException:
     return e
 
 
+# Where a valid id comes from, per object kind: (parameter, source tools, the
+# human label a caller tends to pass instead). D17: a wrong id names the fix.
+_ID_SOURCES = {
+    "dashboard": ("dashboard_id", "create_dashboard or search_dashboards", "title"),
+    "alert rule": ("rule_id", "create_alert_rule or list_alert_rules", "name"),
+}
+
+
+@contextlib.contextmanager
+def _known_id(kind: str, value: str) -> Iterator[None]:
+    """Reject an empty id before kibana-py does (its bare ValueError is
+    unmapped), and turn a 404 on the id into guidance naming where ids come
+    from. A missing *space* still surfaces as the space (fail-closed)."""
+    param, sources, label = _ID_SOURCES[kind]
+    if not value.strip():
+        raise KibanaRejected(f"{param} is empty — pass the id that {sources} returns")
+    try:
+        yield
+    except SpaceNotFoundError:
+        raise
+    except NotFoundError as e:
+        lookup = sources.split(" or ")[1]
+        raise KibanaNotFound(
+            f"{kind} '{value}' not found — {param} is the id that {sources} returns, "
+            f"not the {kind.split()[-1]}'s {label}; call {lookup} to find it"
+        ) from e
+
+
 def _scoped(gw: "KibanaPyGateway", e: KibanaNotFound) -> KibanaNotFound:
     """Append " (in space '<id>')" once, never to space-origin errors,
     never on the default path, always as a NEW exception."""
@@ -199,6 +228,20 @@ def _to_short_url(body: dict[str, Any]) -> ShortUrl:
         slug=body.get("slug", ""),
         locator_id=(body.get("locator") or {}).get("id", ""),
         url=body.get("url"),
+    )
+
+
+def _to_rule_type(raw: dict[str, Any]) -> RuleType:
+    consumers = raw.get("authorized_consumers") or {}
+    return RuleType(
+        id=raw["id"],
+        name=raw.get("name", ""),
+        category=raw.get("category") or "",
+        producer=raw.get("producer") or "",
+        consumers=tuple(sorted(c for c, p in consumers.items() if (p or {}).get("all"))),
+        enabled_in_license=bool(raw.get("enabled_in_license")),
+        minimum_license_required=raw.get("minimum_license_required") or "",
+        internally_managed=bool(raw.get("is_internally_managed")),
     )
 
 
@@ -940,7 +983,12 @@ class KibanaPyGateway:
 
     @_translate_errors
     def get_alert_rule(self, rule_id: str) -> AlertRule:
-        return _to_alert_rule(self._client.alerting.rule.get(id=rule_id).body)
+        with _known_id("alert rule", rule_id):
+            return _to_alert_rule(self._client.alerting.rule.get(id=rule_id).body)
+
+    @_translate_errors
+    def list_rule_types(self) -> list[RuleType]:
+        return [_to_rule_type(r) for r in self._client.alerting.rule_types().body]
 
     @_translate_errors
     def get_alerting_health(self) -> AlertingHealth:
@@ -978,15 +1026,18 @@ class KibanaPyGateway:
 
     @_translate_errors
     def enable_alert_rule(self, rule_id: str) -> None:
-        self._client.alerting.rule.enable(id=rule_id)
+        with _known_id("alert rule", rule_id):
+            self._client.alerting.rule.enable(id=rule_id)
 
     @_translate_errors
     def disable_alert_rule(self, rule_id: str) -> None:
-        self._client.alerting.rule.disable(id=rule_id)
+        with _known_id("alert rule", rule_id):
+            self._client.alerting.rule.disable(id=rule_id)
 
     @_translate_errors
     def delete_alert_rule(self, rule_id: str) -> None:
-        self._client.alerting.rule.delete(id=rule_id)
+        with _known_id("alert rule", rule_id):
+            self._client.alerting.rule.delete(id=rule_id)
 
     @_translate_errors
     def list_connectors(self) -> list[Connector]:
@@ -1107,7 +1158,8 @@ class KibanaPyGateway:
 
     @_translate_errors
     def get_dashboard(self, dashboard_id: str) -> DashboardDetail:
-        body = self._client.dashboards.get(id=dashboard_id).body
+        with _known_id("dashboard", dashboard_id):
+            body = self._client.dashboards.get(id=dashboard_id).body
         data = body["data"]
         panels = tuple(
             PanelSummary(
@@ -1126,7 +1178,8 @@ class KibanaPyGateway:
 
     @_translate_errors
     def get_dashboard_data(self, dashboard_id: str) -> tuple[dict[str, Any], list[str]]:
-        body = self._client.dashboards.get(id=dashboard_id).body
+        with _known_id("dashboard", dashboard_id):
+            body = self._client.dashboards.get(id=dashboard_id).body
         data = body["data"]
         warnings = body.get("warnings") or (body.get("meta") or {}).get("warnings") or []
         warnings = [str(w) for w in warnings]
@@ -1146,7 +1199,8 @@ class KibanaPyGateway:
     @_translate_errors
     def update_dashboard(self, dashboard_id: str, data: dict[str, Any]) -> None:
         kwargs = {k: v for k, v in data.items() if k in _UPDATABLE_KEYS}
-        self._client.dashboards.update(id=dashboard_id, **kwargs)
+        with _known_id("dashboard", dashboard_id):
+            self._client.dashboards.update(id=dashboard_id, **kwargs)
 
     @_translate_errors
     def upsert_dashboard(self, dashboard_id: str, data: dict[str, Any]) -> str:
@@ -1163,7 +1217,8 @@ class KibanaPyGateway:
 
     @_translate_errors
     def delete_dashboard(self, dashboard_id: str) -> None:
-        self._client.dashboards.delete(id=dashboard_id)
+        with _known_id("dashboard", dashboard_id):
+            self._client.dashboards.delete(id=dashboard_id)
 
     @_translate_errors
     def delete_visualization(self, visualization_id: str) -> None:

@@ -298,6 +298,15 @@ def test_alerting_health_live(gateway):
     assert h.has_permanent_encryption_key is True  # seeded stack has an encryption key
 
 
+def test_list_rule_types_live(gateway):
+    types = {t.id: t for t in gateway.list_rule_types()}
+    es = types[".es-query"]  # the type create_alert_rule's lifecycle test uses
+    assert "stackAlerts" in es.consumers
+    assert es.enabled_in_license is True and es.minimum_license_required == "basic"
+    # a Basic-licence stack lists types it cannot create, flagged rather than hidden
+    assert any(not t.enabled_in_license for t in types.values())
+
+
 def test_alert_rule_lifecycle_live(gateway):
     rule = gateway.create_alert_rule(
         f"contract-esq-{uuid.uuid4().hex[:8]}", ".es-query", "stackAlerts", "1m",
