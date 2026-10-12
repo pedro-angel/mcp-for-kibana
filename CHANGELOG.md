@@ -10,6 +10,18 @@ version section.
 
 ## [Unreleased]
 
+### Added
+
+- **The four tasks of studies 4 and 5** (`scripts/experiment/tasks.json`,
+  `study_tasks.py`): the web-logs task, the same task on flights data,
+  changing existing objects and looking them up, with arm-neutral prompts, a
+  seeded starting state at fixed ids (`study_tasks.py seed`) and success
+  checks that compare against Kibana's and Elasticsearch's values. A rule's
+  filter is checked by running its own query on the real index and on a probe
+  index; `study_tasks.py replay` scores stored runs' rules against the live
+  stack. Every check's expected and actual value is exported as root-span
+  attributes for Honeycomb. STUDY_DESIGN.md decision 12.
+
 ## [0.3.0] - 2026-10-12
 
 ### Added

@@ -155,6 +155,34 @@ Considered:
 - The Elasticsearch server gets a per-run API key that can only read the web-logs data stream (index `read`, `view_index_metadata`, `monitor`; cluster `monitor`), minted by the runner and invalidated after the run. Writes with it answer 403. The key reaches only that server's config, never the model's environment.
 - The standalone server is deprecated in favour of Kibana's Agent Builder MCP endpoint, which needs an Enterprise licence; the local stack is basic. Its `get_mappings` cannot decode the web-logs mapping (object fields); `esql`, `search`, `list_indices` and `get_shards` work. It emits no OpenTelemetry; Claude Code's tool spans and the hook cover its calls.
 
+### 12. The four tasks of studies 4 and 5, and their checks
+
+_2026-10-12_
+
+**Question.** Study 4 (Claude Code, with and without the server) and study 5 (local models, with the server) run the same four tasks. What are the tasks, and what counts as a success?
+
+**Decision.** One definition for both studies: [tasks.json](tasks.json), read by [study_tasks.py](study_tasks.py), which both runners use for the prompt, the starting state and the success check.
+
+- **The web-logs task.** Name the data view's time field; build a dashboard with two panels (requests over time, requests by response code); create an enabled rule that fires on more than 10 5xx responses in 5 minutes, checked every minute; retitle the response-code panel and read the rule back. Both answer lines (TIME_FIELD, RULE_ENABLED) are asked for in one closing instruction.
+- **The web-logs task on flights data.** The same four steps on the flights sample data: flights over time, flights by carrier, more than 10 cancelled flights in 5 minutes.
+- **Change existing objects.** The seed holds the dashboard 'Site health' (two panels on web logs) and the disabled rule 'Server errors' (more than 10 5xx in 5 minutes, every minute). The model adds a requests-by-host panel, renames the dashboard to 'Site health overview', raises the threshold to 20 and enables the rule, in place: the seeded ids must survive and nothing new may appear.
+- **Look up existing objects.** The same seed. The model reports the dashboard's panel count and the 5xx rule's name, threshold, interval and enabled state, and changes nothing.
+- The prompt is the arm's preamble ("Use only the kibana tools", or the API-spec instructions of decision 5), then the task. Nothing else differs between arms.
+
+The checks:
+
+- Every check compares against a value Kibana or Elasticsearch holds. An answer line counts only when it matches Kibana's actual value (the data view's time field, the rule's enabled state, the seeded objects' values). Checks on which tools the model called are dropped: the arm without the server calls none.
+- A rule's filter is evaluated, not pattern-matched: its own query (Elasticsearch DSL, KQL with filters, the index-threshold KQL filter, or ES|QL) runs on the real index and on a probe index holding 500, 502, 503, 504 and 599 against 200, 301, 404 and 450. It passes when it selects exactly the matching documents on both. The probe index is needed because 503 is the only 5xx code in the web-logs sample: on the real data a filter for 503 alone looks correct. Range clauses on date fields are left out of the count; the time window is checked on its own.
+- The rule's time field must resolve to the data view's time field (on web logs, `timestamp` is an alias of `@timestamp`, so both pass; `utc_time` fails).
+- A step passes when all its checks pass; `steps_passed` counts the leading passed steps.
+- Every check's result, with its expected and actual value, goes on the run's root span as `study.check.<step>.<check>.ok|expected|actual`, beside `study.task`, `study.checks_total` and `study.checks_passed`, so a failed run can be explained from Honeycomb alone.
+
+Considered:
+
+- The lookup task first asked which dashboard is built on web logs, with a decoy on flights. Installing the web-logs sample also installs its own '[Logs] Web Traffic' dashboard, so that question has two right answers; the task names the dashboard instead and asks the model to find the rule by what it watches.
+- Tested before any pilot (`study_tasks.py replay`, live stack, Kibana 9.5.5): of the 469 rules stored from the earlier runs, 465 pass the filter and time-field checks. The four rejected: a term filter on 503 only; a terms list of 500 to 509, which misses 510 to 599; a regexp with `^…$` anchors on the analysed `response` text field, which matches nothing; a `match` query on `_source.response.keyword` with an operator Elasticsearch does not have. Every correct form passes, including filters with their own `now-5m` range and ES|QL rules that carry the threshold in the query.
+- On the live stack, correct runs of all four tasks pass, and each of these fails at its step: a 503-only filter, `utc_time` as the time field, a disabled rule, a wrong TIME_FIELD answer, a panel not retitled, a threshold of 15 instead of 20, a wrong ENABLED answer, and a lookup run that enabled the rule.
+
 ## Background research
 
 Looked up before or during the design.
