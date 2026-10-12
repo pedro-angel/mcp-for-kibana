@@ -202,6 +202,20 @@ Considered:
 
 - The earlier local design (one task cut into chain lengths L1 to L4, to find where a model loses track) is replaced; its records stay in `runs/local/` with the config they ran with (`local_study_levels.json`). Study 5 writes to `runs/study5/`.
 
+### 15. The rule must catch all server errors
+
+_2026-10-12_
+
+**Question.** In study 5's pilot, one rule counted response codes 500 to 509 only. On the web-logs data it counts the same requests as a correct rule, because 503 is the only server-error code there, but it would miss 510 to 599. Should the check accept it?
+
+**Decision.** No: the check stays as decision 12 defines it, and a filter that misses any code from 500 to 599 fails. The web-logs task now says so: the rule fires on more than 10 server errors in 5 minutes, counting every request whose response code is anywhere from 500 to 599. The owner's reason: failing such a rule is fair only when the task asks for all server errors in words.
+
+Considered:
+
+- Accepting any filter that covers the registered codes 500 to 511: the 500-to-509 rule would still fail, and the line between registered and unregistered codes is not what the task is about.
+- Accepting any filter that counts correctly on the real data: a rule for 503 alone would pass, which is not what the task asks for.
+- The pilot runs used the earlier wording ("requests with a 5xx response code"); the stage runs use the new one.
+
 ## Background research
 
 Looked up before or during the design.

@@ -12,6 +12,11 @@ version section.
 
 ### Added
 
+- **The web-logs task asks for all server errors.** Its alert step now
+  reads "Count all server errors: every request whose response code is
+  anywhere from 500 to 599", so the check that fails a filter missing any
+  of those codes (decision 12) matches what the task says. The checker is
+  unchanged. STUDY_DESIGN.md decision 15.
 - **The four tasks of studies 4 and 5** (`scripts/experiment/tasks.json`,
   `study_tasks.py`): the web-logs task, the same task on flights data,
   changing existing objects and looking them up, with arm-neutral prompts, a
