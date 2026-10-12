@@ -73,7 +73,7 @@ retried, a timed-out stream's calls kept, Kibana reset to its pre-run state
 with existing objects untouched, resume after a crash, redaction of the
 Kibana key on disk and in traces, refusal to send when redaction misses the
 key, preflight reporting a fix for each failure, mcp.json never written,
-listing the real server's 24 tools over stdio, and the analysis (Wilson
+listing the real server's 25 tools over stdio, and the analysis (Wilson
 intervals, pass^k, chain breakdown, re-derivation consistency).
 
 Only the Mac verifies:
@@ -200,7 +200,7 @@ Each check prints `PASS`, `WARN` or `FAIL`, and each failure names its fix.
 The checks cover: the config, the seed, Kibana up at 9.5.5, the key, web logs
 installed, no leftover `LOC-*` rules, LM Studio reachable, the token, each
 model present and its context length, the mcp.json entry (toolboxes, tier,
-URL, key), the entry starting and listing 24 tools, Honeycomb accepting the
+URL, key), the entry starting and listing 25 tools, Honeycomb accepting the
 key, and the output directory. `--load` also loads every model once through
 the integration with a one-word prompt, which catches memory failures and a
 missing mcp.json permission. Continue only when the last line reads
