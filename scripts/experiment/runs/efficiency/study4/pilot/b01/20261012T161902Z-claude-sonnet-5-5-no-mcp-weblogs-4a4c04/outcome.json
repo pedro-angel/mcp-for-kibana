@@ -1,0 +1,52 @@
+{
+  "task": "weblogs",
+  "success": false,
+  "failure_reason": "describe: answer:TIME_FIELD: no TIME_FIELD: line in the reply; dashboard: dashboard: no new dashboard titled 'S4-bc844d66 Web logs'; rule: rule: no new rule named 'S4-bc844d66 5xx errors'; edit: panel_title: expected 'Responses by code', got []; edit: answer:RULE_ENABLED: no RULE_ENABLED: line in the reply",
+  "first_failed_step": "describe",
+  "steps_passed": 0,
+  "steps_total": 4,
+  "criteria": [
+    {
+      "step": "describe",
+      "check": "answer:TIME_FIELD",
+      "ok": false,
+      "expected": "timestamp",
+      "actual": null,
+      "detail": "answer:TIME_FIELD: no TIME_FIELD: line in the reply"
+    },
+    {
+      "step": "dashboard",
+      "check": "dashboard",
+      "ok": false,
+      "expected": "S4-bc844d66 Web logs",
+      "actual": [],
+      "detail": "dashboard: no new dashboard titled 'S4-bc844d66 Web logs'"
+    },
+    {
+      "step": "rule",
+      "check": "rule",
+      "ok": false,
+      "expected": "S4-bc844d66 5xx errors",
+      "actual": [],
+      "detail": "rule: no new rule named 'S4-bc844d66 5xx errors'"
+    },
+    {
+      "step": "edit",
+      "check": "panel_title",
+      "ok": false,
+      "expected": "Responses by code",
+      "actual": [],
+      "detail": "panel_title: expected 'Responses by code', got []"
+    },
+    {
+      "step": "edit",
+      "check": "answer:RULE_ENABLED",
+      "ok": false,
+      "expected": null,
+      "actual": null,
+      "detail": "answer:RULE_ENABLED: no RULE_ENABLED: line in the reply"
+    }
+  ],
+  "n_dashboards": 0,
+  "n_rules": 0
+}

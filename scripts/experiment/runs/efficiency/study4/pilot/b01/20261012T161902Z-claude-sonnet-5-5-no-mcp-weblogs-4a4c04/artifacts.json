@@ -1,0 +1,15 @@
+{
+  "dashboards": [],
+  "rules": [],
+  "seeded": {
+    "dashboard": null,
+    "rule": null
+  },
+  "seed_before": null,
+  "filters": {},
+  "time_fields": {
+    "@timestamp": "@timestamp",
+    "utc_time": "utc_time",
+    "timestamp": "@timestamp"
+  }
+}
