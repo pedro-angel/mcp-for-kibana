@@ -27,6 +27,7 @@ from kibana.exceptions import (
 
 from kibana_mcp.core.errors import (
     KibanaAuthError,
+    KibanaMcpError,
     KibanaNotFound,
     KibanaRejected,
     KibanaSpaceNotFound,
@@ -166,6 +167,9 @@ _DATE_FIELDS_SHOWN = 20
 # the ones update_alert_rule exposes: re-sent from the current rule whenever it
 # carries them (probed on 9.5.4: an omitted notify_when resets to null).
 _RULE_PRESERVED_KEYS = ("notify_when", "throttle", "alert_delay", "flapping", "artifacts")
+# The rule-level timing pair that per-action `frequency` replaces: never re-sent
+# alongside caller actions that carry a frequency (Kibana 400s the mix).
+_RULE_LEVEL_FREQUENCY_KEYS = frozenset({"notify_when", "throttle"})
 
 # Connector types whose secrets schema is empty: Kibana rejects ANY secrets key on
 # them ("Unrecognized key", probed on 9.5.4), so an update that omits `secrets`
@@ -274,6 +278,35 @@ def _time_field_problem(time_field: str, fields: dict[str, str], pattern: str) -
         )
     shown = ", ".join(dates[:_DATE_FIELDS_SHOWN]) + (", …" if len(dates) > _DATE_FIELDS_SHOWN else "")
     return f"time field '{time_field}' {what} — pass time_field as one of its date fields: {shown}"
+
+
+def _domain_error(e: BaseException, space: str | None) -> KibanaMcpError | None:
+    """`e` as the domain error the tools would show, or None when unmapped."""
+    translated = e if isinstance(e, KibanaMcpError) else _translated(e, space)
+    return translated if isinstance(translated, KibanaMcpError) else None
+
+
+def _cause_text(e: BaseException, space: str | None) -> str:
+    """The text a tool would show for `e` (safe for the LLM: no raw repr)."""
+    d = _domain_error(e, space)
+    if d is None:
+        return "an unexpected error"
+    detail = d.detail if isinstance(d, KibanaRejected) else ""
+    return f"{d.message}: {detail}" if detail else d.message
+
+
+def _with_state(e: BaseException, space: str | None, state: str) -> BaseException:
+    """The domain error for a write that failed after an earlier write of the
+    same call landed: the original cause, then what the object now holds and
+    the call that finishes or undoes it. Unmapped errors pass through."""
+    d = _domain_error(e, space)
+    if d is None:
+        return e
+    if isinstance(d, KibanaRejected):
+        if d.detail:
+            return KibanaRejected(d.message, detail=f"{d.detail} — {state}")
+        return KibanaRejected(f"{d.message} — {state}")
+    return type(d)(f"{d.message} — {state}")
 
 
 def _to_short_url(body: dict[str, Any]) -> ShortUrl:
@@ -1051,10 +1084,34 @@ class KibanaPyGateway:
             )
         raw = self._post_data_view(view_id, {"title": new_pattern}, refresh_fields=True)
         problem = _time_field_problem(check, _normalize_fields(raw.get("fields", {})), new_pattern)
+        undo = f"to undo, call update_data_view with index_pattern='{old_pattern}'"
         if problem:
-            self._post_data_view(view_id, {"title": old_pattern}, refresh_fields=True)
+            try:
+                self._post_data_view(view_id, {"title": old_pattern}, refresh_fields=True)
+            except Exception as e:
+                # The restore failed: say so, and what the view now holds.
+                raise KibanaRejected(
+                    f"{problem}. Restoring the old index pattern then failed "
+                    f"({_cause_text(e, self._space)}), so the index pattern is now "
+                    f"'{new_pattern}' — {undo}"
+                ) from e
             raise KibanaRejected(f"{problem} (nothing was changed)")
-        return _to_data_view_detail(self._post_data_view(view_id, rest) if rest else raw)
+        if not rest:
+            return _to_data_view_detail(raw)
+        try:
+            return _to_data_view_detail(self._post_data_view(view_id, rest))
+        except Exception as e:
+            # The pattern change already landed; the second write did not.
+            retry = ", ".join(
+                f"{arg}='{rest[key]}'"
+                for arg, key in (("name", "name"), ("time_field", "timeFieldName"))
+                if key in rest
+            )
+            raise _with_state(
+                e, self._space,
+                f"the index pattern was changed to '{new_pattern}' but {retry} was not "
+                f"saved; call update_data_view again with {retry} to finish, or {undo}",
+            ) from e
 
     @_translate_errors
     def delete_data_view(self, view_id: str) -> None:
@@ -1166,7 +1223,14 @@ class KibanaPyGateway:
                 for a in cur.get("actions") or []
             ]),
         }
+        # Kibana refuses per-action `frequency` while the rule carries a
+        # rule-level notify_when/throttle (probed on 9.5.4), and a PUT that
+        # omits them clears them. So actions that bring their own frequency
+        # move the rule to per-action timing instead of failing.
+        per_action = actions is not None and any("frequency" in a for a in actions)
         for key in _RULE_PRESERVED_KEYS:
+            if per_action and key in _RULE_LEVEL_FREQUENCY_KEYS:
+                continue
             if cur.get(key) is not None:
                 body[key] = cur[key]
         with _known_id("alert rule", rule_id):

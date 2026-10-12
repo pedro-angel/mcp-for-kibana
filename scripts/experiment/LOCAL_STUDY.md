@@ -206,6 +206,12 @@ the integration with a one-word prompt, which catches memory failures and a
 missing mcp.json permission. Continue only when the last line reads
 `preflight: PASS`.
 
+`pilot` and `full` list the entry's tools once at start and stamp the count
+on every `record.json` as `server_tools`; the results page states the count
+from the records, not from `server.expected_tools`. Records written before the
+harness counted tools (the committed 45 full runs) lack it, and the page says
+so in words instead of printing a number.
+
 ### 7. Pilot
 
 ```bash

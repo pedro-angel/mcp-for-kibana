@@ -86,7 +86,11 @@ and docs/tools.md#saved-objects-exportimport-data-management.
   known only after the write, so it writes the pattern alone, checks the
   time field (passed, or kept) against the returned fields, and on a
   mismatch writes the old pattern back and fails; only then are `name` and
-  `time_field` written. An empty field list skips the check (a pattern for
+  `time_field` written. Kibana has no transaction across the two writes, so
+  when the second one fails — the restore, or the `name`/`time_field`
+  write — the error keeps the original cause and states what the view now
+  holds (the new pattern) and the `update_data_view` call that finishes or
+  undoes it. An empty field list skips the check (a pattern for
   data not yet ingested is legitimate, as `create_data_view` allows).
 - **No derived identity, no confirm gate beyond tier.** Every other
   write/destructive tool opens one scoped gateway and performs exactly one
@@ -131,7 +135,9 @@ and docs/tools.md#saved-objects-exportimport-data-management.
 - `update_data_view` must change only the fields passed, must refuse a call
   that passes none, and must never leave a data view with a time field that
   is not a `date` field of its pattern whenever that pattern has fields; a
-  call it refuses must leave the data view as it found it.
+  call it refuses must leave the data view as it found it, and when a
+  later write fails after the pattern was written, its error must say the
+  pattern changed and name the call that undoes it.
 - `update_data_view`'s result must carry `field_count`, never the field map
   (a broad pattern has thousands of fields; `describe_data_view` returns
   them).
@@ -186,7 +192,9 @@ and docs/tools.md#saved-objects-exportimport-data-management.
 - **Unit — `tests/unit/adapters/test_data_management_gateway.py` and
   `test_id_guidance.py`.** `update_data_view` posts only the given keys,
   checks the time field before the write, writes a new pattern alone and
-  restores it on a mismatch, accepts a field-less pattern, caps the listed
+  restores it on a mismatch, reports a failed restore or a failed
+  name/time-field write with the resulting pattern, the undo call and the
+  original cause, accepts a field-less pattern, caps the listed
   date fields, keeps the `Kibana rejected the payload:` prefix, and turns an
   empty or unknown `view_id` into guidance (scoped suffix once).
 - **Unit — `tests/unit/toolboxes/test_space_threading.py`.** All 11 tools

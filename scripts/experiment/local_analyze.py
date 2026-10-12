@@ -149,6 +149,8 @@ def run_row(rec: dict, parsed: dict) -> dict:
         "tool_names": parsed["tool_names"],
         "known_secret_exposures": rec.get("known_secret_exposures", 0),
         "context_length": rec.get("model_loaded_context"),
+        # Records from before the harness counted the server's tools lack it.
+        "server_tools": rec.get("server_tools"),
     }
 
 

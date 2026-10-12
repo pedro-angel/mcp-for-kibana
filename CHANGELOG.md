@@ -28,7 +28,9 @@ version section.
   not pass, because Kibana's updates are full replaces that would otherwise
   empty a rule's actions and tags or a connector's config; a rule's `params`
   and a connector's `config` merge key by key. `update_alert_rule` never
-  changes `enabled`. `get_connector` returns the non-secret config and flags,
+  changes `enabled`; actions passed with a per-action `frequency` replace a
+  rule-level `notify_when`/`throttle`, which Kibana refuses beside them.
+  `get_connector` returns the non-secret config and flags,
   never secrets. `update_connector` refuses preconfigured connectors, and
   refuses a call without `secrets` on any type except `.index` and
   `.server-log`, since Kibana resets omitted secrets and cannot return them.
@@ -44,7 +46,8 @@ version section.
   a date field of the view and lists the ones that are. When the index
   pattern changes, the time field is checked against the new pattern's
   fields, and a mismatch writes the old pattern back, so a refused call
-  changes nothing. A pattern that matches no index yet is accepted with
+  changes nothing; if a write after the pattern's fails, the error says the
+  pattern changed and names the call that undoes it. A pattern that matches no index yet is accepted with
   `field_count` 0. A wrong id names `list_data_views`. Takes `space`.
   Decision D36. The `dashboards-analyst` profile now lists 17 tools and the
   local study's server entry 29; `local_study.json` and its runbook follow.
@@ -61,12 +64,24 @@ version section.
   shows it. A dashboard holding such a panel stays editable by every other
   dashboards tool; `get_dashboard` reports the panel with a
   `visualization_id` (inline panels are unchanged); `update_panel` on it
-  refuses and names `update_visualization`. Kibana lets a chart be deleted
+  refuses and names `update_visualization`, or `delete_panel` when the chart
+  it shows was deleted. Kibana lets a chart be deleted
   while dashboards show it, leaving a broken panel there;
   `delete_visualization`'s description says so and names `delete_panel`.
   All five take `space`. Decision D37. The `dashboards-analyst` profile now
   lists 21 tools, `read-only-explorer` 11, and the local study's server
   entry 33; `local_study.json` and its runbook follow.
+
+### Fixed
+
+- **The local-study results page no longer states a tool count the runs did
+  not record.** It printed `local_study.json`'s current `expected_tools` (now
+  33) as the count the committed runs used (they ran with 25 and did not
+  record it). `local_run.py` now lists the server entry's tools once per
+  `pilot`/`full` invocation and stamps the count on every run record as
+  `server_tools`; `local_analyze.py` carries it into `analysis.json`; and
+  `local_report.py` states the count(s) from the records, or says in words
+  that the records do not carry one.
 
 ## [0.3.0] - 2026-10-12
 

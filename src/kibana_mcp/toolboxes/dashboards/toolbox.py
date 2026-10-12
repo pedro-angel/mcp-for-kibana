@@ -360,6 +360,19 @@ class DashboardsToolbox:
                 if ref:
                     # Replacing the config would silently unlink the panel from
                     # the library item; the chart is edited where it lives (D37).
+                    # Kibana keeps a ref whose item was deleted, and then there
+                    # is nothing to edit: name the tools that fix the panel.
+                    try:
+                        gw.get_visualization(ref)
+                    except KibanaSpaceNotFound:
+                        raise
+                    except KibanaNotFound:
+                        raise ToolError(
+                            f"panel {panel_index} shows library visualization '{ref}', which "
+                            "no longer exists — remove the broken panel with delete_panel "
+                            "(destructive tier), then place a chart with add_panel or "
+                            "add_library_panel"
+                        ) from None
                     raise ToolError(
                         f"panel {panel_index} shows library visualization '{ref}' — "
                         "change it with update_visualization, which updates every "

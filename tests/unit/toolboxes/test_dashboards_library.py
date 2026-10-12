@@ -227,6 +227,28 @@ async def test_update_panel_on_a_library_panel_names_update_visualization(mcp, g
     assert gateway.dashboards[dash_id] is before
 
 
+async def test_update_panel_on_a_dangling_library_panel_names_delete_panel(mcp, gateway):
+    # Kibana keeps the ref after the item is deleted: update_visualization would
+    # dead-end, so the refusal names the tools that fix the panel instead.
+    async with Client(mcp) as client:
+        viz_id, dash_id = await _viz_and_dashboard(client)
+        await client.call_tool(
+            "add_library_panel", {"dashboard_id": dash_id, "visualization_id": viz_id}
+        )
+        del gateway.visualizations[viz_id]
+        before = gateway.dashboards[dash_id]
+        with pytest.raises(ToolError) as exc:
+            await client.call_tool(
+                "update_panel", {"dashboard_id": dash_id, "panel_index": 1, "panel": PIE_SPEC}
+            )
+    assert str(exc.value) == (
+        f"panel 1 shows library visualization '{viz_id}', which no longer exists — remove "
+        "the broken panel with delete_panel (destructive tier), then place a chart with "
+        "add_panel or add_library_panel"
+    )
+    assert gateway.dashboards[dash_id] is before
+
+
 async def test_create_dashboard_replace_over_a_library_panel(mcp, gateway):
     async with Client(mcp) as client:
         viz_id, dash_id = await _viz_and_dashboard(client)

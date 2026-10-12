@@ -424,9 +424,13 @@ This is a deliberate fail-closed guard — see
 - `update_panel` targeting a panel placed with `add_library_panel`: `"panel
   {i} shows library visualization '{id}' — change it with
   update_visualization, which updates every dashboard that shows it"`
-  (replacing it would silently unlink it from the library item). A by-reference
-  panel does not trip the unsupported-panels refusal: the other tools carry
-  it through unchanged.
+  (replacing it would silently unlink it from the library item). When that
+  visualization no longer exists, update_visualization cannot help, so the
+  refusal reads `"panel {i} shows library visualization '{id}', which no
+  longer exists — remove the broken panel with delete_panel (destructive
+  tier), then place a chart with add_panel or add_library_panel"`. A
+  by-reference panel does not trip the unsupported-panels refusal: the other
+  tools carry it through unchanged.
 - A `visualization_id` that is empty: `"visualization_id is empty — pass the
   id that create_visualization or search_visualizations returns"`; one that
   matches nothing: `"visualization '{id}' not found — visualization_id is the
@@ -563,6 +567,15 @@ Notes on `update_data_view`:
   first, checks, and on a mismatch writes the old pattern back and fails with
   `... (nothing was changed)`. A pattern that matches no index yet has no
   fields, so it is accepted unchecked and the result's `field_count` is `0`.
+- **A failure after the pattern was written says what the view now holds.**
+  If writing the old pattern back fails, the error keeps the time-field
+  rejection, adds the restore's own error, and ends `so the index pattern is
+  now '<new>' — to undo, call update_data_view with index_pattern='<old>'`.
+  If the pattern landed but the following write of `name`/`time_field`
+  fails, the error keeps Kibana's cause and adds `the index pattern was
+  changed to '<new>' but name='…' was not saved; call update_data_view again
+  with name='…' to finish, or to undo, call update_data_view with
+  index_pattern='<old>'`.
 - **What it does not do.** It cannot remove a time field (Kibana rejects
   `null`). A name that Kibana defaulted to the old pattern (a view created
   without `name`) keeps the old pattern as its name; pass `name` to change it.
@@ -628,8 +641,10 @@ Notes:
   cannot change. A rule's action is
   `{"id": <connector id>, "group": "query matched", "params": {...}, "frequency": {"summary": false, "notify_when": "onActionGroupChange", "throttle": null}}`;
   the rule-level `notify_when`/`throttle` are not arguments (Kibana refuses
-  them beside a per-action `frequency`), but a rule that already has them
-  keeps them.
+  them beside a per-action `frequency`). A rule that already has them keeps
+  them, unless the `actions` passed carry a `frequency`: then they are left
+  out of the update, Kibana clears them, and the rule's timing comes from each
+  action's `frequency`.
 - **Connector secrets are write-only.** Kibana never returns them, so
   `get_connector` and `update_connector` cannot either, and a connector
   update that omits `secrets` resets them. For every type except `.index`

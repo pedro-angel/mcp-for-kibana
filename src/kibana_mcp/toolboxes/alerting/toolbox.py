@@ -166,6 +166,9 @@ class AlertingToolbox:
              "params": {...type-specific, e.g. {"message": "..."}},
              "frequency": {"summary": false, "notify_when": "onActionGroupChange",
              "throttle": null}}.
+            Actions that carry `frequency` replace any rule-level notify_when /
+            throttle (Kibana does not allow both), so the rule's timing then
+            comes from each action's frequency.
             `rule_type_id` and `consumer` cannot change. This does NOT enable or
             disable the rule — use enable_alert_rule / disable_alert_rule.
 

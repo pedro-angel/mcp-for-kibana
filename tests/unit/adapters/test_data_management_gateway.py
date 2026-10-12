@@ -318,3 +318,68 @@ def test_update_data_view_kibana_400_keeps_the_rejected_payload_prefix():
     with pytest.raises(ToolError, match=r"^Kibana rejected the payload: \[request body"):
         with gateway_errors():
             _gw(data_views=stub).update_data_view("dv1", "x", None, None)
+
+
+# --- update_data_view: a write that fails after an earlier one landed says so ---
+
+
+def _fail_on_post(stub, n, exc):
+    """Make the stub's n-th POST (1-based) raise `exc` instead of writing."""
+    real = stub.update
+
+    def update(**kw):
+        if len(stub.posts) + 1 == n:
+            stub.posts.append(kw)
+            raise exc
+        return real(**kw)
+
+    stub.update = update
+
+
+def _bad_request(msg):
+    return BadRequestError(msg, meta=SimpleNamespace(status=400), body=None)
+
+
+def test_update_data_view_failed_restore_states_the_new_pattern_and_the_undo():
+    stub, gw = _dv()
+    _fail_on_post(stub, 2, _bad_request("restore refused"))
+    with pytest.raises(KibanaRejected) as exc:
+        gw.update_data_view("dv1", None, "logs-*", None)
+    assert exc.value.message == (
+        "time field 'timestamp' is not a field of 'logs-*' — pass time_field as one of its "
+        "date fields: @timestamp. Restoring the old index pattern then failed (Kibana "
+        "rejected the payload: restore refused), so the index pattern is now 'logs-*' — "
+        "to undo, call update_data_view with index_pattern='flights'"
+    )
+    assert isinstance(exc.value.__cause__, BadRequestError)  # the original cause is kept
+    assert stub.view["title"] == "logs-*"  # the state the message reports
+
+
+def test_update_data_view_failed_second_write_states_what_landed():
+    stub, gw = _dv()
+    _fail_on_post(stub, 2, _bad_request("name refused"))
+    with pytest.raises(ToolError) as exc:
+        with gateway_errors():
+            gw.update_data_view("dv1", "Logs", "logs-*", "@timestamp")
+    assert str(exc.value) == (
+        "Kibana rejected the payload: name refused — the index pattern was changed to "
+        "'logs-*' but name='Logs', time_field='@timestamp' was not saved; call "
+        "update_data_view again with name='Logs', time_field='@timestamp' to finish, or "
+        "to undo, call update_data_view with index_pattern='flights'"
+    )
+    assert (stub.view["title"], stub.view["name"]) == ("logs-*", "flights")
+
+
+def test_update_data_view_failed_second_write_keeps_the_error_kind():
+    from kibana.exceptions import ConnectionError as KibanaConnectionError
+
+    from kibana_mcp.core.errors import KibanaUnavailable
+
+    stub, gw = _dv()
+    _fail_on_post(stub, 2, KibanaConnectionError("down"))
+    with pytest.raises(KibanaUnavailable) as exc:
+        gw.update_data_view("dv1", None, "logs-*", "@timestamp")
+    assert exc.value.message.startswith("cannot reach Kibana")
+    assert "was changed to 'logs-*' but time_field='@timestamp' was not saved" in (
+        exc.value.message
+    )

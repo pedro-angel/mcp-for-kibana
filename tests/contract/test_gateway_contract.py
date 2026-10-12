@@ -457,6 +457,36 @@ def test_update_alert_rule_preserves_what_it_was_not_given_live(gateway):
         gateway.delete_connector(conn.id)
 
 
+def test_update_alert_rule_per_action_frequency_replaces_rule_level_timing_live(gateway):
+    # Kibana refuses per-action frequency while the rule carries a rule-level
+    # notify_when ("Cannot specify per-action frequency params when notify_when
+    # or throttle are defined at the rule level", probed on 9.5.4): actions
+    # that bring a frequency must move the rule to per-action timing.
+    conn = gateway.create_connector(f"contract-log-{uuid.uuid4().hex[:8]}", ".server-log", None, None)
+    with _raw_kibana() as raw:  # the adapter never writes rule-level timing itself
+        rule_id = raw.alerting.rule.create(
+            name=f"contract-esq-legacy-{uuid.uuid4().hex[:8]}", consumer="stackAlerts",
+            rule_type_id=".es-query", schedule={"interval": "1m"}, params=_ESQ_PARAMS,
+            tags=["contract"], enabled=False, notify_when="onActiveAlert", throttle=None,
+            actions=[{"id": conn.id, "group": "query matched", "params": {"message": "a"}}],
+        ).body["id"]
+    try:
+        gateway.update_alert_rule(rule_id, "contract kept timing", None, None, None, None)
+        with _raw_kibana() as raw:
+            assert raw.alerting.rule.get(id=rule_id).body["notify_when"] == "onActiveAlert"
+        freq = {"summary": False, "notify_when": "onActionGroupChange", "throttle": None}
+        gateway.update_alert_rule(rule_id, None, None, None, None, [{
+            "id": conn.id, "group": "query matched", "params": {"message": "b"}, "frequency": freq,
+        }])
+        with _raw_kibana() as raw:
+            after = raw.alerting.rule.get(id=rule_id).body
+        assert after["notify_when"] is None and after["throttle"] is None
+        assert after["actions"][0]["frequency"] == freq
+    finally:
+        gateway.delete_alert_rule(rule_id)
+        gateway.delete_connector(conn.id)
+
+
 def test_update_alert_rule_rejections_name_the_fix_live(gateway):
     with pytest.raises(KibanaNotFound, match=r"call list_alert_rules to find it"):
         gateway.update_alert_rule("no-such-rule-id-xyz", "x", None, None, None, None)

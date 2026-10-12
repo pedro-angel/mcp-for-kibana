@@ -227,6 +227,34 @@ def test_update_alert_rule_passes_caller_actions_verbatim():
     assert sent["actions"] == new
 
 
+_LEGACY_TIMED_RULE = {**_FULL_RULE, "notify_when": "onActiveAlert", "throttle": "5m", "actions": [{
+    "group": "query matched", "id": "c1", "params": {"message": "hi"},
+    "connector_type_id": ".server-log", "uuid": "u-1",
+}]}
+_FREQ = {"summary": False, "notify_when": "onActionGroupChange", "throttle": None}
+
+
+def test_update_alert_rule_actions_with_frequency_replace_rule_level_timing():
+    # Kibana 400s per-action frequency next to a rule-level notify_when or
+    # throttle (probed on 9.5.4); omitting the pair clears it on the rule.
+    sent = {}
+    new = [{"id": "c1", "group": "query matched", "params": {"message": "x"}, "frequency": _FREQ}]
+    _rule_rmw_gw(sent, _LEGACY_TIMED_RULE).update_alert_rule("r1", None, None, None, None, new)
+    assert sent["actions"] == new
+    assert "notify_when" not in sent and "throttle" not in sent
+    assert sent["alert_delay"] == {"active": 2}  # the other preserved keys still ride along
+
+
+@pytest.mark.parametrize("actions", [
+    None,  # the rule's own actions are re-sent
+    [{"id": "c1", "group": "query matched", "params": {"message": "x"}}],  # no frequency
+])
+def test_update_alert_rule_keeps_rule_level_timing_without_per_action_frequency(actions):
+    sent = {}
+    _rule_rmw_gw(sent, _LEGACY_TIMED_RULE).update_alert_rule("r1", "n", None, None, None, actions)
+    assert sent["notify_when"] == "onActiveAlert" and sent["throttle"] == "5m"
+
+
 _CONN_BODY = {
     "id": "c1", "name": "idx", "connector_type_id": ".index",
     "config": {"index": "a", "refresh": False, "executionTimeField": None},

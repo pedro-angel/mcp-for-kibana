@@ -59,7 +59,8 @@ docs/tools.md#alerting-toolbox.
   key, because the caller often cannot see the rest (`get_alert_rule` returns
   a summary without params); `tags` and `actions` replace the whole list, so
   `[]` clears. The rule's `throttle`, `notify_when`, `alert_delay`, `flapping`
-  and `artifacts` are re-sent when set. GET echoes each action's
+  and `artifacts` are re-sent when set — except `notify_when` and `throttle`
+  when the caller's `actions` carry a `frequency` (see the caveat below). GET echoes each action's
   `connector_type_id`, which the PUT schema rejects, so it is stripped; the
   action's `uuid` is kept and Kibana preserves it.
 - **`update_alert_rule` never changes `enabled`.** It has no `enabled`
@@ -166,6 +167,9 @@ docs/tools.md#alerting-toolbox.
 - MUST make `update_alert_rule` and `update_connector` read-modify-write:
   an argument not passed leaves that field as it was.
 - MUST NOT change a rule's `enabled` state from `update_alert_rule`.
+- MUST leave the rule-level `notify_when`/`throttle` out of an
+  `update_alert_rule` whose `actions` carry a `frequency`, and re-send them
+  otherwise.
 - MUST NOT return a connector's secrets from any tool.
 - MUST refuse `update_connector` without `secrets` on any connector type
   other than `.index` and `.server-log`, and on any preconfigured connector,
@@ -192,8 +196,11 @@ docs/tools.md#alerting-toolbox.
   notify_when or throttle are defined at the rule level", probed), and
   kibana-py marks rule-level `throttle` deprecated in favour of `frequency`;
   `create_alert_rule` does not take them either. A rule that already has
-  them keeps them. `alert_delay`, `flapping` and `artifacts` are likewise
-  preserved, not editable.
+  them keeps them, unless the `actions` passed carry a `frequency`: then the
+  pair is left out of the PUT, which clears it (probed on 9.5.4: a PUT
+  without them succeeds and stores `null`), so the rule moves to per-action
+  timing instead of the edit failing with no tool able to clear them.
+  `alert_delay`, `flapping` and `artifacts` are preserved, not editable.
 - **A merge cannot remove a key.** `params`/`config` merge key by key, so a
   key can be overwritten (or set to `null` where the type allows it) but not
   dropped; Kibana fills defaults into a rule's stored params anyway
@@ -267,7 +274,9 @@ docs/tools.md#alerting-toolbox.
   connectors, and that a missing space still reports the space.
 - `tests/unit/adapters/test_alerting_gateway.py` — the update bodies:
   every writable rule field re-sent, params merged, `connector_type_id`
-  stripped from echoed actions, no `enabled`; connector config merged and
+  stripped from echoed actions, no `enabled`, rule-level
+  `notify_when`/`throttle` left out only beside caller actions that carry a
+  `frequency`; connector config merged and
   name kept; secrets forwarded but absent from results; the preconfigured
   and missing-secrets refusals sending nothing.
 - `tests/unit/toolboxes/test_alerting.py` and
@@ -278,7 +287,10 @@ docs/tools.md#alerting-toolbox.
 - `tests/contract/test_gateway_contract.py` — live:
   `test_update_alert_rule_preserves_what_it_was_not_given_live` (actions keep
   their uuid, tags and params survive a params-only edit, an enabled rule
-  stays enabled, `[]` clears), `test_update_alert_rule_rejections_name_the_fix_live`,
+  stays enabled, `[]` clears),
+  `test_update_alert_rule_per_action_frequency_replaces_rule_level_timing_live`
+  (a rule with a rule-level `notify_when` keeps it on a rename and takes
+  actions with a `frequency`), `test_update_alert_rule_rejections_name_the_fix_live`,
   `test_connector_get_and_update_live` (a `.index` rename keeps its required
   config; config merges; secrets on `.index` are rejected) and
   `test_alerting_maintenance_tools_scoped_live` (the three tools through MCP

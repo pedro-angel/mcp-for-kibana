@@ -133,7 +133,11 @@ this ledger stands without them.
   `actions[].connector_type_id` and any `enabled` key; its connector PUT resets
   omitted `config` to `{}` (`.index` then fails validation). So
   `update_alert_rule`/`update_connector` re-send every writable field and merge
-  `params`/`config` key by key. Secrets cannot be read back, and kibana-py
+  `params`/`config` key by key — except a rule's rule-level
+  `notify_when`/`throttle` when the caller's `actions` carry a `frequency`:
+  Kibana refuses that mix ("Cannot specify per-action frequency params when
+  notify_when or throttle are defined at the rule level", observed), so the
+  pair is left out and Kibana clears it. Secrets cannot be read back, and kibana-py
   0.6.0 documents that an omitted `secrets` is reset to `{}`; every type that
   holds secrets is Gold+ (`.webhook` 403s on Basic), so the wipe is not
   observable on the reference stack. Decision: only `.index` and
@@ -153,7 +157,10 @@ this ledger stands without them.
   `update_data_view` sends only the changed keys, refuses empty values,
   and requires the time field to keep to be a `date` field of the view —
   checked before the write, or, when the pattern changes, after writing the
-  pattern alone, with the old pattern written back on a mismatch. Rejected
+  pattern alone, with the old pattern written back on a mismatch; when a write
+  after the pattern's fails (the restore, or the name/time-field write), the
+  error keeps the cause and states the pattern the view now has and the call
+  that undoes it. Rejected
   alternatives: re-sending every field (needless: the update merges);
   checking a new pattern's fields through Kibana's internal fields-for-wildcard
   route (internal, and absent from kibana-py). An empty field list skips the
@@ -177,8 +184,9 @@ this ledger stands without them.
   shape) and names it by the library item's title, `""` once that item is
   gone; `delete_visualization`'s description says a panel stays behind,
   broken. `update_panel` refuses a by-reference panel, naming
-  `update_visualization`, rather than silently unlinking it by writing an
-  inline copy over it: the owner wants charts reused, and the change a user
+  `update_visualization` (or, when the item is gone, `delete_panel` then
+  `add_panel`/`add_library_panel`), rather than silently unlinking it by
+  writing an inline copy over it: the owner wants charts reused, and the change a user
   asks of a linked chart belongs on the chart. Rejected alternative: placing
   a by-value copy of the library config (it would work, but later edits to
   the library item would not reach the dashboard, which is what reuse means).

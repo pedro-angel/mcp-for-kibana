@@ -83,7 +83,11 @@ but are owned and registered once by data-management, not here.
   a by-reference panel refuses before any write: "panel {i} shows library
   visualization '{id}' — change it with update_visualization, which updates
   every dashboard that shows it" (writing an inline config over it would
-  silently unlink it). `create_dashboard`'s replace drops it with the other
+  silently unlink it). When the referenced item no longer exists that
+  advice dead-ends, so the refusal instead reads "panel {i} shows library
+  visualization '{id}', which no longer exists — remove the broken panel with
+  delete_panel (destructive tier), then place a chart with add_panel or
+  add_library_panel". `create_dashboard`'s replace drops it with the other
   panels; the library item is untouched.
 - **Library edits never create, and deletes can dangle.** Kibana's
   visualization PUT is an upsert, so `update_visualization` reads the id
@@ -137,7 +141,9 @@ but are owned and registered once by data-management, not here.
   (`delete_panel`'s refusal is currently unpinned by a dedicated unit
   test — a rewrite must preserve it regardless.)
 - `update_panel`/`delete_panel` must validate `panel_index` range before
-  any write; `update_panel` refuses non-`vis` and by-reference panels;
+  any write; `update_panel` refuses non-`vis` and by-reference panels,
+  naming `delete_panel` instead of `update_visualization` when the
+  referenced visualization no longer exists;
   `delete_panel` refuses a section entry.
 - VizSpec-based tools (`create_dashboard`, `create_visualization`,
   `update_visualization`, `add_panel`, `update_panel`) must fully
@@ -232,7 +238,8 @@ but are owned and registered once by data-management, not here.
   unchanged), the unknown-item and unroundtrippable refusals, a dashboard
   holding a library panel staying editable by `add_panel`, the ES|QL
   appends, `update_panel` (inline) and `delete_panel`, the pinned
-  `update_panel` refusal text, `create_dashboard` replace, an edit reaching
+  `update_panel` refusal texts (live item, and a dangling ref naming
+  `delete_panel`), `create_dashboard` replace, an edit reaching
   the linked panel, and the dangling panel after a delete.
 - **Unit — tests/unit/adapters/test_visualization_gateway.py,
   tests/unit/visualizations/test_describe.py**: paging and query passing,
