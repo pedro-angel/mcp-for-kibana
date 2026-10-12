@@ -55,8 +55,9 @@ run the seeded dashboard and rule are restored; after it, every check's
 expected and actual value goes to outcome.json and, through
 study_tasks.span_attributes, onto the run's root span. The first result event
 is read (the parked fix), the transcript is written as it streams, a run is
-cut at 30 minutes, and the Kibana key stays out of the with-mcp model's
-environment (the no-mcp arm needs it to reach Kibana).
+cut at 30 minutes, the Kibana key stays out of the with-mcp model's
+environment (the no-mcp arm needs it to reach Kibana), and TMPDIR points at
+tmp/ inside the working directory in both arms.
 
 --blocks FIRST LAST drives a whole plan: every (task, model, arm) cell once
 per block, the order rotated by block (tasks by one place, models by one
@@ -634,6 +635,16 @@ def _stream_denials(events: list[dict], results: list[dict]) -> list[str]:
     return sorted(denied)
 
 
+def task_tmpdir(workdir: Path) -> str:
+    """TMPDIR for a --task run: tmp/ inside the run's working directory, so
+    `$TMPDIR/x` is a writable path the model's tools may touch. With TMPDIR
+    empty, `cat > $TMPDIR/x` became `cat > /x`: it hung on stdin and the
+    model's `rm /x` was refused (first study b20, study 4 pilot)."""
+    tmp = workdir / "tmp"
+    tmp.mkdir(exist_ok=True)
+    return str(tmp)
+
+
 def key_in_model_env(arm: str, task: str | None, live: dict | None) -> bool:
     """Whether KIBANA_TEST_API_KEY goes into the model's environment. --task
     runs: never for a server arm (the study's running rule); the no-mcp arm
@@ -877,6 +888,8 @@ def run_once(
         cmd[at:at] = mcp_allowed
         env = {k: v for k, v in os.environ.items() if k not in _STRIP_ENV}
         env.update({"KIBANA_URL": kibana_url, "KIBANA_TEST_API_KEY": api_key})
+        if task:  # a scratch dir the model may use: TMPDIR is empty otherwise (decision 17)
+            env["TMPDIR"] = task_tmpdir(workdir)
         if not key_in_env:
             env.pop("KIBANA_TEST_API_KEY")
         if tel:

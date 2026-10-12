@@ -249,6 +249,19 @@ _2026-10-12_
 - The report covers that model on all four tasks, and every model on stage 1.
 - The pilot is re-run on the new alert wording (decision 15): 3 runs per model, 12 runs. The first pilot's records are kept under `runs/study5/pilot-v1/`.
 
+### 17. Study 4: TMPDIR inside the run's working directory
+
+_2026-10-12_
+
+**Question.** In the study 4 pilot, Sonnet without the server ran `cat > $TMPDIR/d.json` with `TMPDIR` empty: the command became `cat > /d.json`, waited on input until the 120-second limit, and the model's next command, `rm /d.json`, was refused because it names a path outside the working directory. The model concluded the shell was denied and stopped; the run is invalid (2 permission denials). The first study's b20 failed the same way. Should the harness prevent it?
+
+**Decision.** Yes. In `--task` runs both arms get `TMPDIR` set to `tmp/` inside the run's working directory, created before the run. The first study's runner is unchanged. Decided through the coordinator session on 2026-10-12, after the pilot.
+
+Considered:
+
+- Leaving it: the failure measures an empty variable in the harness, not the work, and it costs the arm without the server a run now and then (1 of 24 in the pilot, 1 of 90 in the first study).
+- The pilot records keep the failed run as it happened; one run of the same cell after the fix confirms it (`runs/efficiency/study4/pilot-tmpdir/`).
+
 ## Background research
 
 Looked up before or during the design.

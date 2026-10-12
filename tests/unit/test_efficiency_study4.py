@@ -170,6 +170,14 @@ def test_kibana_key_stays_out_of_the_server_arm_in_task_runs():
     assert er.key_in_model_env("with-mcp", None, {"key_out_of_model_env": True}) is False
 
 
+def test_task_tmpdir_is_inside_the_work_dir(tmp_path):
+    work = tmp_path / "work"
+    work.mkdir()
+    tmp = Path(er.task_tmpdir(work))
+    assert tmp == work / "tmp" and tmp.is_dir()
+    assert er.task_tmpdir(work) == str(tmp)  # idempotent
+
+
 def test_task_runs_are_cut_at_thirty_minutes():
     assert er.TASK_TIMEOUT_S == 30 * 60 < er.STALL_MINUTES * 60
 
