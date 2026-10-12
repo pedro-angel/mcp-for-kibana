@@ -1,13 +1,12 @@
 {
-  "_about": "The one config of the local-model study. local_run.py, local_analyze.py and LOCAL_STUDY.md read every study value from here; the code holds none. Paths are relative to the repository root. Secrets never go here: the LM Studio token and the Honeycomb key are read from the environment variables named below (or .env.local, read-only).",
+  "_about": "The one config of the local-model study (study 5). local_run.py, local_analyze.py and LOCAL_STUDY.md read every study value from here; the tasks themselves (prompts, seed, checks) are the shared tasks.json named under tasks, the same definition study 4 uses. Paths are relative to the repository root. Secrets never go here: the LM Studio token and the Honeycomb key are read from the environment variables named below (or .env.local, read-only).",
   "study": "local-models",
-  "question": "Can local models drive mcp-for-kibana through a stated multi-step Kibana task, at which chain length do they lose track, and what does each step cost in time and tokens?",
+  "question": "How reliably do local models that can do the work complete the tasks through mcp-for-kibana, and how long do they take?",
 
   "models": [
-    "mistralai/ministral-3-3b",
+    "nvidia/nemotron-3-nano-4b",
     "google/gemma-4-12b-qat",
-    "qwen/qwen3.8-27b",
-    "nvidia/nemotron-3-nano-omni"
+    "qwen/qwen3.8-27b"
   ],
 
   "lmstudio": {
@@ -29,75 +28,37 @@
     "required_tools": [
       "describe_data_view",
       "create_dashboard",
+      "add_panel",
       "update_panel",
       "get_dashboard",
       "create_alert_rule",
       "enable_alert_rule",
-      "get_alert_rule"
+      "get_alert_rule",
+      "list_alert_rules"
     ]
   },
 
   "kibana": {
     "version": "9.5.5",
     "seed_file": "elastic-start-local/.env.seed",
-    "sample_data": "logs",
-    "logs_index": "kibana_sample_data_logs",
-    "data_view": "Kibana Sample Data Logs",
     "marker_prefix": "LOC"
   },
 
-  "task": {
-    "preamble": "Using the kibana tools, work on Kibana's web-logs sample data (data view '{data_view}', index {logs_index}). Do these steps in order:",
-    "closing": "Use only the kibana tools. When every step is done, reply with a short summary.",
-    "steps": [
-      {
-        "id": "describe",
-        "text": "Describe the data view '{data_view}': look up its fields and name its time field. End your reply with a line of the form TIME_FIELD: <field name>.",
-        "checks": {
-          "tool_ok": [["describe_data_view"]],
-          "answer": {"pattern": "TIME_FIELD[`'\"*]*:[\\s`'\"*]*([\\w.@]+)", "equals": "timestamp", "ignore_case": false}
-        }
-      },
-      {
-        "id": "dashboard",
-        "text": "Build a dashboard titled '{marker} Web logs' on that data view with exactly two panels: the number of requests over time, and the number of requests by HTTP response code.",
-        "checks": {
-          "dashboard": {"panels_exact": 2, "uses_logs": true, "panel_mentions": ["response"]}
-        }
-      },
-      {
-        "id": "rule",
-        "text": "Create an alert rule named '{marker} 5xx errors' on the web-logs data for the signal of the response-code panel: it checks every minute and fires when more than 10 requests with a 5xx response code arrive within 5 minutes. The rule must be enabled when you finish: if it is created disabled, enable it.",
-        "checks": {
-          "rule": {"enabled": true, "uses_logs": true, "interval": "1m", "params_regex": ["response", "5\\d\\d|5xx|5\\*|5\\[0-9\\]"]}
-        }
-      },
-      {
-        "id": "edit",
-        "text": "Edit the response-code panel of that dashboard: change its title to 'Responses by code'. Then read the alert rule back and check that it is enabled. End your reply with a line of the form RULE_ENABLED: yes or RULE_ENABLED: no.",
-        "checks": {
-          "tool_ok": [["update_panel"], ["get_alert_rule", "list_alert_rules"]],
-          "panel_title": "Responses by code",
-          "rule": {"enabled": true},
-          "answer": {"pattern": "RULE_ENABLED[`'\"*]*:[\\s`'\"*]*(\\w+)", "equals": "yes", "ignore_case": true}
-        }
-      }
-    ],
-    "levels": [
-      {"id": "L1", "steps": 1},
-      {"id": "L2", "steps": 2},
-      {"id": "L3", "steps": 3},
-      {"id": "L4", "steps": 4}
-    ]
+  "tasks": {
+    "file": "scripts/experiment/tasks.json",
+    "arm": "server",
+    "stage1": ["weblogs"],
+    "stage2": ["change", "lookup", "flights"],
+    "pass_mark": 14
   },
 
   "runs": {
-    "pilot_per_cell": 1,
-    "per_cell": 12,
+    "pilot_per_cell": 3,
+    "per_cell": 20,
     "order": "rotate",
     "max_attempts": 3,
     "budget_hours": 12,
-    "out_dir": "scripts/experiment/runs/local"
+    "out_dir": "scripts/experiment/runs/study5"
   },
 
   "honeycomb": {
@@ -110,7 +71,6 @@
   },
 
   "analysis": {
-    "lose_track_threshold": 0.5,
     "pass_hat_k": [2, 3]
   }
 }

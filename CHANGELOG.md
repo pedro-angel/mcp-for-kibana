@@ -12,6 +12,11 @@ version section.
 
 ### Added
 
+- **The web-logs task asks for all server errors.** Its alert step now
+  reads "Count all server errors: every request whose response code is
+  anywhere from 500 to 599", so the check that fails a filter missing any
+  of those codes (decision 12) matches what the task says. The checker is
+  unchanged. STUDY_DESIGN.md decision 15.
 - **The four tasks of studies 4 and 5** (`scripts/experiment/tasks.json`,
   `study_tasks.py`): the web-logs task, the same task on flights data,
   changing existing objects and looking them up, with arm-neutral prompts, a
@@ -21,6 +26,15 @@ version section.
   index; `study_tasks.py replay` scores stored runs' rules against the live
   stack. Every check's expected and actual value is exported as root-span
   attributes for Honeycomb. STUDY_DESIGN.md decision 12.
+- **Study 5 runs the shared tasks in two stages** (`local_run.py`
+  `stage1`/`stage2`, `local_study.json`): stage 1 runs the web-logs task 20
+  times per model; stage 2 runs the other three tasks only for the models
+  with at least 14 successes, and refuses to start before stage 1 is
+  complete. Prompts, the seed and the checks come from `study_tasks.py`, and
+  every check is on the run's root span. Models: nemotron-3-nano-4b,
+  gemma-4-12b-qat, qwen3.8-27b; records under `runs/study5/`. The earlier
+  chain-length config is kept as `local_study_levels.json` for
+  `local_report.py`. STUDY_DESIGN.md decision 13.
 - **Study 4 in the efficiency runner** (default off). `efficiency_run.py
   --task <id>` runs one of the four tasks with prompt, seed and checks from
   `study_tasks.py`, writes `outcome.json`, and puts every check on the run's

@@ -62,7 +62,7 @@
         },
         {
           "id": "rule",
-          "text": "Create an alert rule named '{marker} 5xx errors' on the web-logs data for the signal of the response-code panel: it checks every minute and fires when more than 10 requests with a 5xx response code arrive within 5 minutes. The rule must be enabled when you finish: if it is created disabled, enable it.",
+          "text": "Create an alert rule named '{marker} 5xx errors' on the web-logs data for the signal of the response-code panel: it checks every minute and fires when more than 10 server errors arrive within 5 minutes. Count all server errors: every request whose response code is anywhere from 500 to 599. The rule must be enabled when you finish: if it is created disabled, enable it.",
           "checks": [{"kind": "new_rule", "name": "{marker} 5xx errors", "interval": "1m", "threshold": 10, "window_minutes": 5, "enabled": true}]
         },
         {
