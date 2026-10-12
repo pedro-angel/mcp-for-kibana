@@ -193,6 +193,9 @@ docs/tools.md#alerting-toolbox.
 - `tests/unit/adapters/test_alerting_gateway.py` and
   `tests/unit/toolboxes/test_alerting.py` — `list_rule_types`' row mapping
   (writable consumers only, licence flags) and its read-only registration.
+- `tests/contract/test_gateway_contract.py::test_list_rule_types_live` — live:
+  `.es-query` lists `stackAlerts` as a consumer on Basic, and types the
+  licence does not allow are flagged, not hidden.
 - `tests/unit/adapters/test_id_guidance.py` — the empty-id and unknown-id
   guidance for dashboards and alert rules, and that a missing space still
   reports the space.
