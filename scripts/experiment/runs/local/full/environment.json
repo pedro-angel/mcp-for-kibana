@@ -1,0 +1,9 @@
+{
+ "captured": "2026-10-11T22:57:04Z",
+ "lmstudio_app_version": "0.4.26+4",
+ "lms_cli_commit": "dcefd5a",
+ "macos": "27.0.1",
+ "cpu": "Apple M5 Pro",
+ "memory_gb": 64,
+ "source": "defaults read LM Studio Info.plist; lms version; sysctl"
+}

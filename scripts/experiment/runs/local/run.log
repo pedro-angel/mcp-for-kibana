@@ -1,0 +1,4 @@
+== runner start 1 2026-10-11T22:56:05Z
+loaded mistralai/ministral-3-3b: {'status': 200, 'context_length': 262144, 'load_s': 4.4, 'unloaded': ['nvidia/nemotron-3-nano-omni'], 'error': None}
+[1/192] full/b01/mistralai-ministral-3-3b/L1 PASS steps=1/1 tools=1 invalid=0 out_tok=54 7.1s otel=skipped: HONEYCOMB_API_KEY is not set
+[2/192] full/b01/mistralai-ministral-3-3b/L2 PASS steps=2/2 tools=5 invalid=0 out_tok=550 8.8s otel=skipped: HONEYCOMB_API_KEY is not set
