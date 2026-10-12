@@ -161,6 +161,19 @@ def test_task_argument_errors_name_the_fix(kw, message, capsys):
     assert message in capsys.readouterr().err
 
 
+def test_kibana_key_stays_out_of_the_server_arm_in_task_runs():
+    assert er.key_in_model_env("with-mcp", "weblogs", None) is False
+    assert er.key_in_model_env("with-mcp", "weblogs", {"key_out_of_model_env": False}) is False
+    assert er.key_in_model_env("no-mcp", "weblogs", None) is True  # it calls Kibana itself
+    # Without --task, the earlier studies' behaviour is unchanged.
+    assert er.key_in_model_env("with-mcp", None, None) is True
+    assert er.key_in_model_env("with-mcp", None, {"key_out_of_model_env": True}) is False
+
+
+def test_task_runs_are_cut_at_thirty_minutes():
+    assert er.TASK_TIMEOUT_S == 30 * 60 < er.STALL_MINUTES * 60
+
+
 def test_task_arms_map_to_tasks_json_preambles():
     cfg = st.load()
     assert set(er.TASK_ARM.values()) <= set(cfg["arms"])
