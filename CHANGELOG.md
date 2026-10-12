@@ -29,7 +29,7 @@ version section.
   every check is on the run's root span. Models: nemotron-3-nano-4b,
   gemma-4-12b-qat, qwen3.8-27b; records under `runs/study5/`. The earlier
   chain-length config is kept as `local_study_levels.json` for
-  `local_report.py`. STUDY_DESIGN.md decision 14.
+  `local_report.py`. STUDY_DESIGN.md decision 13.
 
 ## [0.3.0] - 2026-10-12
 
