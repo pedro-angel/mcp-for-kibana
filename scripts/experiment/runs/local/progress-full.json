@@ -1,0 +1,12 @@
+{
+ "phase": "full",
+ "updated": "2026-10-12T04:45:53.787114+00:00",
+ "cells_total": 192,
+ "cells_done": 45,
+ "runs_recorded": 45,
+ "runs_valid": 45,
+ "runs_passed": 32,
+ "eta_hours": 4.82,
+ "current": "full/b03/google-gemma-4-12b-qat/L4",
+ "attempt": 1
+}

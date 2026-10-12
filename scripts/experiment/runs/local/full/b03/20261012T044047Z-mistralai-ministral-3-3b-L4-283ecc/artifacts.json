@@ -1,0 +1,72 @@
+{
+ "dashboards": [],
+ "rules": [
+  {
+   "id": "7d468aef-df71-442e-a36f-0341fbec8ee6",
+   "enabled": true,
+   "name": "LOC-4870f7ae 5xx errors",
+   "tags": [],
+   "rule_type_id": ".es-query",
+   "consumer": "stackAlerts",
+   "schedule": {
+    "interval": "1m"
+   },
+   "actions": [],
+   "params": {
+    "searchType": "esQuery",
+    "esQuery": "{ \"query\": { \"match\": { \"_source.response.keyword\": { \"value\": \"5xx\", \"operator\": \"regex\" } } } }",
+    "index": [
+     "kibana_sample_data_logs"
+    ],
+    "timeField": "@timestamp",
+    "threshold": [
+     10
+    ],
+    "thresholdComparator": ">=",
+    "timeWindowSize": 5,
+    "timeWindowUnit": "m",
+    "size": 100,
+    "excludeHitsFromPreviousRun": true,
+    "aggType": "count",
+    "groupBy": "all"
+   },
+   "scheduled_task_id": "7d468aef-df71-442e-a36f-0341fbec8ee6",
+   "created_by": "elastic",
+   "updated_by": "elastic",
+   "created_at": "2026-10-12T04:43:12.919Z",
+   "updated_at": "2026-10-12T04:43:14.595Z",
+   "api_key_owner": "elastic",
+   "api_key_created_by_user": true,
+   "throttle": null,
+   "mute_all": false,
+   "notify_when": null,
+   "muted_alert_ids": [],
+   "execution_status": {
+    "status": "error",
+    "error": {
+     "reason": "execute",
+     "message": "x_content_parse_exception\n\tCaused by:\n\t\tparsing_exception: [match] query does not support [value]\n\tRoot causes:\n\t\tparsing_exception: [match] query does not support [value], caused by: \"[match] query does not support [value]\""
+    },
+    "last_execution_date": "2026-10-12T04:43:18.276Z",
+    "last_duration": 26
+   },
+   "last_run": {
+    "outcome": "failed",
+    "outcome_order": 20,
+    "warning": "execute",
+    "outcome_msg": [
+     "x_content_parse_exception\n\tCaused by:\n\t\tparsing_exception: [match] query does not support [value]\n\tRoot causes:\n\t\tparsing_exception: [match] query does not support [value], caused by: \"[match] query does not support [value]\""
+    ],
+    "alerts_count": {
+     "new": 0,
+     "ignored": 0,
+     "recovered": 0,
+     "active": 0
+    }
+   },
+   "next_run": "2026-10-12T04:44:18.263Z",
+   "revision": 0,
+   "running": false
+  }
+ ]
+}

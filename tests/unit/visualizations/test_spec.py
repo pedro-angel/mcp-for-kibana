@@ -55,12 +55,14 @@ def test_xy_needs_group_by():
         make_spec(group_by=[])
 
 
-def test_date_histogram_requires_time_field():
-    with pytest.raises(ValidationError, match="time_field"):
-        make_spec(
-            time_field=None,
-            group_by=[GroupBySpec(field="timestamp", kind="date_histogram")],
-        )
+def test_date_histogram_parses_without_time_field():
+    # time_field is auto-filled from the data view after parsing, so the schema
+    # must accept the omitted form; the pre-flight owns the no-time-field case.
+    spec = make_spec(
+        time_field=None,
+        group_by=[GroupBySpec(field="timestamp", kind="date_histogram")],
+    )
+    assert spec.time_field is None
 
 
 def test_filter_spec_types():

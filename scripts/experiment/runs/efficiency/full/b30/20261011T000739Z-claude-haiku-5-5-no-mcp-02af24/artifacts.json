@@ -1,0 +1,440 @@
+{
+  "dashboards": [
+    {
+      "id": "db14c7e6-4670-4fe9-ad02-a8c515839e6e",
+      "data": {
+        "description": "Key metrics for the web logs sample data: request volume, 5xx errors, response size.",
+        "options": {
+          "auto_apply_filters": true,
+          "hide_panel_borders": false,
+          "hide_panel_titles": false,
+          "sync_colors": false,
+          "sync_cursor": true,
+          "sync_tooltips": false,
+          "use_margins": true
+        },
+        "tags": [],
+        "title": "EFF-145022e6 Web logs overview",
+        "filters": [],
+        "panels": [
+          {
+            "grid": {
+              "x": 0,
+              "y": 0,
+              "w": 48,
+              "h": 3
+            },
+            "config": {
+              "content": "## Web logs overview\nTraffic from `kibana_sample_data_logs`: request volume, server errors, and response size.",
+              "settings": {
+                "open_links_in_new_tab": true
+              }
+            },
+            "id": "eff145-0001-4000-8000-000000000001",
+            "type": "markdown"
+          },
+          {
+            "grid": {
+              "x": 0,
+              "y": 3,
+              "w": 16,
+              "h": 5
+            },
+            "config": {
+              "title": "Total requests",
+              "data_source": {
+                "type": "esql",
+                "query": "FROM kibana_sample_data_logs | STATS requests = COUNT(*)"
+              },
+              "type": "metric",
+              "sampling": 1,
+              "ignore_global_filters": false,
+              "metrics": [
+                {
+                  "type": "primary",
+                  "column": "requests",
+                  "label": "Total requests",
+                  "color": {
+                    "type": "auto"
+                  }
+                }
+              ],
+              "styling": {
+                "density": "default",
+                "primary": {
+                  "position": "bottom",
+                  "labels": {
+                    "alignment": "left"
+                  },
+                  "value": {
+                    "sizing": "auto",
+                    "alignment": "right"
+                  }
+                }
+              }
+            },
+            "id": "eff145-0001-4000-8000-000000000002",
+            "type": "vis"
+          },
+          {
+            "grid": {
+              "x": 16,
+              "y": 3,
+              "w": 16,
+              "h": 5
+            },
+            "config": {
+              "title": "5xx responses",
+              "data_source": {
+                "type": "esql",
+                "query": "FROM kibana_sample_data_logs | WHERE response.keyword RLIKE \"5[0-9][0-9]\" | STATS server_errors = COUNT(*)"
+              },
+              "type": "metric",
+              "sampling": 1,
+              "ignore_global_filters": false,
+              "metrics": [
+                {
+                  "type": "primary",
+                  "column": "server_errors",
+                  "label": "5xx responses",
+                  "color": {
+                    "type": "auto"
+                  }
+                }
+              ],
+              "styling": {
+                "density": "default",
+                "primary": {
+                  "position": "bottom",
+                  "labels": {
+                    "alignment": "left"
+                  },
+                  "value": {
+                    "sizing": "auto",
+                    "alignment": "right"
+                  }
+                }
+              }
+            },
+            "id": "eff145-0001-4000-8000-000000000003",
+            "type": "vis"
+          },
+          {
+            "grid": {
+              "x": 32,
+              "y": 3,
+              "w": 16,
+              "h": 5
+            },
+            "config": {
+              "title": "Average bytes per request",
+              "data_source": {
+                "type": "esql",
+                "query": "FROM kibana_sample_data_logs | STATS avg_bytes = AVG(bytes)"
+              },
+              "type": "metric",
+              "sampling": 1,
+              "ignore_global_filters": false,
+              "metrics": [
+                {
+                  "type": "primary",
+                  "column": "avg_bytes",
+                  "label": "Average bytes per request",
+                  "color": {
+                    "type": "auto"
+                  }
+                }
+              ],
+              "styling": {
+                "density": "default",
+                "primary": {
+                  "position": "bottom",
+                  "labels": {
+                    "alignment": "left"
+                  },
+                  "value": {
+                    "sizing": "auto",
+                    "alignment": "right"
+                  }
+                }
+              }
+            },
+            "id": "eff145-0001-4000-8000-000000000004",
+            "type": "vis"
+          },
+          {
+            "grid": {
+              "x": 0,
+              "y": 8,
+              "w": 24,
+              "h": 10
+            },
+            "config": {
+              "title": "Requests over time",
+              "type": "xy",
+              "layers": [
+                {
+                  "type": "line",
+                  "data_source": {
+                    "type": "esql",
+                    "query": "FROM kibana_sample_data_logs | STATS requests = COUNT(*) BY BUCKET(@timestamp, 75, ?_tstart, ?_tend)"
+                  },
+                  "sampling": 1,
+                  "ignore_global_filters": false,
+                  "x": {
+                    "column": "BUCKET(@timestamp, 75, ?_tstart, ?_tend)"
+                  },
+                  "y": [
+                    {
+                      "column": "requests",
+                      "color": {
+                        "type": "auto"
+                      }
+                    }
+                  ]
+                }
+              ],
+              "axis": {
+                "x": {
+                  "title": {
+                    "visible": true
+                  },
+                  "ticks": {
+                    "visible": true
+                  },
+                  "grid": {
+                    "visible": true
+                  },
+                  "domain": {
+                    "type": "fit",
+                    "rounding": false
+                  },
+                  "labels": {
+                    "orientation": "horizontal"
+                  },
+                  "scale": "ordinal"
+                },
+                "y": {
+                  "title": {
+                    "visible": true
+                  },
+                  "scale": "linear",
+                  "ticks": {
+                    "visible": true
+                  },
+                  "grid": {
+                    "visible": true
+                  },
+                  "domain": {
+                    "type": "full",
+                    "rounding": true
+                  },
+                  "labels": {
+                    "orientation": "horizontal"
+                  }
+                }
+              },
+              "styling": {
+                "overlays": {
+                  "partial_buckets": {
+                    "visible": false
+                  },
+                  "current_time_marker": {
+                    "visible": false
+                  }
+                },
+                "interpolation": "linear",
+                "points": {
+                  "visibility": "auto"
+                }
+              },
+              "legend": {
+                "placement": "outside",
+                "position": "right",
+                "layout": {
+                  "type": "grid",
+                  "truncate": {
+                    "max_lines": 1
+                  }
+                },
+                "visibility": "hidden"
+              }
+            },
+            "id": "eff145-0001-4000-8000-000000000005",
+            "type": "vis"
+          },
+          {
+            "grid": {
+              "x": 0,
+              "y": 18,
+              "w": 24,
+              "h": 10
+            },
+            "config": {
+              "title": "5xx responses over time",
+              "type": "xy",
+              "layers": [
+                {
+                  "type": "line",
+                  "data_source": {
+                    "type": "esql",
+                    "query": "FROM kibana_sample_data_logs | WHERE response.keyword RLIKE \"5[0-9][0-9]\" | STATS server_errors = COUNT(*) BY BUCKET(@timestamp, 75, ?_tstart, ?_tend)"
+                  },
+                  "sampling": 1,
+                  "ignore_global_filters": false,
+                  "x": {
+                    "column": "BUCKET(@timestamp, 75, ?_tstart, ?_tend)"
+                  },
+                  "y": [
+                    {
+                      "column": "server_errors",
+                      "color": {
+                        "type": "auto"
+                      }
+                    }
+                  ]
+                }
+              ],
+              "axis": {
+                "x": {
+                  "title": {
+                    "visible": true
+                  },
+                  "ticks": {
+                    "visible": true
+                  },
+                  "grid": {
+                    "visible": true
+                  },
+                  "domain": {
+                    "type": "fit",
+                    "rounding": false
+                  },
+                  "labels": {
+                    "orientation": "horizontal"
+                  },
+                  "scale": "ordinal"
+                },
+                "y": {
+                  "title": {
+                    "visible": true
+                  },
+                  "scale": "linear",
+                  "ticks": {
+                    "visible": true
+                  },
+                  "grid": {
+                    "visible": true
+                  },
+                  "domain": {
+                    "type": "full",
+                    "rounding": true
+                  },
+                  "labels": {
+                    "orientation": "horizontal"
+                  }
+                }
+              },
+              "styling": {
+                "overlays": {
+                  "partial_buckets": {
+                    "visible": false
+                  },
+                  "current_time_marker": {
+                    "visible": false
+                  }
+                },
+                "interpolation": "linear",
+                "points": {
+                  "visibility": "auto"
+                }
+              },
+              "legend": {
+                "placement": "outside",
+                "position": "right",
+                "layout": {
+                  "type": "grid",
+                  "truncate": {
+                    "max_lines": 1
+                  }
+                },
+                "visibility": "hidden"
+              }
+            },
+            "id": "eff145-0001-4000-8000-000000000006",
+            "type": "vis"
+          }
+        ],
+        "pinned_panels": []
+      },
+      "meta": {
+        "created_at": "2026-10-11T00:09:17.776Z",
+        "managed": false,
+        "updated_at": "2026-10-11T00:09:17.776Z",
+        "version": "WzE4ODUsMV0="
+      }
+    }
+  ],
+  "rules": [
+    {
+      "id": "8bb7d83c-cb10-4c00-bb30-ff5daf725963",
+      "enabled": true,
+      "name": "EFF-145022e6 5xx spike",
+      "tags": [],
+      "rule_type_id": ".es-query",
+      "consumer": "stackAlerts",
+      "schedule": {
+        "interval": "1m"
+      },
+      "actions": [],
+      "params": {
+        "searchType": "esqlQuery",
+        "esqlQuery": {
+          "esql": "FROM kibana_sample_data_logs | WHERE response.keyword RLIKE \"5[0-9][0-9]\" | STATS server_errors = COUNT(*) | WHERE server_errors > 10"
+        },
+        "timeField": "@timestamp",
+        "timeWindowSize": 5,
+        "timeWindowUnit": "m",
+        "threshold": [
+          0
+        ],
+        "thresholdComparator": ">",
+        "size": 0,
+        "groupBy": "all",
+        "excludeHitsFromPreviousRun": true,
+        "aggType": "count"
+      },
+      "scheduled_task_id": "8bb7d83c-cb10-4c00-bb30-ff5daf725963",
+      "created_by": "elastic",
+      "updated_by": "elastic",
+      "created_at": "2026-10-11T00:09:33.251Z",
+      "updated_at": "2026-10-11T00:09:33.251Z",
+      "api_key_owner": "elastic",
+      "api_key_created_by_user": true,
+      "throttle": null,
+      "mute_all": false,
+      "notify_when": null,
+      "muted_alert_ids": [],
+      "execution_status": {
+        "status": "ok",
+        "last_execution_date": "2026-10-11T00:10:36.326Z",
+        "last_duration": 47
+      },
+      "last_run": {
+        "outcome": "succeeded",
+        "outcome_order": 0,
+        "warning": null,
+        "outcome_msg": null,
+        "alerts_count": {
+          "new": 0,
+          "ignored": 0,
+          "recovered": 0,
+          "active": 0
+        }
+      },
+      "next_run": "2026-10-11T00:11:36.310Z",
+      "revision": 0,
+      "running": false
+    }
+  ]
+}

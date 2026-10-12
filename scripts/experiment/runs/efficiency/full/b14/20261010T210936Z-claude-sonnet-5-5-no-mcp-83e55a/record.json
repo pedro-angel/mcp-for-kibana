@@ -1,0 +1,91 @@
+{
+  "run_id": "20261010T210936Z-claude-sonnet-5-5-no-mcp-83e55a",
+  "block": "b14",
+  "model_requested": "claude-sonnet-5-5",
+  "arm": "no-mcp",
+  "marker": "EFF-2e647aee",
+  "kibana_version": "9.5.5",
+  "toolboxes": null,
+  "claude_cli": "2.1.296 (Claude Code)",
+  "git_sha": "3621088",
+  "ts_start": "2026-10-10T21:09:36.235661+00:00",
+  "wall_s": 738.9,
+  "init_tools": [
+    "Bash",
+    "Glob",
+    "Grep",
+    "Read",
+    "Write"
+  ],
+  "init_mcp_tools": [],
+  "init_mcp_servers": [],
+  "tool_calls": [
+    "Bash",
+    "Bash",
+    "Bash",
+    "Bash",
+    "Bash",
+    "Bash",
+    "Bash",
+    "Bash"
+  ],
+  "n_tool_calls": 8,
+  "n_mcp_calls": 0,
+  "n_bash_calls": 8,
+  "num_turns": 1,
+  "total_cost_usd": 0.10235,
+  "duration_ms": 5340,
+  "duration_api_ms": 32450,
+  "input_tokens": 4,
+  "output_tokens": 204,
+  "cache_read_input_tokens": 16538,
+  "cache_creation_input_tokens": 1774,
+  "model_usage": {
+    "claude-sonnet-5-5": {
+      "inputTokens": 22,
+      "outputTokens": 3889,
+      "cacheReadInputTokens": 116800,
+      "cacheCreationInputTokens": 12934,
+      "webSearchRequests": 0,
+      "costUSD": 0.10235,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 131,
+      "canonicalModel": "claude-sonnet-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "models_reported": [
+    "claude-sonnet-5-5"
+  ],
+  "permission_denials": [],
+  "is_error": false,
+  "terminal_reason": "completed",
+  "final_text": "That notification is for my first dashboard attempt, which stalled and was stopped. A stray `cat >` was waiting on input. I reran the command without it, and the rerun is what created the dashboard. The dashboard and the rule are both in place, so I won't restart the stopped task.\n\nThe `?query=EFF` search I ran while that attempt hung returned no dashboards, so the stalled attempt didn't create one. I haven't listed dashboards since the rerun, so I can't rule out a duplicate. The rerun's response returned the ID `ac762e2a-7654-43a5-8eae-b3a4ca123a1a`.",
+  "timed_out": false,
+  "valid": true,
+  "dashboard_found": true,
+  "dashboard_panels": 5,
+  "dashboard_uses_logs": true,
+  "rule_found": true,
+  "rule_enabled": true,
+  "rule_uses_logs": true,
+  "rule_type_id": ".es-query",
+  "success": true,
+  "failure_reason": null,
+  "reset_removed": {
+    "objects": [
+      [
+        "dashboard",
+        "ac762e2a-7654-43a5-8eae-b3a4ca123a1a"
+      ]
+    ],
+    "rules": [
+      "40b971d7-974a-4c21-ba62-48f5e417f861"
+    ],
+    "connectors": []
+  },
+  "ts_end": "2026-10-10T21:21:57.621315+00:00",
+  "otel": "sent: HTTP 200, trace 9810e5a6a41295f95512af770090ceb4"
+}

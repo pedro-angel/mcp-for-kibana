@@ -17,9 +17,9 @@ CRUD and the ability to test-fire a connector can enable just `alerting`.
 
 ## Surface
 
-11 tools: 4 `read`, 4 `write`, 3 `destructive` — one Kibana operation per
+12 tools: 5 `read`, 4 `write`, 3 `destructive` — one Kibana operation per
 tool, no batch or bulk form. `read`: `list_alert_rules`, `get_alert_rule`,
-`get_alerting_health`, `list_connectors`. `write`: `create_alert_rule`,
+`get_alerting_health`, `list_connectors`, `list_rule_types`. `write`: `create_alert_rule`,
 `enable_alert_rule`, `disable_alert_rule`, `create_connector`.
 `destructive`: `delete_alert_rule`, `delete_connector`, `execute_connector`.
 The tier cap hides the destructive three at the default `write` tier and all
@@ -88,10 +88,11 @@ docs/tools.md#alerting-toolbox.
 
 ## Invariants
 
-- MUST register exactly 11 tools, split 4 read / 4 write / 3 destructive, as
+- MUST register exactly 12 tools, split 5 read / 4 write / 3 destructive, as
   listed under Surface — one call per Kibana operation.
 - MUST default `create_alert_rule`'s `enabled` to `False`.
-- MUST NOT echo `space` on `list_alert_rules` or `list_connectors` results,
+- MUST NOT echo `space` on `list_alert_rules`, `list_connectors` or
+  `list_rule_types` results,
   even when `space` is set.
 - MUST echo `space` on every other (dict-returning) tool's result, and only
   when the caller passed one.
@@ -111,6 +112,12 @@ docs/tools.md#alerting-toolbox.
   error or a false `"ok"`.
 - MUST NOT require a `confirm` parameter on any tool in this toolbox.
 - MUST run schema/argument guards before the gateway is constructed.
+- MUST answer an empty `rule_id` on `get`/`enable`/`disable`/`delete_alert_rule`
+  with "rule_id is empty — pass the id that create_alert_rule or
+  list_alert_rules returns", and a `rule_id` that matches no rule with
+  "alert rule '<id>' not found — rule_id is the id … not the rule's name; call
+  list_alert_rules to find it" (D17; the space suffix still applies). Probed
+  on Kibana 9.5.5: models pass a rule's name or an empty string as its id.
 
 ## Deliberate exclusions & caveats
 
@@ -124,10 +131,17 @@ docs/tools.md#alerting-toolbox.
 - **Rule-lifecycle depth deferred** (recorded 2026-08-19, ordered as this
   toolbox's next work): in-place rule `update` (today the only way to
   change an existing rule's config is delete + recreate), mute/unmute
-  (per-alert and rule-wide), snooze/unsnooze, `update_api_key`, and a
-  `rule_types` read — so there is no tool to discover which
-  `rule_type_id`/`consumer` combinations are valid before calling
-  `create_alert_rule`; a caller must already know one.
+  (per-alert and rule-wide), snooze/unsnooze, and `update_api_key`. The
+  `rule_types` read shipped 2026-10-12 as `list_rule_types`.
+- **`list_rule_types` lists, it does not describe `params`.** Each row is
+  the type's `id` (the `rule_type_id`), name, category, producer, the
+  `consumers` the caller may create it under (Kibana's `authorized_consumers`
+  with `all`), `enabled_in_license`, `minimum_license_required` and Kibana's
+  `is_internally_managed` flag as `internally_managed`. Kibana's rule-types
+  API publishes no params schema; its `action_variables.params` lists only
+  the params usable in action messages (for `.es-query` it omits
+  `timeWindowSize` and `timeField`, probed on 9.5.5), so it is not returned
+  as if it were one.
 - **Preconfigured connectors cannot be deleted through `delete_connector`.**
   Kibana itself rejects the attempt; the `is_preconfigured` field returned
   by `list_connectors`/`create_connector` is the only signal a caller has
@@ -176,3 +190,12 @@ docs/tools.md#alerting-toolbox.
   reference and shared space semantics this file does not restate; a
   drift-guard test (`tests/unit/test_docs_tool_reference.py`) keeps every
   registered tool name on that page.
+- `tests/unit/adapters/test_alerting_gateway.py` and
+  `tests/unit/toolboxes/test_alerting.py` — `list_rule_types`' row mapping
+  (writable consumers only, licence flags) and its read-only registration.
+- `tests/contract/test_gateway_contract.py::test_list_rule_types_live` — live:
+  `.es-query` lists `stackAlerts` as a consumer on Basic, and types the
+  licence does not allow are flagged, not hidden.
+- `tests/unit/adapters/test_id_guidance.py` — the empty-id and unknown-id
+  guidance for dashboards and alert rules, and that a missing space still
+  reports the space.

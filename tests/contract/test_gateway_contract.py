@@ -197,6 +197,30 @@ async def test_long_title_derives_acceptable_id_live(gateway):
         _delete_if_exists(gateway, did)
 
 
+async def test_date_histogram_without_time_field_auto_fills_live(gateway):
+    # The efficiency study's first-call shape (90/90 runs): a date_histogram
+    # panel that omits time_field. Kibana must accept the auto-filled panel
+    # and round-trip it losslessly.
+    title = "contract date histogram auto time field"
+    did = derive_dashboard_id(title)
+    _delete_if_exists(gateway, did)
+    panel = {
+        "title": "Flights over time", "chart_type": "line", "data_view": FLIGHTS,
+        "metrics": [{"agg": "count"}],
+        "group_by": [{"field": "timestamp", "kind": "date_histogram"}],
+    }
+    try:
+        async with Client(_tool_server()) as client:
+            r = await client.call_tool("create_dashboard", {"title": title, "panels": [panel]})
+        assert r.data["status"] == "created"
+        data, warnings = gateway.get_dashboard_data(did)
+        assert warnings == []
+        layer = data["panels"][0]["config"]["layers"][0]
+        assert layer["data_source"]["time_field"] == "timestamp"
+    finally:
+        _delete_if_exists(gateway, did)
+
+
 def test_get_dashboard_data_missing_raises_notfound(gateway):
     with pytest.raises(KibanaNotFound):
         gateway.get_dashboard_data("no-such-dashboard-id-xyz")
@@ -272,6 +296,15 @@ def test_alerting_health_live(gateway):
     h = gateway.get_alerting_health()
     assert h.status in ("ok", "warn", "error", "unknown")
     assert h.has_permanent_encryption_key is True  # seeded stack has an encryption key
+
+
+def test_list_rule_types_live(gateway):
+    types = {t.id: t for t in gateway.list_rule_types()}
+    es = types[".es-query"]  # the type create_alert_rule's lifecycle test uses
+    assert "stackAlerts" in es.consumers
+    assert es.enabled_in_license is True and es.minimum_license_required == "basic"
+    # a Basic-licence stack lists types it cannot create, flagged rather than hidden
+    assert any(not t.enabled_in_license for t in types.values())
 
 
 def test_alert_rule_lifecycle_live(gateway):

@@ -1,0 +1,109 @@
+{
+  "run_id": "20261010T195022Z-claude-haiku-5-5-no-mcp-c02795",
+  "block": "b08",
+  "model_requested": "claude-haiku-5-5",
+  "arm": "no-mcp",
+  "marker": "EFF-9ab50c4f",
+  "kibana_version": "9.5.5",
+  "toolboxes": null,
+  "claude_cli": "2.1.296 (Claude Code)",
+  "git_sha": "79416b5",
+  "ts_start": "2026-10-10T19:50:22.775518+00:00",
+  "wall_s": 237.6,
+  "init_tools": [
+    "Bash",
+    "Glob",
+    "Grep",
+    "Read",
+    "Write"
+  ],
+  "init_mcp_tools": [],
+  "init_mcp_servers": [],
+  "tool_calls": [
+    "Bash",
+    "Bash",
+    "Bash",
+    "Bash",
+    "Bash",
+    "Bash",
+    "Bash",
+    "Bash",
+    "Bash",
+    "Bash",
+    "Bash",
+    "Bash",
+    "Bash",
+    "Bash",
+    "Bash",
+    "Bash",
+    "Bash",
+    "Bash",
+    "Bash",
+    "Bash",
+    "Bash",
+    "Bash",
+    "Bash",
+    "Bash",
+    "Bash",
+    "Bash"
+  ],
+  "n_tool_calls": 26,
+  "n_mcp_calls": 0,
+  "n_bash_calls": 26,
+  "num_turns": 27,
+  "total_cost_usd": 0.020981320000000005,
+  "duration_ms": 236122,
+  "duration_api_ms": 154368,
+  "input_tokens": 50,
+  "output_tokens": 16212,
+  "cache_read_input_tokens": 601212,
+  "cache_creation_input_tokens": 34291,
+  "model_usage": {
+    "claude-haiku-5-5": {
+      "inputTokens": 50,
+      "outputTokens": 16212,
+      "cacheReadInputTokens": 601212,
+      "cacheCreationInputTokens": 34291,
+      "webSearchRequests": 0,
+      "costUSD": 0.020981320000000005,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 4980,
+      "canonicalModel": "claude-haiku-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "models_reported": [
+    "claude-haiku-5-5"
+  ],
+  "permission_denials": [],
+  "is_error": false,
+  "terminal_reason": "completed",
+  "final_text": "Both objects now exist in Kibana 9.5.5 and I read them back to confirm.\n\n**Data:** The 'Kibana Sample Data Logs' view (`kibana_sample_data_logs`) has request-level fields: `@timestamp`/`timestamp`, `response` (text with a `.keyword` subfield), `bytes`, `clientip`, `url`, `geo.dest`, `agent`, and `extension`. I couldn't query the index directly because Elasticsearch isn't reachable from here and Kibana's query proxies are disabled, so I didn't check the response-code distribution.\n\n**Dashboard: `EFF-9ab50c4f Web logs overview`** (ID `684cddb5-acfa-47a9-bb08-93d4d24a897b`)\n- Total requests (count)\n- Average response size in bytes (average of `bytes`)\n- Unique client IPs (unique count of `clientip`)\n- Requests over time (line chart, ES|QL with time bucketing)\n\n**Rule: `EFF-9ab50c4f 5xx spike`** (ID `f4a69a67-fff0-4968-ae6d-0292405258ed`)\n- Type: Elasticsearch query rule, DSL search over `kibana_sample_data_logs`\n- Query: `response.keyword` in the range `500`\u2013`599`. This is a lexicographic range, which is correct because every status code is three digits.\n- Condition: count > 10 over a 5-minute window, evaluated every 1 minute\n- The first run finished with status `ok` and no alerts.\n\n**Choices I made that you may want to change:**\n- The rule has no notification action attached, so a firing alert shows up in Kibana's alerts list but doesn't notify anyone. Adding a connector would fix that.\n- The rule uses `@timestamp` as its time field, as the reference examples do, rather than the data view's `timestamp`.\n- The rule is tagged `EFF-9ab50c4f`.",
+  "timed_out": false,
+  "valid": true,
+  "dashboard_found": true,
+  "dashboard_panels": 4,
+  "dashboard_uses_logs": true,
+  "rule_found": true,
+  "rule_enabled": true,
+  "rule_uses_logs": true,
+  "rule_type_id": ".es-query",
+  "success": true,
+  "failure_reason": null,
+  "reset_removed": {
+    "objects": [
+      [
+        "dashboard",
+        "684cddb5-acfa-47a9-bb08-93d4d24a897b"
+      ]
+    ],
+    "rules": [
+      "f4a69a67-fff0-4968-ae6d-0292405258ed"
+    ],
+    "connectors": []
+  },
+  "ts_end": "2026-10-10T19:54:21.871893+00:00",
+  "otel": "sent: HTTP 200, trace 5340b69a86bbda92858e66fb06a3e52f"
+}

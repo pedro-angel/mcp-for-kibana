@@ -23,6 +23,7 @@ prefixed, matching how Kibana's own tooling names them):
 | `KIBANA_MCP_OTEL_ENDPOINT` | `http://localhost:18200` | OTLP/HTTP endpoint base (the server appends `/v1/traces`). Default targets the stack's opt-in APM. |
 | `KIBANA_MCP_OTEL_SECRET_TOKEN` | (none) | Bearer token for the OTLP endpoint (the APM endpoint is token-gated). |
 | `KIBANA_MCP_OTEL_SERVICE_NAME` | `mcp-for-kibana` | `service.name` the traces appear under. |
+| `KIBANA_MCP_OTEL_TRACEPARENT_FROM_ENV` | `false` | Parent every span under the W3C `TRACEPARENT` the server was started with, so a stdio client that passes trace context only through the environment (Claude Code in `-p` mode) sees the server's spans in its own trace. Needs `KIBANA_MCP_OTEL_ENABLED`. |
 
 This table is kept in sync with the one in the project
 [README](https://github.com/pedro-angel/mcp-for-kibana#configuration) — if you
@@ -214,6 +215,12 @@ so a local run needs only the enable flag and the token. Point
 `KIBANA_MCP_OTEL_ENDPOINT` at any OTLP/HTTP collector for a real deployment.
 Standard `OTEL_*` env vars (e.g. `OTEL_RESOURCE_ATTRIBUTES`) are also honored by
 the SDK. The `.env.otel.example` template documents the full set.
+
+A stdio server has no request headers to carry trace context, and Claude Code
+puts none in the MCP request `_meta`; its child processes inherit only a
+`TRACEPARENT` environment variable. With `KIBANA_MCP_OTEL_TRACEPARENT_FROM_ENV=1`
+the server takes that variable as the parent of all its spans, so they land in
+the caller's trace.
 
 The `otel` extra also pulls the OTLP **gRPC** exporter — not for our export (we
 use HTTP) but because kibana-py 0.4.2's observability import requires it once the

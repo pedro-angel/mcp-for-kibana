@@ -1,0 +1,21 @@
+loaded mistralai/ministral-3-3b: {'status': 200, 'context_length': 262144, 'load_s': 3.9, 'unloaded': ['nvidia/nemotron-3-nano-omni'], 'error': None}
+[1/16] pilot/pilot/mistralai-ministral-3-3b/L1 PASS steps=1/1 tools=1 invalid=0 out_tok=49 7.0s otel=skipped: HONEYCOMB_API_KEY is not set
+[2/16] pilot/pilot/mistralai-ministral-3-3b/L2 FAIL steps=0/2 tools=5 invalid=0 out_tok=569 8.6s otel=skipped: HONEYCOMB_API_KEY is not set (describe: answer '@timestamp', expected 'timestamp')
+[3/16] pilot/pilot/mistralai-ministral-3-3b/L3 FAIL steps=2/3 tools=75 invalid=0 out_tok=6827 125.0s otel=skipped: HONEYCOMB_API_KEY is not set (rule: no rule)
+[4/16] pilot/pilot/mistralai-ministral-3-3b/L4 FAIL steps=1/4 tools=76 invalid=0 out_tok=6152 113.2s otel=skipped: HONEYCOMB_API_KEY is not set (dashboard: no dashboard; rule: no rule; edit: no successful update_panel call; edit: no successful get_alert_rule/list_alert_rules call; edit: answer None, expected 'yes'; edit: no panel titled 'Responses by code'; edit: no rule)
+loaded google/gemma-4-12b-qat: {'status': 200, 'context_length': 262144, 'load_s': 2.6, 'unloaded': ['mistralai/ministral-3-3b'], 'error': None}
+[5/16] pilot/pilot/google-gemma-4-12b-qat/L1 PASS steps=1/1 tools=1 invalid=0 out_tok=389 20.8s otel=skipped: HONEYCOMB_API_KEY is not set
+[6/16] pilot/pilot/google-gemma-4-12b-qat/L2 PASS steps=2/2 tools=2 invalid=0 out_tok=1027 34.8s otel=skipped: HONEYCOMB_API_KEY is not set
+[7/16] pilot/pilot/google-gemma-4-12b-qat/L3 FAIL steps=2/3 tools=25 invalid=5 out_tok=None 1800.0s otel=skipped: HONEYCOMB_API_KEY is not set (rule: no rule)
+[8/16] pilot/pilot/google-gemma-4-12b-qat/L4 PASS steps=4/4 tools=8 invalid=0 out_tok=5249 191.9s otel=skipped: HONEYCOMB_API_KEY is not set
+loaded qwen/qwen3.8-27b: {'status': 200, 'context_length': 262144, 'load_s': 7.4, 'unloaded': ['google/gemma-4-12b-qat'], 'error': None}
+[9/16] pilot/pilot/qwen-qwen3-8-27b/L1 PASS steps=1/1 tools=1 invalid=0 out_tok=318 39.3s otel=skipped: HONEYCOMB_API_KEY is not set
+[10/16] pilot/pilot/qwen-qwen3-8-27b/L2 PASS steps=2/2 tools=2 invalid=0 out_tok=618 26.7s otel=skipped: HONEYCOMB_API_KEY is not set
+[11/16] pilot/pilot/qwen-qwen3-8-27b/L3 PASS steps=3/3 tools=5 invalid=0 out_tok=2112 92.2s otel=skipped: HONEYCOMB_API_KEY is not set
+[12/16] pilot/pilot/qwen-qwen3-8-27b/L4 FAIL steps=2/4 tools=7 invalid=0 out_tok=3369 166.6s otel=skipped: HONEYCOMB_API_KEY is not set (rule: rule params do not match '5\\d\\d|5xx|5\\*')
+loaded nvidia/nemotron-3-nano-omni: {'status': 200, 'context_length': 262144, 'load_s': 6.6, 'unloaded': ['qwen/qwen3.8-27b'], 'error': None}
+[13/16] pilot/pilot/nvidia-nemotron-3-nano-omni/L1 PASS steps=1/1 tools=1 invalid=0 out_tok=583 15.5s otel=skipped: HONEYCOMB_API_KEY is not set
+[14/16] pilot/pilot/nvidia-nemotron-3-nano-omni/L2 PASS steps=2/2 tools=3 invalid=0 out_tok=2836 51.7s otel=skipped: HONEYCOMB_API_KEY is not set
+[15/16] pilot/pilot/nvidia-nemotron-3-nano-omni/L3 FAIL steps=0/3 tools=12 invalid=1 out_tok=8406 163.4s otel=skipped: HONEYCOMB_API_KEY is not set (describe: answer None, expected 'timestamp'; rule: no rule)
+[16/16] pilot/pilot/nvidia-nemotron-3-nano-omni/L4 FAIL steps=0/4 tools=12 invalid=0 out_tok=8868 175.1s otel=skipped: HONEYCOMB_API_KEY is not set (describe: answer None, expected 'timestamp'; edit: answer None, expected 'yes')
+PILOT EXIT 0

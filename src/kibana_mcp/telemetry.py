@@ -11,6 +11,8 @@ Requires the `otel` extra: ``pip install 'mcp-for-kibana[otel]'``.
 from __future__ import annotations
 
 import logging
+import os
+from collections.abc import Mapping
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -66,6 +68,35 @@ def build_tracer_provider(settings: Settings) -> TracerProvider | None:
     return provider
 
 
+def attach_env_parent(settings: Settings, environ: Mapping[str, str] | None = None) -> object | None:
+    """Make the W3C ``TRACEPARENT`` (and ``TRACESTATE``) of the process
+    environment the current trace context, so every span the server opens
+    afterwards — FastMCP's per-request spans included — joins the caller's
+    trace. Call before the server's event loop starts: asyncio copies the
+    context into the tasks it creates. Only when both ``otel_enabled`` and
+    ``otel_traceparent_from_env`` are set and a valid TRACEPARENT is present;
+    returns the context token (for ``opentelemetry.context.detach``) or
+    ``None`` when nothing was attached. A request that carries its own
+    ``_meta`` traceparent is still parented here: FastMCP keeps an existing
+    valid context."""
+    if not (settings.otel_enabled and settings.otel_traceparent_from_env):
+        return None
+    env = os.environ if environ is None else environ
+    carrier = {k.lower(): env[k] for k in ("TRACEPARENT", "TRACESTATE") if env.get(k)}
+    if "traceparent" not in carrier:
+        return None
+    from opentelemetry import context, trace
+    from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
+
+    ctx = TraceContextTextMapPropagator().extract(carrier)
+    if not trace.get_current_span(ctx).get_span_context().is_valid:
+        logger.warning("TRACEPARENT is not a valid W3C trace context; spans start their own trace")
+        return None
+    token = context.attach(ctx)
+    logger.info("OpenTelemetry spans parented under the TRACEPARENT of the environment")
+    return token
+
+
 def configure_telemetry(settings: Settings) -> bool:
     """Install the global OTEL tracer provider when enabled; return whether one
     was installed. Logs the endpoint + service name only — never the token."""
@@ -80,4 +111,5 @@ def configure_telemetry(settings: Settings) -> bool:
         _traces_endpoint(settings),
         settings.otel_service_name,
     )
+    attach_env_parent(settings)
     return True

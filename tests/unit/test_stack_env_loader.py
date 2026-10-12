@@ -134,3 +134,14 @@ def test_repo_root_asserts_marker(tmp_path, monkeypatch):
     monkeypatch.setattr(_stack_env, "__file__", str(fake_file))
     with pytest.raises(RuntimeError, match="non-repo root"):
         _stack_env._repo_root()
+
+
+def test_lmstudio_model_is_required_with_the_fix(monkeypatch):
+    monkeypatch.delenv("LMSTUDIO_MODEL", raising=False)
+    with pytest.raises(pytest.fail.Exception, match="LMSTUDIO_MODEL=<model-id>"):
+        _stack_env.lmstudio_model()
+
+
+def test_lmstudio_model_returns_the_named_model(monkeypatch):
+    monkeypatch.setenv("LMSTUDIO_MODEL", " qwen/qwen3.8-27b ")
+    assert _stack_env.lmstudio_model() == "qwen/qwen3.8-27b"

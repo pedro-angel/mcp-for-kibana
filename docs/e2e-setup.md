@@ -19,12 +19,12 @@ model, through our server, into a real Kibana dashboard.
    `elastic-start-local/` for why (host-port remap to avoid clashing with an
    unrelated local Kibana on 5601/9200).
 
-2. In LM Studio (GUI): load a tool-use-capable model —
-   `google/gemma-4-12b-qat` is the reference model and the code fallback
-   when `LMSTUDIO_MODEL` is unset (measured 5/5 on the dashboards space
-   chain and 5/5 on the alerting-space gate on Kibana 9.5.4 — D18). To drive
-   another model, put it in `.env.local` (user-owned; no script ever writes
-   or deletes it) as `LMSTUDIO_MODEL=<model-id>`. Known alternatives:
+2. In LM Studio (GUI): load a tool-use-capable model
+   and name it in `LMSTUDIO_MODEL` (shell, or `.env.local` — user-owned; no
+   script ever writes or deletes it). The tests have no default model and
+   fail with this fix when it is unset (D33). Measured on Kibana 9.5.4
+   (D18): `google/gemma-4-12b-qat` 5/5 on the dashboards space chain and 5/5
+   on the alerting-space gate. Other models:
    `openai/gpt-oss-20b` drops the `space` parameter mid-chain 3/5 and fails
    the space gates; `google/gemma-4-26b-a4b-qat` is faster but built one
    dashboard in 5 in the default space; `qwen/qwen2.5-coder-14b` completes
@@ -36,7 +36,7 @@ model, through our server, into a real Kibana dashboard.
    touches tool names, descriptions or schemas. It runs all three — the
    flights dashboard (`test_lmstudio.py`) and the dashboards and alerting
    space chains — needs both server entries from step 5, and takes about four
-   minutes with the reference model.
+   minutes with `google/gemma-4-12b-qat`.
 
    **The context you load with is the context the test gets.** The harness
    deliberately sends no `context_length`, so it reuses whatever you loaded
@@ -137,7 +137,7 @@ model, through our server, into a real Kibana dashboard.
    The alerting-space gate (`test_lmstudio_alerting_space.py`) needs a
    **second** entry named `mcp-for-kibana-alerting` — same command and env,
    but `KIBANA_MCP_TOOLBOXES: "alerting,platform-admin"`. Each gate keeps its
-   own frozen tool surface (24 tools for the dashboards gate, 16 for
+   own frozen tool surface (24 tools for the dashboards gate, 17 for
    alerting); one shared entry cannot satisfy both experiment designs.
 
    > Need a fresh API key? Delete `elastic-start-local/.env.seed` (or its `KIBANA_TEST_API_KEY`
@@ -169,7 +169,7 @@ by `scripts/stack.sh seed`); the `LMSTUDIO_*` vars belong in `.env.local`
 |---|---|---|
 | `LMSTUDIO_URL` | `http://localhost:1234` | no |
 | `LMSTUDIO_API_TOKEN` | (none) | no — sent as `Bearer` only if set |
-| `LMSTUDIO_MODEL` | `google/gemma-4-12b-qat` (the measured reference — see step 2) | no |
+| `LMSTUDIO_MODEL` | (none) | yes — for `make test-e2e` (step 2) |
 | `KIBANA_URL` | (none) | yes — from `elastic-start-local/.env.seed` |
 | `KIBANA_TEST_API_KEY` | (none) | yes — from `elastic-start-local/.env.seed` |
 

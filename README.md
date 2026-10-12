@@ -37,7 +37,7 @@ surfaces are not worth duplicating here.
 
 ## Status
 
-**v0.2.0 — 10 toolboxes, 133 tools, live-tested.** The server exposes 133 tools
+**v0.3.0 — 10 toolboxes, 134 tools, live-tested.** The server exposes 134 tools
 across 10 composable toolboxes (dashboards, data management, alerting, cases,
 security detections, fleet, streams, observability, platform admin, and platform
 health), each classified read / write / destructive and contract-tested against
@@ -59,7 +59,7 @@ tool-call markers about one run in three.
 ## What it does
 
 Lets an LLM work with Kibana through a small, reliable, purpose-built tool surface
-instead of ~610 raw endpoints — 133 tools grouped into 10 composable toolboxes you
+instead of ~610 raw endpoints — 134 tools grouped into 10 composable toolboxes you
 enable per deployment. The flagship **dashboards** toolbox lets a user describe the
 chart they want, and the server translates a simple declarative spec into real
 Kibana Lens visualizations and dashboards via the modern Dashboards API (Kibana
@@ -129,7 +129,7 @@ for running the HTTP server.
 
 ## Tool reference
 
-**133 tools across 10 toolboxes**, each tool classified by tier — read / write /
+**134 tools across 10 toolboxes**, each tool classified by tier — read / write /
 destructive (64 / 40 / 29). Enable toolboxes per deployment with
 `KIBANA_MCP_TOOLBOXES`; cap the tier with `KIBANA_MCP_TIER`. A tool above the cap
 is not merely denied at call time — it never appears in the tool list (registered,
@@ -139,7 +139,7 @@ then hidden via FastMCP's visibility API).
 |---|--:|---|
 | `dashboards` | 11 | Build Lens visualizations + dashboards from a declarative spec — the flagship plain-English → dashboard path. |
 | `data-management` | 10 | Data views + short URLs (the datasets you visualize). |
-| `alerting` | 11 | Alerting rules and connectors. |
+| `alerting` | 12 | Alerting rules and connectors. |
 | `cases` | 6 | Kibana Cases: create, comment, update status. |
 | `security-detections` | 25 | Detection rules, exception lists, value lists. |
 | `fleet` | 35 | Fleet agents, agent/package policies, outputs, enrollment. |
@@ -175,7 +175,7 @@ prefixed, matching how Kibana's own tooling names them):
 | `KIBANA_MCP_PORT` | `8000` | Bind port (HTTP transport only). |
 | `KIBANA_MCP_ALLOW_ENV_KEY_HTTP` | `false` | HTTP mode only: opt in to letting `KIBANA_API_KEY` act as a shared fallback credential when a request has no `Authorization` header. A per-request `Authorization` header always takes precedence even when this is on — the env key is only a fallback for requests that omit one, never an override. Off by default so a single env key can't silently become a shared credential across callers. |
 | `KIBANA_MCP_ENV_FILE` | (none) | Path to a `KEY=value` file loaded at startup (setdefault — explicit process env wins) so a launcher can point at the machine-written `elastic-start-local/.env.seed` instead of hard-copying the ephemeral dev key. Additive and off by default; see [configuration docs](https://mcp-for-kibana.readthedocs.io/en/latest/configuration/#loading-credentials-from-a-file). |
-| `KIBANA_MCP_OTEL_ENABLED` | `false` | Export an OpenTelemetry span per tool call. Off by default (spans are non-recording, no SDK imported); needs the `otel` extra. `KIBANA_MCP_OTEL_ENDPOINT` / `KIBANA_MCP_OTEL_SECRET_TOKEN` / `KIBANA_MCP_OTEL_SERVICE_NAME` tune the OTLP export — see [configuration docs](https://mcp-for-kibana.readthedocs.io/en/latest/configuration/#opentelemetry). |
+| `KIBANA_MCP_OTEL_ENABLED` | `false` | Export an OpenTelemetry span per tool call. Off by default (spans are non-recording, no SDK imported); needs the `otel` extra. `KIBANA_MCP_OTEL_ENDPOINT` / `KIBANA_MCP_OTEL_SECRET_TOKEN` / `KIBANA_MCP_OTEL_SERVICE_NAME` / `KIBANA_MCP_OTEL_TRACEPARENT_FROM_ENV` tune the OTLP export — see [configuration docs](https://mcp-for-kibana.readthedocs.io/en/latest/configuration/#opentelemetry). |
 
 ## Docker
 

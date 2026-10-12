@@ -1,0 +1,111 @@
+{
+ "study": "local-models",
+ "run_id": "20261011T224725Z-nvidia-nemotron-3-nano-omni-L2-b6f8b8",
+ "cell": "pilot/pilot/nvidia-nemotron-3-nano-omni/L2",
+ "phase": "pilot",
+ "block": "pilot",
+ "model": "nvidia/nemotron-3-nano-omni",
+ "level": "L2",
+ "chain_length": 2,
+ "arm": "server",
+ "attempt": 1,
+ "marker": "LOC-9f1efb91",
+ "prompt": "Using the kibana tools, work on Kibana's web-logs sample data (data view 'Kibana Sample Data Logs', index kibana_sample_data_logs). Do these steps in order:\n1. Describe the data view 'Kibana Sample Data Logs': look up its fields and name its time field. End your reply with a line of the form TIME_FIELD: <field name>.\n2. Build a dashboard titled 'LOC-9f1efb91 Web logs' on that data view with exactly two panels: the number of requests over time, and the number of requests by HTTP response code.\nUse only the kibana tools. When every step is done, reply with a short summary.",
+ "kibana_version": "9.5.5",
+ "toolboxes": "dashboards,data-management,alerting",
+ "tier": "write",
+ "server_entry": "mcp-for-kibana-study",
+ "stream": true,
+ "git_sha": "48b865b",
+ "config_sha": "a2433840567b",
+ "ts_start": "2026-10-11T22:47:25.568334+00:00",
+ "harness_load": null,
+ "wall_ms": 51709.7,
+ "ts_end_model": "2026-10-11T22:48:17.278124+00:00",
+ "http_status": 200,
+ "timed_out": false,
+ "valid": true,
+ "invalid_reason": null,
+ "end_reason": "completed",
+ "tool_names": [
+  "describe_data_view",
+  "create_dashboard",
+  "create_dashboard"
+ ],
+ "model_calls": 4,
+ "n_tool_calls": 3,
+ "n_invalid_tool_calls": 0,
+ "n_failed_tool_calls": 1,
+ "n_distinct_tools": 2,
+ "failure_classes": {
+  "validation": 1
+ },
+ "tool_result_bytes": 1924,
+ "tool_ms": 9574.0,
+ "first_tool_ms": 14941.3,
+ "input_tokens": 9149,
+ "output_tokens": 2836,
+ "reasoning_tokens": 2189,
+ "tokens_per_second": 59.3273485939908,
+ "ttft_s": 0.255186,
+ "model_load_s": null,
+ "stats": {
+  "input_tokens": 9149,
+  "total_output_tokens": 2836,
+  "reasoning_output_tokens": 2189,
+  "tokens_per_second": 59.3273485939908,
+  "time_to_first_token_seconds": 0.255186
+ },
+ "response_model": "nvidia/nemotron-3-nano-omni",
+ "end_events": 1,
+ "stream_events": 2315,
+ "permission_denials": 0,
+ "output_rebuilt_from_stream": false,
+ "final_text": "TIME_FIELD: timestamp  \nDashboard “LOC-9f1efb91 Web logs” successfully created (ID: loc-9f1efb91-web-logs-7781a35eea12) containing two panels: a line chart showing the count of requests over time, and a bar chart displaying the count of requests by HTTP response code.",
+ "stream_final_event": "ok",
+ "known_secret_exposures": 0,
+ "success": true,
+ "failure_reason": null,
+ "first_failed_step": null,
+ "steps_passed": 2,
+ "criteria": [
+  {
+   "step": "describe",
+   "check": "tool_ok:describe_data_view",
+   "ok": true,
+   "detail": "ok"
+  },
+  {
+   "step": "describe",
+   "check": "answer",
+   "ok": true,
+   "detail": "ok"
+  },
+  {
+   "step": "dashboard",
+   "check": "dashboard",
+   "ok": true,
+   "detail": "ok"
+  }
+ ],
+ "n_dashboards": 1,
+ "n_rules": 0,
+ "rule_enabled": false,
+ "reset_removed": {
+  "objects": [
+   [
+    "dashboard",
+    "loc-9f1efb91-web-logs-7781a35eea12"
+   ]
+  ],
+  "rules": [],
+  "connectors": []
+ },
+ "model_loaded_context": 262144,
+ "model_max_context": 262144,
+ "ts_end": "2026-10-11T22:48:17.992361+00:00",
+ "n_spans": 8,
+ "otel": "sent: HTTP 200, 8 spans",
+ "complete": true,
+ "otel_sent_late": "2026-10-12T04:16:53.395559+00:00"
+}

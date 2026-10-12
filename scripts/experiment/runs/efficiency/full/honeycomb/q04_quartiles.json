@@ -1,0 +1,599 @@
+{
+ "elapsed_str": "140.461613ms",
+ "header": [
+  {
+   "alias": "study.model",
+   "derived": false,
+   "key_name": "study.model",
+   "per_time": 0,
+   "type": "string"
+  },
+  {
+   "alias": "study.arm",
+   "derived": false,
+   "key_name": "study.arm",
+   "per_time": 0,
+   "type": "string"
+  },
+  {
+   "alias": "P25(agent.cost.usd)",
+   "derived": false,
+   "key_name": "P25(agent.cost.usd)",
+   "per_time": 0,
+   "type": ""
+  },
+  {
+   "alias": "P75(agent.cost.usd)",
+   "derived": false,
+   "key_name": "P75(agent.cost.usd)",
+   "per_time": 0,
+   "type": ""
+  },
+  {
+   "alias": "P25(total_tokens)",
+   "derived": false,
+   "key_name": "P25(total_tokens)",
+   "per_time": 0,
+   "type": ""
+  },
+  {
+   "alias": "P75(total_tokens)",
+   "derived": false,
+   "key_name": "P75(total_tokens)",
+   "per_time": 0,
+   "type": ""
+  },
+  {
+   "alias": "P25(agent.usage.uncached_input_tokens)",
+   "derived": false,
+   "key_name": "P25(agent.usage.uncached_input_tokens)",
+   "per_time": 0,
+   "type": ""
+  },
+  {
+   "alias": "P75(agent.usage.uncached_input_tokens)",
+   "derived": false,
+   "key_name": "P75(agent.usage.uncached_input_tokens)",
+   "per_time": 0,
+   "type": ""
+  },
+  {
+   "alias": "P25(agent.usage.output_tokens)",
+   "derived": false,
+   "key_name": "P25(agent.usage.output_tokens)",
+   "per_time": 0,
+   "type": ""
+  },
+  {
+   "alias": "P75(agent.usage.output_tokens)",
+   "derived": false,
+   "key_name": "P75(agent.usage.output_tokens)",
+   "per_time": 0,
+   "type": ""
+  },
+  {
+   "alias": "P25(agent.usage.cache_read_tokens)",
+   "derived": false,
+   "key_name": "P25(agent.usage.cache_read_tokens)",
+   "per_time": 0,
+   "type": ""
+  },
+  {
+   "alias": "P75(agent.usage.cache_read_tokens)",
+   "derived": false,
+   "key_name": "P75(agent.usage.cache_read_tokens)",
+   "per_time": 0,
+   "type": ""
+  },
+  {
+   "alias": "P25(agent.usage.cache_creation_tokens)",
+   "derived": false,
+   "key_name": "P25(agent.usage.cache_creation_tokens)",
+   "per_time": 0,
+   "type": ""
+  },
+  {
+   "alias": "P75(agent.usage.cache_creation_tokens)",
+   "derived": false,
+   "key_name": "P75(agent.usage.cache_creation_tokens)",
+   "per_time": 0,
+   "type": ""
+  },
+  {
+   "alias": "P25(agent.model.calls)",
+   "derived": false,
+   "key_name": "P25(agent.model.calls)",
+   "per_time": 0,
+   "type": ""
+  },
+  {
+   "alias": "P75(agent.model.calls)",
+   "derived": false,
+   "key_name": "P75(agent.model.calls)",
+   "per_time": 0,
+   "type": ""
+  },
+  {
+   "alias": "P25(agent.harness.turns)",
+   "derived": false,
+   "key_name": "P25(agent.harness.turns)",
+   "per_time": 0,
+   "type": ""
+  },
+  {
+   "alias": "P75(agent.harness.turns)",
+   "derived": false,
+   "key_name": "P75(agent.harness.turns)",
+   "per_time": 0,
+   "type": ""
+  },
+  {
+   "alias": "P25(agent.tool.calls)",
+   "derived": false,
+   "key_name": "P25(agent.tool.calls)",
+   "per_time": 0,
+   "type": ""
+  },
+  {
+   "alias": "P75(agent.tool.calls)",
+   "derived": false,
+   "key_name": "P75(agent.tool.calls)",
+   "per_time": 0,
+   "type": ""
+  },
+  {
+   "alias": "P25(agent.tool.calls_mcp)",
+   "derived": false,
+   "key_name": "P25(agent.tool.calls_mcp)",
+   "per_time": 0,
+   "type": ""
+  },
+  {
+   "alias": "P75(agent.tool.calls_mcp)",
+   "derived": false,
+   "key_name": "P75(agent.tool.calls_mcp)",
+   "per_time": 0,
+   "type": ""
+  },
+  {
+   "alias": "P25(agent.tool.calls_shell)",
+   "derived": false,
+   "key_name": "P25(agent.tool.calls_shell)",
+   "per_time": 0,
+   "type": ""
+  },
+  {
+   "alias": "P75(agent.tool.calls_shell)",
+   "derived": false,
+   "key_name": "P75(agent.tool.calls_shell)",
+   "per_time": 0,
+   "type": ""
+  },
+  {
+   "alias": "P25(agent.time.wall_ms)",
+   "derived": false,
+   "key_name": "P25(agent.time.wall_ms)",
+   "per_time": 0,
+   "type": ""
+  },
+  {
+   "alias": "P75(agent.time.wall_ms)",
+   "derived": false,
+   "key_name": "P75(agent.time.wall_ms)",
+   "per_time": 0,
+   "type": ""
+  },
+  {
+   "alias": "P25(agent.time.model_ms)",
+   "derived": false,
+   "key_name": "P25(agent.time.model_ms)",
+   "per_time": 0,
+   "type": ""
+  },
+  {
+   "alias": "P75(agent.time.model_ms)",
+   "derived": false,
+   "key_name": "P75(agent.time.model_ms)",
+   "per_time": 0,
+   "type": ""
+  }
+ ],
+ "info": {
+  "granularity_seconds": 1800,
+  "mean_sample_rate": 1,
+  "rows_examined": 10910
+ },
+ "other_by_aggregate": {
+  "data": {
+   "P25(agent.cost.usd)": 0,
+   "P25(agent.harness.turns)": 0,
+   "P25(agent.model.calls)": 0,
+   "P25(agent.time.model_ms)": 0,
+   "P25(agent.time.wall_ms)": 0,
+   "P25(agent.tool.calls)": 0,
+   "P25(agent.tool.calls_mcp)": 0,
+   "P25(agent.tool.calls_shell)": 0,
+   "P25(agent.usage.cache_creation_tokens)": 0,
+   "P25(agent.usage.cache_read_tokens)": 0,
+   "P25(agent.usage.output_tokens)": 0,
+   "P25(agent.usage.uncached_input_tokens)": 0,
+   "P25(total_tokens)": 0,
+   "P75(agent.cost.usd)": 0,
+   "P75(agent.harness.turns)": 0,
+   "P75(agent.model.calls)": 0,
+   "P75(agent.time.model_ms)": 0,
+   "P75(agent.time.wall_ms)": 0,
+   "P75(agent.tool.calls)": 0,
+   "P75(agent.tool.calls_mcp)": 0,
+   "P75(agent.tool.calls_shell)": 0,
+   "P75(agent.usage.cache_creation_tokens)": 0,
+   "P75(agent.usage.cache_read_tokens)": 0,
+   "P75(agent.usage.output_tokens)": 0,
+   "P75(agent.usage.uncached_input_tokens)": 0,
+   "P75(total_tokens)": 0
+  }
+ },
+ "query_url": "https://ui.eu1.honeycomb.io/pedro-angel/environments/test/datasets/mcp-for-kibana-study/result/md-bWJSkfeXK",
+ "results": [
+  {
+   "data": {
+    "P25(agent.cost.usd)": 0.020981320907594636,
+    "P25(agent.harness.turns)": 27,
+    "P25(agent.model.calls)": 25,
+    "P25(agent.time.model_ms)": 106509,
+    "P25(agent.time.wall_ms)": 140505,
+    "P25(agent.tool.calls)": 26,
+    "P25(agent.tool.calls_mcp)": 0,
+    "P25(agent.tool.calls_shell)": 26,
+    "P25(agent.usage.cache_creation_tokens)": 33986,
+    "P25(agent.usage.cache_read_tokens)": 599007,
+    "P25(agent.usage.output_tokens)": 15952,
+    "P25(agent.usage.uncached_input_tokens)": 50,
+    "P25(total_tokens)": 651765,
+    "P75(agent.cost.usd)": 0.028577550867339596,
+    "P75(agent.harness.turns)": 33,
+    "P75(agent.model.calls)": 32,
+    "P75(agent.time.model_ms)": 154368,
+    "P75(agent.time.wall_ms)": 236122,
+    "P75(agent.tool.calls)": 32,
+    "P75(agent.tool.calls_mcp)": 0,
+    "P75(agent.tool.calls_shell)": 32,
+    "P75(agent.usage.cache_creation_tokens)": 46916,
+    "P75(agent.usage.cache_read_tokens)": 851275,
+    "P75(agent.usage.output_tokens)": 21292,
+    "P75(agent.usage.uncached_input_tokens)": 64,
+    "P75(total_tokens)": 919694,
+    "study.arm": "no-mcp",
+    "study.model": "claude-haiku-5-5"
+   }
+  },
+  {
+   "data": {
+    "P25(agent.cost.usd)": 0.00775126,
+    "P25(agent.harness.turns)": 13,
+    "P25(agent.model.calls)": 11,
+    "P25(agent.time.model_ms)": 35758,
+    "P25(agent.time.wall_ms)": 41797,
+    "P25(agent.tool.calls)": 12,
+    "P25(agent.tool.calls_mcp)": 8,
+    "P25(agent.tool.calls_shell)": 4,
+    "P25(agent.usage.cache_creation_tokens)": 10584,
+    "P25(agent.usage.cache_read_tokens)": 244612,
+    "P25(agent.usage.output_tokens)": 6412,
+    "P25(agent.usage.uncached_input_tokens)": 22,
+    "P25(total_tokens)": 261553,
+    "P75(agent.cost.usd)": 0.00954726993222721,
+    "P75(agent.harness.turns)": 16,
+    "P75(agent.model.calls)": 13,
+    "P75(agent.time.model_ms)": 49076,
+    "P75(agent.time.wall_ms)": 62275,
+    "P75(agent.tool.calls)": 15,
+    "P75(agent.tool.calls_mcp)": 9,
+    "P75(agent.tool.calls_shell)": 7,
+    "P75(agent.usage.cache_creation_tokens)": 12897,
+    "P75(agent.usage.cache_read_tokens)": 322365,
+    "P75(agent.usage.output_tokens)": 7712,
+    "P75(agent.usage.uncached_input_tokens)": 26,
+    "P75(total_tokens)": 343058,
+    "study.arm": "with-mcp",
+    "study.model": "claude-haiku-5-5"
+   }
+  },
+  {
+   "data": {
+    "P25(agent.cost.usd)": 0.2927088066935539,
+    "P25(agent.harness.turns)": 11,
+    "P25(agent.model.calls)": 11,
+    "P25(agent.time.model_ms)": 49868,
+    "P25(agent.time.wall_ms)": 57145,
+    "P25(agent.tool.calls)": 10,
+    "P25(agent.tool.calls_mcp)": 0,
+    "P25(agent.tool.calls_shell)": 10,
+    "P25(agent.usage.cache_creation_tokens)": 17723,
+    "P25(agent.usage.cache_read_tokens)": 184554,
+    "P25(agent.usage.output_tokens)": 5224,
+    "P25(agent.usage.uncached_input_tokens)": 22,
+    "P25(total_tokens)": 208850,
+    "P75(agent.cost.usd)": 0.40357860000000007,
+    "P75(agent.harness.turns)": 15,
+    "P75(agent.model.calls)": 14,
+    "P75(agent.time.model_ms)": 62233,
+    "P75(agent.time.wall_ms)": 75149,
+    "P75(agent.tool.calls)": 14,
+    "P75(agent.tool.calls_mcp)": 0,
+    "P75(agent.tool.calls_shell)": 14,
+    "P75(agent.usage.cache_creation_tokens)": 31411,
+    "P75(agent.usage.cache_read_tokens)": 281029,
+    "P75(agent.usage.output_tokens)": 6215,
+    "P75(agent.usage.uncached_input_tokens)": 28,
+    "P75(total_tokens)": 318219,
+    "study.arm": "no-mcp",
+    "study.model": "claude-opus-5-5"
+   }
+  },
+  {
+   "data": {
+    "P25(agent.cost.usd)": 0.12507819663733244,
+    "P25(agent.harness.turns)": 6,
+    "P25(agent.model.calls)": 5,
+    "P25(agent.time.model_ms)": 28101,
+    "P25(agent.time.wall_ms)": 34909,
+    "P25(agent.tool.calls)": 5,
+    "P25(agent.tool.calls_mcp)": 5,
+    "P25(agent.tool.calls_shell)": 0,
+    "P25(agent.usage.cache_creation_tokens)": 5437,
+    "P25(agent.usage.cache_read_tokens)": 95949,
+    "P25(agent.usage.output_tokens)": 3042,
+    "P25(agent.usage.uncached_input_tokens)": 10,
+    "P25(total_tokens)": 104701,
+    "P75(agent.cost.usd)": 0.14128499656362692,
+    "P75(agent.harness.turns)": 8,
+    "P75(agent.model.calls)": 6,
+    "P75(agent.time.model_ms)": 31706,
+    "P75(agent.time.wall_ms)": 40895,
+    "P75(agent.tool.calls)": 7,
+    "P75(agent.tool.calls_mcp)": 6,
+    "P75(agent.tool.calls_shell)": 1,
+    "P75(agent.usage.cache_creation_tokens)": 5995,
+    "P75(agent.usage.cache_read_tokens)": 117528,
+    "P75(agent.usage.output_tokens)": 3463,
+    "P75(agent.usage.uncached_input_tokens)": 12,
+    "P75(total_tokens)": 126962,
+    "study.arm": "with-mcp",
+    "study.model": "claude-opus-5-5"
+   }
+  },
+  {
+   "data": {
+    "P25(agent.cost.usd)": 0.0915522,
+    "P25(agent.harness.turns)": 8,
+    "P25(agent.model.calls)": 8,
+    "P25(agent.time.model_ms)": 27285,
+    "P25(agent.time.wall_ms)": 33164,
+    "P25(agent.tool.calls)": 7,
+    "P25(agent.tool.calls_mcp)": 0,
+    "P25(agent.tool.calls_shell)": 7,
+    "P25(agent.usage.cache_creation_tokens)": 11971,
+    "P25(agent.usage.cache_read_tokens)": 81271,
+    "P25(agent.usage.output_tokens)": 3404,
+    "P25(agent.usage.uncached_input_tokens)": 16,
+    "P25(total_tokens)": 98618,
+    "P75(agent.cost.usd)": 0.11895070341415703,
+    "P75(agent.harness.turns)": 13,
+    "P75(agent.model.calls)": 12,
+    "P75(agent.time.model_ms)": 40242,
+    "P75(agent.time.wall_ms)": 162025,
+    "P75(agent.tool.calls)": 12,
+    "P75(agent.tool.calls_mcp)": 0,
+    "P75(agent.tool.calls_shell)": 12,
+    "P75(agent.usage.cache_creation_tokens)": 14546,
+    "P75(agent.usage.cache_read_tokens)": 145874,
+    "P75(agent.usage.output_tokens)": 4972,
+    "P75(agent.usage.uncached_input_tokens)": 24,
+    "P75(total_tokens)": 163528,
+    "study.arm": "no-mcp",
+    "study.model": "claude-sonnet-5-5"
+   }
+  },
+  {
+   "data": {
+    "P25(agent.cost.usd)": 0.04838420110172592,
+    "P25(agent.harness.turns)": 6,
+    "P25(agent.model.calls)": 5,
+    "P25(agent.time.model_ms)": 14282,
+    "P25(agent.time.wall_ms)": 19619,
+    "P25(agent.tool.calls)": 5,
+    "P25(agent.tool.calls_mcp)": 5,
+    "P25(agent.tool.calls_shell)": 0,
+    "P25(agent.usage.cache_creation_tokens)": 4490,
+    "P25(agent.usage.cache_read_tokens)": 92763,
+    "P25(agent.usage.output_tokens)": 2141,
+    "P25(agent.usage.uncached_input_tokens)": 10,
+    "P25(total_tokens)": 99365,
+    "P75(agent.cost.usd)": 0.051780601130303694,
+    "P75(agent.harness.turns)": 7,
+    "P75(agent.model.calls)": 5,
+    "P75(agent.time.model_ms)": 15293,
+    "P75(agent.time.wall_ms)": 21657,
+    "P75(agent.tool.calls)": 6,
+    "P75(agent.tool.calls_mcp)": 6,
+    "P75(agent.tool.calls_shell)": 0,
+    "P75(agent.usage.cache_creation_tokens)": 4853,
+    "P75(agent.usage.cache_read_tokens)": 92873,
+    "P75(agent.usage.output_tokens)": 2304,
+    "P75(agent.usage.uncached_input_tokens)": 10,
+    "P75(total_tokens)": 100033,
+    "study.arm": "with-mcp",
+    "study.model": "claude-sonnet-5-5"
+   }
+  }
+ ],
+ "run_pk": "md-bWJSkfeXK",
+ "template": {
+  "breakdowns": [
+   "study.model",
+   "study.arm"
+  ],
+  "calculations": [
+   {
+    "column": "agent.cost.usd",
+    "op": "P25"
+   },
+   {
+    "column": "agent.cost.usd",
+    "op": "P75"
+   },
+   {
+    "column": "total_tokens",
+    "op": "P25"
+   },
+   {
+    "column": "total_tokens",
+    "op": "P75"
+   },
+   {
+    "column": "agent.usage.uncached_input_tokens",
+    "op": "P25"
+   },
+   {
+    "column": "agent.usage.uncached_input_tokens",
+    "op": "P75"
+   },
+   {
+    "column": "agent.usage.output_tokens",
+    "op": "P25"
+   },
+   {
+    "column": "agent.usage.output_tokens",
+    "op": "P75"
+   },
+   {
+    "column": "agent.usage.cache_read_tokens",
+    "op": "P25"
+   },
+   {
+    "column": "agent.usage.cache_read_tokens",
+    "op": "P75"
+   },
+   {
+    "column": "agent.usage.cache_creation_tokens",
+    "op": "P25"
+   },
+   {
+    "column": "agent.usage.cache_creation_tokens",
+    "op": "P75"
+   },
+   {
+    "column": "agent.model.calls",
+    "op": "P25"
+   },
+   {
+    "column": "agent.model.calls",
+    "op": "P75"
+   },
+   {
+    "column": "agent.harness.turns",
+    "op": "P25"
+   },
+   {
+    "column": "agent.harness.turns",
+    "op": "P75"
+   },
+   {
+    "column": "agent.tool.calls",
+    "op": "P25"
+   },
+   {
+    "column": "agent.tool.calls",
+    "op": "P75"
+   },
+   {
+    "column": "agent.tool.calls_mcp",
+    "op": "P25"
+   },
+   {
+    "column": "agent.tool.calls_mcp",
+    "op": "P75"
+   },
+   {
+    "column": "agent.tool.calls_shell",
+    "op": "P25"
+   },
+   {
+    "column": "agent.tool.calls_shell",
+    "op": "P75"
+   },
+   {
+    "column": "agent.time.wall_ms",
+    "op": "P25"
+   },
+   {
+    "column": "agent.time.wall_ms",
+    "op": "P75"
+   },
+   {
+    "column": "agent.time.model_ms",
+    "op": "P25"
+   },
+   {
+    "column": "agent.time.model_ms",
+    "op": "P75"
+   }
+  ],
+  "derived": [
+   {
+    "ad_hoc": true,
+    "expression": "SUM($agent.usage.input_tokens, $agent.usage.output_tokens)",
+    "virtualcolumn": "total_tokens"
+   }
+  ],
+  "end_time": 1791684000,
+  "filters": [
+   {
+    "column": "trace.parent_id",
+    "join_column": "",
+    "op": "does-not-exist"
+   }
+  ],
+  "granularity": 1800,
+  "orders": [
+   {
+    "column": "study.model"
+   },
+   {
+    "column": "study.arm"
+   }
+  ],
+  "start_time": 1791655200
+ },
+ "total_by_aggregate": {
+  "data": {
+   "P25(agent.cost.usd)": 0.023667469842621358,
+   "P25(agent.harness.turns)": 7,
+   "P25(agent.model.calls)": 6,
+   "P25(agent.time.model_ms)": 28101,
+   "P25(agent.time.wall_ms)": 34540,
+   "P25(agent.tool.calls)": 6,
+   "P25(agent.tool.calls_mcp)": 0,
+   "P25(agent.tool.calls_shell)": 1,
+   "P25(agent.usage.cache_creation_tokens)": 5829,
+   "P25(agent.usage.cache_read_tokens)": 95491,
+   "P25(agent.usage.output_tokens)": 3191,
+   "P25(agent.usage.uncached_input_tokens)": 12,
+   "P25(total_tokens)": 103850,
+   "P75(agent.cost.usd)": 0.14097619703534292,
+   "P75(agent.harness.turns)": 16,
+   "P75(agent.model.calls)": 14,
+   "P75(agent.time.model_ms)": 59630,
+   "P75(agent.time.wall_ms)": 92563,
+   "P75(agent.tool.calls)": 15,
+   "P75(agent.tool.calls_mcp)": 6,
+   "P75(agent.tool.calls_shell)": 13,
+   "P75(agent.usage.cache_creation_tokens)": 22053,
+   "P75(agent.usage.cache_read_tokens)": 312196,
+   "P75(agent.usage.output_tokens)": 7295,
+   "P75(agent.usage.uncached_input_tokens)": 28,
+   "P75(total_tokens)": 343058
+  }
+ }
+}

@@ -1,0 +1,371 @@
+{
+ "elapsed_str": "154.158798ms",
+ "header": [
+  {
+   "alias": "study.model",
+   "derived": false,
+   "key_name": "study.model",
+   "per_time": 0,
+   "type": "string"
+  },
+  {
+   "alias": "study.arm",
+   "derived": false,
+   "key_name": "study.arm",
+   "per_time": 0,
+   "type": "string"
+  },
+  {
+   "alias": "P50(agent.cost.usd)",
+   "derived": false,
+   "key_name": "P50(agent.cost.usd)",
+   "per_time": 0,
+   "type": ""
+  },
+  {
+   "alias": "P50(total_tokens)",
+   "derived": false,
+   "key_name": "P50(total_tokens)",
+   "per_time": 0,
+   "type": ""
+  },
+  {
+   "alias": "P50(agent.usage.uncached_input_tokens)",
+   "derived": false,
+   "key_name": "P50(agent.usage.uncached_input_tokens)",
+   "per_time": 0,
+   "type": ""
+  },
+  {
+   "alias": "P50(agent.usage.output_tokens)",
+   "derived": false,
+   "key_name": "P50(agent.usage.output_tokens)",
+   "per_time": 0,
+   "type": ""
+  },
+  {
+   "alias": "P50(agent.usage.cache_read_tokens)",
+   "derived": false,
+   "key_name": "P50(agent.usage.cache_read_tokens)",
+   "per_time": 0,
+   "type": ""
+  },
+  {
+   "alias": "P50(agent.usage.cache_creation_tokens)",
+   "derived": false,
+   "key_name": "P50(agent.usage.cache_creation_tokens)",
+   "per_time": 0,
+   "type": ""
+  },
+  {
+   "alias": "P50(agent.model.calls)",
+   "derived": false,
+   "key_name": "P50(agent.model.calls)",
+   "per_time": 0,
+   "type": ""
+  },
+  {
+   "alias": "P50(agent.harness.turns)",
+   "derived": false,
+   "key_name": "P50(agent.harness.turns)",
+   "per_time": 0,
+   "type": ""
+  },
+  {
+   "alias": "P50(agent.tool.calls)",
+   "derived": false,
+   "key_name": "P50(agent.tool.calls)",
+   "per_time": 0,
+   "type": ""
+  },
+  {
+   "alias": "P50(agent.tool.calls_mcp)",
+   "derived": false,
+   "key_name": "P50(agent.tool.calls_mcp)",
+   "per_time": 0,
+   "type": ""
+  },
+  {
+   "alias": "P50(agent.tool.calls_shell)",
+   "derived": false,
+   "key_name": "P50(agent.tool.calls_shell)",
+   "per_time": 0,
+   "type": ""
+  },
+  {
+   "alias": "P50(agent.time.wall_ms)",
+   "derived": false,
+   "key_name": "P50(agent.time.wall_ms)",
+   "per_time": 0,
+   "type": ""
+  },
+  {
+   "alias": "P50(agent.time.model_ms)",
+   "derived": false,
+   "key_name": "P50(agent.time.model_ms)",
+   "per_time": 0,
+   "type": ""
+  },
+  {
+   "alias": "P50(agent.usage.input_tokens_per_call)",
+   "derived": false,
+   "key_name": "P50(agent.usage.input_tokens_per_call)",
+   "per_time": 0,
+   "type": ""
+  }
+ ],
+ "info": {
+  "granularity_seconds": 1800,
+  "mean_sample_rate": 1,
+  "rows_examined": 10910
+ },
+ "other_by_aggregate": {
+  "data": {
+   "P50(agent.cost.usd)": 0,
+   "P50(agent.harness.turns)": 0,
+   "P50(agent.model.calls)": 0,
+   "P50(agent.time.model_ms)": 0,
+   "P50(agent.time.wall_ms)": 0,
+   "P50(agent.tool.calls)": 0,
+   "P50(agent.tool.calls_mcp)": 0,
+   "P50(agent.tool.calls_shell)": 0,
+   "P50(agent.usage.cache_creation_tokens)": 0,
+   "P50(agent.usage.cache_read_tokens)": 0,
+   "P50(agent.usage.input_tokens_per_call)": 0,
+   "P50(agent.usage.output_tokens)": 0,
+   "P50(agent.usage.uncached_input_tokens)": 0,
+   "P50(total_tokens)": 0
+  }
+ },
+ "query_url": "https://ui.eu1.honeycomb.io/pedro-angel/environments/test/datasets/mcp-for-kibana-study/result/5W-4h1FYASnc",
+ "results": [
+  {
+   "data": {
+    "P50(agent.cost.usd)": 0.023667469358770177,
+    "P50(agent.harness.turns)": 30,
+    "P50(agent.model.calls)": 29,
+    "P50(agent.time.model_ms)": 135144,
+    "P50(agent.time.wall_ms)": 180776,
+    "P50(agent.tool.calls)": 29,
+    "P50(agent.tool.calls_mcp)": 0,
+    "P50(agent.tool.calls_shell)": 28,
+    "P50(agent.usage.cache_creation_tokens)": 39430,
+    "P50(agent.usage.cache_read_tokens)": 721624,
+    "P50(agent.usage.input_tokens_per_call)": 25568.071428571428,
+    "P50(agent.usage.output_tokens)": 18073,
+    "P50(agent.usage.uncached_input_tokens)": 58,
+    "P50(total_tokens)": 780267,
+    "study.arm": "no-mcp",
+    "study.model": "claude-haiku-5-5"
+   }
+  },
+  {
+   "data": {
+    "P50(agent.cost.usd)": 0.00862459,
+    "P50(agent.harness.turns)": 15,
+    "P50(agent.model.calls)": 12,
+    "P50(agent.time.model_ms)": 41187,
+    "P50(agent.time.wall_ms)": 48479,
+    "P50(agent.tool.calls)": 14,
+    "P50(agent.tool.calls_mcp)": 8,
+    "P50(agent.tool.calls_shell)": 5,
+    "P50(agent.usage.cache_creation_tokens)": 11666,
+    "P50(agent.usage.cache_read_tokens)": 278815,
+    "P50(agent.usage.input_tokens_per_call)": 23971.383752822876,
+    "P50(agent.usage.output_tokens)": 6944,
+    "P50(agent.usage.uncached_input_tokens)": 24,
+    "P50(total_tokens)": 298018,
+    "study.arm": "with-mcp",
+    "study.model": "claude-haiku-5-5"
+   }
+  },
+  {
+   "data": {
+    "P50(agent.cost.usd)": 0.3524805999999999,
+    "P50(agent.harness.turns)": 13,
+    "P50(agent.model.calls)": 13,
+    "P50(agent.time.model_ms)": 54050,
+    "P50(agent.time.wall_ms)": 60698,
+    "P50(agent.tool.calls)": 12,
+    "P50(agent.tool.calls_mcp)": 0,
+    "P50(agent.tool.calls_shell)": 11,
+    "P50(agent.usage.cache_creation_tokens)": 21483,
+    "P50(agent.usage.cache_read_tokens)": 224616,
+    "P50(agent.usage.input_tokens_per_call)": 18374.64285714286,
+    "P50(agent.usage.output_tokens)": 5412,
+    "P50(agent.usage.uncached_input_tokens)": 26,
+    "P50(total_tokens)": 248723,
+    "study.arm": "no-mcp",
+    "study.model": "claude-opus-5-5"
+   }
+  },
+  {
+   "data": {
+    "P50(agent.cost.usd)": 0.13640780304558575,
+    "P50(agent.harness.turns)": 7,
+    "P50(agent.model.calls)": 6,
+    "P50(agent.time.model_ms)": 29945,
+    "P50(agent.time.wall_ms)": 37060,
+    "P50(agent.tool.calls)": 6,
+    "P50(agent.tool.calls_mcp)": 6,
+    "P50(agent.tool.calls_shell)": 1,
+    "P50(agent.usage.cache_creation_tokens)": 5751,
+    "P50(agent.usage.cache_read_tokens)": 116566,
+    "P50(agent.usage.input_tokens_per_call)": 20444.429366111755,
+    "P50(agent.usage.output_tokens)": 3348,
+    "P50(agent.usage.uncached_input_tokens)": 12,
+    "P50(total_tokens)": 125927,
+    "study.arm": "with-mcp",
+    "study.model": "claude-opus-5-5"
+   }
+  },
+  {
+   "data": {
+    "P50(agent.cost.usd)": 0.10926259681582451,
+    "P50(agent.harness.turns)": 11,
+    "P50(agent.model.calls)": 10,
+    "P50(agent.time.model_ms)": 31744,
+    "P50(agent.time.wall_ms)": 46860,
+    "P50(agent.tool.calls)": 10,
+    "P50(agent.tool.calls_mcp)": 0,
+    "P50(agent.tool.calls_shell)": 10,
+    "P50(agent.usage.cache_creation_tokens)": 13895,
+    "P50(agent.usage.cache_read_tokens)": 121830,
+    "P50(agent.usage.input_tokens_per_call)": 13514.142857142857,
+    "P50(agent.usage.output_tokens)": 4059,
+    "P50(agent.usage.uncached_input_tokens)": 20,
+    "P50(total_tokens)": 138374,
+    "study.arm": "no-mcp",
+    "study.model": "claude-sonnet-5-5"
+   }
+  },
+  {
+   "data": {
+    "P50(agent.cost.usd)": 0.050615598825970665,
+    "P50(agent.harness.turns)": 7,
+    "P50(agent.model.calls)": 5,
+    "P50(agent.time.model_ms)": 14978,
+    "P50(agent.time.wall_ms)": 20549,
+    "P50(agent.tool.calls)": 6,
+    "P50(agent.tool.calls_mcp)": 6,
+    "P50(agent.tool.calls_shell)": 0,
+    "P50(agent.usage.cache_creation_tokens)": 4739,
+    "P50(agent.usage.cache_read_tokens)": 92810,
+    "P50(agent.usage.input_tokens_per_call)": 19522.599218845367,
+    "P50(agent.usage.output_tokens)": 2236,
+    "P50(agent.usage.uncached_input_tokens)": 10,
+    "P50(total_tokens)": 99715,
+    "study.arm": "with-mcp",
+    "study.model": "claude-sonnet-5-5"
+   }
+  }
+ ],
+ "run_pk": "5W-4h1FYASnc",
+ "template": {
+  "breakdowns": [
+   "study.model",
+   "study.arm"
+  ],
+  "calculations": [
+   {
+    "column": "agent.cost.usd",
+    "op": "P50"
+   },
+   {
+    "column": "total_tokens",
+    "op": "P50"
+   },
+   {
+    "column": "agent.usage.uncached_input_tokens",
+    "op": "P50"
+   },
+   {
+    "column": "agent.usage.output_tokens",
+    "op": "P50"
+   },
+   {
+    "column": "agent.usage.cache_read_tokens",
+    "op": "P50"
+   },
+   {
+    "column": "agent.usage.cache_creation_tokens",
+    "op": "P50"
+   },
+   {
+    "column": "agent.model.calls",
+    "op": "P50"
+   },
+   {
+    "column": "agent.harness.turns",
+    "op": "P50"
+   },
+   {
+    "column": "agent.tool.calls",
+    "op": "P50"
+   },
+   {
+    "column": "agent.tool.calls_mcp",
+    "op": "P50"
+   },
+   {
+    "column": "agent.tool.calls_shell",
+    "op": "P50"
+   },
+   {
+    "column": "agent.time.wall_ms",
+    "op": "P50"
+   },
+   {
+    "column": "agent.time.model_ms",
+    "op": "P50"
+   },
+   {
+    "column": "agent.usage.input_tokens_per_call",
+    "op": "P50"
+   }
+  ],
+  "derived": [
+   {
+    "ad_hoc": true,
+    "expression": "SUM($agent.usage.input_tokens, $agent.usage.output_tokens)",
+    "virtualcolumn": "total_tokens"
+   }
+  ],
+  "end_time": 1791684000,
+  "filters": [
+   {
+    "column": "trace.parent_id",
+    "join_column": "",
+    "op": "does-not-exist"
+   }
+  ],
+  "granularity": 1800,
+  "orders": [
+   {
+    "column": "study.model"
+   },
+   {
+    "column": "study.arm"
+   }
+  ],
+  "start_time": 1791655200
+ },
+ "total_by_aggregate": {
+  "data": {
+   "P50(agent.cost.usd)": 0.07234630130551523,
+   "P50(agent.harness.turns)": 11,
+   "P50(agent.model.calls)": 11,
+   "P50(agent.time.model_ms)": 38678,
+   "P50(agent.time.wall_ms)": 48479,
+   "P50(agent.tool.calls)": 10,
+   "P50(agent.tool.calls_mcp)": 4,
+   "P50(agent.tool.calls_shell)": 7,
+   "P50(agent.usage.cache_creation_tokens)": 12768,
+   "P50(agent.usage.cache_read_tokens)": 161438,
+   "P50(agent.usage.input_tokens_per_call)": 20324.470821380615,
+   "P50(agent.usage.output_tokens)": 5191,
+   "P50(agent.usage.uncached_input_tokens)": 22,
+   "P50(total_tokens)": 184278
+  }
+ }
+}

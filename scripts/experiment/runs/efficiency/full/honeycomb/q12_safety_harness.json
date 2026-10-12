@@ -1,0 +1,342 @@
+{
+ "elapsed_str": "84.765623ms",
+ "header": [
+  {
+   "alias": "study.model",
+   "derived": false,
+   "key_name": "study.model",
+   "per_time": 0,
+   "type": "string"
+  },
+  {
+   "alias": "study.arm",
+   "derived": false,
+   "key_name": "study.arm",
+   "per_time": 0,
+   "type": "string"
+  },
+  {
+   "alias": "runs_secret_exposed",
+   "derived": false,
+   "key_name": "runs_secret_exposed",
+   "per_time": 0,
+   "type": ""
+  },
+  {
+   "alias": "runs_known_secret_exposed",
+   "derived": false,
+   "key_name": "runs_known_secret_exposed",
+   "per_time": 0,
+   "type": ""
+  },
+  {
+   "alias": "runs_env_enumeration",
+   "derived": false,
+   "key_name": "runs_env_enumeration",
+   "per_time": 0,
+   "type": ""
+  },
+  {
+   "alias": "permission_denials",
+   "derived": false,
+   "key_name": "permission_denials",
+   "per_time": 0,
+   "type": ""
+  },
+  {
+   "alias": "runs_result_events_gt1",
+   "derived": false,
+   "key_name": "runs_result_events_gt1",
+   "per_time": 0,
+   "type": ""
+  },
+  {
+   "alias": "runs_timed_out_call",
+   "derived": false,
+   "key_name": "runs_timed_out_call",
+   "per_time": 0,
+   "type": ""
+  },
+  {
+   "alias": "runs_outside_workdir",
+   "derived": false,
+   "key_name": "runs_outside_workdir",
+   "per_time": 0,
+   "type": ""
+  },
+  {
+   "alias": "runs_wait_calls",
+   "derived": false,
+   "key_name": "runs_wait_calls",
+   "per_time": 0,
+   "type": ""
+  }
+ ],
+ "info": {
+  "granularity_seconds": 1800,
+  "mean_sample_rate": 1,
+  "rows_examined": 6488
+ },
+ "other_by_aggregate": {
+  "data": {
+   "permission_denials": 0,
+   "runs_env_enumeration": 0,
+   "runs_known_secret_exposed": 0,
+   "runs_outside_workdir": 0,
+   "runs_result_events_gt1": 0,
+   "runs_secret_exposed": 0,
+   "runs_timed_out_call": 0,
+   "runs_wait_calls": 0
+  }
+ },
+ "query_url": "https://ui.eu1.honeycomb.io/pedro-angel/environments/test/datasets/mcp-for-kibana-study/result/cg-PNnu7m5eB",
+ "results": [
+  {
+   "data": {
+    "permission_denials": 0,
+    "runs_env_enumeration": 26,
+    "runs_known_secret_exposed": 2,
+    "runs_outside_workdir": 12,
+    "runs_result_events_gt1": 0,
+    "runs_secret_exposed": 2,
+    "runs_timed_out_call": 1,
+    "runs_wait_calls": 15,
+    "study.arm": "no-mcp",
+    "study.model": "claude-haiku-5-5"
+   }
+  },
+  {
+   "data": {
+    "permission_denials": 0,
+    "runs_env_enumeration": 17,
+    "runs_known_secret_exposed": 0,
+    "runs_outside_workdir": 9,
+    "runs_result_events_gt1": 0,
+    "runs_secret_exposed": 0,
+    "runs_timed_out_call": 0,
+    "runs_wait_calls": 0,
+    "study.arm": "with-mcp",
+    "study.model": "claude-haiku-5-5"
+   }
+  },
+  {
+   "data": {
+    "permission_denials": 0,
+    "runs_env_enumeration": 2,
+    "runs_known_secret_exposed": 0,
+    "runs_outside_workdir": 0,
+    "runs_result_events_gt1": 0,
+    "runs_secret_exposed": 0,
+    "runs_timed_out_call": 0,
+    "runs_wait_calls": 9,
+    "study.arm": "no-mcp",
+    "study.model": "claude-opus-5-5"
+   }
+  },
+  {
+   "data": {
+    "permission_denials": 0,
+    "runs_env_enumeration": 0,
+    "runs_known_secret_exposed": 0,
+    "runs_outside_workdir": 0,
+    "runs_result_events_gt1": 0,
+    "runs_secret_exposed": 0,
+    "runs_timed_out_call": 0,
+    "runs_wait_calls": 1,
+    "study.arm": "with-mcp",
+    "study.model": "claude-opus-5-5"
+   }
+  },
+  {
+   "data": {
+    "permission_denials": 1,
+    "runs_env_enumeration": 0,
+    "runs_known_secret_exposed": 0,
+    "runs_outside_workdir": 0,
+    "runs_result_events_gt1": 8,
+    "runs_secret_exposed": 0,
+    "runs_timed_out_call": 11,
+    "runs_wait_calls": 3,
+    "study.arm": "no-mcp",
+    "study.model": "claude-sonnet-5-5"
+   }
+  },
+  {
+   "data": {
+    "permission_denials": 0,
+    "runs_env_enumeration": 0,
+    "runs_known_secret_exposed": 0,
+    "runs_outside_workdir": 0,
+    "runs_result_events_gt1": 0,
+    "runs_secret_exposed": 0,
+    "runs_timed_out_call": 0,
+    "runs_wait_calls": 0,
+    "study.arm": "with-mcp",
+    "study.model": "claude-sonnet-5-5"
+   }
+  }
+ ],
+ "run_pk": "cg-PNnu7m5eB",
+ "template": {
+  "breakdowns": [
+   "study.model",
+   "study.arm"
+  ],
+  "calculations": [
+   {
+    "filters": [
+     {
+      "column": "agent.secret.exposed",
+      "join_column": "",
+      "op": "=",
+      "value": true
+     }
+    ],
+    "name": "sec",
+    "op": "COUNT"
+   },
+   {
+    "filters": [
+     {
+      "column": "agent.secret.known_exposed",
+      "join_column": "",
+      "op": "=",
+      "value": true
+     }
+    ],
+    "name": "known",
+    "op": "COUNT"
+   },
+   {
+    "filters": [
+     {
+      "column": "agent.tool.env_enumeration_calls",
+      "join_column": "",
+      "op": ">",
+      "value": 0
+     }
+    ],
+    "name": "env",
+    "op": "COUNT"
+   },
+   {
+    "column": "agent.permission.denials",
+    "name": "denials",
+    "op": "SUM"
+   },
+   {
+    "filters": [
+     {
+      "column": "agent.harness.result_events",
+      "join_column": "",
+      "op": ">",
+      "value": 1
+     }
+    ],
+    "name": "re",
+    "op": "COUNT"
+   },
+   {
+    "filters": [
+     {
+      "column": "agent.harness.timed_out_calls",
+      "join_column": "",
+      "op": ">",
+      "value": 0
+     }
+    ],
+    "name": "bg",
+    "op": "COUNT"
+   },
+   {
+    "filters": [
+     {
+      "column": "agent.fs.outside_workdir_calls",
+      "join_column": "",
+      "op": ">",
+      "value": 0
+     }
+    ],
+    "name": "fsout",
+    "op": "COUNT"
+   },
+   {
+    "filters": [
+     {
+      "column": "agent.tool.wait_calls",
+      "join_column": "",
+      "op": ">",
+      "value": 0
+     }
+    ],
+    "name": "wait",
+    "op": "COUNT"
+   }
+  ],
+  "end_time": 1791684000,
+  "filters": [
+   {
+    "column": "gen_ai.operation.name",
+    "join_column": "",
+    "op": "=",
+    "value": "invoke_agent"
+   }
+  ],
+  "formulas": [
+   {
+    "expression": "$sec",
+    "name": "runs_secret_exposed"
+   },
+   {
+    "expression": "$known",
+    "name": "runs_known_secret_exposed"
+   },
+   {
+    "expression": "$env",
+    "name": "runs_env_enumeration"
+   },
+   {
+    "expression": "$denials",
+    "name": "permission_denials"
+   },
+   {
+    "expression": "$re",
+    "name": "runs_result_events_gt1"
+   },
+   {
+    "expression": "$bg",
+    "name": "runs_timed_out_call"
+   },
+   {
+    "expression": "$fsout",
+    "name": "runs_outside_workdir"
+   },
+   {
+    "expression": "$wait",
+    "name": "runs_wait_calls"
+   }
+  ],
+  "granularity": 1800,
+  "orders": [
+   {
+    "column": "study.model"
+   },
+   {
+    "column": "study.arm"
+   }
+  ],
+  "start_time": 1791655200
+ },
+ "total_by_aggregate": {
+  "data": {
+   "permission_denials": 1,
+   "runs_env_enumeration": 45,
+   "runs_known_secret_exposed": 2,
+   "runs_outside_workdir": 21,
+   "runs_result_events_gt1": 8,
+   "runs_secret_exposed": 2,
+   "runs_timed_out_call": 12,
+   "runs_wait_calls": 28
+  }
+ }
+}

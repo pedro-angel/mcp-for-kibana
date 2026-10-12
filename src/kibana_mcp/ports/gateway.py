@@ -5,6 +5,7 @@ from typing import Any, Protocol
 
 from kibana_mcp.core.models import (
     AlertingHealth,
+    RuleType,
     AlertRule,
     ApmAgentConfig,
     ApmAnnotation,
@@ -105,6 +106,8 @@ class KibanaGateway(Protocol):
     def get_alert_rule(self, rule_id: str) -> AlertRule: ...
 
     def get_alerting_health(self) -> AlertingHealth: ...
+
+    def list_rule_types(self) -> list[RuleType]: ...
 
     def create_alert_rule(
         self,

@@ -1,0 +1,206 @@
+{
+ "elapsed_str": "132.743394ms",
+ "header": [
+  {
+   "alias": "study.arm",
+   "derived": false,
+   "key_name": "study.arm",
+   "per_time": 0,
+   "type": "string"
+  },
+  {
+   "alias": "study.model",
+   "derived": false,
+   "key_name": "study.model",
+   "per_time": 0,
+   "type": "string"
+  },
+  {
+   "alias": "shell_http_calls",
+   "derived": false,
+   "key_name": "shell_http_calls",
+   "per_time": 0,
+   "type": ""
+  },
+  {
+   "alias": "runs_with_shell_http",
+   "derived": false,
+   "key_name": "runs_with_shell_http",
+   "per_time": 0,
+   "type": ""
+  },
+  {
+   "alias": "failed",
+   "derived": false,
+   "key_name": "failed",
+   "per_time": 0,
+   "type": ""
+  },
+  {
+   "alias": "hidden",
+   "derived": false,
+   "key_name": "hidden",
+   "per_time": 0,
+   "type": ""
+  }
+ ],
+ "info": {
+  "granularity_seconds": 1800,
+  "mean_sample_rate": 1,
+  "rows_examined": 4723
+ },
+ "other_by_aggregate": {
+  "data": {
+   "failed": 0,
+   "hidden": 0,
+   "runs_with_shell_http": 0,
+   "shell_http_calls": 0
+  }
+ },
+ "query_url": "https://ui.eu1.honeycomb.io/pedro-angel/environments/test/datasets/mcp-for-kibana-study/result/qN-gJQszVLLQ",
+ "results": [
+  {
+   "data": {
+    "failed": 205,
+    "hidden": 172,
+    "runs_with_shell_http": 30,
+    "shell_http_calls": 481,
+    "study.arm": "no-mcp",
+    "study.model": "claude-haiku-5-5"
+   }
+  },
+  {
+   "data": {
+    "failed": 25,
+    "hidden": 25,
+    "runs_with_shell_http": 30,
+    "shell_http_calls": 202,
+    "study.arm": "no-mcp",
+    "study.model": "claude-opus-5-5"
+   }
+  },
+  {
+   "data": {
+    "failed": 47,
+    "hidden": 32,
+    "runs_with_shell_http": 30,
+    "shell_http_calls": 199,
+    "study.arm": "no-mcp",
+    "study.model": "claude-sonnet-5-5"
+   }
+  },
+  {
+   "data": {
+    "failed": 94,
+    "hidden": 90,
+    "runs_with_shell_http": 30,
+    "shell_http_calls": 128,
+    "study.arm": "with-mcp",
+    "study.model": "claude-haiku-5-5"
+   }
+  },
+  {
+   "data": {
+    "failed": 19,
+    "hidden": 19,
+    "runs_with_shell_http": 19,
+    "shell_http_calls": 21,
+    "study.arm": "with-mcp",
+    "study.model": "claude-opus-5-5"
+   }
+  }
+ ],
+ "run_pk": "qN-gJQszVLLQ",
+ "template": {
+  "breakdowns": [
+   "study.arm",
+   "study.model"
+  ],
+  "calculations": [
+   {
+    "name": "c",
+    "op": "COUNT"
+   },
+   {
+    "column": "trace.trace_id",
+    "name": "runs",
+    "op": "COUNT_DISTINCT"
+   },
+   {
+    "filters": [
+     {
+      "column": "agent.tool.failed",
+      "join_column": "",
+      "op": "=",
+      "value": true
+     }
+    ],
+    "name": "f",
+    "op": "COUNT"
+   },
+   {
+    "filters": [
+     {
+      "column": "agent.tool.hidden_failure",
+      "join_column": "",
+      "op": "=",
+      "value": true
+     }
+    ],
+    "name": "h",
+    "op": "COUNT"
+   }
+  ],
+  "end_time": 1791684000,
+  "filters": [
+   {
+    "column": "gen_ai.operation.name",
+    "join_column": "",
+    "op": "=",
+    "value": "execute_tool"
+   },
+   {
+    "column": "agent.tool.shell_http",
+    "join_column": "",
+    "op": "=",
+    "value": true
+   }
+  ],
+  "formulas": [
+   {
+    "expression": "$c",
+    "name": "shell_http_calls"
+   },
+   {
+    "expression": "$runs",
+    "name": "runs_with_shell_http"
+   },
+   {
+    "expression": "$f",
+    "name": "failed"
+   },
+   {
+    "expression": "$h",
+    "name": "hidden"
+   }
+  ],
+  "granularity": 1800,
+  "orders": [
+   {
+    "column": "study.arm"
+   },
+   {
+    "column": "study.model"
+   }
+  ],
+  "start_time": 1791655200
+ },
+ "total_by_aggregate": {
+  "data": {
+   "failed": 390,
+   "hidden": 338,
+   "runs_with_shell_http": 139,
+   "shell_http_calls": 1031
+  }
+ }
+}

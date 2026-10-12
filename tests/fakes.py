@@ -5,7 +5,7 @@ from dataclasses import replace
 
 from kibana_mcp.core.errors import KibanaNotFound, KibanaRejected
 from kibana_mcp.core.models import (
-    AlertingHealth, AlertRule, ApiDeprecation, ApmAgentConfig, ApmAnnotation, ApmEnvironment,
+    AlertingHealth, AlertRule, RuleType, ApiDeprecation, ApmAgentConfig, ApmAnnotation, ApmEnvironment,
     ApmSourcemap, Case, Connector, DashboardDetail, DashboardSummary, DataViewDetail,
     DataViewSummary, DetectionAlert, DetectionRule, EmailDefaults, ExceptionItem, ExceptionList,
     FleetAgent, FleetAgentPolicy, FleetAgentStatus, FleetEnrollmentKey, FleetOutput, FleetOutputHealth,
@@ -331,6 +331,16 @@ class FakeGateway:
     def delete_alert_rule(self, rule_id):
         self.get_alert_rule(rule_id)
         del self.alert_rules[rule_id]
+
+    def list_rule_types(self):
+        return [
+            RuleType(
+                id=".es-query", name="Elasticsearch query", category="management",
+                producer="stackAlerts", consumers=("alerts", "discover", "stackAlerts"),
+                enabled_in_license=True, minimum_license_required="basic",
+                internally_managed=False,
+            )
+        ]
 
     def list_connectors(self):
         return list(self.connectors.values())

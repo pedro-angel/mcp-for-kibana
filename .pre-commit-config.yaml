@@ -9,6 +9,8 @@
 # `default_install_hook_types` is what makes a bare `install` also wire the commit-msg stage.
 
 default_install_hook_types: [pre-commit, commit-msg]
+# File hooks run once, at pre-commit; only hooks that declare commit-msg run there.
+default_stages: [pre-commit]
 minimum_pre_commit_version: "3.5.0"
 
 repos:

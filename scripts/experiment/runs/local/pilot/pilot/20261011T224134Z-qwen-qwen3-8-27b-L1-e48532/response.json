@@ -1,0 +1,44 @@
+{
+ "http_status": 200,
+ "error_body": null,
+ "timed_out": false,
+ "transport_error": null,
+ "end_events": 1,
+ "result": {
+  "model_instance_id": "qwen/qwen3.8-27b",
+  "output": [
+   {
+    "type": "reasoning",
+    "content": "The user wants to describe the data view \"Kibana Sample Data Logs\", find its fields, and name the time field. Then, end the response with a line in the form \"TIME_FIELD: <field name>\".\n\nLet's call describe_data_view.\n"
+   },
+   {
+    "type": "tool_call",
+    "tool": "describe_data_view",
+    "arguments": {
+     "data_view": "Kibana Sample Data Logs"
+    },
+    "output": "[{\"type\":\"text\",\"text\":\"{\\\"id\\\":\\\"90943e30-9a47-11e8-b64d-95841ca0b247\\\",\\\"name\\\":\\\"Kibana Sample Data Logs\\\",\\\"index_pattern\\\":\\\"kibana_sample_data_logs\\\",\\\"time_field\\\":\\\"timestamp\\\",\\\"fields\\\":{\\\"@timestamp\\\":\\\"date\\\",\\\"_id\\\":\\\"string\\\",\\\"_ignored\\\":\\\"string\\\",\\\"_index\\\":\\\"string\\\",\\\"_score\\\":\\\"number\\\",\\\"_source\\\":\\\"_source\\\",\\\"agent\\\":\\\"string\\\",\\\"agent.keyword\\\":\\\"string\\\",\\\"bytes\\\":\\\"number\\\",\\\"bytes_counter\\\":\\\"number\\\",\\\"bytes_gauge\\\":\\\"number\\\",\\\"clientip\\\":\\\"ip\\\",\\\"event.dataset\\\":\\\"string\\\",\\\"extension\\\":\\\"string\\\",\\\"extension.keyword\\\":\\\"string\\\",\\\"geo.coordinates\\\":\\\"geo_point\\\",\\\"geo.dest\\\":\\\"string\\\",\\\"geo.src\\\":\\\"string\\\",\\\"geo.srcdest\\\":\\\"string\\\",\\\"host\\\":\\\"string\\\",\\\"host.keyword\\\":\\\"string\\\",\\\"index\\\":\\\"string\\\",\\\"index.keyword\\\":\\\"string\\\",\\\"ip\\\":\\\"ip\\\",\\\"ip_range\\\":\\\"ip_range\\\",\\\"machine.os\\\":\\\"string\\\",\\\"machine.os.keyword\\\":\\\"string\\\",\\\"machine.ram\\\":\\\"number\\\",\\\"memory\\\":\\\"number\\\",\\\"message\\\":\\\"string\\\",\\\"message.keyword\\\":\\\"string\\\",\\\"phpmemory\\\":\\\"number\\\",\\\"referer\\\":\\\"string\\\",\\\"request\\\":\\\"string\\\",\\\"request.keyword\\\":\\\"string\\\",\\\"response\\\":\\\"string\\\",\\\"response.keyword\\\":\\\"string\\\",\\\"tags\\\":\\\"string\\\",\\\"tags.keyword\\\":\\\"string\\\",\\\"timestamp\\\":\\\"date\\\",\\\"timestamp_range\\\":\\\"date_range\\\",\\\"url\\\":\\\"string\\\",\\\"url.keyword\\\":\\\"string\\\",\\\"utc_time\\\":\\\"date\\\",\\\"hour_of_day\\\":\\\"number\\\"}}\"}]",
+    "provider_info": {
+     "type": "plugin",
+     "plugin_id": "mcp/mcp-for-kibana-study"
+    }
+   },
+   {
+    "type": "reasoning",
+    "content": "The data view exists, and the time field is \"timestamp\". The only step was step 1, which is now complete. Let's summarize concisely and end with a TIME_FIELD line.\n"
+   },
+   {
+    "type": "message",
+    "content": "Done. The data view \"Kibana Sample Data Logs\" (id `90943e30-9a47-11e8-b64d-95841ca0b247`, index pattern `kibana_sample_data_logs`) was described successfully. It exposes 39 fields, including date fields (`timestamp`, `@timestamp`, `utc_time`, `timestamp_range`), numeric metrics (`bytes`, `memory`, `machine.ram`, `phpmemory`, `bytes_counter`, `bytes_gauge`, `hour_of_day`), and string/IP/geo fields (`request`, `response`, `url`, `referer`, `clientip`, `ip`, `geo.src`, `geo.dest`, `machine.os`, `tags`, `message`, etc.). The designated time field for this data view is `timestamp`.\n\nTIME_FIELD: timestamp"
+   }
+  ],
+  "stats": {
+   "input_tokens": 8081,
+   "total_output_tokens": 318,
+   "reasoning_output_tokens": 95,
+   "tokens_per_second": 25.816693439287896,
+   "time_to_first_token_seconds": 25.268212
+  },
+  "response_id": "resp_b9fe3b8e8821effd20f2e27ff1165e3054105e72ebc9df5d"
+ }
+}

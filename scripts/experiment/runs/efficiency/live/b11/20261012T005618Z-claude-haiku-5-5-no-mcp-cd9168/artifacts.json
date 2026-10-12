@@ -1,0 +1,465 @@
+{
+  "dashboards": [
+    {
+      "id": "f2f224bb-de9d-40de-ad96-997bbf6e957c",
+      "data": {
+        "description": "Key traffic metrics for the Kibana sample web logs (kibana_sample_data_logs).",
+        "options": {
+          "auto_apply_filters": true,
+          "hide_panel_borders": false,
+          "hide_panel_titles": false,
+          "sync_colors": false,
+          "sync_cursor": true,
+          "sync_tooltips": false,
+          "use_margins": true
+        },
+        "tags": [],
+        "title": "EFF-57282eb0 Web logs overview",
+        "filters": [],
+        "panels": [
+          {
+            "grid": {
+              "x": 0,
+              "y": 0,
+              "w": 16,
+              "h": 6
+            },
+            "config": {
+              "title": "Total requests",
+              "data_source": {
+                "type": "data_view_reference",
+                "ref_id": "90943e30-9a47-11e8-b64d-95841ca0b247"
+              },
+              "type": "metric",
+              "sampling": 1,
+              "ignore_global_filters": false,
+              "metrics": [
+                {
+                  "type": "primary",
+                  "operation": "count",
+                  "empty_as_null": false,
+                  "color": {
+                    "type": "auto"
+                  }
+                }
+              ],
+              "styling": {
+                "density": "default",
+                "primary": {
+                  "position": "bottom",
+                  "labels": {
+                    "alignment": "left"
+                  },
+                  "value": {
+                    "sizing": "auto",
+                    "alignment": "right"
+                  }
+                }
+              }
+            },
+            "id": "c5af3a5b-8760-4b90-b216-0e92df4a2bf7",
+            "type": "vis"
+          },
+          {
+            "grid": {
+              "x": 16,
+              "y": 0,
+              "w": 16,
+              "h": 6
+            },
+            "config": {
+              "title": "5xx responses",
+              "data_source": {
+                "type": "data_view_reference",
+                "ref_id": "90943e30-9a47-11e8-b64d-95841ca0b247"
+              },
+              "type": "metric",
+              "sampling": 1,
+              "ignore_global_filters": false,
+              "metrics": [
+                {
+                  "type": "primary",
+                  "operation": "count",
+                  "empty_as_null": false,
+                  "color": {
+                    "type": "auto"
+                  }
+                }
+              ],
+              "styling": {
+                "density": "default",
+                "primary": {
+                  "position": "bottom",
+                  "labels": {
+                    "alignment": "left"
+                  },
+                  "value": {
+                    "sizing": "auto",
+                    "alignment": "right"
+                  }
+                }
+              },
+              "filters": [
+                {
+                  "label": "5xx status",
+                  "type": "dsl",
+                  "dsl": {
+                    "query": {
+                      "prefix": {
+                        "response.keyword": "5"
+                      }
+                    }
+                  },
+                  "params": {}
+                }
+              ]
+            },
+            "id": "36343ea8-f889-4f4e-970f-129a3cb7ea7a",
+            "type": "vis"
+          },
+          {
+            "grid": {
+              "x": 32,
+              "y": 0,
+              "w": 16,
+              "h": 6
+            },
+            "config": {
+              "title": "Average response bytes",
+              "data_source": {
+                "type": "data_view_reference",
+                "ref_id": "90943e30-9a47-11e8-b64d-95841ca0b247"
+              },
+              "type": "metric",
+              "sampling": 1,
+              "ignore_global_filters": false,
+              "metrics": [
+                {
+                  "type": "primary",
+                  "operation": "average",
+                  "field": "bytes",
+                  "color": {
+                    "type": "auto"
+                  }
+                }
+              ],
+              "styling": {
+                "density": "default",
+                "primary": {
+                  "position": "bottom",
+                  "labels": {
+                    "alignment": "left"
+                  },
+                  "value": {
+                    "sizing": "auto",
+                    "alignment": "right"
+                  }
+                }
+              }
+            },
+            "id": "bb634640-1ea1-41e8-b2ce-af0bed470b1c",
+            "type": "vis"
+          },
+          {
+            "grid": {
+              "x": 0,
+              "y": 6,
+              "w": 24,
+              "h": 12
+            },
+            "config": {
+              "title": "Requests over time",
+              "type": "xy",
+              "layers": [
+                {
+                  "type": "line",
+                  "data_source": {
+                    "type": "data_view_reference",
+                    "ref_id": "90943e30-9a47-11e8-b64d-95841ca0b247"
+                  },
+                  "sampling": 1,
+                  "ignore_global_filters": false,
+                  "x": {
+                    "operation": "date_histogram",
+                    "field": "timestamp",
+                    "suggested_interval": "auto",
+                    "use_original_time_range": false,
+                    "include_empty_rows": true,
+                    "drop_partial_intervals": false
+                  },
+                  "y": [
+                    {
+                      "operation": "count",
+                      "empty_as_null": false,
+                      "color": {
+                        "type": "auto"
+                      }
+                    }
+                  ]
+                }
+              ],
+              "axis": {
+                "x": {
+                  "title": {
+                    "visible": true
+                  },
+                  "ticks": {
+                    "visible": true
+                  },
+                  "grid": {
+                    "visible": true
+                  },
+                  "domain": {
+                    "type": "fit",
+                    "rounding": false
+                  },
+                  "labels": {
+                    "orientation": "horizontal"
+                  }
+                },
+                "y": {
+                  "title": {
+                    "visible": true
+                  },
+                  "scale": "linear",
+                  "ticks": {
+                    "visible": true
+                  },
+                  "grid": {
+                    "visible": true
+                  },
+                  "domain": {
+                    "type": "full",
+                    "rounding": true
+                  },
+                  "labels": {
+                    "orientation": "horizontal"
+                  }
+                }
+              },
+              "styling": {
+                "overlays": {
+                  "partial_buckets": {
+                    "visible": false
+                  },
+                  "current_time_marker": {
+                    "visible": false
+                  }
+                },
+                "interpolation": "linear",
+                "points": {
+                  "visibility": "auto"
+                }
+              },
+              "legend": {
+                "placement": "outside",
+                "position": "right",
+                "layout": {
+                  "type": "grid",
+                  "truncate": {
+                    "max_lines": 1
+                  }
+                },
+                "visibility": "hidden"
+              }
+            },
+            "id": "3227f3c6-178c-4788-8924-61b3a666bc97",
+            "type": "vis"
+          },
+          {
+            "grid": {
+              "x": 24,
+              "y": 6,
+              "w": 24,
+              "h": 12
+            },
+            "config": {
+              "title": "5xx responses over time",
+              "type": "xy",
+              "layers": [
+                {
+                  "type": "line",
+                  "data_source": {
+                    "type": "data_view_reference",
+                    "ref_id": "90943e30-9a47-11e8-b64d-95841ca0b247"
+                  },
+                  "sampling": 1,
+                  "ignore_global_filters": false,
+                  "x": {
+                    "operation": "date_histogram",
+                    "field": "timestamp",
+                    "suggested_interval": "auto",
+                    "use_original_time_range": false,
+                    "include_empty_rows": true,
+                    "drop_partial_intervals": false
+                  },
+                  "y": [
+                    {
+                      "operation": "count",
+                      "empty_as_null": false,
+                      "color": {
+                        "type": "auto"
+                      }
+                    }
+                  ]
+                }
+              ],
+              "axis": {
+                "x": {
+                  "title": {
+                    "visible": true
+                  },
+                  "ticks": {
+                    "visible": true
+                  },
+                  "grid": {
+                    "visible": true
+                  },
+                  "domain": {
+                    "type": "fit",
+                    "rounding": false
+                  },
+                  "labels": {
+                    "orientation": "horizontal"
+                  }
+                },
+                "y": {
+                  "title": {
+                    "visible": true
+                  },
+                  "scale": "linear",
+                  "ticks": {
+                    "visible": true
+                  },
+                  "grid": {
+                    "visible": true
+                  },
+                  "domain": {
+                    "type": "full",
+                    "rounding": true
+                  },
+                  "labels": {
+                    "orientation": "horizontal"
+                  }
+                }
+              },
+              "styling": {
+                "overlays": {
+                  "partial_buckets": {
+                    "visible": false
+                  },
+                  "current_time_marker": {
+                    "visible": false
+                  }
+                },
+                "interpolation": "linear",
+                "points": {
+                  "visibility": "auto"
+                }
+              },
+              "legend": {
+                "placement": "outside",
+                "position": "right",
+                "layout": {
+                  "type": "grid",
+                  "truncate": {
+                    "max_lines": 1
+                  }
+                },
+                "visibility": "hidden"
+              },
+              "filters": [
+                {
+                  "label": "5xx status",
+                  "type": "dsl",
+                  "dsl": {
+                    "query": {
+                      "prefix": {
+                        "response.keyword": "5"
+                      }
+                    }
+                  },
+                  "params": {}
+                }
+              ]
+            },
+            "id": "a96d1da2-1a29-4619-9ee5-6f15dfb9bc5e",
+            "type": "vis"
+          }
+        ],
+        "pinned_panels": []
+      },
+      "meta": {
+        "created_at": "2026-10-12T00:59:29.890Z",
+        "managed": false,
+        "updated_at": "2026-10-12T00:59:35.784Z",
+        "version": "WzI1NiwxXQ=="
+      }
+    }
+  ],
+  "rules": [
+    {
+      "id": "70d174d2-bd6e-44be-8e19-311143ec2003",
+      "enabled": true,
+      "name": "EFF-57282eb0 5xx spike",
+      "tags": [
+        "EFF-57282eb0"
+      ],
+      "rule_type_id": ".es-query",
+      "consumer": "stackAlerts",
+      "schedule": {
+        "interval": "1m"
+      },
+      "actions": [],
+      "params": {
+        "searchType": "esQuery",
+        "index": [
+          "kibana_sample_data_logs"
+        ],
+        "timeField": "timestamp",
+        "esQuery": "{\"query\": {\"bool\": {\"filter\": [{\"prefix\": {\"response.keyword\": \"5\"}}]}}}",
+        "timeWindowSize": 5,
+        "timeWindowUnit": "m",
+        "threshold": [
+          10
+        ],
+        "thresholdComparator": ">",
+        "size": 100,
+        "excludeHitsFromPreviousRun": true,
+        "aggType": "count",
+        "groupBy": "all"
+      },
+      "scheduled_task_id": "70d174d2-bd6e-44be-8e19-311143ec2003",
+      "created_by": "elastic",
+      "updated_by": "elastic",
+      "created_at": "2026-10-12T00:59:43.154Z",
+      "updated_at": "2026-10-12T00:59:43.154Z",
+      "api_key_owner": "elastic",
+      "api_key_created_by_user": true,
+      "throttle": null,
+      "mute_all": false,
+      "notify_when": null,
+      "muted_alert_ids": [],
+      "execution_status": {
+        "status": "ok",
+        "last_execution_date": "2026-10-12T01:00:47.123Z",
+        "last_duration": 35
+      },
+      "last_run": {
+        "outcome": "succeeded",
+        "outcome_order": 0,
+        "warning": null,
+        "outcome_msg": null,
+        "alerts_count": {
+          "new": 0,
+          "ignored": 0,
+          "recovered": 0,
+          "active": 0
+        }
+      },
+      "next_run": "2026-10-12T01:01:47.108Z",
+      "revision": 0,
+      "running": false
+    }
+  ]
+}

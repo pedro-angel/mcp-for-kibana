@@ -57,3 +57,6 @@ docs/experiments/*/scratch/
 .superpowers/
 .claude/*
 !.claude/settings.json
+
+# --- Local-model study: the runner's single-instance lock (scripts/experiment/local_run.py) ---
+scripts/experiment/runs/local/.lock

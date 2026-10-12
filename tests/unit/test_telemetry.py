@@ -18,6 +18,7 @@ _OTEL_ENV = (
     "KIBANA_MCP_OTEL_ENDPOINT",
     "KIBANA_MCP_OTEL_SECRET_TOKEN",
     "KIBANA_MCP_OTEL_SERVICE_NAME",
+    "KIBANA_MCP_OTEL_TRACEPARENT_FROM_ENV",
 )
 
 
@@ -93,3 +94,62 @@ def test_configure_telemetry_logs_endpoint_never_token(caplog):
         assert "super-secret-token" not in logged
     finally:
         trace.get_tracer_provider().shutdown()
+
+
+# --- TRACEPARENT from the environment (additive, default-off) ---------------
+
+_TP = "00-0af7651916cd43a8f2c4d1e5b6a7c8d9-b7ad6b7169203331-01"
+
+
+def test_traceparent_from_env_is_off_by_default():
+    from kibana_mcp.telemetry import attach_env_parent
+
+    assert Settings().otel_traceparent_from_env is False
+    s = Settings(otel_enabled=True)
+    assert attach_env_parent(s, {"TRACEPARENT": _TP}) is None
+
+
+def test_traceparent_from_env_needs_otel_enabled():
+    from kibana_mcp.telemetry import attach_env_parent
+
+    s = Settings(otel_traceparent_from_env=True)
+    assert attach_env_parent(s, {"TRACEPARENT": _TP}) is None
+
+
+def test_traceparent_from_env_parses_env(monkeypatch):
+    monkeypatch.setenv("KIBANA_MCP_OTEL_TRACEPARENT_FROM_ENV", "true")
+    assert Settings().otel_traceparent_from_env is True
+
+
+def test_traceparent_from_env_parents_new_spans():
+    pytest.importorskip("opentelemetry.sdk")
+    from opentelemetry import context
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+    from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+
+    from kibana_mcp.telemetry import attach_env_parent
+
+    exporter = InMemorySpanExporter()
+    provider = TracerProvider()
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    s = Settings(otel_enabled=True, otel_traceparent_from_env=True)
+    token = attach_env_parent(s, {"TRACEPARENT": _TP})
+    assert token is not None
+    try:
+        with provider.get_tracer("t").start_as_current_span("tools/call x"):
+            pass
+    finally:
+        context.detach(token)
+    (span,) = exporter.get_finished_spans()
+    assert format(span.context.trace_id, "032x") == "0af7651916cd43a8f2c4d1e5b6a7c8d9"
+    assert format(span.parent.span_id, "016x") == "b7ad6b7169203331"
+
+
+@pytest.mark.parametrize("env", [{}, {"TRACEPARENT": "not-a-traceparent"}])
+def test_traceparent_from_env_absent_or_invalid_attaches_nothing(env):
+    pytest.importorskip("opentelemetry.sdk")
+    from kibana_mcp.telemetry import attach_env_parent
+
+    s = Settings(otel_enabled=True, otel_traceparent_from_env=True)
+    assert attach_env_parent(s, env) is None

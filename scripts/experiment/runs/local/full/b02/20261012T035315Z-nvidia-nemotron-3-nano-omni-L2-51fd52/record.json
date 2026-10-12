@@ -1,0 +1,116 @@
+{
+ "study": "local-models",
+ "run_id": "20261012T035315Z-nvidia-nemotron-3-nano-omni-L2-51fd52",
+ "cell": "full/b02/nvidia-nemotron-3-nano-omni/L2",
+ "phase": "full",
+ "block": "b02",
+ "model": "nvidia/nemotron-3-nano-omni",
+ "level": "L2",
+ "chain_length": 2,
+ "arm": "server",
+ "attempt": 1,
+ "marker": "LOC-efc36c0b",
+ "prompt": "Using the kibana tools, work on Kibana's web-logs sample data (data view 'Kibana Sample Data Logs', index kibana_sample_data_logs). Do these steps in order:\n1. Describe the data view 'Kibana Sample Data Logs': look up its fields and name its time field. End your reply with a line of the form TIME_FIELD: <field name>.\n2. Build a dashboard titled 'LOC-efc36c0b Web logs' on that data view with exactly two panels: the number of requests over time, and the number of requests by HTTP response code.\nUse only the kibana tools. When every step is done, reply with a short summary.",
+ "kibana_version": "9.5.5",
+ "toolboxes": "dashboards,data-management,alerting",
+ "tier": "write",
+ "server_entry": "mcp-for-kibana-study",
+ "stream": true,
+ "git_sha": "8ff1739",
+ "config_sha": "df0991912534",
+ "ts_start": "2026-10-12T03:53:15.902388+00:00",
+ "harness_load": {
+  "status": 200,
+  "context_length": 262144,
+  "load_s": 6.4,
+  "unloaded": [
+   "qwen/qwen3.8-27b"
+  ],
+  "error": null
+ },
+ "wall_ms": 78039.3,
+ "ts_end_model": "2026-10-12T03:54:33.942011+00:00",
+ "http_status": 200,
+ "timed_out": false,
+ "valid": true,
+ "invalid_reason": null,
+ "end_reason": "completed",
+ "tool_names": [
+  "describe_data_view",
+  "create_dashboard"
+ ],
+ "model_calls": 3,
+ "n_tool_calls": 2,
+ "n_invalid_tool_calls": 0,
+ "n_failed_tool_calls": 0,
+ "n_distinct_tools": 2,
+ "failure_classes": {},
+ "tool_result_bytes": 1310,
+ "tool_ms": 4833.9,
+ "first_tool_ms": 38693.1,
+ "input_tokens": 9149,
+ "output_tokens": 3976,
+ "reasoning_tokens": 3609,
+ "tokens_per_second": 59.082317612883685,
+ "ttft_s": 5.996368,
+ "model_load_s": null,
+ "stats": {
+  "input_tokens": 9149,
+  "total_output_tokens": 3976,
+  "reasoning_output_tokens": 3609,
+  "tokens_per_second": 59.082317612883685,
+  "time_to_first_token_seconds": 5.996368
+ },
+ "response_model": "nvidia/nemotron-3-nano-omni",
+ "end_events": 1,
+ "stream_events": 3782,
+ "permission_denials": 0,
+ "output_rebuilt_from_stream": false,
+ "final_text": "The data view “Kibana Sample Data Logs” contains fields such as @timestamp, timestamp, response, request, etc., and its time field is **timestamp**.\n\n**TIME_FIELD: timestamp**\n\nDashboard “LOC-efc36c0b Web logs” (ID loc‑efc36c0b‑web‑logs‑0f0babd5e87b) has been created with two panels:\n1. Line chart – number of requests over time (grouped by timestamp).  \n2. Bar chart – number of requests by HTTP response code (grouped by response).",
+ "stream_final_event": "ok",
+ "known_secret_exposures": 0,
+ "success": true,
+ "failure_reason": null,
+ "first_failed_step": null,
+ "steps_passed": 2,
+ "criteria": [
+  {
+   "step": "describe",
+   "check": "tool_ok:describe_data_view",
+   "ok": true,
+   "detail": "ok"
+  },
+  {
+   "step": "describe",
+   "check": "answer",
+   "ok": true,
+   "detail": "ok"
+  },
+  {
+   "step": "dashboard",
+   "check": "dashboard",
+   "ok": true,
+   "detail": "ok"
+  }
+ ],
+ "n_dashboards": 1,
+ "n_rules": 0,
+ "rule_enabled": false,
+ "reset_removed": {
+  "objects": [
+   [
+    "dashboard",
+    "loc-efc36c0b-web-logs-0f0babd5e87b"
+   ]
+  ],
+  "rules": [],
+  "connectors": []
+ },
+ "model_loaded_context": 262144,
+ "model_max_context": 262144,
+ "ts_end": "2026-10-12T03:54:34.924292+00:00",
+ "n_spans": 6,
+ "otel": "sent: HTTP 200, 6 spans",
+ "complete": true,
+ "otel_sent_late": "2026-10-12T04:16:48.709569+00:00"
+}

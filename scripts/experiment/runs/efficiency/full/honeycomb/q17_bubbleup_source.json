@@ -1,0 +1,77 @@
+{
+ "elapsed_str": "96.245616ms",
+ "header": [
+  {
+   "alias": "agent.tool.error",
+   "derived": false,
+   "key_name": "agent.tool.error",
+   "per_time": 0,
+   "type": "boolean"
+  },
+  {
+   "alias": "COUNT",
+   "derived": false,
+   "key_name": "COUNT",
+   "per_time": 0,
+   "type": ""
+  }
+ ],
+ "info": {
+  "granularity_seconds": 1800,
+  "mean_sample_rate": 1,
+  "rows_examined": 5435
+ },
+ "other_by_aggregate": {
+  "data": {
+   "COUNT": 0
+  }
+ },
+ "query_url": "https://ui.eu1.honeycomb.io/pedro-angel/environments/test/datasets/mcp-for-kibana-study/result/xK-eFpYZ7Pip",
+ "results": [
+  {
+   "data": {
+    "COUNT": 666,
+    "agent.tool.error": false
+   }
+  },
+  {
+   "data": {
+    "COUNT": 111,
+    "agent.tool.error": true
+   }
+  }
+ ],
+ "run_pk": "xK-eFpYZ7Pip",
+ "template": {
+  "breakdowns": [
+   "agent.tool.error"
+  ],
+  "calculations": [
+   {
+    "op": "COUNT"
+   }
+  ],
+  "end_time": 1791684000,
+  "filters": [
+   {
+    "column": "gen_ai.operation.name",
+    "join_column": "",
+    "op": "=",
+    "value": "execute_tool"
+   },
+   {
+    "column": "study.arm",
+    "join_column": "",
+    "op": "=",
+    "value": "with-mcp"
+   }
+  ],
+  "granularity": 1800,
+  "start_time": 1791655200
+ },
+ "total_by_aggregate": {
+  "data": {
+   "COUNT": 777
+  }
+ }
+}
