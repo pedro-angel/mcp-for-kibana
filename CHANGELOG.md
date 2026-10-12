@@ -52,6 +52,11 @@ version section.
 
 ### Fixed
 
+- **Study 4 runs give the model a TMPDIR.** It was empty, so a model's
+  `cat > $TMPDIR/x` wrote to `/x`, hung on input, and the follow-up `rm /x`
+  was refused as outside the working directory; the run ended invalid.
+  `--task` runs now set `TMPDIR` to `tmp/` inside the run's working
+  directory, in both arms. STUDY_DESIGN.md decision 17.
 - **The agent-signals hook judges paths against the run's work directory.**
   It took the work directory from the first hook payload's `cwd`, which a
   leading `cd sub` moves, so later calls inside the work directory were
