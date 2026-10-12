@@ -9,6 +9,12 @@ is just a choice on two axes:
 - **Tier** (`KIBANA_MCP_TIER` = `read` | `write` | `destructive`) — *what you can
   do*: a cap that hides every tool above it.
 
+A third axis exists for a surface no profile fits: **a hand-picked tool list**
+(`KIBANA_MCP_TOOLS`). When set, it replaces the toolbox choice and the server
+publishes exactly the listed tools the tier allows — see
+[Tool selection](../docs/configuration.md#tool-selection). The profiles here use
+the two axes above.
+
 > **Toolbox + tier are curation, not a security boundary.** The real boundary is
 > the Kibana **API key** you supply: the server acts only within that key's RBAC.
 > Scope the key to least privilege (and, over HTTP, per caller).

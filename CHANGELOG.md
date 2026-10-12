@@ -10,6 +10,18 @@ version section.
 
 ## [Unreleased]
 
+### Added
+
+- **`KIBANA_MCP_TOOLS`** (default off): a comma-separated allow list of tool
+  names. When set, the server publishes the listed tools the tier allows and
+  nothing else, registering whichever toolboxes own them;
+  `KIBANA_MCP_TOOLBOXES` is then ignored (one stderr line if it was set). A
+  listed tool above `KIBANA_MCP_TIER` stays hidden and is named on stderr with
+  the tier that would publish it; a name that is not a tool fails startup with
+  a "did you mean" suggestion. Read at start time only. The list only hides
+  tools, so it can never publish one the tier hid; it is curation, not a
+  security boundary — the API key's RBAC is. Decision D34.
+
 ## [0.3.0] - 2026-10-12
 
 ### Added

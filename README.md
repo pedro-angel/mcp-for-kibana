@@ -169,6 +169,7 @@ prefixed, matching how Kibana's own tooling names them):
 | `KIBANA_API_KEY` | (none) | stdio mode: the API key used for every request. HTTP mode: ignored unless `KIBANA_MCP_ALLOW_ENV_KEY_HTTP=true` — each caller sends their own key. |
 | `KIBANA_MCP_TOOLBOXES` | `dashboards,data-management` | Comma-separated list of toolboxes to register (of the 10 available). |
 | `KIBANA_MCP_TIER` | `write` | Max tool tier to register: `read`, `write`, or `destructive`. |
+| `KIBANA_MCP_TOOLS` | (none — off) | Comma-separated allow list of tool names. When set, the server publishes exactly the listed tools the tier allows and nothing else, and `KIBANA_MCP_TOOLBOXES` is ignored. See [Tool selection](https://mcp-for-kibana.readthedocs.io/en/latest/configuration/#tool-selection). |
 | `KIBANA_MCP_EXPORT_DIR` | (none — a fresh, unguessable 0700 temp dir per run) | Directory where saved-objects export/import NDJSON files are written. An explicit path is created 0700, a symlink there is refused, and a pre-existing directory is tightened to 0700. |
 | `KIBANA_MCP_TRANSPORT` | `stdio` | `stdio` or `http`. |
 | `KIBANA_MCP_HOST` | `127.0.0.1` | Bind host (HTTP transport only). |

@@ -54,18 +54,18 @@ Basic-buildable **toolboxes** that had never been filed. Now filed, in build ord
 - feat: `synthetics` write tier — **second (ordered 2026-08-19)**. The observability toolbox reads monitors/params/private-locations (4/19 methods); the write tier adds monitor + param + private-location CRUD and `test_monitor`. The API is Basic (reads contract-tested); env-research must confirm the execution paths — private locations need a synthetics-capable Fleet agent, so run-side value may be infra-bounded like osquery below.
 - **Deprioritized, with the reason on record (2026-08-19):** `cases` depth (comments management, files, configuration, tags/reporters, alert linkage — 6/22 methods wrapped). Core case CRUD is Basic and shipped; the depth that makes cases compelling is license-locked — external push needs Gold+ connector types, assignees need Platinum — so the remaining Basic-buildable slice is thin workflow plumbing. Not revisited: the depth that would make it compelling is subscription-locked, which is out of scope.
 - **Parked as infra-gated (re-confirmed 2026-08-19):** `osquery` — the one whole Basic namespace with zero coverage (0/14 methods; live probe: saved-queries/packs answer 200 on Basic). Already classified under `security-response` below: useful only with the osquery_manager integration on an agent policy and hosts worth querying — the dockerized lab agents would return container-level trivia. Revisit when real endpoints enroll.
-- feat: per-tool surface configuration — **filed 2026-08-20 (owner request,
-  unordered)**. Today's selection axes are toolbox + tier only; a persona
-  whose job crosses ownership boundaries must enable whole toolboxes
-  (building a dashboard in a fresh space takes three: dashboards +
-  data-management + platform-admin, 24 tools at write). An additive,
-  default-off allow/deny of individual tool names (composing with the
-  existing registration-time disable mechanism) would let operators trim
-  the surface toward the ~20-tool reliability heuristic. Design tension to
-  resolve in the spec: name-level selection can split coherent pairs
-  (read-modify-write partners, fork lifecycles) — same
-  curation-not-security posture as tiers, but the docs must say which
-  splits are foot-guns.
+- feat: per-tool surface configuration — **filed 2026-08-20 (owner request);
+  the allow list shipped 2026-10-12** as `KIBANA_MCP_TOOLS`
+  ([Tool selection](configuration.md#tool-selection), decision
+  [D34](spec/decisions.md)): published = listed ∩ tier, the list alone
+  decides which toolboxes register, start time only, applied by disable only.
+  A persona that crosses ownership boundaries (a dashboard in a fresh space:
+  dashboards + data-management + platform-admin, 24 tools at write) can now be
+  trimmed toward the ~20-tool heuristic. **Still open, ordered after the
+  day-to-day tool work above:** named custom toolboxes — a profile file that
+  names a tool set — with coherence warnings for lists that split working
+  pairs (read-modify-write partners, fork lifecycles); today the docs name
+  the foot-gun and the server does not check it.
 - **Unordered Basic backlog from the 2026-08-19 audit** (file individually when picked up): `spaces.copy_saved_objects` + `update_objects_spaces` (natural extension of space targeting), `timeline` depth (1/19 wrapped), data-view runtime fields + default get/set, exception-list update/duplicate/export/import, granular `saved_objects` reads (find/get — raw CRUD stays out: Kibana marks it deprecated), `apm` writes (agent-config upsert, annotations), fleet advanced ops (package install/uninstall, diagnostics, tags, k8s manifest), streams queries/attachments/content (significant-events likely needs an AI connector — verify before filing).
 
 `security-entity-analytics` is **out of scope** (subscription-gated). `security-response`

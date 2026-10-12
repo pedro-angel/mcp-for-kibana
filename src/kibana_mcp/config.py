@@ -73,6 +73,10 @@ class Settings(BaseSettings):
     # lives in data-management since the #28 extraction.
     toolboxes: Annotated[list[str], NoDecode] = ["dashboards", "data-management"]
     tier: Tier = Tier.WRITE
+    # Per-tool allow list (additive, default-off; D34). When non-empty it alone
+    # decides the surface: the server registers the toolboxes that own the
+    # listed tools and publishes exactly the listed tools the tier allows.
+    tools: Annotated[list[str], NoDecode] = []
     # Where saved-objects export writes NDJSON handles (import reads them back);
     # None -> <tempdir>/mcp-for-kibana-exports at server assembly. The bytes live on
     # disk in this dir, never in the model context (#37).
@@ -117,12 +121,17 @@ class Settings(BaseSettings):
                     os.environ.setdefault(_ENV_FILE_KEY_ALIASES.get(key, key), value)
         return cls()
 
-    @field_validator("toolboxes", mode="before")
+    @field_validator("toolboxes", "tools", mode="before")
     @classmethod
     def _split_csv(cls, v: object) -> object:
         if isinstance(v, str):
             return [item.strip() for item in v.split(",") if item.strip()]
         return v
+
+    @field_validator("tools")
+    @classmethod
+    def _dedupe(cls, v: list[str]) -> list[str]:
+        return list(dict.fromkeys(v))  # first occurrence wins, order kept
 
     @property
     def effective_public_url(self) -> str:

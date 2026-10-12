@@ -13,6 +13,7 @@ prefixed, matching how Kibana's own tooling names them):
 | `KIBANA_API_KEY` | (none) | stdio mode: the API key used for every request. HTTP mode: ignored unless `KIBANA_MCP_ALLOW_ENV_KEY_HTTP=true` — each caller sends their own key. |
 | `KIBANA_MCP_TOOLBOXES` | `dashboards,data-management` | Comma-separated list of toolboxes to register (of the 10 available). |
 | `KIBANA_MCP_TIER` | `write` | Max tool tier to register: `read`, `write`, or `destructive`. |
+| `KIBANA_MCP_TOOLS` | (none — off) | Comma-separated allow list of tool names. When set, the server publishes exactly the listed tools the tier allows and nothing else, and `KIBANA_MCP_TOOLBOXES` is ignored. See [Tool selection](#tool-selection). |
 | `KIBANA_MCP_EXPORT_DIR` | (none — a fresh, unguessable 0700 temp dir per run) | Directory where saved-objects export/import NDJSON files are written. An explicit path is created 0700, a symlink there is refused, and a pre-existing directory is tightened to 0700. |
 | `KIBANA_MCP_TRANSPORT` | `stdio` | `stdio` or `http`. |
 | `KIBANA_MCP_HOST` | `127.0.0.1` | Bind host (HTTP transport only). |
@@ -81,6 +82,47 @@ This is the seam the [composable toolboxes](architecture.md#toolboxes)
 pillar is built on: a small local model can be handed a narrower tool
 surface (fewer toolboxes, or a lower tier) than a larger, more capable one,
 without any code change — only configuration.
+
+## Tool selection
+
+`KIBANA_MCP_TOOLS` (default: unset, feature off) is a comma-separated allow
+list of tool names. **The server publishes the listed tools that the tier
+allows, and nothing else.** For example, a dashboard-building surface for a
+small local model:
+
+```bash
+KIBANA_MCP_TIER=write
+KIBANA_MCP_TOOLS=list_data_views,describe_data_view,search_dashboards,get_dashboard,create_dashboard,add_panel,update_panel,create_data_view
+```
+
+publishes exactly those 8 tools; the same list with `KIBANA_MCP_TIER=read`
+publishes only its 4 read tools.
+
+- **The list alone decides.** The server registers whichever toolboxes own the
+  listed tools, so `KIBANA_MCP_TOOLBOXES` is not needed. If it is set as well,
+  it is ignored and one startup line on stderr says so.
+- **A listed tool above the tier is not published.** The tier still caps the
+  surface; one startup line on stderr names each such tool and the tier that
+  would publish it. Startup does not fail, so one list can be reused at a
+  lower tier.
+- **A name that is not a tool fails startup** with a `ValueError` naming every
+  unknown name, with a "did you mean" suggestion where one is close. The
+  [Tool reference](tools.md) lists every tool name.
+- **Unset or empty** (`KIBANA_MCP_TOOLS=`, or only commas and spaces) is the
+  feature off: the server assembles exactly as without the setting. Repeated
+  names are counted once.
+- **Start time only.** The list is read when the server starts; changing it
+  means restarting the server.
+- **Keep working pairs together.** The server does not check that a list is
+  coherent: a model given `create_dashboard` without `describe_data_view`
+  cannot look up field names, and one given `update_panel` without
+  `get_dashboard` cannot see which panel index to replace.
+
+The list only hides tools — it is applied with the same visibility mechanism
+as the tier (`mcp.disable(...)` in `server.py`), never by enabling, so it
+cannot publish a tool the tier hid. Like toolboxes and tiers, it is curation,
+**not a security boundary**: the Kibana API key's RBAC is the real limit on
+what the server can do.
 
 ## Space targeting
 

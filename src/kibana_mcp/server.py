@@ -1,6 +1,10 @@
 """Composition root: assemble the FastMCP server from Settings."""
 
+import asyncio
+import difflib
+import logging
 import tempfile
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from fastmcp import FastMCP
@@ -16,6 +20,9 @@ from kibana_mcp.toolboxes import TOOLBOXES
 from kibana_mcp.toolboxes.base import GatewayFactory, ToolboxDeps
 
 _TIER_TAGS = {"read", "write", "destructive"}
+
+# Startup notes go to stderr via logging, never stdout (the stdio MCP channel).
+_log = logging.getLogger(__name__)
 
 
 def _resolve_export_dir(settings: Settings) -> Path:
@@ -49,18 +56,6 @@ def build_server(
     gateway_factory: GatewayFactory,
     export_dir: Path | None = None,
 ) -> FastMCP:
-    unknown = set(settings.toolboxes) - TOOLBOXES.keys()
-    if unknown:
-        raise ValueError(
-            f"unknown toolbox(es) {sorted(unknown)}; available: {sorted(TOOLBOXES)}"
-        )
-    # on_duplicate="ignore": toolboxes compose freely; if two ever register the
-    # same tool name, the first one in KIBANA_MCP_TOOLBOXES wins, deterministically
-    # and silently — rather than the default "warn" (last wins + a log warning).
-    # (Each tool is owned by exactly one toolbox today; this keeps overlap safe.)
-    mcp = FastMCP(
-        "mcp-for-kibana", instructions=_INSTRUCTIONS, on_duplicate="ignore", mask_error_details=True
-    )
     # No I/O here (build_server stays pure for FakeGateway tests): main() creates
     # export_dir and passes it; unit tests take the ToolboxDeps default (unused).
     deps = ToolboxDeps(
@@ -68,12 +63,96 @@ def build_server(
         public_kibana_url=settings.effective_public_url,
         **({"export_dir": export_dir} if export_dir is not None else {}),
     )
-    for name in settings.toolboxes:
+    if settings.tools:
+        toolboxes, unlisted = _select_tools(settings, deps)
+    else:
+        unknown = set(settings.toolboxes) - TOOLBOXES.keys()
+        if unknown:
+            raise ValueError(
+                f"unknown toolbox(es) {sorted(unknown)}; available: {sorted(TOOLBOXES)}"
+            )
+        toolboxes, unlisted = settings.toolboxes, set()
+    # on_duplicate="ignore": toolboxes compose freely; if two ever register the
+    # same tool name, the first one in KIBANA_MCP_TOOLBOXES wins, deterministically
+    # and silently — rather than the default "warn" (last wins + a log warning).
+    # (Each tool is owned by exactly one toolbox today; this keeps overlap safe.)
+    mcp = FastMCP(
+        "mcp-for-kibana", instructions=_INSTRUCTIONS, on_duplicate="ignore", mask_error_details=True
+    )
+    for name in toolboxes:
         TOOLBOXES[name].register(mcp, deps)
     for tier_tag in _TIER_TAGS - settings.tier.allowed:
         mcp.disable(tags={tier_tag})
+    # The allow list only ever hides (D34). Never mcp.enable(): a later enable
+    # overrides an earlier disable, so it could re-publish a tool the tier hid.
+    if unlisted:
+        mcp.disable(names=unlisted, components={"tool"})
     _register_docs_resources(mcp)
     return mcp
+
+
+def _tool_catalog(deps: ToolboxDeps) -> dict[str, tuple[str, frozenset[str]]]:
+    """Every tool name -> (owning toolbox, its tags), from a throwaway server per
+    toolbox. Registration does no I/O; FastMCP lists tools only through an async
+    API, so the listing runs on its own event loop in a worker thread — which
+    works whether or not the caller is already inside a running loop."""
+    scratch = {name: FastMCP(f"catalog-{name}") for name in TOOLBOXES}
+    for name, box in TOOLBOXES.items():
+        box.register(scratch[name], deps)
+
+    async def _list() -> dict[str, list[tuple[str, frozenset[str]]]]:
+        return {
+            name: [(t.name, frozenset(t.tags)) for t in await server.local_provider.list_tools()]
+            for name, server in scratch.items()
+        }
+
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        listed = pool.submit(lambda: asyncio.run(_list())).result()
+    catalog: dict[str, tuple[str, frozenset[str]]] = {}
+    for box_name, tools in listed.items():
+        for tool_name, tags in tools:
+            catalog.setdefault(tool_name, (box_name, tags))
+    return catalog
+
+
+def _select_tools(settings: Settings, deps: ToolboxDeps) -> tuple[list[str], set[str]]:
+    """KIBANA_MCP_TOOLS decides alone: the toolboxes owning the listed tools, and
+    the names those toolboxes register that are not listed (to hide). Listed
+    tools above the tier stay hidden by the tier; an unknown name fails startup."""
+    catalog = _tool_catalog(deps)
+    unknown = [name for name in settings.tools if name not in catalog]
+    if unknown:
+        hints = []
+        for name in unknown:
+            close = difflib.get_close_matches(name, catalog, n=1)
+            hints.append(f"{name!r} (did you mean {close[0]!r}?)" if close else repr(name))
+        raise ValueError(
+            f"unknown tool(s) in KIBANA_MCP_TOOLS: {', '.join(hints)}; "
+            "fix the name(s) — every tool is listed in docs/tools.md"
+        )
+    listed = set(settings.tools)
+    if "toolboxes" in settings.model_fields_set:
+        _log.warning(
+            "KIBANA_MCP_TOOLBOXES is ignored: KIBANA_MCP_TOOLS is set and decides "
+            "which tools are published"
+        )
+    hidden_tiers = _TIER_TAGS - settings.tier.allowed
+    above = {
+        name: "/".join(sorted(catalog[name][1] & hidden_tiers))
+        for name in settings.tools
+        if catalog[name][1] & hidden_tiers
+    }
+    if above:
+        _log.warning(
+            "KIBANA_MCP_TOOLS lists %d tool(s) above KIBANA_MCP_TIER=%s, not published: %s; "
+            "set KIBANA_MCP_TIER to the tier in parentheses to publish them",
+            len(above),
+            settings.tier.value,
+            ", ".join(f"{name} ({tier})" for name, tier in above.items()),
+        )
+    toolboxes = [box for box in TOOLBOXES if any(catalog[n][0] == box for n in listed)]
+    unlisted = {n for n, (box, _) in catalog.items() if box in toolboxes} - listed
+    return toolboxes, unlisted
 
 
 def _register_docs_resources(mcp: FastMCP) -> None:

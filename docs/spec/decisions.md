@@ -49,6 +49,30 @@ this ledger stands without them.
   tier 125 passed on 9.4.7 and 125 passed on 9.5.4; on 9.5.4 the e2e replay 4
   passed and the live-model gate (`gemma-4-12b-qat`) 1 passed — no gateway
   change. Supersedes D29.
+- **D34 (2026-10-12)** — A per-tool allow list, `KIBANA_MCP_TOOLS` (owner
+  spec), is the third selection axis beside toolbox and tier. Semantics:
+  **published = listed ∩ tier**, nothing else. **The list alone decides**:
+  the server registers the toolboxes that own the listed tools, and an
+  explicit `KIBANA_MCP_TOOLBOXES` is ignored with one stderr line. A listed
+  tool **above the tier stays hidden** with one stderr line naming it and the
+  tier that would publish it — not an error, so one list is reusable at a
+  lower tier. A listed name that is **not a tool fails startup**, all unknown
+  names at once, each with a difflib "did you mean" and a pointer to
+  `docs/tools.md`. Unset or empty is byte-identical to before (D7's additive
+  rule). **Start time only**: runtime list changes are rejected for now —
+  MCP clients' support for `notifications/tools/list_changed` is uneven and
+  the HTTP transport is stateless, so a changed list would reach some
+  clients and not others. **Mechanism: disable only.** The list hides every
+  registered unlisted tool with `mcp.disable(names=…)` beside the tier's
+  `mcp.disable(tags=…)`; it never calls `mcp.enable`, because FastMCP (4.0.10)
+  documents that a later enable overrides an earlier disable, so an
+  enable-based allow list could re-publish a destructive tool the tier hid.
+  The names come from FastMCP's async tool listing over a throwaway server
+  per toolbox, run on its own event loop in a worker thread (FastMCP has no
+  synchronous public listing; registration does no I/O, so `build_server`
+  stays pure). Not a security boundary (D3): the API key's RBAC is. Named
+  custom toolboxes (a profile file with coherence warnings) remain open
+  ([roadmap](../roadmap.md)). Pinned by `tests/unit/test_tool_allow_list.py`.
 
 ## Space targeting
 

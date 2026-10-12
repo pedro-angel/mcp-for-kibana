@@ -41,8 +41,9 @@ implementation may change any mechanism this document does *not* name.
   invariants below and the shared port. Ownership constrains
   *registration*, not *availability*: personas whose jobs cross ownership
   boundaries compose toolboxes (building a dashboard in a fresh space
-  takes three), and finer-grained per-tool selection is a filed roadmap
-  feature, not a reason to share registrations.
+  takes three), and finer-grained selection is the per-tool allow list
+  (`KIBANA_MCP_TOOLS`, D34), which registers the owning toolboxes and hides
+  every unlisted tool — selection, never a reason to share registrations.
 - **Dependency injection via one factory.** Toolboxes receive a
   `gateway_factory(space=None)` callable and never construct clients. The
   factory is where per-request credentials and space scoping happen; a fake
@@ -76,6 +77,11 @@ Tiering and destruction:
   — the point is that destructive tools never enter the model's context.
   A call naming a hidden tool fails as unknown (observed; the pinned
   assertions cover list-time visibility).
+- Surface selection only ever hides. The per-tool allow list
+  (`KIBANA_MCP_TOOLS`) is applied as a second disable beside the tier's, so
+  the published set is listed ∩ tier; assembly never calls an enable, which
+  in FastMCP overrides an earlier disable and could re-publish a tool the
+  tier hid (D34; pinned by `tests/unit/test_tool_allow_list.py`).
 - Tier-gating is the destructive baseline; **additionally**, operations
   whose effect is invisible until the guidance is read carry an explicit
   `confirm` parameter (clearing all processing steps, activating a fork
