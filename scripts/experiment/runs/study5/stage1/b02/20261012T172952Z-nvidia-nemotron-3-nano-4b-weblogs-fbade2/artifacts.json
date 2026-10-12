@@ -1,0 +1,293 @@
+{
+ "dashboards": [
+  {
+   "id": "loc-60dd4d74-web-logs-18ba04b83ae2",
+   "data": {
+    "description": "",
+    "options": {
+     "auto_apply_filters": true,
+     "hide_panel_borders": false,
+     "hide_panel_titles": false,
+     "sync_colors": false,
+     "sync_cursor": true,
+     "sync_tooltips": false,
+     "use_margins": true
+    },
+    "tags": [],
+    "time_range": {
+     "from": "now-7d",
+     "to": "now"
+    },
+    "title": "LOC-60dd4d74 Web logs",
+    "filters": [],
+    "panels": [
+     {
+      "grid": {
+       "x": 0,
+       "y": 0,
+       "w": 24,
+       "h": 10
+      },
+      "config": {
+       "title": "Requests over time",
+       "type": "xy",
+       "layers": [
+        {
+         "type": "line",
+         "data_source": {
+          "type": "data_view_spec",
+          "index_pattern": "kibana_sample_data_logs",
+          "time_field": "timestamp",
+          "name": "kibana_sample_data_logs"
+         },
+         "sampling": 1,
+         "ignore_global_filters": false,
+         "x": {
+          "operation": "date_histogram",
+          "field": "timestamp",
+          "suggested_interval": "auto",
+          "use_original_time_range": false,
+          "include_empty_rows": true,
+          "drop_partial_intervals": false
+         },
+         "y": [
+          {
+           "operation": "count",
+           "empty_as_null": false,
+           "label": "requests",
+           "color": {
+            "type": "auto"
+           }
+          }
+         ]
+        }
+       ],
+       "axis": {
+        "x": {
+         "title": {
+          "visible": true
+         },
+         "ticks": {
+          "visible": true
+         },
+         "grid": {
+          "visible": true
+         },
+         "domain": {
+          "type": "fit",
+          "rounding": false
+         },
+         "labels": {
+          "orientation": "horizontal"
+         }
+        },
+        "y": {
+         "title": {
+          "visible": true
+         },
+         "scale": "linear",
+         "ticks": {
+          "visible": true
+         },
+         "grid": {
+          "visible": true
+         },
+         "domain": {
+          "type": "full",
+          "rounding": true
+         },
+         "labels": {
+          "orientation": "horizontal"
+         }
+        }
+       },
+       "styling": {
+        "overlays": {
+         "partial_buckets": {
+          "visible": false
+         },
+         "current_time_marker": {
+          "visible": false
+         }
+        },
+        "interpolation": "linear",
+        "points": {
+         "visibility": "auto"
+        }
+       },
+       "legend": {
+        "placement": "outside",
+        "position": "right",
+        "layout": {
+         "type": "grid",
+         "truncate": {
+          "max_lines": 1
+         }
+        },
+        "visibility": "hidden"
+       }
+      },
+      "id": "2d200e2f-227c-42af-b98f-9c3c7236cac8",
+      "type": "vis"
+     },
+     {
+      "grid": {
+       "x": 24,
+       "y": 0,
+       "w": 24,
+       "h": 10
+      },
+      "config": {
+       "title": "Responses by code",
+       "type": "pie",
+       "sampling": 1,
+       "ignore_global_filters": false,
+       "metrics": [
+        {
+         "operation": "count",
+         "empty_as_null": false,
+         "label": "requests"
+        }
+       ],
+       "group_by": [
+        {
+         "operation": "terms",
+         "fields": [
+          "response.keyword"
+         ],
+         "limit": 10,
+         "rank_by": {
+          "type": "metric",
+          "metric_index": 0,
+          "direction": "desc"
+         },
+         "color": {
+          "mode": "categorical",
+          "palette": "default",
+          "mapping": []
+         }
+        }
+       ],
+       "data_source": {
+        "type": "data_view_spec",
+        "index_pattern": "kibana_sample_data_logs",
+        "time_field": "timestamp",
+        "name": "kibana_sample_data_logs"
+       },
+       "legend": {
+        "visibility": "auto"
+       },
+       "styling": {
+        "labels": {
+         "visible": true,
+         "position": "outside"
+        },
+        "values": {
+         "visible": true,
+         "mode": "percentage"
+        }
+       }
+      },
+      "id": "0c4ed3b2-9f40-4e67-b731-cdcb60e5d016",
+      "type": "vis"
+     }
+    ],
+    "pinned_panels": []
+   },
+   "meta": {
+    "created_at": "2026-10-12T17:30:21.888Z",
+    "managed": false,
+    "updated_at": "2026-10-12T17:30:21.888Z",
+    "version": "WzkwMiw4XQ=="
+   }
+  }
+ ],
+ "rules": [
+  {
+   "id": "d2020c95-970f-40fe-86e8-430a898e6d4f",
+   "enabled": true,
+   "name": "LOC-60dd4d74 5xx errors",
+   "tags": [],
+   "rule_type_id": ".es-query",
+   "consumer": "stackAlerts",
+   "schedule": {
+    "interval": "1m"
+   },
+   "actions": [],
+   "params": {
+    "searchType": "esQuery",
+    "esQuery": "{\"query\": {\"bool\": {\"filter\": [{\"term\": {\"response.keyword\": {\"in\": [\"500\",\"501\",\"502\",\"503\",\"504\",\"505\",\"506\",\"507\",\"508\",\"509\"]}}}]}}}",
+    "index": [
+     "kibana_sample_data_logs"
+    ],
+    "timeField": "@timestamp",
+    "threshold": [
+     10
+    ],
+    "thresholdComparator": ">",
+    "timeWindowSize": 5,
+    "timeWindowUnit": "m",
+    "size": 20,
+    "excludeHitsFromPreviousRun": true,
+    "aggType": "count",
+    "groupBy": "all"
+   },
+   "scheduled_task_id": "d2020c95-970f-40fe-86e8-430a898e6d4f",
+   "created_by": "elastic",
+   "updated_by": "elastic",
+   "created_at": "2026-10-12T17:31:04.163Z",
+   "updated_at": "2026-10-12T17:31:08.497Z",
+   "api_key_owner": "elastic",
+   "api_key_created_by_user": true,
+   "throttle": null,
+   "mute_all": false,
+   "notify_when": null,
+   "muted_alert_ids": [],
+   "execution_status": {
+    "status": "error",
+    "error": {
+     "reason": "execute",
+     "message": "x_content_parse_exception\n\tCaused by:\n\t\tx_content_parse_exception: [1:196] [bool] failed to parse field [filter]\n\tRoot causes:\n\t\tparsing_exception: [term] query does not support [in], caused by: \"[1:196] [bool] failed to parse field [filter],[term] query does not support [in]\""
+    },
+    "last_execution_date": "2026-10-12T17:31:09.630Z",
+    "last_duration": 17
+   },
+   "last_run": {
+    "outcome": "failed",
+    "outcome_order": 20,
+    "warning": "execute",
+    "outcome_msg": [
+     "x_content_parse_exception\n\tCaused by:\n\t\tx_content_parse_exception: [1:196] [bool] failed to parse field [filter]\n\tRoot causes:\n\t\tparsing_exception: [term] query does not support [in], caused by: \"[1:196] [bool] failed to parse field [filter],[term] query does not support [in]\""
+    ],
+    "alerts_count": {
+     "new": 0,
+     "ignored": 0,
+     "recovered": 0,
+     "active": 0
+    }
+   },
+   "next_run": "2026-10-12T17:32:09.617Z",
+   "revision": 0,
+   "running": false
+  }
+ ],
+ "seeded": {
+  "dashboard": null,
+  "rule": null
+ },
+ "filters": {
+  "d2020c95-970f-40fe-86e8-430a898e6d4f": {
+   "form": "esQuery",
+   "index": [
+    "kibana_sample_data_logs"
+   ],
+   "real": {
+    "truth": 441,
+    "selected": null,
+    "selected_matching": null
+   },
+   "ok": false,
+   "detail": "rule query does not run on the real index"
+  }
+ }
+}

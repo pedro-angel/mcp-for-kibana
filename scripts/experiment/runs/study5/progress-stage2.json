@@ -1,0 +1,11 @@
+{
+ "phase": "stage2",
+ "updated": "2026-10-12T23:27:34.385944+00:00",
+ "cells_total": 60,
+ "cells_done": 60,
+ "runs_recorded": 60,
+ "runs_valid": 60,
+ "runs_passed": 57,
+ "eta_hours": 0.0,
+ "current": null
+}

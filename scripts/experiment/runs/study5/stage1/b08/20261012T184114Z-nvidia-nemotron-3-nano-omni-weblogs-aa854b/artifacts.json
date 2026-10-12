@@ -1,0 +1,710 @@
+{
+ "dashboards": [
+  {
+   "id": "loc-e23e4847-web-logs-fb2f2978e779",
+   "data": {
+    "description": "",
+    "options": {
+     "auto_apply_filters": true,
+     "hide_panel_borders": false,
+     "hide_panel_titles": false,
+     "sync_colors": false,
+     "sync_cursor": true,
+     "sync_tooltips": false,
+     "use_margins": true
+    },
+    "tags": [],
+    "time_range": {
+     "from": "now-7d",
+     "to": "now"
+    },
+    "title": "LOC-e23e4847 Web logs",
+    "filters": [],
+    "panels": [
+     {
+      "grid": {
+       "x": 0,
+       "y": 0,
+       "w": 48,
+       "h": 12
+      },
+      "config": {
+       "title": "Requests Over Time",
+       "type": "xy",
+       "layers": [
+        {
+         "type": "line",
+         "data_source": {
+          "type": "data_view_spec",
+          "index_pattern": "kibana_sample_data_logs",
+          "time_field": "timestamp",
+          "name": "kibana_sample_data_logs"
+         },
+         "sampling": 1,
+         "ignore_global_filters": false,
+         "x": {
+          "operation": "date_histogram",
+          "field": "timestamp",
+          "suggested_interval": "auto",
+          "use_original_time_range": false,
+          "include_empty_rows": true,
+          "drop_partial_intervals": false
+         },
+         "y": [
+          {
+           "operation": "count",
+           "empty_as_null": false,
+           "label": "Request Count",
+           "color": {
+            "type": "auto"
+           }
+          }
+         ]
+        }
+       ],
+       "axis": {
+        "x": {
+         "title": {
+          "visible": true
+         },
+         "ticks": {
+          "visible": true
+         },
+         "grid": {
+          "visible": true
+         },
+         "domain": {
+          "type": "fit",
+          "rounding": false
+         },
+         "labels": {
+          "orientation": "horizontal"
+         }
+        },
+        "y": {
+         "title": {
+          "visible": true
+         },
+         "scale": "linear",
+         "ticks": {
+          "visible": true
+         },
+         "grid": {
+          "visible": true
+         },
+         "domain": {
+          "type": "full",
+          "rounding": true
+         },
+         "labels": {
+          "orientation": "horizontal"
+         }
+        }
+       },
+       "styling": {
+        "overlays": {
+         "partial_buckets": {
+          "visible": false
+         },
+         "current_time_marker": {
+          "visible": false
+         }
+        },
+        "interpolation": "linear",
+        "points": {
+         "visibility": "auto"
+        }
+       },
+       "legend": {
+        "placement": "outside",
+        "position": "right",
+        "layout": {
+         "type": "grid",
+         "truncate": {
+          "max_lines": 1
+         }
+        },
+        "visibility": "hidden"
+       }
+      },
+      "id": "2d4781de-966a-432e-8511-0adfde4f58dc",
+      "type": "vis"
+     },
+     {
+      "grid": {
+       "x": 0,
+       "y": 12,
+       "w": 24,
+       "h": 10
+      },
+      "config": {
+       "title": "Responses by code",
+       "type": "xy",
+       "layers": [
+        {
+         "type": "bar",
+         "data_source": {
+          "type": "data_view_spec",
+          "index_pattern": "kibana_sample_data_logs",
+          "time_field": "timestamp",
+          "name": "kibana_sample_data_logs"
+         },
+         "sampling": 1,
+         "ignore_global_filters": false,
+         "x": {
+          "operation": "terms",
+          "fields": [
+           "response.keyword"
+          ],
+          "limit": 10,
+          "rank_by": {
+           "type": "metric",
+           "metric_index": 0,
+           "direction": "desc"
+          }
+         },
+         "y": [
+          {
+           "operation": "count",
+           "empty_as_null": false,
+           "label": "Request Count",
+           "color": {
+            "type": "auto"
+           }
+          }
+         ]
+        }
+       ],
+       "axis": {
+        "x": {
+         "title": {
+          "visible": true
+         },
+         "ticks": {
+          "visible": true
+         },
+         "grid": {
+          "visible": true
+         },
+         "domain": {
+          "type": "fit",
+          "rounding": false
+         },
+         "labels": {
+          "orientation": "horizontal"
+         }
+        },
+        "y": {
+         "title": {
+          "visible": true
+         },
+         "scale": "linear",
+         "ticks": {
+          "visible": true
+         },
+         "grid": {
+          "visible": true
+         },
+         "domain": {
+          "type": "full",
+          "rounding": true
+         },
+         "labels": {
+          "orientation": "horizontal"
+         }
+        }
+       },
+       "styling": {
+        "overlays": {
+         "partial_buckets": {
+          "visible": false
+         },
+         "current_time_marker": {
+          "visible": false
+         }
+        },
+        "bars": {
+         "minimum_height": 1,
+         "data_labels": {
+          "visible": false
+         }
+        }
+       },
+       "legend": {
+        "placement": "outside",
+        "position": "right",
+        "layout": {
+         "type": "grid",
+         "truncate": {
+          "max_lines": 1
+         }
+        },
+        "visibility": "hidden"
+       }
+      },
+      "id": "1cd38443-5199-4fea-bef1-04e4eae346d3",
+      "type": "vis"
+     }
+    ],
+    "pinned_panels": []
+   },
+   "meta": {
+    "created_at": "2026-10-12T18:41:47.794Z",
+    "managed": false,
+    "updated_at": "2026-10-12T18:53:16.126Z",
+    "version": "Wzk3Niw4XQ=="
+   }
+  }
+ ],
+ "rules": [
+  {
+   "id": "1f120be9-41f7-4b30-a775-5650b604848f",
+   "enabled": false,
+   "name": "test_range_lower_only_full",
+   "tags": [],
+   "rule_type_id": ".es-query",
+   "consumer": "stackAlerts",
+   "schedule": {
+    "interval": "1m"
+   },
+   "actions": [],
+   "params": {
+    "searchType": "esQuery",
+    "esQuery": "{\"query\": {\"range\": {\"response\": {\"gte\": 500}}}}",
+    "index": [
+     "kibana_sample_data_logs"
+    ],
+    "timeField": "timestamp",
+    "threshold": [
+     10
+    ],
+    "thresholdComparator": ">",
+    "timeWindowSize": 5,
+    "timeWindowUnit": "m",
+    "size": 100,
+    "excludeHitsFromPreviousRun": true,
+    "aggType": "count",
+    "groupBy": "all"
+   },
+   "created_by": "elastic",
+   "updated_by": "elastic",
+   "created_at": "2026-10-12T18:51:41.905Z",
+   "updated_at": "2026-10-12T18:51:41.905Z",
+   "api_key_owner": null,
+   "api_key_created_by_user": null,
+   "throttle": null,
+   "mute_all": false,
+   "notify_when": null,
+   "muted_alert_ids": [],
+   "execution_status": {
+    "status": "pending",
+    "last_execution_date": "2026-10-12T18:51:41.905Z"
+   },
+   "revision": 0,
+   "running": false
+  },
+  {
+   "id": "37cc1846-5b8d-487c-b75e-c86320709930",
+   "enabled": true,
+   "name": "LOC-e23e4847 5xx errors",
+   "tags": [],
+   "rule_type_id": ".es-query",
+   "consumer": "stackAlerts",
+   "schedule": {
+    "interval": "1m"
+   },
+   "actions": [],
+   "params": {
+    "searchType": "esQuery",
+    "esQuery": "{\"query\": {\"range\": {\"response\": {\"gte\": 500}}}}",
+    "index": [
+     "kibana_sample_data_logs"
+    ],
+    "timeField": "timestamp",
+    "threshold": [
+     10
+    ],
+    "thresholdComparator": ">",
+    "timeWindowSize": 5,
+    "timeWindowUnit": "m",
+    "size": 100,
+    "excludeHitsFromPreviousRun": true,
+    "aggType": "count",
+    "groupBy": "all"
+   },
+   "scheduled_task_id": "37cc1846-5b8d-487c-b75e-c86320709930",
+   "created_by": "elastic",
+   "updated_by": "elastic",
+   "created_at": "2026-10-12T18:52:40.289Z",
+   "updated_at": "2026-10-12T18:53:23.395Z",
+   "api_key_owner": "elastic",
+   "api_key_created_by_user": true,
+   "throttle": null,
+   "mute_all": false,
+   "notify_when": null,
+   "muted_alert_ids": [],
+   "execution_status": {
+    "status": "ok",
+    "last_execution_date": "2026-10-12T18:53:26.900Z",
+    "last_duration": 11
+   },
+   "last_run": {
+    "outcome": "succeeded",
+    "outcome_order": 0,
+    "warning": null,
+    "outcome_msg": null,
+    "alerts_count": {
+     "new": 0,
+     "ignored": 0,
+     "recovered": 0,
+     "active": 0
+    }
+   },
+   "next_run": "2026-10-12T18:54:26.890Z",
+   "revision": 0,
+   "running": false
+  },
+  {
+   "id": "5bd8bb07-5434-4824-989a-f6632ea8c997",
+   "enabled": false,
+   "name": "test_minimal_full_params",
+   "tags": [],
+   "rule_type_id": ".es-query",
+   "consumer": "stackAlerts",
+   "schedule": {
+    "interval": "1m"
+   },
+   "actions": [],
+   "params": {
+    "searchType": "esQuery",
+    "esQuery": "{\"query\": {}}",
+    "index": [
+     "kibana_sample_data_logs"
+    ],
+    "timeField": "timestamp",
+    "threshold": [
+     0
+    ],
+    "thresholdComparator": ">",
+    "timeWindowSize": 5,
+    "timeWindowUnit": "m",
+    "size": 100,
+    "excludeHitsFromPreviousRun": true,
+    "aggType": "count",
+    "groupBy": "all"
+   },
+   "created_by": "elastic",
+   "updated_by": "elastic",
+   "created_at": "2026-10-12T18:51:33.421Z",
+   "updated_at": "2026-10-12T18:51:33.421Z",
+   "api_key_owner": null,
+   "api_key_created_by_user": null,
+   "throttle": null,
+   "mute_all": false,
+   "notify_when": null,
+   "muted_alert_ids": [],
+   "execution_status": {
+    "status": "pending",
+    "last_execution_date": "2026-10-12T18:51:33.421Z"
+   },
+   "revision": 0,
+   "running": false
+  },
+  {
+   "id": "7bca0031-1a31-4e54-b6ef-3b45c091a0cf",
+   "enabled": false,
+   "name": "test_range_lower",
+   "tags": [],
+   "rule_type_id": ".es-query",
+   "consumer": "stackAlerts",
+   "schedule": {
+    "interval": "1m"
+   },
+   "actions": [],
+   "params": {
+    "searchType": "esQuery",
+    "esQuery": "{\"query\": {\"range\": {\"response\": {\"gte\": 500}}}}",
+    "index": [
+     "kibana_sample_data_logs"
+    ],
+    "timeField": "timestamp",
+    "threshold": [
+     10
+    ],
+    "thresholdComparator": ">",
+    "timeWindowSize": 5,
+    "timeWindowUnit": "m",
+    "size": 100,
+    "excludeHitsFromPreviousRun": true,
+    "aggType": "count",
+    "groupBy": "all"
+   },
+   "created_by": "elastic",
+   "updated_by": "elastic",
+   "created_at": "2026-10-12T18:50:42.826Z",
+   "updated_at": "2026-10-12T18:50:42.826Z",
+   "api_key_owner": null,
+   "api_key_created_by_user": null,
+   "throttle": null,
+   "mute_all": false,
+   "notify_when": null,
+   "muted_alert_ids": [],
+   "execution_status": {
+    "status": "pending",
+    "last_execution_date": "2026-10-12T18:50:42.826Z"
+   },
+   "revision": 0,
+   "running": false
+  },
+  {
+   "id": "866c0cd7-59ef-4665-9323-becf58f5001e",
+   "enabled": false,
+   "name": "test_match_all_10",
+   "tags": [],
+   "rule_type_id": ".es-query",
+   "consumer": "stackAlerts",
+   "schedule": {
+    "interval": "1m"
+   },
+   "actions": [],
+   "params": {
+    "searchType": "esQuery",
+    "esQuery": "{\"query\": {\"match_all\": {}}}",
+    "index": [
+     "kibana_sample_data_logs"
+    ],
+    "timeField": "timestamp",
+    "threshold": [
+     10
+    ],
+    "thresholdComparator": ">",
+    "timeWindowSize": 5,
+    "timeWindowUnit": "m",
+    "size": 100,
+    "excludeHitsFromPreviousRun": true,
+    "aggType": "count",
+    "groupBy": "all"
+   },
+   "created_by": "elastic",
+   "updated_by": "elastic",
+   "created_at": "2026-10-12T18:49:51.491Z",
+   "updated_at": "2026-10-12T18:49:51.491Z",
+   "api_key_owner": null,
+   "api_key_created_by_user": null,
+   "throttle": null,
+   "mute_all": false,
+   "notify_when": null,
+   "muted_alert_ids": [],
+   "execution_status": {
+    "status": "pending",
+    "last_execution_date": "2026-10-12T18:49:51.491Z"
+   },
+   "revision": 0,
+   "running": false
+  },
+  {
+   "id": "8aef7ae0-0c87-4783-b357-605389ee7693",
+   "enabled": false,
+   "name": "test_empty_query",
+   "tags": [],
+   "rule_type_id": ".es-query",
+   "consumer": "stackAlerts",
+   "schedule": {
+    "interval": "1m"
+   },
+   "actions": [],
+   "params": {
+    "searchType": "esQuery",
+    "esQuery": "{\"query\": {}}",
+    "index": [
+     "kibana_sample_data_logs"
+    ],
+    "timeField": "timestamp",
+    "threshold": [
+     0
+    ],
+    "thresholdComparator": ">",
+    "timeWindowSize": 5,
+    "timeWindowUnit": "m",
+    "size": 100,
+    "excludeHitsFromPreviousRun": true,
+    "aggType": "count",
+    "groupBy": "all"
+   },
+   "created_by": "elastic",
+   "updated_by": "elastic",
+   "created_at": "2026-10-12T18:50:33.669Z",
+   "updated_at": "2026-10-12T18:50:33.669Z",
+   "api_key_owner": null,
+   "api_key_created_by_user": null,
+   "throttle": null,
+   "mute_all": false,
+   "notify_when": null,
+   "muted_alert_ids": [],
+   "execution_status": {
+    "status": "pending",
+    "last_execution_date": "2026-10-12T18:50:33.669Z"
+   },
+   "revision": 0,
+   "running": false
+  },
+  {
+   "id": "8b17a1b9-858b-45b2-99c0-1f326ca37b07",
+   "enabled": false,
+   "name": "test",
+   "tags": [],
+   "rule_type_id": ".es-query",
+   "consumer": "stackAlerts",
+   "schedule": {
+    "interval": "1m"
+   },
+   "actions": [],
+   "params": {
+    "searchType": "esQuery",
+    "esQuery": "{\"query\": {\"match_all\": {}}}",
+    "index": [
+     "kibana_sample_data_logs"
+    ],
+    "timeField": "timestamp",
+    "threshold": [
+     0
+    ],
+    "thresholdComparator": ">",
+    "timeWindowSize": 5,
+    "timeWindowUnit": "m",
+    "size": 100,
+    "excludeHitsFromPreviousRun": true,
+    "aggType": "count",
+    "groupBy": "all"
+   },
+   "created_by": "elastic",
+   "updated_by": "elastic",
+   "created_at": "2026-10-12T18:44:36.630Z",
+   "updated_at": "2026-10-12T18:44:36.630Z",
+   "api_key_owner": null,
+   "api_key_created_by_user": null,
+   "throttle": null,
+   "mute_all": false,
+   "notify_when": null,
+   "muted_alert_ids": [],
+   "execution_status": {
+    "status": "pending",
+    "last_execution_date": "2026-10-12T18:44:36.630Z"
+   },
+   "revision": 0,
+   "running": false
+  }
+ ],
+ "seeded": {
+  "dashboard": null,
+  "rule": null
+ },
+ "filters": {
+  "1f120be9-41f7-4b30-a775-5650b604848f": {
+   "form": "esQuery",
+   "index": [
+    "kibana_sample_data_logs"
+   ],
+   "real": {
+    "truth": 441,
+    "selected": 441,
+    "selected_matching": 441
+   },
+   "probe": {
+    "truth": 5,
+    "selected": 5,
+    "selected_matching": 5
+   },
+   "ok": true,
+   "detail": "ok"
+  },
+  "37cc1846-5b8d-487c-b75e-c86320709930": {
+   "form": "esQuery",
+   "index": [
+    "kibana_sample_data_logs"
+   ],
+   "real": {
+    "truth": 441,
+    "selected": 441,
+    "selected_matching": 441
+   },
+   "probe": {
+    "truth": 5,
+    "selected": 5,
+    "selected_matching": 5
+   },
+   "ok": true,
+   "detail": "ok"
+  },
+  "5bd8bb07-5434-4824-989a-f6632ea8c997": {
+   "form": "esQuery",
+   "index": [
+    "kibana_sample_data_logs"
+   ],
+   "real": {
+    "truth": 441,
+    "selected": 14074,
+    "selected_matching": 441
+   },
+   "ok": false,
+   "detail": "real index: filter selects 14074 documents, 441 of them matching; 441 match"
+  },
+  "7bca0031-1a31-4e54-b6ef-3b45c091a0cf": {
+   "form": "esQuery",
+   "index": [
+    "kibana_sample_data_logs"
+   ],
+   "real": {
+    "truth": 441,
+    "selected": 441,
+    "selected_matching": 441
+   },
+   "probe": {
+    "truth": 5,
+    "selected": 5,
+    "selected_matching": 5
+   },
+   "ok": true,
+   "detail": "ok"
+  },
+  "866c0cd7-59ef-4665-9323-becf58f5001e": {
+   "form": "esQuery",
+   "index": [
+    "kibana_sample_data_logs"
+   ],
+   "real": {
+    "truth": 441,
+    "selected": 14074,
+    "selected_matching": 441
+   },
+   "ok": false,
+   "detail": "real index: filter selects 14074 documents, 441 of them matching; 441 match"
+  },
+  "8aef7ae0-0c87-4783-b357-605389ee7693": {
+   "form": "esQuery",
+   "index": [
+    "kibana_sample_data_logs"
+   ],
+   "real": {
+    "truth": 441,
+    "selected": 14074,
+    "selected_matching": 441
+   },
+   "ok": false,
+   "detail": "real index: filter selects 14074 documents, 441 of them matching; 441 match"
+  },
+  "8b17a1b9-858b-45b2-99c0-1f326ca37b07": {
+   "form": "esQuery",
+   "index": [
+    "kibana_sample_data_logs"
+   ],
+   "real": {
+    "truth": 441,
+    "selected": 14074,
+    "selected_matching": 441
+   },
+   "ok": false,
+   "detail": "real index: filter selects 14074 documents, 441 of them matching; 441 match"
+  }
+ }
+}

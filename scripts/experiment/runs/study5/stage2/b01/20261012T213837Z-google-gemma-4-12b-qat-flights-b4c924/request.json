@@ -1,0 +1,9 @@
+{
+ "model": "google/gemma-4-12b-qat",
+ "input": "Use only the kibana tools.\n\nWork on Kibana's flights sample data (data view 'Kibana Sample Data Flights', index kibana_sample_data_flights). Do these steps in order:\n1. Describe the data view 'Kibana Sample Data Flights': look up its fields and name its time field.\n2. Build a dashboard titled 'LOC-61856dc5 Flights' on that data view with exactly two panels: the number of flights over time, and the number of flights by carrier.\n3. Create an alert rule named 'LOC-61856dc5 Cancelled flights' on the flights data: it checks every minute and fires when more than 10 cancelled flights arrive within 5 minutes. The rule must be enabled when you finish: if it is created disabled, enable it.\n4. Edit the carrier panel of that dashboard: change its title to 'Flights by carrier'. Then read the alert rule back and check whether it is enabled.\n\nWhen every step is done, end your reply with these two lines:\nTIME_FIELD: <the data view's time field>\nRULE_ENABLED: <yes or no, as you read it back>",
+ "integrations": [
+  "mcp/mcp-for-kibana-study"
+ ],
+ "stream": true,
+ "url": "http://localhost:1234/api/v1/chat"
+}

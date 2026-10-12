@@ -1,0 +1,9 @@
+{
+ "model": "google/gemma-4-12b-qat",
+ "input": "Use only the kibana tools.\n\nKibana holds a dashboard titled 'Site health' and an alert rule named 'Server errors', both on the web-logs sample data (data view 'Kibana Sample Data Logs', index kibana_sample_data_logs). Change them in place; do not create new dashboards or rules. Do these steps in order:\n1. Add a third panel to the 'Site health' dashboard showing the number of requests by host.\n2. Enable the 'Server errors' rule.\n\nWhen every step is done, reply with a short summary.",
+ "integrations": [
+  "mcp/mcp-for-kibana-study"
+ ],
+ "stream": true,
+ "url": "http://localhost:1234/api/v1/chat"
+}
