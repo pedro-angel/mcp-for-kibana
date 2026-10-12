@@ -239,6 +239,13 @@ version section.
 - **Local-study preflight reads Kibana's version with the key.** Real Kibana
   answers an anonymous `/api/status` without the version, so preflight failed
   on a correct 9.5.5 stack.
+- **The commit-msg stage runs only the message hooks.** Without
+  `default_stages`, every file hook also ran at commit-msg, so CI's per-commit
+  message loop re-ran the full file-hook set for each commit (about 26 s per
+  commit) and the 89-commit 0.3.0 PR exceeded the job's 10-minute limit.
+  `default_stages: [pre-commit]` leaves the pre-commit hook set unchanged; the
+  commit-msg pass now runs Conventional Commit and the provenance trailer
+  check (0.19 s).
 
 ### Security
 
