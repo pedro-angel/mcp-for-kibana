@@ -1,0 +1,80 @@
+{
+  "task": "change",
+  "success": false,
+  "failure_reason": "rename: dashboard.title: expected 'Site health overview', got 'Site health'; threshold: rule.threshold: expected '> 20', got '> 10'; enable: rule.enabled: expected True, got False",
+  "first_failed_step": "rename",
+  "steps_passed": 1,
+  "steps_total": 4,
+  "criteria": [
+    {
+      "step": "panel",
+      "check": "dashboard.panels",
+      "ok": true,
+      "expected": 3,
+      "actual": 3,
+      "detail": "ok"
+    },
+    {
+      "step": "panel",
+      "check": "dashboard.mentions:host",
+      "ok": true,
+      "expected": "host",
+      "actual": [
+        "Requests over time",
+        "Requests by response code",
+        "Requests by host"
+      ],
+      "detail": "ok"
+    },
+    {
+      "step": "rename",
+      "check": "dashboard.title",
+      "ok": false,
+      "expected": "Site health overview",
+      "actual": "Site health",
+      "detail": "dashboard.title: expected 'Site health overview', got 'Site health'"
+    },
+    {
+      "step": "threshold",
+      "check": "rule.interval",
+      "ok": true,
+      "expected": "1m",
+      "actual": "1m",
+      "detail": "ok"
+    },
+    {
+      "step": "threshold",
+      "check": "rule.threshold",
+      "ok": false,
+      "expected": "> 20",
+      "actual": "> 10",
+      "detail": "rule.threshold: expected '> 20', got '> 10'"
+    },
+    {
+      "step": "threshold",
+      "check": "rule.window",
+      "ok": true,
+      "expected": "5m",
+      "actual": "5m",
+      "detail": "ok"
+    },
+    {
+      "step": "enable",
+      "check": "rule.enabled",
+      "ok": false,
+      "expected": true,
+      "actual": false,
+      "detail": "rule.enabled: expected True, got False"
+    },
+    {
+      "step": "enable",
+      "check": "nothing_new",
+      "ok": true,
+      "expected": "0 new dashboards, 0 new rules",
+      "actual": "0 new dashboards, 0 new rules",
+      "detail": "ok"
+    }
+  ],
+  "n_dashboards": 0,
+  "n_rules": 0
+}
