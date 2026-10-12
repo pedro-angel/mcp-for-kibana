@@ -27,8 +27,8 @@ version section.
   root span (`study_tasks.span_attributes`). `--blocks FIRST LAST` drives
   every (task, model, arm) cell once per block in an order rotated by block,
   resumes with `--skip-done`, and raises a stall alert (stderr and
-  `stalls.jsonl`) after 40 minutes without progress. Two Haiku smoke runs
-  are kept in `runs/efficiency/study4/smoke`.
+  `stalls.jsonl`) after 40 minutes without progress. Haiku smoke runs are
+  kept in `runs/efficiency/study4/`. STUDY_DESIGN.md decision 13.
 
 ### Fixed
 
