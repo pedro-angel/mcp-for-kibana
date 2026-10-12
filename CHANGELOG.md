@@ -10,6 +10,14 @@ version section.
 
 ## [Unreleased]
 
+### Changed
+
+- **No model is privileged in the live-model tests (D33).** `make test-e2e`
+  drives the model `LMSTUDIO_MODEL` names and fails with the fix when it is
+  unset; `google/gemma-4-12b-qat` is no longer the fallback or "the reference
+  model". D18's measurements stay as evidence; its reference status is
+  superseded.
+
 ### Added
 
 - **Cloud sessions start ready to work.** A SessionStart hook in

@@ -29,7 +29,7 @@ import pytest
 
 from kibana_mcp.adapters.kibana.gateway import KibanaPyGateway
 from tests._dashboard_assertion import assert_model_built_dashboard
-from tests._stack_env import LMSTUDIO_REFERENCE_MODEL
+from tests._stack_env import lmstudio_model
 
 pytestmark = pytest.mark.e2e
 
@@ -42,7 +42,7 @@ def lmstudio():
         "token": token,
         # qwen2.5-coder-14b stochastically corrupts its tool-call markers
         # (~1 run in 3 fails with tool_format_generation_error).
-        "model": os.environ.get("LMSTUDIO_MODEL", LMSTUDIO_REFERENCE_MODEL),
+        "model": lmstudio_model(),
     }
 
 

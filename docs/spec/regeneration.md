@@ -59,8 +59,8 @@ trust the observation, and **reconcile the contract in the same change**
   make dod` → must print `VERDICT: GO`. Criteria in `dod.config`; the gate,
   not the author, certifies completion.
 - Live-model tier: LM Studio setup in [e2e-setup.md](../e2e-setup.md);
-  reference model and the reasons behind it are in
-  [decisions.md](decisions.md).
+  `LMSTUDIO_MODEL` is required and no model is privileged
+  ([decisions.md](decisions.md) D33).
 
 ## Rules of engagement
 

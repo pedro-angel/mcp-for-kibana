@@ -114,7 +114,8 @@ this ledger stands without them.
   models recovered mid-turn *because* the error text named the fix; the
   e2e-replay tier replays those recorded turns (including a rejected call
   and its recovery) and fails on guidance regression.
-- **D18 (2026-08-19)** — The e2e reference model is `gemma-4-12b-qat`:
+- **D18 (2026-08-19)** — *The reference-model status is superseded by D33;
+  the measurements stand.* The e2e reference model is `gemma-4-12b-qat`:
   5/5 on the dashboards space chain (Study L) and 2/2 on the alerting-space
   gate, while `gpt-oss-20b` characteristically drops the `space` parameter
   mid-chain (3/5 wrong-space on dashboards; on alerting 0/3 recorded — one
@@ -154,6 +155,12 @@ this ledger stands without them.
   chooses the right tools after a change to what models see, so the three
   live-model tests run on demand (`make test-e2e`) when a change touches tool
   names, descriptions or schemas — a written rule, not an automated check.
+- **D33 (2026-10-12)** — No model is privileged: the live-model tests drive
+  whatever `LMSTUDIO_MODEL` names and fail with the fix when it is unset.
+  Supersedes D18's reference-model status (owner, 2026-10-12): a model chosen
+  on 2026-08-19 kept a default role because it had once been named, not
+  because a later measurement chose it again. D18's numbers remain evidence
+  about the models it measured; which model to drive is the caller's choice.
 
 ## Scope and licensing (probed on Basic)
 
@@ -224,6 +231,9 @@ this ledger stands without them.
   mechanism. Surfaced by owner review of this corpus — the toolbox is only
   a safe regeneration unit because contracts cannot overlap.
 ## Superseded
+
+- ~~D18's reference-model status (`gemma-4-12b-qat` as the `LMSTUDIO_MODEL`
+  fallback)~~ — superseded by D33; D18's measurements stand.
 
 - ~~D29 (2026-09-21): track the newest 9.4 patch and defer Kibana 9.5~~ —
   deferred 9.5 until kibana-py released its supported-set module, and on the

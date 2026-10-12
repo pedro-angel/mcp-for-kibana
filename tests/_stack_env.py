@@ -17,9 +17,6 @@ import re
 import warnings
 from pathlib import Path
 
-# D18's reference model: the LMSTUDIO_MODEL fallback for every live-model gate,
-# so `make dod` drives the measured model even when .env.local names none.
-LMSTUDIO_REFERENCE_MODEL = "google/gemma-4-12b-qat"
 
 _KEY_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _MACHINE_KEYS = ("KIBANA_URL", "KIBANA_TEST_API_KEY")
@@ -154,3 +151,20 @@ def require_stack_env() -> None:
         f"{' and '.join(missing)} line missing from elastic-start-local/.env.seed "
         "— re-run: scripts/stack.sh seed"
     )
+
+
+def lmstudio_model() -> str:
+    """The model every live-model test drives: LMSTUDIO_MODEL, required.
+
+    No model is privileged (D33): an unset LMSTUDIO_MODEL fails with the fix
+    instead of silently falling back to a model chosen at some earlier date.
+    Call after require_stack_env(), which merges .env.local into the env."""
+    import pytest
+
+    model = os.environ.get("LMSTUDIO_MODEL", "").strip()
+    if not model:
+        pytest.fail(
+            "LMSTUDIO_MODEL is not set — export it or put LMSTUDIO_MODEL=<model-id> "
+            "in .env.local (the id `lms ls` prints for a loaded tool-use model)"
+        )
+    return model
