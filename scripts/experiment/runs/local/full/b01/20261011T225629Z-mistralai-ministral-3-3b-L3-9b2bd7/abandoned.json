@@ -1,0 +1,9 @@
+{
+ "ts": "2026-10-12T03:15:40.100552+00:00",
+ "reason": "interrupted before record.json",
+ "reset_removed": {
+  "objects": [],
+  "rules": [],
+  "connectors": []
+ }
+}
