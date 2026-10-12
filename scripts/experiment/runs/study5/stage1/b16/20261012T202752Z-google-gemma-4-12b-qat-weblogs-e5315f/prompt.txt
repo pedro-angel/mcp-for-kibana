@@ -1,0 +1,11 @@
+Use only the kibana tools.
+
+Work on Kibana's web-logs sample data (data view 'Kibana Sample Data Logs', index kibana_sample_data_logs). Do these steps in order:
+1. Describe the data view 'Kibana Sample Data Logs': look up its fields and name its time field.
+2. Build a dashboard titled 'LOC-b36ac87a Web logs' on that data view with exactly two panels: the number of requests over time, and the number of requests by HTTP response code.
+3. Create an alert rule named 'LOC-b36ac87a 5xx errors' on the web-logs data for the signal of the response-code panel: it checks every minute and fires when more than 10 server errors arrive within 5 minutes. Count all server errors: every request whose response code is anywhere from 500 to 599. The rule must be enabled when you finish: if it is created disabled, enable it.
+4. Edit the response-code panel of that dashboard: change its title to 'Responses by code'. Then read the alert rule back and check whether it is enabled.
+
+When every step is done, end your reply with these two lines:
+TIME_FIELD: <the data view's time field>
+RULE_ENABLED: <yes or no, as you read it back>

@@ -1,0 +1,1 @@
+{"phase": "stage1", "block": "b12", "model": "google/gemma-4-12b-qat", "task": "weblogs", "key": "stage1/b12/google-gemma-4-12b-qat/weblogs", "attempt": 1, "marker": "LOC-b37e5d95"}
