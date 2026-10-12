@@ -1,0 +1,108 @@
+{
+ "study": "local-models",
+ "run_id": "20261012T042057Z-qwen-qwen3-8-27b-L2-cda2a8",
+ "cell": "full/b03/qwen-qwen3-8-27b/L2",
+ "phase": "full",
+ "block": "b03",
+ "model": "qwen/qwen3.8-27b",
+ "level": "L2",
+ "chain_length": 2,
+ "arm": "server",
+ "attempt": 1,
+ "marker": "LOC-64955c9c",
+ "prompt": "Using the kibana tools, work on Kibana's web-logs sample data (data view 'Kibana Sample Data Logs', index kibana_sample_data_logs). Do these steps in order:\n1. Describe the data view 'Kibana Sample Data Logs': look up its fields and name its time field. End your reply with a line of the form TIME_FIELD: <field name>.\n2. Build a dashboard titled 'LOC-64955c9c Web logs' on that data view with exactly two panels: the number of requests over time, and the number of requests by HTTP response code.\nUse only the kibana tools. When every step is done, reply with a short summary.",
+ "kibana_version": "9.5.5",
+ "toolboxes": "dashboards,data-management,alerting",
+ "tier": "write",
+ "server_entry": "mcp-for-kibana-study",
+ "stream": true,
+ "git_sha": "8ff1739",
+ "config_sha": "df0991912534",
+ "ts_start": "2026-10-12T04:20:57.735359+00:00",
+ "harness_load": null,
+ "wall_ms": 37376.1,
+ "ts_end_model": "2026-10-12T04:21:35.111728+00:00",
+ "http_status": 200,
+ "timed_out": false,
+ "valid": true,
+ "invalid_reason": null,
+ "end_reason": "completed",
+ "tool_names": [
+  "describe_data_view",
+  "create_dashboard",
+  "get_dashboard"
+ ],
+ "model_calls": 4,
+ "n_tool_calls": 3,
+ "n_invalid_tool_calls": 0,
+ "n_failed_tool_calls": 0,
+ "n_distinct_tools": 3,
+ "failure_classes": {},
+ "tool_result_bytes": 1533,
+ "tool_ms": 8614.9,
+ "first_tool_ms": 2107.9,
+ "input_tokens": 8128,
+ "output_tokens": 796,
+ "reasoning_tokens": 265,
+ "tokens_per_second": 24.0509344157755,
+ "ttft_s": 0.913581,
+ "model_load_s": null,
+ "stats": {
+  "input_tokens": 8128,
+  "total_output_tokens": 796,
+  "reasoning_output_tokens": 265,
+  "tokens_per_second": 24.0509344157755,
+  "time_to_first_token_seconds": 0.913581
+ },
+ "response_model": "qwen/qwen3.8-27b",
+ "end_events": 1,
+ "stream_events": 569,
+ "permission_denials": 0,
+ "output_rebuilt_from_stream": false,
+ "final_text": "Both steps are complete. Summary:\n\n1. **Data view 'Kibana Sample Data Logs'** (index `kibana_sample_data_logs`): contains 40 fields — `@timestamp`/`timestamp` (date), `agent` (string), `bytes` (number), `clientip` (ip), `geo.*` (geo_point/string), `host`, `machine.os`, `memory`, `message`, `referer`, `request`, `response`, `tags`, `url`, etc. The designated time field is `timestamp`.\n\n2. **Dashboard created**: 'LOC-64955c9c Web logs' (id `loc-64955c9c-web-logs-215181c51800`) with exactly two panels, verified via `get_dashboard`:\n   - **Requests over time** — line chart, count of requests binned over time by `timestamp`\n   - **Requests by HTTP response code** — bar chart, count of requests grouped by top 10 `response` values\n\nTIME_FIELD: timestamp",
+ "stream_final_event": "ok",
+ "known_secret_exposures": 0,
+ "success": true,
+ "failure_reason": null,
+ "first_failed_step": null,
+ "steps_passed": 2,
+ "criteria": [
+  {
+   "step": "describe",
+   "check": "tool_ok:describe_data_view",
+   "ok": true,
+   "detail": "ok"
+  },
+  {
+   "step": "describe",
+   "check": "answer",
+   "ok": true,
+   "detail": "ok"
+  },
+  {
+   "step": "dashboard",
+   "check": "dashboard",
+   "ok": true,
+   "detail": "ok"
+  }
+ ],
+ "n_dashboards": 1,
+ "n_rules": 0,
+ "rule_enabled": false,
+ "reset_removed": {
+  "objects": [
+   [
+    "dashboard",
+    "loc-64955c9c-web-logs-215181c51800"
+   ]
+  ],
+  "rules": [],
+  "connectors": []
+ },
+ "model_loaded_context": 262144,
+ "model_max_context": 262144,
+ "ts_end": "2026-10-12T04:21:36.095132+00:00",
+ "n_spans": 8,
+ "otel": "sent: HTTP 200, 8 spans",
+ "complete": true
+}

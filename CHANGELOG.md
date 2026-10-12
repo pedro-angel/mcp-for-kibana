@@ -40,6 +40,15 @@ version section.
   `run_blocks.sh --three-arms` runs nine cells per block with the arm order
   rotated by block, and passes extra runner flags after `--`. Setup, the
   server's caveats and the smoke run: `scripts/experiment/LIVE_RERUN.md`.
+- **Local-model study: harness loading and late sends.** `lmstudio.load:
+  harness` loads each study model at its maximum context through LM Studio's
+  REST API and unloads the previous study model, so the study runs with JIT
+  loading off; `local_run.py send-pending` sends the stored spans of runs made
+  without the Honeycomb key.
+- **Local-model study results page.** `scripts/experiment/local_report.py`
+  builds the page from `runs/local/<phase>/analysis.json`, the config and the
+  recorded environment: pass rate by chain length per model with Wilson
+  intervals, where chains break, tool-call failures and cost per step.
 - **Live telemetry for the efficiency study rerun** (opt-in).
   `efficiency_run.py --live-telemetry` gets every signal at run time from the
   component that owns it: Claude Code's own spans and log events (prompt,
@@ -196,6 +205,14 @@ version section.
   tools and first prompt are unchanged (5,047 tokens with and without it).
   `--no-trace-anchor` leaves it out; the record says `trace_anchor`.
   Details: `scripts/experiment/LIVE_RERUN.md`, "The no-mcp trace anchor".
+- **Span message fitting always terminates.** `efficiency_honeycomb.fit` re-truncated
+  the same 221-character leaf forever once every leaf sat at its 200-character
+  floor and the JSON still exceeded the cap; a 75-tool-call local-study run
+  stalled the full run for four hours. It now falls back to the byte cut when
+  truncation makes no progress.
+- **Local-study preflight reads Kibana's version with the key.** Real Kibana
+  answers an anonymous `/api/status` without the version, so preflight failed
+  on a correct 9.5.5 stack.
 - **`create_dashboard` accepts a time-series panel without `time_field`.**
   The panel schema says `time_field` is filled in from the data view when
   omitted, but a `date_histogram` panel without it was rejected before the

@@ -1,0 +1,128 @@
+{
+ "study": "local-models",
+ "run_id": "20261012T044341Z-google-gemma-4-12b-qat-L3-a1d72a",
+ "cell": "full/b03/google-gemma-4-12b-qat/L3",
+ "phase": "full",
+ "block": "b03",
+ "model": "google/gemma-4-12b-qat",
+ "level": "L3",
+ "chain_length": 3,
+ "arm": "server",
+ "attempt": 1,
+ "marker": "LOC-58b61199",
+ "prompt": "Using the kibana tools, work on Kibana's web-logs sample data (data view 'Kibana Sample Data Logs', index kibana_sample_data_logs). Do these steps in order:\n1. Describe the data view 'Kibana Sample Data Logs': look up its fields and name its time field. End your reply with a line of the form TIME_FIELD: <field name>.\n2. Build a dashboard titled 'LOC-58b61199 Web logs' on that data view with exactly two panels: the number of requests over time, and the number of requests by HTTP response code.\n3. Create an alert rule named 'LOC-58b61199 5xx errors' on the web-logs data for the signal of the response-code panel: it checks every minute and fires when more than 10 requests with a 5xx response code arrive within 5 minutes. The rule must be enabled when you finish: if it is created disabled, enable it.\nUse only the kibana tools. When every step is done, reply with a short summary.",
+ "kibana_version": "9.5.5",
+ "toolboxes": "dashboards,data-management,alerting",
+ "tier": "write",
+ "server_entry": "mcp-for-kibana-study",
+ "stream": true,
+ "git_sha": "8ff1739",
+ "config_sha": "df0991912534",
+ "ts_start": "2026-10-12T04:43:41.185756+00:00",
+ "harness_load": {
+  "status": 200,
+  "context_length": 262144,
+  "load_s": 2.5,
+  "unloaded": [
+   "mistralai/ministral-3-3b"
+  ],
+  "error": null
+ },
+ "wall_ms": 130813.6,
+ "ts_end_model": "2026-10-12T04:45:52.000125+00:00",
+ "http_status": 200,
+ "timed_out": false,
+ "valid": true,
+ "invalid_reason": null,
+ "end_reason": "completed",
+ "tool_names": [
+  "describe_data_view",
+  "create_dashboard",
+  "create_alert_rule",
+  "create_alert_rule",
+  "enable_alert_rule"
+ ],
+ "model_calls": 6,
+ "n_tool_calls": 5,
+ "n_invalid_tool_calls": 0,
+ "n_failed_tool_calls": 1,
+ "n_distinct_tools": 4,
+ "failure_classes": {
+  "refused": 1
+ },
+ "tool_result_bytes": 1716,
+ "tool_ms": 20601.0,
+ "first_tool_ms": 14970.4,
+ "input_tokens": 5892,
+ "output_tokens": 3316,
+ "reasoning_tokens": 2634,
+ "tokens_per_second": 28.48550095849193,
+ "ttft_s": 8.012916,
+ "model_load_s": null,
+ "stats": {
+  "input_tokens": 5892,
+  "total_output_tokens": 3316,
+  "reasoning_output_tokens": 2634,
+  "tokens_per_second": 28.48550095849193,
+  "time_to_first_token_seconds": 8.012916
+ },
+ "response_model": "google/gemma-4-12b-qat",
+ "end_events": 1,
+ "stream_events": 2831,
+ "permission_denials": 1,
+ "output_rebuilt_from_stream": false,
+ "final_text": "The data view 'Kibana Sample Data Logs' was described, identifying `timestamp` as the time field. A dashboard titled 'LOC-58b61199 Web logs' was successfully created with two panels: one showing the number of requests over time and the other showing the number of requests by HTTP response code. Finally, an alert rule named 'LOC-58b61199 5xx errors' was created and enabled to monitor for more than 10 requests with a 5xx response code within a 5-minute window, checked every minute.\n\nTIME_FIELD: timestamp",
+ "stream_final_event": "ok",
+ "known_secret_exposures": 0,
+ "success": true,
+ "failure_reason": null,
+ "first_failed_step": null,
+ "steps_passed": 3,
+ "criteria": [
+  {
+   "step": "describe",
+   "check": "tool_ok:describe_data_view",
+   "ok": true,
+   "detail": "ok"
+  },
+  {
+   "step": "describe",
+   "check": "answer",
+   "ok": true,
+   "detail": "ok"
+  },
+  {
+   "step": "dashboard",
+   "check": "dashboard",
+   "ok": true,
+   "detail": "ok"
+  },
+  {
+   "step": "rule",
+   "check": "rule",
+   "ok": true,
+   "detail": "ok"
+  }
+ ],
+ "n_dashboards": 1,
+ "n_rules": 1,
+ "rule_enabled": true,
+ "reset_removed": {
+  "objects": [
+   [
+    "dashboard",
+    "loc-58b61199-web-logs-42855911dc4e"
+   ]
+  ],
+  "rules": [
+   "b7777d61-d52d-4c4b-8b56-0d45abb83bf1"
+  ],
+  "connectors": []
+ },
+ "model_loaded_context": 262144,
+ "model_max_context": 262144,
+ "ts_end": "2026-10-12T04:45:53.485268+00:00",
+ "n_spans": 12,
+ "otel": "sent: HTTP 200, 12 spans",
+ "complete": true
+}

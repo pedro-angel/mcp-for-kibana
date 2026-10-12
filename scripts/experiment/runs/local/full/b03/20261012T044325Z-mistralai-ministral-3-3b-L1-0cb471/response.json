@@ -1,0 +1,36 @@
+{
+ "http_status": 200,
+ "error_body": null,
+ "timed_out": false,
+ "transport_error": null,
+ "end_events": 1,
+ "result": {
+  "model_instance_id": "mistralai/ministral-3-3b",
+  "output": [
+   {
+    "type": "tool_call",
+    "tool": "describe_data_view",
+    "arguments": {
+     "data_view": "Kibana Sample Data Logs"
+    },
+    "output": "[{\"type\":\"text\",\"text\":\"{\\\"id\\\":\\\"90943e30-9a47-11e8-b64d-95841ca0b247\\\",\\\"name\\\":\\\"Kibana Sample Data Logs\\\",\\\"index_pattern\\\":\\\"kibana_sample_data_logs\\\",\\\"time_field\\\":\\\"timestamp\\\",\\\"fields\\\":{\\\"@timestamp\\\":\\\"date\\\",\\\"_id\\\":\\\"string\\\",\\\"_ignored\\\":\\\"string\\\",\\\"_index\\\":\\\"string\\\",\\\"_score\\\":\\\"number\\\",\\\"_source\\\":\\\"_source\\\",\\\"agent\\\":\\\"string\\\",\\\"agent.keyword\\\":\\\"string\\\",\\\"bytes\\\":\\\"number\\\",\\\"bytes_counter\\\":\\\"number\\\",\\\"bytes_gauge\\\":\\\"number\\\",\\\"clientip\\\":\\\"ip\\\",\\\"event.dataset\\\":\\\"string\\\",\\\"extension\\\":\\\"string\\\",\\\"extension.keyword\\\":\\\"string\\\",\\\"geo.coordinates\\\":\\\"geo_point\\\",\\\"geo.dest\\\":\\\"string\\\",\\\"geo.src\\\":\\\"string\\\",\\\"geo.srcdest\\\":\\\"string\\\",\\\"host\\\":\\\"string\\\",\\\"host.keyword\\\":\\\"string\\\",\\\"index\\\":\\\"string\\\",\\\"index.keyword\\\":\\\"string\\\",\\\"ip\\\":\\\"ip\\\",\\\"ip_range\\\":\\\"ip_range\\\",\\\"machine.os\\\":\\\"string\\\",\\\"machine.os.keyword\\\":\\\"string\\\",\\\"machine.ram\\\":\\\"number\\\",\\\"memory\\\":\\\"number\\\",\\\"message\\\":\\\"string\\\",\\\"message.keyword\\\":\\\"string\\\",\\\"phpmemory\\\":\\\"number\\\",\\\"referer\\\":\\\"string\\\",\\\"request\\\":\\\"string\\\",\\\"request.keyword\\\":\\\"string\\\",\\\"response\\\":\\\"string\\\",\\\"response.keyword\\\":\\\"string\\\",\\\"tags\\\":\\\"string\\\",\\\"tags.keyword\\\":\\\"string\\\",\\\"timestamp\\\":\\\"date\\\",\\\"timestamp_range\\\":\\\"date_range\\\",\\\"url\\\":\\\"string\\\",\\\"url.keyword\\\":\\\"string\\\",\\\"utc_time\\\":\\\"date\\\",\\\"hour_of_day\\\":\\\"number\\\"}}\"}]",
+    "provider_info": {
+     "type": "plugin",
+     "plugin_id": "mcp/mcp-for-kibana-study"
+    }
+   },
+   {
+    "type": "message",
+    "content": "The data view **\"Kibana Sample Data Logs\"** contains the following fields, with the time field being:\n\n**TIME_FIELD: timestamp**"
+   }
+  ],
+  "stats": {
+   "input_tokens": 8569,
+   "total_output_tokens": 49,
+   "reasoning_output_tokens": 0,
+   "tokens_per_second": 73.75628267291398,
+   "time_to_first_token_seconds": 0.370172
+  },
+  "response_id": "resp_740ae72119d0da6f3494bd62a6061a6bc59f749b841b43b4"
+ }
+}

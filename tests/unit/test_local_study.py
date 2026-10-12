@@ -62,7 +62,7 @@ def env(tmp_path, monkeypatch):
     cfg["lmstudio"].update(url=lm.url, mcp_json=str(mcp_json), run_timeout_s=30, idle_timeout_s=10)
     cfg["kibana"]["seed_file"] = str(seed)
     cfg["runs"].update(out_dir=str(tmp_path / "runs"), per_cell=2, max_attempts=2)
-    cfg["honeycomb"]["endpoint"] = f"{hc.url}/v1/traces"
+    cfg["honeycomb"].update(endpoint=f"{hc.url}/v1/traces", required=True)
     path = tmp_path / "local_study.json"
 
     def write(c=None):
@@ -208,6 +208,52 @@ def test_resume_skips_done_cells_and_recovers_an_interrupted_run(env):
     n_requests = len(env.lm.requests)
     lr.run_matrix(cfg, "full")  # complete: a rerun does nothing
     assert len(env.lm.requests) == n_requests
+
+
+def test_harness_loading_keeps_one_study_model_at_full_context(env):
+    """With JIT loading off in LM Studio, `lmstudio.load: harness` loads each
+    model at its maximum context before its runs and unloads the previous
+    study model; a model the study does not use is never unloaded."""
+    env.lm.loaded = {"fake/leak"}  # not a study model: must stay loaded
+    env.cfg["lmstudio"]["load"] = "harness"
+    cfg = env.write()
+    assert lr.run_matrix(cfg, "pilot") == 0
+    recs = _records(env.out, "pilot")
+    assert len(recs) == 8 and all(r["valid"] for r in recs)
+    loads = [x for x in env.lm.load_log if x[0] == "load"]
+    assert loads == [("load", "fake/pass", 131072), ("load", "fake/fail", 131072)]
+    assert ("unload", "fake/pass", None) in env.lm.load_log
+    assert "fake/leak" in env.lm.loaded
+    loaded_by_harness = [r for r in recs if r.get("harness_load")]
+    assert len(loaded_by_harness) == 2
+    assert loaded_by_harness[0]["harness_load"]["status"] == 200
+
+
+def test_jit_mode_never_calls_the_load_api(env):
+    cfg = env.write()
+    assert lr.run_matrix(cfg, "pilot") == 0
+    assert env.lm.load_log == []
+
+
+def test_send_pending_sends_the_spans_of_runs_without_a_key(env, monkeypatch):
+    """Runs made while the Honeycomb key was missing keep their spans on disk;
+    `send-pending` sends them once the key is there, and only them."""
+    real = lr.env_value
+    monkeypatch.setattr(lr, "env_value", lambda n: None if n == "HONEYCOMB_API_KEY" else real(n))
+    env.cfg["honeycomb"]["required"] = False
+    cfg = env.write()
+    assert lr.run_matrix(cfg, "pilot", limit=2) == 0
+    assert env.hc.posts == []
+    assert all(r["otel"].startswith("skipped") for r in _records(env.out, "pilot"))
+    monkeypatch.setattr(lr, "env_value", real)
+    assert lr.cmd_send_pending(cfg) == 0
+    recs = _records(env.out, "pilot")
+    assert all(r["otel"].startswith("sent") and r["otel_sent_late"] for r in recs)
+    roots = [s for s in env.hc.spans() if s["name"].startswith("invoke_agent")]
+    assert len(roots) == 2
+    assert lr.cmd_send_pending(cfg) == 0  # nothing left: no second send
+    assert len(env.hc.posts) == 2
+    assert KIBANA_KEY not in "\n".join(env.hc.raw)
 
 
 def test_environment_failures_are_invalid_and_retried(env):
@@ -451,3 +497,19 @@ def test_compacted_events_parse_like_the_raw_stream():
     assert a["output"] == b["output"] and a["tool_ms"] == b["tool_ms"] == 6.0
     assert b["message_text"] == "TIME_FIELD: timestamp"
     assert raw[0]["data"]["content"] == "I will "  # the raw events are not mutated
+
+
+def test_span_messages_fit_their_cap_when_many_leaves_are_short():
+    """Seventy-five tool results of ~230 chars each exceed the message cap even
+    when every leaf is at the 200-char floor: fit must still return (it once
+    re-truncated the same 221-char leaf forever, stalling the full run)."""
+    import threading
+
+    obj = [{"role": "tool", "content": "x" * 230} for _ in range(400)]
+    out: list[str] = []
+    t = threading.Thread(target=lambda: out.append(lr.eh.fit(obj, lr.eh.Redactor(None), 32000)))
+    t.daemon = True
+    t.start()
+    t.join(10)
+    assert out, "fit did not return within 10 s"
+    assert len(out[0].encode()) <= 32000

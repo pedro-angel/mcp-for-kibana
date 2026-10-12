@@ -1,0 +1,9 @@
+{
+ "model": "google/gemma-4-12b-qat",
+ "input": "Using the kibana tools, work on Kibana's web-logs sample data (data view 'Kibana Sample Data Logs', index kibana_sample_data_logs). Do these steps in order:\n1. Describe the data view 'Kibana Sample Data Logs': look up its fields and name its time field. End your reply with a line of the form TIME_FIELD: <field name>.\n2. Build a dashboard titled 'LOC-6fc30d04 Web logs' on that data view with exactly two panels: the number of requests over time, and the number of requests by HTTP response code.\n3. Create an alert rule named 'LOC-6fc30d04 5xx errors' on the web-logs data for the signal of the response-code panel: it checks every minute and fires when more than 10 requests with a 5xx response code arrive within 5 minutes. The rule must be enabled when you finish: if it is created disabled, enable it.\nUse only the kibana tools. When every step is done, reply with a short summary.",
+ "integrations": [
+  "mcp/mcp-for-kibana-study"
+ ],
+ "stream": true,
+ "url": "http://localhost:1234/api/v1/chat"
+}
