@@ -184,17 +184,17 @@ def test_score_task_records_outcome_and_root_span_attributes(tmp_path, monkeypat
     state["seed_before"] = state["seeded"]
     monkeypatch.setattr(st.Elastic, "from_stack", classmethod(lambda cls: None))
     monkeypatch.setattr(st, "collect_state", lambda *a, **k: state)
-    record = {"final_text": "PANELS: 2\nRULE_NAME: Server errors\nTHRESHOLD: 10\n"
-                            "INTERVAL: 1m\nENABLED: yes"}
+    record = {"final_text": "PANELS: 2\nRULE_NAME: Server errors\nINTERVAL: 1m\n"
+                            "ENABLED: yes"}
     attrs = er.score_task(st, cfg, "lookup", None, "S4-1", {}, state["seeded"], record, tmp_path)
     assert record["success"] is False and record["first_failed_step"] == "rule_enabled"
     assert (record["steps_passed"], record["steps_total"]) == (3, 4)
-    assert (record["checks_passed"], record["checks_total"]) == (5, 6)
+    assert (record["checks_passed"], record["checks_total"]) == (4, 5)
     assert attrs["study.task"] == "lookup"
     assert attrs["study.check.rule_enabled.answer_ENABLED.ok"] is False
     assert attrs["study.check.rule_enabled.answer_ENABLED.expected"] == "no"
     outcome = json.loads((tmp_path / "outcome.json").read_text())
-    assert len(outcome["criteria"]) == 6
+    assert len(outcome["criteria"]) == 5
     assert json.loads((tmp_path / "artifacts.json").read_text())["seeded"]["rule"]["name"] == (
         "Server errors"
     )
