@@ -1,0 +1,13 @@
+A local Kibana 9.5 is available. Its URL is in the environment variable KIBANA_URL and an API key in KIBANA_TEST_API_KEY. Kibana's API reference is in ./kibana-api/ (kibana.yaml for the whole API, dashboards-api.yaml for the Dashboards and Visualizations APIs).
+
+Kibana holds a dashboard titled 'Site health' and an alert rule that watches the web-logs sample data (data view 'Kibana Sample Data Logs', index kibana_sample_data_logs) for 5xx responses. Look them up; change nothing. Answer these questions:
+1. How many panels does the 'Site health' dashboard have?
+2. What is the name of the alert rule that watches for 5xx responses?
+3. How often does that rule check?
+4. Is that rule enabled?
+
+End your reply with these four lines:
+PANELS: <number>
+RULE_NAME: <the rule's name>
+INTERVAL: <the check interval, such as 5m>
+ENABLED: <yes or no>

@@ -1,0 +1,11 @@
+A local Kibana 9.5 is available. Its URL is in the environment variable KIBANA_URL and an API key in KIBANA_TEST_API_KEY. Kibana's API reference is in ./kibana-api/ (kibana.yaml for the whole API, dashboards-api.yaml for the Dashboards and Visualizations APIs).
+
+Work on Kibana's flights sample data (data view 'Kibana Sample Data Flights', index kibana_sample_data_flights). Do these steps in order:
+1. Describe the data view 'Kibana Sample Data Flights': look up its fields and name its time field.
+2. Build a dashboard titled 'S4-e982d32c Flights' on that data view with exactly two panels: the number of flights over time, and the number of flights by carrier.
+3. Create an alert rule named 'S4-e982d32c Cancelled flights' on the flights data: it checks every minute and fires when more than 10 cancelled flights arrive within 5 minutes. The rule must be enabled when you finish: if it is created disabled, enable it.
+4. Edit the carrier panel of that dashboard: change its title to 'Flights by carrier'. Then read the alert rule back and check whether it is enabled.
+
+When every step is done, end your reply with these two lines:
+TIME_FIELD: <the data view's time field>
+RULE_ENABLED: <yes or no, as you read it back>

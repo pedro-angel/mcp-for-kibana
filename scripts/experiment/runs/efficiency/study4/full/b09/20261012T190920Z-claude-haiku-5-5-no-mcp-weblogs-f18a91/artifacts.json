@@ -1,0 +1,299 @@
+{
+  "dashboards": [
+    {
+      "id": "dcdd2b37-2131-4d61-82e5-7457fb8818dd",
+      "data": {
+        "description": "",
+        "options": {
+          "auto_apply_filters": true,
+          "hide_panel_borders": false,
+          "hide_panel_titles": false,
+          "sync_colors": false,
+          "sync_cursor": true,
+          "sync_tooltips": false,
+          "use_margins": true
+        },
+        "tags": [],
+        "time_range": {
+          "from": "now-7d",
+          "to": "now"
+        },
+        "title": "S4-73ffc5d1 Web logs",
+        "filters": [],
+        "panels": [
+          {
+            "grid": {
+              "x": 0,
+              "y": 0,
+              "w": 24,
+              "h": 12
+            },
+            "config": {
+              "title": "Requests over time",
+              "type": "xy",
+              "layers": [
+                {
+                  "type": "line",
+                  "data_source": {
+                    "type": "data_view_spec",
+                    "index_pattern": "kibana_sample_data_logs",
+                    "time_field": "timestamp",
+                    "name": "kibana_sample_data_logs"
+                  },
+                  "sampling": 1,
+                  "ignore_global_filters": false,
+                  "x": {
+                    "operation": "date_histogram",
+                    "field": "timestamp",
+                    "suggested_interval": "auto",
+                    "use_original_time_range": false,
+                    "include_empty_rows": true,
+                    "drop_partial_intervals": false
+                  },
+                  "y": [
+                    {
+                      "operation": "count",
+                      "empty_as_null": false,
+                      "color": {
+                        "type": "auto"
+                      }
+                    }
+                  ]
+                }
+              ],
+              "axis": {
+                "x": {
+                  "title": {
+                    "visible": true
+                  },
+                  "ticks": {
+                    "visible": true
+                  },
+                  "grid": {
+                    "visible": true
+                  },
+                  "domain": {
+                    "type": "fit",
+                    "rounding": false
+                  },
+                  "labels": {
+                    "orientation": "horizontal"
+                  }
+                },
+                "y": {
+                  "title": {
+                    "visible": true
+                  },
+                  "scale": "linear",
+                  "ticks": {
+                    "visible": true
+                  },
+                  "grid": {
+                    "visible": true
+                  },
+                  "domain": {
+                    "type": "full",
+                    "rounding": true
+                  },
+                  "labels": {
+                    "orientation": "horizontal"
+                  }
+                }
+              },
+              "styling": {
+                "overlays": {
+                  "partial_buckets": {
+                    "visible": false
+                  },
+                  "current_time_marker": {
+                    "visible": false
+                  }
+                },
+                "interpolation": "linear",
+                "points": {
+                  "visibility": "auto"
+                }
+              },
+              "legend": {
+                "placement": "outside",
+                "position": "right",
+                "layout": {
+                  "type": "grid",
+                  "truncate": {
+                    "max_lines": 1
+                  }
+                },
+                "visibility": "hidden"
+              }
+            },
+            "id": "f30c5e18-4105-4670-b8ea-67c8ac1a1fe9",
+            "type": "vis"
+          },
+          {
+            "grid": {
+              "x": 24,
+              "y": 0,
+              "w": 24,
+              "h": 12
+            },
+            "config": {
+              "title": "Responses by code",
+              "type": "pie",
+              "sampling": 1,
+              "ignore_global_filters": false,
+              "metrics": [
+                {
+                  "operation": "count",
+                  "empty_as_null": false
+                }
+              ],
+              "group_by": [
+                {
+                  "operation": "terms",
+                  "fields": [
+                    "response.keyword"
+                  ],
+                  "limit": 5,
+                  "rank_by": {
+                    "type": "metric",
+                    "metric_index": 0,
+                    "direction": "desc"
+                  },
+                  "color": {
+                    "mode": "categorical",
+                    "palette": "default",
+                    "mapping": []
+                  }
+                }
+              ],
+              "data_source": {
+                "type": "data_view_spec",
+                "index_pattern": "kibana_sample_data_logs",
+                "time_field": "timestamp",
+                "name": "kibana_sample_data_logs"
+              },
+              "legend": {
+                "visibility": "auto"
+              },
+              "styling": {
+                "labels": {
+                  "visible": true,
+                  "position": "outside"
+                },
+                "values": {
+                  "visible": true,
+                  "mode": "percentage"
+                }
+              }
+            },
+            "id": "1c07b94b-f912-4aad-b1f8-455287594864",
+            "type": "vis"
+          }
+        ],
+        "pinned_panels": []
+      },
+      "meta": {
+        "created_at": "2026-10-12T19:10:23.628Z",
+        "managed": false,
+        "updated_at": "2026-10-12T19:10:34.849Z",
+        "version": "Wzk1Nyw2XQ=="
+      }
+    }
+  ],
+  "rules": [
+    {
+      "id": "66f4b9eb-7792-49b7-a09e-1df021196b02",
+      "enabled": true,
+      "name": "S4-73ffc5d1 5xx errors",
+      "tags": [],
+      "rule_type_id": ".es-query",
+      "consumer": "alerts",
+      "schedule": {
+        "interval": "1m"
+      },
+      "actions": [],
+      "params": {
+        "searchType": "searchSource",
+        "searchConfiguration": {
+          "query": {
+            "language": "kuery",
+            "query": "response.keyword >= \"500\" and response.keyword <= \"599\""
+          },
+          "index": "90943e30-9a47-11e8-b64d-95841ca0b247"
+        },
+        "timeField": "timestamp",
+        "aggType": "count",
+        "groupBy": "all",
+        "timeWindowSize": 5,
+        "timeWindowUnit": "m",
+        "threshold": [
+          10
+        ],
+        "thresholdComparator": ">",
+        "size": 100,
+        "excludeHitsFromPreviousRun": true
+      },
+      "scheduled_task_id": "66f4b9eb-7792-49b7-a09e-1df021196b02",
+      "created_by": "elastic",
+      "updated_by": "elastic",
+      "created_at": "2026-10-12T19:10:28.836Z",
+      "updated_at": "2026-10-12T19:10:28.836Z",
+      "api_key_owner": "elastic",
+      "api_key_created_by_user": true,
+      "throttle": null,
+      "mute_all": false,
+      "notify_when": null,
+      "muted_alert_ids": [],
+      "execution_status": {
+        "status": "ok",
+        "last_execution_date": "2026-10-12T19:10:30.869Z",
+        "last_duration": 54
+      },
+      "last_run": {
+        "outcome": "succeeded",
+        "outcome_order": 0,
+        "warning": null,
+        "outcome_msg": null,
+        "alerts_count": {
+          "new": 0,
+          "ignored": 0,
+          "recovered": 0,
+          "active": 0
+        }
+      },
+      "next_run": "2026-10-12T19:11:30.857Z",
+      "revision": 0,
+      "running": false
+    }
+  ],
+  "seeded": {
+    "dashboard": null,
+    "rule": null
+  },
+  "seed_before": null,
+  "filters": {
+    "66f4b9eb-7792-49b7-a09e-1df021196b02": {
+      "form": "searchSource",
+      "index": [
+        "kibana_sample_data_logs"
+      ],
+      "real": {
+        "truth": 441,
+        "selected": 441,
+        "selected_matching": 441
+      },
+      "probe": {
+        "truth": 5,
+        "selected": 5,
+        "selected_matching": 5
+      },
+      "ok": true,
+      "detail": "ok"
+    }
+  },
+  "time_fields": {
+    "utc_time": "utc_time",
+    "timestamp": "@timestamp",
+    "@timestamp": "@timestamp"
+  }
+}

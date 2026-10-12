@@ -1,0 +1,289 @@
+{
+  "dashboards": [
+    {
+      "id": "80bbfec2-e6e6-4fbd-a69d-bbb8dbb59dda",
+      "data": {
+        "description": "",
+        "options": {
+          "use_margins": true,
+          "sync_cursor": true,
+          "sync_tooltips": false,
+          "hide_panel_titles": false,
+          "hide_panel_borders": false,
+          "auto_apply_filters": true,
+          "sync_colors": false
+        },
+        "tags": [],
+        "title": "S4-98c360da Flights",
+        "filters": [],
+        "panels": [
+          {
+            "grid": {
+              "x": 0,
+              "y": 0,
+              "w": 24,
+              "h": 12
+            },
+            "config": {
+              "title": "Flights over time",
+              "type": "xy",
+              "layers": [
+                {
+                  "type": "line",
+                  "data_source": {
+                    "type": "data_view_reference",
+                    "ref_id": "d3d7af60-4c81-11e8-b3d7-01146121b73d"
+                  },
+                  "sampling": 1,
+                  "ignore_global_filters": false,
+                  "x": {
+                    "operation": "date_histogram",
+                    "field": "timestamp",
+                    "suggested_interval": "auto",
+                    "use_original_time_range": false,
+                    "include_empty_rows": true,
+                    "drop_partial_intervals": false
+                  },
+                  "y": [
+                    {
+                      "operation": "count",
+                      "empty_as_null": false,
+                      "color": {
+                        "type": "auto"
+                      }
+                    }
+                  ]
+                }
+              ],
+              "axis": {
+                "x": {
+                  "title": {
+                    "visible": true
+                  },
+                  "ticks": {
+                    "visible": true
+                  },
+                  "grid": {
+                    "visible": true
+                  },
+                  "domain": {
+                    "type": "fit",
+                    "rounding": false
+                  },
+                  "labels": {
+                    "orientation": "horizontal"
+                  }
+                },
+                "y": {
+                  "title": {
+                    "visible": true
+                  },
+                  "scale": "linear",
+                  "ticks": {
+                    "visible": true
+                  },
+                  "grid": {
+                    "visible": true
+                  },
+                  "domain": {
+                    "type": "full",
+                    "rounding": true
+                  },
+                  "labels": {
+                    "orientation": "horizontal"
+                  }
+                }
+              },
+              "styling": {
+                "overlays": {
+                  "partial_buckets": {
+                    "visible": false
+                  },
+                  "current_time_marker": {
+                    "visible": false
+                  }
+                },
+                "interpolation": "linear",
+                "points": {
+                  "visibility": "auto"
+                }
+              },
+              "legend": {
+                "placement": "outside",
+                "position": "right",
+                "layout": {
+                  "type": "grid",
+                  "truncate": {
+                    "max_lines": 1
+                  }
+                },
+                "visibility": "hidden"
+              }
+            },
+            "id": "7ec0fc4f-6792-4840-b1d4-5521f470482a",
+            "type": "vis"
+          },
+          {
+            "grid": {
+              "x": 24,
+              "y": 0,
+              "w": 24,
+              "h": 12
+            },
+            "config": {
+              "title": "Flights by carrier",
+              "type": "pie",
+              "sampling": 1,
+              "ignore_global_filters": false,
+              "metrics": [
+                {
+                  "operation": "count",
+                  "empty_as_null": false
+                }
+              ],
+              "group_by": [
+                {
+                  "operation": "terms",
+                  "fields": [
+                    "Carrier"
+                  ],
+                  "limit": 10,
+                  "rank_by": {
+                    "type": "metric",
+                    "metric_index": 0,
+                    "direction": "desc"
+                  },
+                  "color": {
+                    "mode": "categorical",
+                    "palette": "default",
+                    "mapping": []
+                  }
+                }
+              ],
+              "data_source": {
+                "type": "data_view_reference",
+                "ref_id": "d3d7af60-4c81-11e8-b3d7-01146121b73d"
+              },
+              "legend": {
+                "visibility": "auto"
+              },
+              "styling": {
+                "donut_hole": "m",
+                "labels": {
+                  "visible": true,
+                  "position": "outside"
+                },
+                "values": {
+                  "visible": true,
+                  "mode": "percentage"
+                }
+              }
+            },
+            "id": "574f937c-0229-4dcd-88b8-1fa914c25952",
+            "type": "vis"
+          }
+        ],
+        "pinned_panels": []
+      },
+      "meta": {
+        "created_at": "2026-10-12T17:54:46.694Z",
+        "managed": false,
+        "updated_at": "2026-10-12T17:55:07.256Z",
+        "version": "WzQ2Nyw2XQ=="
+      }
+    }
+  ],
+  "rules": [
+    {
+      "id": "44c3ff88-5363-492a-bc36-801b46c1af00",
+      "enabled": true,
+      "name": "S4-98c360da Cancelled flights",
+      "tags": [],
+      "rule_type_id": ".es-query",
+      "consumer": "alerts",
+      "schedule": {
+        "interval": "1m"
+      },
+      "actions": [],
+      "params": {
+        "searchType": "esQuery",
+        "index": [
+          "kibana_sample_data_flights"
+        ],
+        "timeField": "timestamp",
+        "timeWindowSize": 5,
+        "timeWindowUnit": "m",
+        "aggType": "count",
+        "groupBy": "all",
+        "esQuery": "{\"query\":{\"bool\":{\"filter\":[{\"term\":{\"Cancelled\":true}}]}}}",
+        "size": 0,
+        "threshold": [
+          10
+        ],
+        "thresholdComparator": ">",
+        "excludeHitsFromPreviousRun": true
+      },
+      "scheduled_task_id": "44c3ff88-5363-492a-bc36-801b46c1af00",
+      "created_by": "elastic",
+      "updated_by": "elastic",
+      "created_at": "2026-10-12T17:55:01.934Z",
+      "updated_at": "2026-10-12T17:55:01.934Z",
+      "api_key_owner": "elastic",
+      "api_key_created_by_user": true,
+      "throttle": null,
+      "mute_all": false,
+      "notify_when": null,
+      "muted_alert_ids": [],
+      "execution_status": {
+        "status": "ok",
+        "last_execution_date": "2026-10-12T17:55:03.581Z",
+        "last_duration": 35
+      },
+      "last_run": {
+        "outcome": "succeeded",
+        "outcome_order": 0,
+        "warning": null,
+        "outcome_msg": null,
+        "alerts_count": {
+          "new": 0,
+          "ignored": 0,
+          "recovered": 0,
+          "active": 0
+        }
+      },
+      "next_run": "2026-10-12T17:56:03.569Z",
+      "revision": 0,
+      "running": false
+    }
+  ],
+  "seeded": {
+    "dashboard": null,
+    "rule": null
+  },
+  "seed_before": null,
+  "filters": {
+    "44c3ff88-5363-492a-bc36-801b46c1af00": {
+      "form": "esQuery",
+      "index": [
+        "kibana_sample_data_flights"
+      ],
+      "real": {
+        "truth": 1670,
+        "selected": 1670,
+        "selected_matching": 1670
+      },
+      "probe": {
+        "truth": 3,
+        "selected": 3,
+        "selected_matching": 3
+      },
+      "ok": true,
+      "detail": "ok"
+    }
+  },
+  "time_fields": {
+    "utc_time": null,
+    "timestamp": "timestamp",
+    "@timestamp": null
+  }
+}
