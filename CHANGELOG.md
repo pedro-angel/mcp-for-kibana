@@ -10,22 +10,6 @@ version section.
 
 ## [Unreleased]
 
-### Security
-
-- **multidict 6.7.1 → 6.9.1 (CVE-2026-104874).** A transitive dependency
-  (aiohttp, through kibana-py's async extra); `pip-audit` failed the
-  `audit_clean` gate on main.
-
-### Fixed
-
-- **A wrong dashboard or alert-rule id names the fix.** An empty `dashboard_id`
-  reached the caller as a bare "Error calling tool" (kibana-py's unmapped
-  ValueError), and an id that matched nothing returned Kibana's "Saved object
-  [alert/<name>] not found". Both now say where a valid id comes from
-  (create/search or create/list tools) and that a title or name is not an id.
-  Seen in the local-model study: small models passed dashboard titles, rule
-  names and empty strings as ids.
-
 ### Added
 
 - **Three-arm analysis and the live cross-check for the rerun.**
@@ -217,6 +201,13 @@ version section.
 
 ### Fixed
 
+- **A wrong dashboard or alert-rule id names the fix.** An empty `dashboard_id`
+  reached the caller as a bare "Error calling tool" (kibana-py's unmapped
+  ValueError), and an id that matched nothing returned Kibana's "Saved object
+  [alert/<name>] not found". Both now say where a valid id comes from
+  (create/search or create/list tools) and that a title or name is not an id.
+  Seen in the local-model study: small models passed dashboard titles, rule
+  names and empty strings as ids.
 - **No-mcp runs in live mode now land in one trace.** Claude Code 2.1.296
   starts its first query before its tracer is ready when it has no MCP server
   to connect: no `claude_code.interaction` span, `TRACEPARENT` ignored, every
@@ -247,6 +238,9 @@ version section.
 
 ### Security
 
+- **multidict 6.7.1 → 6.9.1 (CVE-2026-104874).** A transitive dependency
+  (aiohttp, through kibana-py's async extra); `pip-audit` failed the
+  `audit_clean` gate on main.
 - **multidict 6.7.1 → 6.9.1** (CVE-2026-104874; reached through
   `kibana-py[async]` → `aiohttp`/`yarl`). Lockfile regenerated with
   `uv lock --upgrade-package multidict`; `make audit` is clean again.
