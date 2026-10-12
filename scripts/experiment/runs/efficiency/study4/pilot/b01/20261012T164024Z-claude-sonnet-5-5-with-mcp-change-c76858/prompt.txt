@@ -1,0 +1,7 @@
+Use only the kibana tools.
+
+Kibana holds a dashboard titled 'Site health' and an alert rule named 'Server errors', both on the web-logs sample data (data view 'Kibana Sample Data Logs', index kibana_sample_data_logs). Change them in place; do not create new dashboards or rules. Do these steps in order:
+1. Add a third panel to the 'Site health' dashboard showing the number of requests by host.
+2. Enable the 'Server errors' rule.
+
+When every step is done, reply with a short summary.
