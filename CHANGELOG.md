@@ -10,6 +10,12 @@ version section.
 
 ## [Unreleased]
 
+### Security
+
+- **multidict 6.7.1 → 6.9.1 (CVE-2026-104874).** A transitive dependency
+  (aiohttp, through kibana-py's async extra); `pip-audit` failed the
+  `audit_clean` gate on main.
+
 ### Added
 
 - **Cloud sessions start ready to work.** A SessionStart hook in
