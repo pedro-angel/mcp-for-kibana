@@ -121,6 +121,7 @@
  "model_max_context": 262144,
  "ts_end": "2026-10-11T22:51:02.710793+00:00",
  "n_spans": 28,
- "otel": "skipped: HONEYCOMB_API_KEY is not set",
- "complete": true
+ "otel": "sent: HTTP 200, 28 spans",
+ "complete": true,
+ "otel_sent_late": "2026-10-12T04:16:53.692068+00:00"
 }
