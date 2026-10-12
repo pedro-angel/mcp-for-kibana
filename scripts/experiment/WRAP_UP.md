@@ -83,11 +83,8 @@ Product findings (mcp-for-kibana)
 - `make dod`: GO on every criterion except `image_smoke` (the cloud sandbox's
   image build can't verify the proxy CA). Choose: run the gate on the Mac or CI,
   mark it n/a in `dod.config`, or pass the proxy CA to the build (default-off).
-- Rotate the Honeycomb API key (a 22-character prefix reached a model call).
-- Honeycomb clean-up: delete `mcp-for-kibana-smoke-live`; decide on
-  `kibana-efficiency` (raw study 1), `mcp-for-kibana-live`,
-  `mcp-for-kibana-local`. Smoke metrics also sit in the shared `metrics` dataset.
-- Decide what to keep from the partial data of studies 2 and 3.
+- The partial data of studies 2 and 3 stays as is until a new study is
+  complete; it may still help fine-tune the next design.
 
 ## Files
 
