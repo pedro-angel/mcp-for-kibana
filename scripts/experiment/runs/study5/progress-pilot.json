@@ -1,0 +1,11 @@
+{
+ "phase": "pilot",
+ "updated": "2026-10-12T14:43:04.297760+00:00",
+ "cells_total": 9,
+ "cells_done": 9,
+ "runs_recorded": 9,
+ "runs_valid": 9,
+ "runs_passed": 5,
+ "eta_hours": 0.0,
+ "current": null
+}
