@@ -1,18 +1,24 @@
 #!/usr/bin/env python3
-"""Local-model study runner: drive LM Studio models through mcp-for-kibana on
-a web-logs task of growing chain length, and keep the evidence of every run.
+"""Local-model study runner (study 5): drive LM Studio models through
+mcp-for-kibana on the shared study tasks, and keep the evidence of every run.
 
     uv run python scripts/experiment/local_run.py preflight [--load]
     uv run python scripts/experiment/local_run.py install-sample
     uv run python scripts/experiment/local_run.py pilot
-    uv run python scripts/experiment/local_run.py run
+    uv run python scripts/experiment/local_run.py stage1
+    uv run python scripts/experiment/local_run.py stage2
     uv run python scripts/experiment/local_run.py status
 
-Every study value (models, levels, prompts, checks, runs per cell, Honeycomb
+Every study value (models, stages, pass mark, runs per cell, Honeycomb
 dataset) lives in ``local_study.json``; ``--config`` points at another file.
-The runbook is ``LOCAL_STUDY.md``.
+The tasks (prompts, seeded starting state, success checks) live in the
+shared ``tasks.json`` that ``study_tasks.py`` reads, the same definition
+study 4 uses. Stage 1 runs the stage-1 tasks for every model; stage 2 runs
+the stage-2 tasks only for the models whose stage-1 successes reach the
+pass mark, and refuses to start before stage 1 is complete. The runbook is
+``LOCAL_STUDY.md``.
 
-One run sends one level's prompt to LM Studio's ``/api/v1/chat`` with the
+One run sends one task's prompt to LM Studio's ``/api/v1/chat`` with the
 mcp.json server entry named in the config as the only integration. The
 request carries no ``context_length`` and no sampling parameters: the model
 runs as loaded, with its own defaults (docs/e2e-setup.md). The Kibana API key
@@ -21,16 +27,17 @@ reaches only the MCP server; the prompt never names it.
 
 Each run writes ``<out_dir>/<phase>/<block>/<run_id>/``: ``cell.json`` and
 ``before.json`` (the Kibana snapshot) at the start, then ``prompt.txt``,
-``request.json``, ``events.jsonl`` (the SSE stream with receive times),
+``seed.json`` (seeded tasks: the restored seed), ``request.json``, ``events.jsonl`` (the SSE stream with receive times),
 ``response.json`` (LM Studio's final result), ``artifacts.json``,
 ``spans.json`` (the redacted OTLP payload) and, last, ``record.json``.
 A directory without ``record.json`` is an interrupted run: the next start
 resets Kibana to its ``before.json`` and runs the cell again. Kibana is reset
-to the pre-run snapshot after every run.
+to the pre-run snapshot after every run; a seeded task restores the seeded
+dashboard and rule before it starts.
 
 Each run is sent live to Honeycomb as one OpenTelemetry GenAI trace
 (``invoke_agent`` / ``chat`` / ``execute_tool``, the agent.* and study.*
-names of SIGNALS.md). The payload is redacted (the Kibana key, the LM Studio
+names of SIGNALS.md, plus every check's result as ``study.check.*``). The payload is redacted (the Kibana key, the LM Studio
 token, the Honeycomb key, generic credential patterns) and scanned; the send
 is refused if any of them remains.
 
@@ -66,6 +73,7 @@ if str(HERE) not in sys.path:
 import efficiency_analyze as ea  # noqa: E402  (sibling script)
 import efficiency_honeycomb as eh  # noqa: E402
 import efficiency_run as er  # noqa: E402
+import study_tasks as st  # noqa: E402
 
 CONFIG = HERE / "local_study.json"
 PLACEHOLDER = "REPLACE"
@@ -97,11 +105,32 @@ def config_problems(cfg: dict) -> list[str]:
         out.append(f"placeholder model entries: {bad}")
     if len(set(models)) != len(models):
         out.append("a model is listed twice")
-    steps = cfg["task"]["steps"]
-    for lv in cfg["task"]["levels"]:
-        if not 1 <= lv["steps"] <= len(steps):
-            out.append(f"level {lv['id']} names {lv['steps']} steps; the task has {len(steps)}")
+    try:
+        known = st.task_ids(tasks_cfg(cfg))
+    except (OSError, ValueError) as e:
+        return [*out, f"tasks file {cfg['tasks']['file']} unreadable: {e}"]
+    for stage in ("stage1", "stage2"):
+        bad = [t for t in cfg["tasks"][stage] if t not in known]
+        if bad:
+            out.append(f"{stage} names unknown tasks {bad}; tasks.json has {known}")
+    if not 1 <= cfg["tasks"]["pass_mark"] <= cfg["runs"]["per_cell"]:
+        out.append(
+            f"pass_mark {cfg['tasks']['pass_mark']} is outside 1..{cfg['runs']['per_cell']} (runs per cell)"
+        )
     return out
+
+
+def tasks_cfg(cfg: dict) -> dict:
+    return st.load(repo_path(cfg["tasks"]["file"]))
+
+
+def samples(cfg: dict) -> list[str]:
+    """The sample data sets the tasks use."""
+    return sorted({d["sample"] for d in tasks_cfg(cfg)["data"].values()})
+
+
+def phase_tasks(cfg: dict, phase: str) -> list[str]:
+    return list(cfg["tasks"]["stage2" if phase == "stage2" else "stage1"])
 
 
 def env_value(name: str) -> str | None:
@@ -619,148 +648,6 @@ def model_calls(output: list[dict]) -> int:
 # ---------------------------------------------------------------- scoring
 
 
-def level_steps(cfg: dict, level: dict) -> list[dict]:
-    return cfg["task"]["steps"][: level["steps"]]
-
-
-def build_prompt(cfg: dict, level: dict, marker: str) -> str:
-    k = cfg["kibana"]
-    ctx = {"marker": marker, "data_view": k["data_view"], "logs_index": k["logs_index"]}
-    lines = [cfg["task"]["preamble"].format(**ctx)]
-    for i, step in enumerate(level_steps(cfg, level), 1):
-        lines.append(f"{i}. {step['text'].format(**ctx)}")
-    lines.append(cfg["task"]["closing"].format(**ctx))
-    return "\n".join(lines)
-
-
-def _called_ok(parsed: dict, names: list[str]) -> bool:
-    def match(tool: str, want: str) -> bool:
-        return tool == want or tool.endswith("__" + want) or tool.endswith("/" + want)
-
-    return any(
-        t["ok"] and not t["invalid"] and any(match(t["name"], n) for n in names)
-        for t in parsed["tools"]
-    )
-
-
-def score_level(
-    kb, cfg: dict, level: dict, marker: str, before: dict, parsed: dict
-) -> tuple[dict, dict]:
-    """Every check of every step of the level. A step passes when all its
-    checks pass; ``steps_passed`` counts the leading passed steps."""
-    existing = {tuple(o) for o in before["objects"]}
-    dashboards = []
-    for so_type, so_id in kb.snapshot()["objects"]:
-        if so_type == "dashboard" and (so_type, so_id) not in existing:
-            status, full = kb.call("GET", f"/api/dashboards/{so_id}")
-            if status == 200 and marker in json.dumps(full):
-                dashboards.append(full)
-    _, rules_body = kb.call("GET", "/api/alerting/rules/_find?per_page=1000")
-    rules = [r for r in (rules_body or {}).get("data", []) if marker in r.get("name", "")]
-    artifacts = {"dashboards": dashboards, "rules": rules}
-
-    criteria = []
-
-    def add(step, check, ok, detail):
-        criteria.append(
-            {"step": step, "check": check, "ok": bool(ok), "detail": "ok" if ok else detail}
-        )
-
-    for step in level_steps(cfg, level):
-        sid, checks = step["id"], step["checks"]
-        for group in checks.get("tool_ok", []):
-            add(
-                sid,
-                "tool_ok:" + "|".join(group),
-                _called_ok(parsed, group),
-                f"no successful {'/'.join(group)} call",
-            )
-        if "answer" in checks:
-            a = checks["answer"]
-            flags = re.IGNORECASE if a.get("ignore_case") else 0
-            found = re.findall(a["pattern"], parsed["message_text"], flags)
-            got = found[-1] if found else None
-            want = a["equals"]
-            ok = got is not None and (
-                got.lower() == want.lower() if a.get("ignore_case") else got == want
-            )
-            add(sid, "answer", ok, f"answer {got!r}, expected {want!r}")
-        if "dashboard" in checks:
-            d = checks["dashboard"]
-            if not dashboards:
-                add(sid, "dashboard", False, "no dashboard")
-            else:
-                best, why = None, []
-                for dash in dashboards:
-                    panels = er._panels(dash)
-                    reasons = []
-                    if "panels_exact" in d and len(panels) != d["panels_exact"]:
-                        reasons.append(
-                            f"dashboard has {len(panels)} panels, expected {d['panels_exact']}"
-                        )
-                    if d.get("uses_logs") and not er._mentions_logs(kb, dash, before):
-                        reasons.append("dashboard not on web-logs data")
-                    for word in d.get("panel_mentions", []):
-                        if word not in json.dumps(panels):
-                            reasons.append(f"no panel mentions {word!r}")
-                    if not reasons:
-                        best = dash
-                        break
-                    why = why or reasons
-                add(sid, "dashboard", best is not None, "; ".join(why) or "ok")
-        if "panel_title" in checks:
-            title = checks["panel_title"]
-            ok = any(title in json.dumps(er._panels(dash)) for dash in dashboards)
-            add(sid, "panel_title", ok, f"no panel titled {title!r}")
-        if "rule" in checks:
-            r = checks["rule"]
-            if not rules:
-                add(sid, "rule", False, "no rule")
-            else:
-                ok_any, why = False, []
-                for rule in rules:
-                    reasons = []
-                    if "enabled" in r and bool(rule.get("enabled")) != r["enabled"]:
-                        reasons.append("rule disabled" if r["enabled"] else "rule enabled")
-                    if r.get("uses_logs") and not er._mentions_logs(kb, rule, before):
-                        reasons.append("rule not on web-logs data")
-                    if (
-                        "interval" in r
-                        and (rule.get("schedule") or {}).get("interval") != r["interval"]
-                    ):
-                        reasons.append(
-                            f"rule interval {(rule.get('schedule') or {}).get('interval')!r}"
-                        )
-                    params = json.dumps(rule.get("params") or {})
-                    for rx in r.get("params_regex", []):
-                        if not re.search(rx, params):
-                            reasons.append(f"rule params do not match {rx!r}")
-                    if not reasons:
-                        ok_any = True
-                        break
-                    why = why or reasons
-                add(sid, "rule", ok_any, "; ".join(why) or "ok")
-
-    passed_steps = 0
-    for step in level_steps(cfg, level):
-        if all(c["ok"] for c in criteria if c["step"] == step["id"]):
-            passed_steps += 1
-        else:
-            break
-    failed = [f"{c['step']}: {c['detail']}" for c in criteria if not c["ok"]]
-    outcome = {
-        "success": not failed,
-        "failure_reason": "; ".join(failed) or None,
-        "first_failed_step": next((c["step"] for c in criteria if not c["ok"]), None),
-        "steps_passed": passed_steps,
-        "criteria": criteria,
-        "n_dashboards": len(dashboards),
-        "n_rules": len(rules),
-        "rule_enabled": bool(rules and any(r.get("enabled") for r in rules)),
-    }
-    return outcome, artifacts
-
-
 # ---------------------------------------------------------------- evidence
 
 
@@ -822,8 +709,8 @@ def build_spans(record: dict, parsed: dict, redact, caps: tuple[int, int]) -> li
         "study.arm": ARM,
         "study.phase": record["phase"],
         "study.block": record["block"],
-        "study.level": record["level"],
-        "study.chain_length": record["chain_length"],
+        "study.task": record["task"],
+        "study.steps_total": record["steps_total"],
         "study.run_id": rid,
     }
     tools = parsed["tools"]
@@ -886,6 +773,7 @@ def build_spans(record: dict, parsed: dict, redact, caps: tuple[int, int]) -> li
         "study.context_length": record.get("model_loaded_context"),
         "study.runner_commit": record.get("git_sha"),
         "study.attempt": record.get("attempt"),
+        **(st.span_attributes(record) if record.get("criteria") else {}),
     }
     if not ok:
         root["error.type"] = "task_failed" if record.get("valid") else "invalid_run"
@@ -1113,7 +1001,7 @@ _INDEX_KEYS = (
     "phase",
     "block",
     "model",
-    "level",
+    "task",
     "attempt",
     "valid",
     "success",
@@ -1144,6 +1032,13 @@ class Ctx:
         # signal catalogue), then the other credentials the harness holds.
         self.known = [s for s in (self.kibana_key, self.token, hc_key) if s]
         self.git_sha = git_sha()
+        self.tasks = tasks_cfg(cfg)
+        # The checker's Elasticsearch (stack .env); None when the stack's
+        # .env is unreadable, which preflight reports.
+        try:
+            self.es = st.Elastic.from_stack()
+        except (OSError, SystemExit):
+            self.es = None
 
 
 def ensure_loaded(cfg: dict, lms: LMStudio, model: str) -> dict | None:
@@ -1178,19 +1073,23 @@ def ensure_loaded(cfg: dict, lms: LMStudio, model: str) -> dict | None:
 
 def run_once(ctx: Ctx, cell: dict, attempt: int, harness_load: dict | None = None) -> dict:
     cfg = ctx.cfg
-    level = next(lv for lv in cfg["task"]["levels"] if lv["id"] == cell["level"])
+    task_id = cell["task"]
+    task = st.task(ctx.tasks, task_id)
     model = cell["model"]
     marker = f"{cfg['kibana']['marker_prefix']}-{secrets.token_hex(4)}"
-    prompt = build_prompt(cfg, level, marker)
+    prompt = st.build_prompt(ctx.tasks, task_id, cfg["tasks"]["arm"], marker)
     if any(s in prompt for s in ctx.known):
         raise SystemExit(
             "FAIL: a secret would reach the model through the prompt; check local_study.json"
         )
     run_id = (
-        f"{datetime.now(UTC):%Y%m%dT%H%M%SZ}-{slug(model)}-{cell['level']}-{secrets.token_hex(3)}"
+        f"{datetime.now(UTC):%Y%m%dT%H%M%SZ}-{slug(model)}-{task_id}-{secrets.token_hex(3)}"
     )
     run_dir = ctx.out / cell["phase"] / cell["block"] / run_id
     run_dir.mkdir(parents=True)
+    seed_before = st.restore_seed(ctx.kb, ctx.tasks) if task["seeded"] else None
+    if seed_before is not None:
+        (run_dir / "seed.json").write_text(json.dumps(seed_before))
     before = ctx.kb.snapshot()
     (run_dir / "before.json").write_text(json.dumps(before))
     (run_dir / "cell.json").write_text(json.dumps({**cell, "attempt": attempt, "marker": marker}))
@@ -1210,8 +1109,8 @@ def run_once(ctx: Ctx, cell: dict, attempt: int, harness_load: dict | None = Non
         "phase": cell["phase"],
         "block": cell["block"],
         "model": model,
-        "level": cell["level"],
-        "chain_length": level["steps"],
+        "task": task_id,
+        "steps_total": len(task["steps"]),
         "arm": ARM,
         "attempt": attempt,
         "marker": marker,
@@ -1302,7 +1201,11 @@ def run_once(ctx: Ctx, cell: dict, attempt: int, harness_load: dict | None = Non
     )
     record["known_secret_exposures"] = known_hits
     try:
-        outcome, artifacts = score_level(ctx.kb, cfg, level, marker, before, parsed)
+        state = st.collect_state(
+            ctx.kb, ctx.es, ctx.tasks, task_id, marker, before, seed_before
+        )
+        outcome = st.score(ctx.tasks, task_id, marker, state, parsed["message_text"])
+        artifacts = {k: state[k] for k in ("dashboards", "rules", "seeded", "filters")}
         if not valid:
             outcome["success"] = False
             outcome["failure_reason"] = f"invalid run: {record['invalid_reason']}"
@@ -1345,11 +1248,15 @@ def run_once(ctx: Ctx, cell: dict, attempt: int, harness_load: dict | None = Non
 # ---------------------------------------------------------------- the matrix
 
 
-def plan(cfg: dict, phase: str) -> list[dict]:
+def plan(cfg: dict, phase: str, models: list[str] | None = None) -> list[dict]:
     """Deterministic cell order. Block b rotates the model order by b and the
-    level order by b, so every model and level takes every position."""
-    models = list(cfg["models"])
-    levels = [lv["id"] for lv in cfg["task"]["levels"]]
+    task order by b, so every model and task takes every position. The pilot
+    and stage 1 run the stage-1 tasks; stage 2 runs the stage-2 tasks for the
+    `models` given (those that passed stage 1)."""
+    models = list(cfg["models"] if models is None else models)
+    tasks = phase_tasks(cfg, phase)
+    if not models or not tasks:
+        return []
     if phase == "pilot":
         reps, names = cfg["runs"]["pilot_per_cell"], ["pilot"]
     else:
@@ -1363,13 +1270,13 @@ def plan(cfg: dict, phase: str) -> list[dict]:
             if cfg["runs"]["order"] == "rotate"
             else models
         )
-        ls = (
-            levels[b % len(levels) :] + levels[: b % len(levels)]
+        ts = (
+            tasks[b % len(tasks) :] + tasks[: b % len(tasks)]
             if cfg["runs"]["order"] == "rotate"
-            else levels
+            else tasks
         )
         for m in ms:
-            for lv in ls:
+            for t in ts:
                 for r in range(reps):
                     rep = f"-r{r + 1}" if reps > 1 else ""
                     cells.append(
@@ -1377,8 +1284,8 @@ def plan(cfg: dict, phase: str) -> list[dict]:
                             "phase": phase,
                             "block": block,
                             "model": m,
-                            "level": lv,
-                            "key": f"{phase}/{block}/{slug(m)}/{lv}{rep}",
+                            "task": t,
+                            "key": f"{phase}/{block}/{slug(m)}/{t}{rep}",
                         }
                     )
     return cells
@@ -1458,6 +1365,36 @@ def cell_done(cell: dict, recs: list[dict], cfg: dict) -> bool:
     return any(r.get("valid") for r in mine) or len(mine) >= cfg["runs"]["max_attempts"]
 
 
+def cell_success(cell: dict, recs: list[dict]) -> bool:
+    """A done cell succeeds when its valid run succeeded; a cell that used
+    up its attempts without a valid run counts as a failure."""
+    return any(r.get("valid") and r.get("success") for r in recs if r.get("cell") == cell["key"])
+
+
+def stage1_verdict(cfg: dict, recs: list[dict]) -> dict:
+    """Per model: stage-1 successes, cells done, cells planned, and whether
+    the model passed (successes on every stage-1 task reach the pass mark;
+    decided only when all its cells are done)."""
+    mark = cfg["tasks"]["pass_mark"]
+    out = {}
+    for m in cfg["models"]:
+        cells = [c for c in plan(cfg, "stage1") if c["model"] == m]
+        done = [c for c in cells if cell_done(c, recs, cfg)]
+        per_task = {
+            t: sum(1 for c in done if c["task"] == t and cell_success(c, recs))
+            for t in phase_tasks(cfg, "stage1")
+        }
+        complete = len(done) == len(cells)
+        out[m] = {
+            "successes": per_task,
+            "done": len(done),
+            "cells": len(cells),
+            "complete": complete,
+            "passed": complete and all(n >= mark for n in per_task.values()),
+        }
+    return out
+
+
 def run_matrix(cfg: dict, phase: str, limit: int | None = None) -> int:
     problems = config_problems(cfg)
     if problems:
@@ -1470,10 +1407,23 @@ def run_matrix(cfg: dict, phase: str, limit: int | None = None) -> int:
     ctx = Ctx(cfg)
     if not sample_installed(ctx.kb, cfg):
         raise SystemExit(
-            "FAIL: the web-logs sample data is not installed; run "
-            "`uv run python scripts/experiment/local_run.py install-sample`"
+            f"FAIL: the sample data the tasks use ({', '.join(samples(cfg))}) is not installed; "
+            "run `uv run python scripts/experiment/local_run.py install-sample`"
         )
-    cells = plan(cfg, phase)
+    models = None
+    if phase == "stage2":
+        verdict = stage1_verdict(cfg, load_records(ctx.out, "stage1"))
+        open_ = [m for m, v in verdict.items() if not v["complete"]]
+        if open_:
+            raise SystemExit(
+                f"FAIL: stage 1 is not complete for {open_}; finish it first: "
+                "`uv run python scripts/experiment/local_run.py stage1`"
+            )
+        models = [m for m, v in verdict.items() if v["passed"]]
+        print(f"stage 2 models (passed stage 1): {models or 'none'}", flush=True)
+        if not models:
+            return 0
+    cells = plan(cfg, phase, models)
     with run_lock(ctx.out):
         for d in recover_interrupted(ctx, phase):
             print(f"recovered interrupted run: {d}", flush=True)
@@ -1496,7 +1446,7 @@ def run_matrix(cfg: dict, phase: str, limit: int | None = None) -> int:
                 )
                 print(
                     f"[{i + 1}/{len(cells)}] {cell['key']} {verdict} "
-                    f"steps={r.get('steps_passed')}/{r['chain_length']} tools={r.get('n_tool_calls')} "
+                    f"steps={r.get('steps_passed')}/{r['steps_total']} tools={r.get('n_tool_calls')} "
                     f"invalid={r.get('n_invalid_tool_calls')} out_tok={r.get('output_tokens')} "
                     f"{r['wall_ms'] / 1000:.1f}s otel={str(r.get('otel'))[:40]}"
                     + (f" ({r.get('failure_reason')})" if verdict != "PASS" else ""),
@@ -1521,18 +1471,18 @@ def _median(xs):
 
 
 def estimate(cfg: dict, pilot: list[dict]) -> dict:
-    """Hours for the full matrix from the pilot's wall times: the median run
-    of each model x level, times runs per cell. A cell without a valid pilot
+    """Hours for stage 1 from the pilot's wall times: the median run of each
+    model x stage-1 task, times runs per cell. A cell without a valid pilot
     run takes the longest pilot run."""
     valid = [r for r in pilot if r.get("valid") and r.get("wall_ms")]
     longest = max((r["wall_ms"] for r in valid), default=None)
     per_round = 0.0
     missing = []
     for m in cfg["models"]:
-        for lv in cfg["task"]["levels"]:
-            w = _median([r["wall_ms"] for r in valid if r["model"] == m and r["level"] == lv["id"]])
+        for t in phase_tasks(cfg, "stage1"):
+            w = _median([r["wall_ms"] for r in valid if r["model"] == m and r["task"] == t])
             if w is None:
-                missing.append(f"{m} {lv['id']}")
+                missing.append(f"{m} {t}")
                 w = longest or 0
             per_round += w / 1000
     n = cfg["runs"]["per_cell"]
@@ -1549,11 +1499,27 @@ def estimate(cfg: dict, pilot: list[dict]) -> dict:
 
 def cmd_status(cfg: dict) -> int:
     out = repo_path(cfg["runs"]["out_dir"])
-    for phase in ("pilot", "full"):
-        cells = plan(cfg, phase) if not config_problems(cfg) else []
+    ok_cfg = not config_problems(cfg)
+    verdict = stage1_verdict(cfg, load_records(out, "stage1")) if ok_cfg else {}
+    for phase in ("pilot", "stage1", "stage2"):
+        if not ok_cfg:
+            cells = []
+        elif phase == "stage2":
+            cells = plan(cfg, phase, [m for m, v in verdict.items() if v["passed"]])
+        else:
+            cells = plan(cfg, phase)
         recs = load_records(out, phase)
         done = sum(1 for c in cells if cell_done(c, recs, cfg))
         print(f"== {phase}: {done}/{len(cells)} cells done, {len(recs)} runs recorded")
+        if phase == "stage1":
+            mark = cfg["tasks"]["pass_mark"]
+            for m, v in verdict.items():
+                state = (
+                    ("PASSED" if v["passed"] else "did not pass")
+                    if v["complete"]
+                    else f"open ({v['done']}/{v['cells']} cells)"
+                )
+                print(f"   stage 1 {m}: successes {v['successes']}, pass mark {mark}: {state}")
         prog = out / f"progress-{phase}.json"
         if prog.exists():
             p = json.loads(prog.read_text())
@@ -1563,17 +1529,17 @@ def cmd_status(cfg: dict) -> int:
         if not recs:
             continue
         print(
-            f"   {'model':40} {'level':5} {'valid':>5} {'pass':>4} {'med s':>7} {'med out tok':>11} {'med tools':>9}"
+            f"   {'model':40} {'task':8} {'valid':>5} {'pass':>4} {'med s':>7} {'med out tok':>11} {'med tools':>9}"
         )
         for m in cfg["models"]:
-            for lv in cfg["task"]["levels"]:
-                rs = [r for r in recs if r["model"] == m and r["level"] == lv["id"]]
+            for t in phase_tasks(cfg, phase):
+                rs = [r for r in recs if r["model"] == m and r["task"] == t]
                 if not rs:
                     continue
                 v = [r for r in rs if r.get("valid")]
                 ms = _median([r["wall_ms"] / 1000 for r in v if r.get("wall_ms")])
                 print(
-                    f"   {m[:40]:40} {lv['id']:5} {len(v):>5} {sum(1 for r in v if r.get('success')):>4} "
+                    f"   {m[:40]:40} {t:8} {len(v):>5} {sum(1 for r in v if r.get('success')):>4} "
                     f"{(f'{ms:.0f}' if ms is not None else '-'):>7} "
                     f"{str(_median([r.get('output_tokens') for r in v])):>11} "
                     f"{str(_median([r.get('n_tool_calls') for r in v])):>9}"
@@ -1592,7 +1558,7 @@ def cmd_status(cfg: dict) -> int:
     if pilot and not config_problems(cfg):
         est = estimate(cfg, pilot)
         print(
-            f"== estimate from the pilot: {est['hours_per_round']} h per round of all cells; "
+            f"== stage-1 estimate from the pilot: {est['hours_per_round']} h per round of all cells; "
             f"{est['runs_per_cell']} runs per cell = {est['hours_total']} h; "
             f"budget {est['budget_hours']} h fits {est['max_runs_per_cell_in_budget']} runs per cell"
         )
@@ -1607,12 +1573,12 @@ def cmd_status(cfg: dict) -> int:
 
 
 def sample_installed(kb, cfg: dict) -> bool:
+    """Every sample data set the tasks use is installed."""
     status, body = kb.call("GET", "/api/sample_data", internal=True)
     if status != 200 or not isinstance(body, list):
         return False
-    return any(
-        d.get("id") == cfg["kibana"]["sample_data"] and d.get("status") == "installed" for d in body
-    )
+    have = {d.get("id") for d in body if d.get("status") == "installed"}
+    return set(samples(cfg)) <= have
 
 
 def list_server_tools(entry: dict, timeout: float = 120) -> list[str]:
@@ -1686,7 +1652,8 @@ def cmd_preflight(cfg: dict, load: bool, list_tools=list_server_tools) -> int:
     else:
         rep.ok(
             "config",
-            f"{len(cfg['models'])} models x {len(cfg['task']['levels'])} levels, {cfg['runs']['per_cell']} runs per cell",
+            f"{len(cfg['models'])} models; stage 1 {cfg['tasks']['stage1']}, stage 2 {cfg['tasks']['stage2']}; "
+            f"{cfg['runs']['per_cell']} runs per cell, pass mark {cfg['tasks']['pass_mark']}",
         )
 
     # Kibana
@@ -1735,12 +1702,12 @@ def cmd_preflight(cfg: dict, load: bool, list_tools=list_server_tools) -> int:
         if sample_installed(kb, cfg):
             rep.ok(
                 "sample_data",
-                f"'{cfg['kibana']['sample_data']}' sample data installed (GET /api/sample_data)",
+                f"sample data {samples(cfg)} installed (GET /api/sample_data)",
             )
         else:
             rep.fail(
                 "sample_data",
-                f"'{cfg['kibana']['sample_data']}' sample data not installed",
+                f"sample data {samples(cfg)} not all installed",
                 "uv run python scripts/experiment/local_run.py install-sample",
             )
         prefix = cfg["kibana"]["marker_prefix"] + "-"
@@ -1762,6 +1729,21 @@ def cmd_preflight(cfg: dict, load: bool, list_tools=list_server_tools) -> int:
             )
         else:
             rep.ok("kibana_clean", f"no rules named {prefix}*")
+
+    # The checker's Elasticsearch: rule filters are evaluated there.
+    try:
+        es = st.Elastic.from_stack()
+        status, _ = es.call("GET", "/")
+    except (OSError, SystemExit) as e:
+        status = repr(e)
+    if status == 200:
+        rep.ok("checker_es", "the stack's Elasticsearch answers as the elastic user")
+    else:
+        rep.fail(
+            "checker_es",
+            f"the checker cannot reach the stack's Elasticsearch ({status})",
+            f"ES_LOCAL_VERSION={cfg['kibana']['version']} scripts/stack.sh up && scripts/stack.sh seed",
+        )
 
     # LM Studio
     lm = cfg["lmstudio"]
@@ -2021,15 +2003,14 @@ def cmd_install_sample(cfg: dict) -> int:
     url, key = load_seed(cfg)
     kb = er.Kibana(url, key)
     if sample_installed(kb, cfg):
-        print(f"'{cfg['kibana']['sample_data']}' sample data already installed")
+        print(f"sample data {samples(cfg)} already installed")
         return 0
-    status, body = kb.call(
-        "POST", f"/api/sample_data/{cfg['kibana']['sample_data']}", {}, internal=True
-    )
-    if status not in (200, 201):
-        print(f"FAIL: install answered {status}: {str(body)[:300]}", file=sys.stderr)
+    try:
+        st.ensure_samples(kb, tasks_cfg(cfg))
+    except SystemExit as e:
+        print(e, file=sys.stderr)
         return 1
-    print(f"installed '{cfg['kibana']['sample_data']}' sample data")
+    print(f"installed sample data {samples(cfg)}")
     return 0
 
 
@@ -2043,11 +2024,13 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument(
         "--load", action="store_true", help="also load each model once through the integration"
     )
-    sub.add_parser("install-sample", help="install the web-logs sample data once if it is missing")
-    for name in ("pilot", "run"):
-        q = sub.add_parser(
-            name, help="pilot: 1 run per model x level; run: the full matrix (resumable)"
-        )
+    sub.add_parser("install-sample", help="install the sample data the tasks use, if missing")
+    for name, text in (
+        ("pilot", "pilot_per_cell runs per model x stage-1 task"),
+        ("stage1", "stage 1: every model x stage-1 task (resumable)"),
+        ("stage2", "stage 2: the stage-2 tasks for the models that passed stage 1 (resumable)"),
+    ):
+        q = sub.add_parser(name, help=text)
         q.add_argument(
             "--limit", type=int, default=None, help="stop after this many runs (testing)"
         )
@@ -2061,10 +2044,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_preflight(cfg, args.load)
     if args.cmd == "install-sample":
         return cmd_install_sample(cfg)
-    if args.cmd == "pilot":
-        return run_matrix(cfg, "pilot", args.limit)
-    if args.cmd == "run":
-        return run_matrix(cfg, "full", args.limit)
+    if args.cmd in ("pilot", "stage1", "stage2"):
+        return run_matrix(cfg, args.cmd, args.limit)
     if args.cmd == "send-pending":
         return cmd_send_pending(cfg)
     return cmd_status(cfg)

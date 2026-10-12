@@ -21,6 +21,15 @@ version section.
   index; `study_tasks.py replay` scores stored runs' rules against the live
   stack. Every check's expected and actual value is exported as root-span
   attributes for Honeycomb. STUDY_DESIGN.md decision 12.
+- **Study 5 runs the shared tasks in two stages** (`local_run.py`
+  `stage1`/`stage2`, `local_study.json`): stage 1 runs the web-logs task 20
+  times per model; stage 2 runs the other three tasks only for the models
+  with at least 14 successes, and refuses to start before stage 1 is
+  complete. Prompts, the seed and the checks come from `study_tasks.py`, and
+  every check is on the run's root span. Models: nemotron-3-nano-4b,
+  gemma-4-12b-qat, qwen3.8-27b; records under `runs/study5/`. The earlier
+  chain-length config is kept as `local_study_levels.json` for
+  `local_report.py`. STUDY_DESIGN.md decision 13.
 
 ## [0.3.0] - 2026-10-12
 
