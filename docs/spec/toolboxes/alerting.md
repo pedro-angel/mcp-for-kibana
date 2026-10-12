@@ -111,6 +111,12 @@ docs/tools.md#alerting-toolbox.
   error or a false `"ok"`.
 - MUST NOT require a `confirm` parameter on any tool in this toolbox.
 - MUST run schema/argument guards before the gateway is constructed.
+- MUST answer an empty `rule_id` on `get`/`enable`/`disable`/`delete_alert_rule`
+  with "rule_id is empty — pass the id that create_alert_rule or
+  list_alert_rules returns", and a `rule_id` that matches no rule with
+  "alert rule '<id>' not found — rule_id is the id … not the rule's name; call
+  list_alert_rules to find it" (D17; the space suffix still applies). Probed
+  on Kibana 9.5.5: models pass a rule's name or an empty string as its id.
 
 ## Deliberate exclusions & caveats
 
@@ -176,3 +182,6 @@ docs/tools.md#alerting-toolbox.
   reference and shared space semantics this file does not restate; a
   drift-guard test (`tests/unit/test_docs_tool_reference.py`) keeps every
   registered tool name on that page.
+- `tests/unit/adapters/test_id_guidance.py` — the empty-id and unknown-id
+  guidance for dashboards and alert rules, and that a missing space still
+  reports the space.

@@ -16,6 +16,16 @@ version section.
   (aiohttp, through kibana-py's async extra); `pip-audit` failed the
   `audit_clean` gate on main.
 
+### Fixed
+
+- **A wrong dashboard or alert-rule id names the fix.** An empty `dashboard_id`
+  reached the caller as a bare "Error calling tool" (kibana-py's unmapped
+  ValueError), and an id that matched nothing returned Kibana's "Saved object
+  [alert/<name>] not found". Both now say where a valid id comes from
+  (create/search or create/list tools) and that a title or name is not an id.
+  Seen in the local-model study: small models passed dashboard titles, rule
+  names and empty strings as ids.
+
 ### Added
 
 - **Cloud sessions start ready to work.** A SessionStart hook in
