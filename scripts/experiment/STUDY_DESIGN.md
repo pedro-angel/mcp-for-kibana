@@ -184,6 +184,25 @@ Considered:
 - Tested before any pilot (`study_tasks.py replay`, live stack, Kibana 9.5.5): of the 469 rules stored from the earlier runs, 465 pass the filter and time-field checks. The four rejected: a term filter on 503 only; a terms list of 500 to 509, which misses 510 to 599; a regexp with `^…$` anchors on the analysed `response` text field, which matches nothing; a `match` query on `_source.response.keyword` with an operator Elasticsearch does not have. Every correct form passes, including filters with their own `now-5m` range and ES|QL rules that carry the threshold in the query.
 - On the live stack, correct runs of all four tasks pass, and each of these fails at its step: a 503-only filter, `utc_time` as the time field, a disabled rule, a wrong TIME_FIELD answer, a panel not retitled, a change run that left the rule disabled, a wrong ENABLED answer, and a lookup run that enabled the rule.
 
+### 13. Running study 4: the runner, the plan and the stall alert
+
+_2026-10-12_
+
+**Question.** How does the efficiency runner run the four tasks, in what order, and how do we notice a run that hangs?
+
+**Decision.** `efficiency_run.py --task <id>` (off by default; the first study's single task runs unchanged without it) takes the prompt, the seed and the checks from `study_tasks.py`; the runner defines none of them. `--blocks FIRST LAST` runs every (task, model, arm) cell once per block: 4 tasks × 3 models × 2 arms = 24 runs a block, 12 blocks for the study, 1 block for the pilot.
+
+- Arms: `with-mcp` gets the tasks.json `server` preamble, `no-mcp` the `api` one. Both keep the same built-in tools, working directory with the pinned API reference, and environment; only the preamble and the server differ (decision 12).
+- Every task run starts from the seed: the seeded dashboard and rule are recreated at their fixed ids before the run, and what the run created is deleted after it.
+- Order: tasks and models each rotate by one place per block and the arm order flips every other block, so over 12 blocks each task leads 3 times, each model 4 times, each arm 6 times. `--skip-done` resumes an interrupted plan.
+- Evidence per run: transcript (written as it streams), record, `outcome.json` with every check's expected and actual value, `artifacts.json`, and with `--live-telemetry` the scrubbed telemetry copy. The first result event is read (the fault found after the first study). `study_tasks.span_attributes(outcome)` goes on the root span, with `study.steps_passed`, `study.first_failed_step` and `study.tasks_sha` (the hash of tasks.json the run used); every component's resource carries `study.task`.
+- Stall alert: when neither a transcript line nor a finished run has appeared for 40 minutes (`--stall-minutes`), the plan writes a STALL line to stderr and an entry to `<out>/stalls.jsonl`, and a RESUMED entry when progress returns. It never stops the plan. A single run is cut at 20 minutes, so 40 minutes without progress means the harness, not the model, is stuck.
+- The agent-signals hook judged outside-work-directory paths against the first hook payload's `cwd`, which a leading `cd sub` moves; the runner now writes the work directory into the hook's config.
+
+Considered:
+
+- Smoke runs, Haiku, local telemetry only (`runs/efficiency/study4/`): on the draft tasks, the web-logs task passed and the change task with the server stopped at the rename step, the model naming the missing tools (`smoke/`); that led to the removal recorded in decision 12. On the revised tasks, change with and without the server and lookup with the server passed (`smoke2/`).
+
 ## Background research
 
 Looked up before or during the design.
