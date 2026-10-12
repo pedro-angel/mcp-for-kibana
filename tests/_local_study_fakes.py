@@ -245,6 +245,8 @@ class FakeLMStudio:
         self.entry = entry
         self.hang_s = hang_s
         self.requests: list[dict] = []
+        self.loaded = set(self.MODELS)  # every model resident unless a test clears it
+        self.load_log: list[tuple[str, str, int | None]] = []
         fl = self
 
         class H(_Base):
@@ -273,7 +275,9 @@ class FakeLMStudio:
                 "key": k,
                 "display_name": k,
                 "max_context_length": 131072,
-                "loaded_instances": [{"id": k, "config": {"context_length": 131072}}],
+                "loaded_instances": [{"id": k, "config": {"context_length": 131072}}]
+                if k in self.loaded
+                else [],
                 "capabilities": {"trained_for_tool_use": True},
             }
             for k in self.MODELS
@@ -281,12 +285,32 @@ class FakeLMStudio:
         return h._send(200, {"models": models})
 
     def handle_post(self, h):
-        if urlsplit(h.path).path != "/api/v1/chat":
+        path = urlsplit(h.path).path
+        if path not in ("/api/v1/chat", "/api/v1/models/load", "/api/v1/models/unload"):
             return h._send(404, {"error": "not found"})
         if not self._authed(h):
             return h._send(401, {"error": {"message": "Invalid or missing API token"}})
         req = h._body()
+        if path == "/api/v1/models/load":
+            self.loaded.add(req["model"])
+            self.load_log.append(("load", req["model"], req.get("context_length")))
+            return h._send(200, {"type": "llm", "instance_id": req["model"], "status": "loaded"})
+        if path == "/api/v1/models/unload":
+            self.loaded.discard(req["instance_id"])
+            self.load_log.append(("unload", req["instance_id"], None))
+            return h._send(200, {"instance_id": req["instance_id"]})
         self.requests.append(req)
+        if req["model"] not in self.loaded:
+            return h._send(
+                404,
+                {
+                    "error": {
+                        "message": f'Invalid model identifier "{req["model"]}". No matching loaded '
+                        "model found, and just-in-time (JIT) model loading is disabled.",
+                        "type": "invalid_request",
+                    }
+                },
+            )
         if req.get("integrations") != [f"mcp/{self.entry}"]:
             return h._send(
                 403,

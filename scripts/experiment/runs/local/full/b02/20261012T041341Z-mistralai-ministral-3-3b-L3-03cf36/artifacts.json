@@ -1,0 +1,214 @@
+{
+ "dashboards": [
+  {
+   "id": "loc-02113f95-web-logs-24ab458302cc",
+   "data": {
+    "description": "",
+    "options": {
+     "auto_apply_filters": true,
+     "hide_panel_borders": false,
+     "hide_panel_titles": false,
+     "sync_colors": false,
+     "sync_cursor": true,
+     "sync_tooltips": false,
+     "use_margins": true
+    },
+    "tags": [],
+    "time_range": {
+     "from": "now-7d",
+     "to": "now"
+    },
+    "title": "LOC-02113f95 Web logs",
+    "filters": [],
+    "panels": [
+     {
+      "grid": {
+       "x": 0,
+       "y": 0,
+       "w": 48,
+       "h": 12
+      },
+      "config": {
+       "title": "Number of requests over time (ESQL)",
+       "type": "xy",
+       "layers": [
+        {
+         "type": "bar",
+         "data_source": {
+          "type": "data_view_spec",
+          "index_pattern": "kibana_sample_data_logs",
+          "time_field": "timestamp",
+          "name": "kibana_sample_data_logs"
+         },
+         "sampling": 1,
+         "ignore_global_filters": false,
+         "x": {
+          "operation": "date_histogram",
+          "field": "@timestamp",
+          "suggested_interval": "auto",
+          "use_original_time_range": false,
+          "include_empty_rows": true,
+          "drop_partial_intervals": false
+         },
+         "y": [
+          {
+           "operation": "count",
+           "empty_as_null": false,
+           "label": "Count",
+           "color": {
+            "type": "auto"
+           }
+          }
+         ]
+        }
+       ],
+       "axis": {
+        "x": {
+         "title": {
+          "visible": true
+         },
+         "ticks": {
+          "visible": true
+         },
+         "grid": {
+          "visible": true
+         },
+         "domain": {
+          "type": "fit",
+          "rounding": false
+         },
+         "labels": {
+          "orientation": "horizontal"
+         }
+        },
+        "y": {
+         "title": {
+          "visible": true
+         },
+         "scale": "linear",
+         "ticks": {
+          "visible": true
+         },
+         "grid": {
+          "visible": true
+         },
+         "domain": {
+          "type": "full",
+          "rounding": true
+         },
+         "labels": {
+          "orientation": "horizontal"
+         }
+        }
+       },
+       "styling": {
+        "overlays": {
+         "partial_buckets": {
+          "visible": false
+         },
+         "current_time_marker": {
+          "visible": false
+         }
+        },
+        "bars": {
+         "minimum_height": 1,
+         "data_labels": {
+          "visible": false
+         }
+        }
+       },
+       "legend": {
+        "placement": "outside",
+        "position": "right",
+        "layout": {
+         "type": "grid",
+         "truncate": {
+          "max_lines": 1
+         }
+        },
+        "visibility": "hidden"
+       }
+      },
+      "id": "07207487-6931-4deb-8fba-5d5e7b6f5927",
+      "type": "vis"
+     },
+     {
+      "grid": {
+       "x": 0,
+       "y": 12,
+       "w": 24,
+       "h": 10
+      },
+      "config": {
+       "title": "Number of requests over time (ESQL)",
+       "data_source": {
+        "type": "esql",
+        "query": "FROM _source | match request to \"^HTTP/\" | stats count by @timestamp as bucket, count(*) as total_requests"
+       },
+       "type": "metric",
+       "sampling": 1,
+       "ignore_global_filters": false,
+       "metrics": [
+        {
+         "type": "primary",
+         "column": "total_requests",
+         "color": {
+          "type": "auto"
+         }
+        }
+       ],
+       "styling": {
+        "density": "default",
+        "primary": {
+         "position": "bottom",
+         "labels": {
+          "alignment": "left"
+         },
+         "value": {
+          "sizing": "auto",
+          "alignment": "right"
+         }
+        }
+       }
+      },
+      "id": "f0033cfe-de6b-448f-b5dc-34b5c8d3f068",
+      "type": "vis"
+     },
+     {
+      "grid": {
+       "x": 0,
+       "y": 22,
+       "w": 24,
+       "h": 10
+      },
+      "config": {
+       "title": "Number of requests by HTTP response code (ESQL)",
+       "type": "data_table",
+       "data_source": {
+        "type": "esql",
+        "query": "FROM _source | match request to \"^HTTP/\" | stats count by response.keyword as response_code"
+       },
+       "sampling": 1,
+       "ignore_global_filters": false,
+       "rows": [
+        {
+         "column": "response_code"
+        }
+       ]
+      },
+      "id": "3c3a702e-9692-4a77-b290-945c43756ba4",
+      "type": "vis"
+     }
+    ],
+    "pinned_panels": []
+   },
+   "meta": {
+    "created_at": "2026-10-12T04:13:44.356Z",
+    "managed": false,
+    "updated_at": "2026-10-12T04:14:48.224Z",
+    "version": "WzEwNTgsOF0="
+   }
+  }
+ ],
+ "rules": []
+}

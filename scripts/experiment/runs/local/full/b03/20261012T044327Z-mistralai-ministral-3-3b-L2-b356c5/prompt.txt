@@ -1,0 +1,4 @@
+Using the kibana tools, work on Kibana's web-logs sample data (data view 'Kibana Sample Data Logs', index kibana_sample_data_logs). Do these steps in order:
+1. Describe the data view 'Kibana Sample Data Logs': look up its fields and name its time field. End your reply with a line of the form TIME_FIELD: <field name>.
+2. Build a dashboard titled 'LOC-34a1520b Web logs' on that data view with exactly two panels: the number of requests over time, and the number of requests by HTTP response code.
+Use only the kibana tools. When every step is done, reply with a short summary.

@@ -1,0 +1,62 @@
+== runner start 1 2026-10-11T22:56:05Z
+loaded mistralai/ministral-3-3b: {'status': 200, 'context_length': 262144, 'load_s': 4.4, 'unloaded': ['nvidia/nemotron-3-nano-omni'], 'error': None}
+[1/192] full/b01/mistralai-ministral-3-3b/L1 PASS steps=1/1 tools=1 invalid=0 out_tok=54 7.1s otel=skipped: HONEYCOMB_API_KEY is not set
+[2/192] full/b01/mistralai-ministral-3-3b/L2 PASS steps=2/2 tools=5 invalid=0 out_tok=550 8.8s otel=skipped: HONEYCOMB_API_KEY is not set
+== runner exit 143 2026-10-12T03:14:39Z
+== runner start 2 2026-10-12T03:15:39Z
+recovered interrupted run: /Users/fewa/projs/mcp-for-kibana/scripts/experiment/runs/local/full/b01/20261011T225629Z-mistralai-ministral-3-3b-L3-9b2bd7
+[3/192] full/b01/mistralai-ministral-3-3b/L3 FAIL steps=1/3 tools=99 invalid=0 out_tok=13335 268.5s otel=skipped: HONEYCOMB_API_KEY is not set (dashboard: no dashboard; rule: no rule)
+[4/192] full/b01/mistralai-ministral-3-3b/L4 FAIL steps=0/4 tools=53 invalid=0 out_tok=5447 104.3s otel=skipped: HONEYCOMB_API_KEY is not set (describe: answer '@timestamp', expected 'timestamp'; dashboard: no dashboard; rule: no rule; edit: no successful update_panel call; edit: no successful get_alert_rule/list_alert_rules call; edit: answer 'Unable', expected 'yes'; edit: no panel titled 'Responses by code'; edit: no rule)
+loaded google/gemma-4-12b-qat: {'status': 200, 'context_length': 262144, 'load_s': 2.6, 'unloaded': ['mistralai/ministral-3-3b'], 'error': None}
+[5/192] full/b01/google-gemma-4-12b-qat/L1 PASS steps=1/1 tools=1 invalid=0 out_tok=999 42.3s otel=skipped: HONEYCOMB_API_KEY is not set
+[6/192] full/b01/google-gemma-4-12b-qat/L2 PASS steps=2/2 tools=2 invalid=0 out_tok=1777 63.2s otel=skipped: HONEYCOMB_API_KEY is not set
+[7/192] full/b01/google-gemma-4-12b-qat/L3 PASS steps=3/3 tools=5 invalid=0 out_tok=3406 128.6s otel=skipped: HONEYCOMB_API_KEY is not set
+[8/192] full/b01/google-gemma-4-12b-qat/L4 PASS steps=4/4 tools=8 invalid=0 out_tok=3380 142.4s otel=skipped: HONEYCOMB_API_KEY is not set
+loaded qwen/qwen3.8-27b: {'status': 200, 'context_length': 262144, 'load_s': 7.7, 'unloaded': ['google/gemma-4-12b-qat'], 'error': None}
+[9/192] full/b01/qwen-qwen3-8-27b/L1 PASS steps=1/1 tools=1 invalid=0 out_tok=444 46.1s otel=skipped: HONEYCOMB_API_KEY is not set
+[10/192] full/b01/qwen-qwen3-8-27b/L2 PASS steps=2/2 tools=2 invalid=0 out_tok=704 32.1s otel=skipped: HONEYCOMB_API_KEY is not set
+[11/192] full/b01/qwen-qwen3-8-27b/L3 PASS steps=3/3 tools=5 invalid=0 out_tok=5052 233.1s otel=skipped: HONEYCOMB_API_KEY is not set
+[12/192] full/b01/qwen-qwen3-8-27b/L4 PASS steps=4/4 tools=6 invalid=0 out_tok=1627 72.0s otel=skipped: HONEYCOMB_API_KEY is not set
+loaded nvidia/nemotron-3-nano-omni: {'status': 200, 'context_length': 262144, 'load_s': 6.4, 'unloaded': ['qwen/qwen3.8-27b'], 'error': None}
+[13/192] full/b01/nvidia-nemotron-3-nano-omni/L1 PASS steps=1/1 tools=1 invalid=0 out_tok=268 10.4s otel=skipped: HONEYCOMB_API_KEY is not set
+[14/192] full/b01/nvidia-nemotron-3-nano-omni/L2 PASS steps=2/2 tools=3 invalid=0 out_tok=3062 53.9s otel=skipped: HONEYCOMB_API_KEY is not set
+[15/192] full/b01/nvidia-nemotron-3-nano-omni/L3 FAIL steps=0/3 tools=5 invalid=0 out_tok=9366 178.4s otel=skipped: HONEYCOMB_API_KEY is not set (describe: answer None, expected 'timestamp'; rule: no rule)
+[16/192] full/b01/nvidia-nemotron-3-nano-omni/L4 FAIL steps=2/4 tools=8 invalid=0 out_tok=4682 90.4s otel=skipped: HONEYCOMB_API_KEY is not set (rule: rule params do not match '5\\d\\d|5xx|5\\*|5\\[0-9\\]')
+loaded google/gemma-4-12b-qat: {'status': 200, 'context_length': 262144, 'load_s': 2.3, 'unloaded': ['nvidia/nemotron-3-nano-omni'], 'error': None}
+[17/192] full/b02/google-gemma-4-12b-qat/L2 PASS steps=2/2 tools=3 invalid=0 out_tok=2808 108.1s otel=skipped: HONEYCOMB_API_KEY is not set
+[18/192] full/b02/google-gemma-4-12b-qat/L3 PASS steps=3/3 tools=6 invalid=0 out_tok=4493 162.2s otel=skipped: HONEYCOMB_API_KEY is not set
+[19/192] full/b02/google-gemma-4-12b-qat/L4 PASS steps=4/4 tools=9 invalid=0 out_tok=5562 202.9s otel=skipped: HONEYCOMB_API_KEY is not set
+[20/192] full/b02/google-gemma-4-12b-qat/L1 PASS steps=1/1 tools=1 invalid=0 out_tok=323 12.1s otel=skipped: HONEYCOMB_API_KEY is not set
+loaded qwen/qwen3.8-27b: {'status': 200, 'context_length': 262144, 'load_s': 6.4, 'unloaded': ['google/gemma-4-12b-qat'], 'error': None}
+[21/192] full/b02/qwen-qwen3-8-27b/L2 PASS steps=2/2 tools=3 invalid=0 out_tok=749 57.4s otel=skipped: HONEYCOMB_API_KEY is not set
+[22/192] full/b02/qwen-qwen3-8-27b/L3 PASS steps=3/3 tools=4 invalid=0 out_tok=1609 70.2s otel=skipped: HONEYCOMB_API_KEY is not set
+[23/192] full/b02/qwen-qwen3-8-27b/L4 PASS steps=4/4 tools=8 invalid=0 out_tok=2243 98.9s otel=skipped: HONEYCOMB_API_KEY is not set
+[24/192] full/b02/qwen-qwen3-8-27b/L1 PASS steps=1/1 tools=1 invalid=0 out_tok=416 19.3s otel=skipped: HONEYCOMB_API_KEY is not set
+loaded nvidia/nemotron-3-nano-omni: {'status': 200, 'context_length': 262144, 'load_s': 6.4, 'unloaded': ['qwen/qwen3.8-27b'], 'error': None}
+[25/192] full/b02/nvidia-nemotron-3-nano-omni/L2 PASS steps=2/2 tools=2 invalid=0 out_tok=3976 78.0s otel=skipped: HONEYCOMB_API_KEY is not set
+[26/192] full/b02/nvidia-nemotron-3-nano-omni/L3 FAIL steps=1/3 tools=11 invalid=0 out_tok=44544 907.3s otel=skipped: HONEYCOMB_API_KEY is not set (dashboard: dashboard has 3 panels, expected 2; rule: no rule)
+[27/192] full/b02/nvidia-nemotron-3-nano-omni/L4 PASS steps=4/4 tools=7 invalid=0 out_tok=5543 107.8s otel=skipped: HONEYCOMB_API_KEY is not set
+[28/192] full/b02/nvidia-nemotron-3-nano-omni/L1 PASS steps=1/1 tools=1 invalid=0 out_tok=559 9.8s otel=skipped: HONEYCOMB_API_KEY is not set
+loaded mistralai/ministral-3-3b: {'status': 200, 'context_length': 262144, 'load_s': 3.6, 'unloaded': ['nvidia/nemotron-3-nano-omni'], 'error': None}
+[29/192] full/b02/mistralai-ministral-3-3b/L2 PASS steps=2/2 tools=47 invalid=0 out_tok=5413 112.7s otel=skipped: HONEYCOMB_API_KEY is not set
+[30/192] full/b02/mistralai-ministral-3-3b/L3 FAIL steps=0/3 tools=34 invalid=0 out_tok=3614 75.8s otel=skipped: HONEYCOMB_API_KEY is not set (describe: answer '@timestamp', expected 'timestamp'; dashboard: dashboard has 3 panels, expected 2; rule: no rule)
+[31/192] full/b02/mistralai-ministral-3-3b/L4 FAIL steps=1/4 tools=32 invalid=0 out_tok=4321 93.6s otel=sent: HTTP 200, 40 spans (dashboard: no dashboard; rule: no rule; edit: no successful update_panel call; edit: no successful get_alert_rule/list_alert_rules call; edit: answer None, expected 'yes'; edit: no panel titled 'Responses by code'; edit: no rule)
+[32/192] full/b02/mistralai-ministral-3-3b/L1 PASS steps=1/1 tools=1 invalid=0 out_tok=54 1.2s otel=sent: HTTP 200, 4 spans
+loaded qwen/qwen3.8-27b: {'status': 200, 'context_length': 262144, 'load_s': 6.3, 'unloaded': ['mistralai/ministral-3-3b'], 'error': None}
+[33/192] full/b03/qwen-qwen3-8-27b/L3 PASS steps=3/3 tools=4 invalid=0 out_tok=1988 120.9s otel=sent: HTTP 200, 10 spans
+[34/192] full/b03/qwen-qwen3-8-27b/L4 FAIL steps=2/4 tools=7 invalid=0 out_tok=2270 108.3s otel=sent: HTTP 200, 15 spans (rule: rule params do not match '5\\d\\d|5xx|5\\*|5\\[0-9\\]')
+[35/192] full/b03/qwen-qwen3-8-27b/L1 PASS steps=1/1 tools=1 invalid=0 out_tok=462 23.1s otel=sent: HTTP 200, 4 spans
+[36/192] full/b03/qwen-qwen3-8-27b/L2 PASS steps=2/2 tools=3 invalid=0 out_tok=796 37.4s otel=sent: HTTP 200, 8 spans
+loaded nvidia/nemotron-3-nano-omni: {'status': 200, 'context_length': 262144, 'load_s': 6.6, 'unloaded': ['qwen/qwen3.8-27b'], 'error': None}
+[37/192] full/b03/nvidia-nemotron-3-nano-omni/L3 FAIL steps=2/3 tools=6 invalid=0 out_tok=31760 675.2s otel=sent: HTTP 200, 14 spans (rule: no rule)
+[38/192] full/b03/nvidia-nemotron-3-nano-omni/L4 FAIL steps=0/4 tools=4 invalid=0 out_tok=4391 90.5s otel=sent: HTTP 200, 10 spans (describe: answer None, expected 'timestamp'; rule: no rule; edit: no successful update_panel call; edit: no successful get_alert_rule/list_alert_rules call; edit: answer None, expected 'yes'; edit: no panel titled 'Responses by code'; edit: no rule)
+[39/192] full/b03/nvidia-nemotron-3-nano-omni/L1 PASS steps=1/1 tools=1 invalid=0 out_tok=755 15.1s otel=sent: HTTP 200, 4 spans
+[40/192] full/b03/nvidia-nemotron-3-nano-omni/L2 PASS steps=2/2 tools=2 invalid=0 out_tok=7396 152.7s otel=sent: HTTP 200, 6 spans
+loaded mistralai/ministral-3-3b: {'status': 200, 'context_length': 262144, 'load_s': 4.8, 'unloaded': ['nvidia/nemotron-3-nano-omni'], 'error': None}
+[41/192] full/b03/mistralai-ministral-3-3b/L3 FAIL steps=0/3 tools=86 invalid=0 out_tok=8234 194.3s otel=sent: HTTP 200, 104 spans (describe: answer '@timestamp', expected 'timestamp'; dashboard: dashboard has 6 panels, expected 2; rule: no rule)
+[42/192] full/b03/mistralai-ministral-3-3b/L4 FAIL steps=1/4 tools=74 invalid=0 out_tok=6899 155.1s otel=sent: HTTP 200, 91 spans (dashboard: no dashboard; edit: no successful update_panel call; edit: no successful get_alert_rule/list_alert_rules call; edit: no panel titled 'Responses by code')
+[43/192] full/b03/mistralai-ministral-3-3b/L1 PASS steps=1/1 tools=1 invalid=0 out_tok=49 1.6s otel=sent: HTTP 200, 4 spans
+[44/192] full/b03/mistralai-ministral-3-3b/L2 FAIL steps=0/2 tools=5 invalid=0 out_tok=544 9.5s otel=sent: HTTP 200, 9 spans (describe: answer '@timestamp', expected 'timestamp')
+loaded google/gemma-4-12b-qat: {'status': 200, 'context_length': 262144, 'load_s': 2.5, 'unloaded': ['mistralai/ministral-3-3b'], 'error': None}
+[45/192] full/b03/google-gemma-4-12b-qat/L3 PASS steps=3/3 tools=5 invalid=0 out_tok=3316 130.8s otel=sent: HTTP 200, 12 spans
+== stopped early on owner instruction 2026-10-12T04:48:27Z

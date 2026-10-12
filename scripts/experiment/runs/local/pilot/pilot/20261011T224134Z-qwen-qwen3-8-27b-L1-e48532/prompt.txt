@@ -1,0 +1,3 @@
+Using the kibana tools, work on Kibana's web-logs sample data (data view 'Kibana Sample Data Logs', index kibana_sample_data_logs). Do these steps in order:
+1. Describe the data view 'Kibana Sample Data Logs': look up its fields and name its time field. End your reply with a line of the form TIME_FIELD: <field name>.
+Use only the kibana tools. When every step is done, reply with a short summary.

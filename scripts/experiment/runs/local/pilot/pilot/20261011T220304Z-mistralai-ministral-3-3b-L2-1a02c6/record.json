@@ -1,0 +1,113 @@
+{
+ "study": "local-models",
+ "run_id": "20261011T220304Z-mistralai-ministral-3-3b-L2-1a02c6",
+ "cell": "pilot/pilot/mistralai-ministral-3-3b/L2",
+ "phase": "pilot",
+ "block": "pilot",
+ "model": "mistralai/ministral-3-3b",
+ "level": "L2",
+ "chain_length": 2,
+ "arm": "server",
+ "attempt": 1,
+ "marker": "LOC-a75b3b41",
+ "prompt": "Using the kibana tools, work on Kibana's web-logs sample data (data view 'Kibana Sample Data Logs', index kibana_sample_data_logs). Do these steps in order:\n1. Describe the data view 'Kibana Sample Data Logs': look up its fields and name its time field. End your reply with a line of the form TIME_FIELD: <field name>.\n2. Build a dashboard titled 'LOC-a75b3b41 Web logs' on that data view with exactly two panels: the number of requests over time, and the number of requests by HTTP response code.\nUse only the kibana tools. When every step is done, reply with a short summary.",
+ "kibana_version": "9.5.5",
+ "toolboxes": "dashboards,data-management,alerting",
+ "tier": "write",
+ "server_entry": "mcp-for-kibana-study",
+ "stream": true,
+ "git_sha": "48b865b",
+ "config_sha": "a2433840567b",
+ "ts_start": "2026-10-11T22:03:04.584784+00:00",
+ "harness_load": null,
+ "wall_ms": 8630.9,
+ "ts_end_model": "2026-10-11T22:03:13.215737+00:00",
+ "http_status": 200,
+ "timed_out": false,
+ "valid": true,
+ "invalid_reason": null,
+ "end_reason": "completed",
+ "tool_names": [
+  "describe_data_view",
+  "create_dashboard",
+  "add_panel",
+  "create_dashboard",
+  "get_dashboard"
+ ],
+ "model_calls": 3,
+ "n_tool_calls": 5,
+ "n_invalid_tool_calls": 0,
+ "n_failed_tool_calls": 1,
+ "n_distinct_tools": 4,
+ "failure_classes": {
+  "other": 1
+ },
+ "tool_result_bytes": 1781,
+ "tool_ms": 6462.7,
+ "first_tool_ms": 191.1,
+ "input_tokens": 8614,
+ "output_tokens": 569,
+ "reasoning_tokens": 0,
+ "tokens_per_second": 73.23274088251307,
+ "ttft_s": 0.092664,
+ "model_load_s": null,
+ "stats": {
+  "input_tokens": 8614,
+  "total_output_tokens": 569,
+  "reasoning_output_tokens": 0,
+  "tokens_per_second": 73.23274088251307,
+  "time_to_first_token_seconds": 0.092664
+ },
+ "response_model": "mistralai/ministral-3-3b",
+ "end_events": 1,
+ "stream_events": 172,
+ "permission_denials": 0,
+ "output_rebuilt_from_stream": false,
+ "final_text": "Here is the summary:\n\n**Step 1:**\nTIME_FIELD: `@timestamp`\n\n**Step 2:**\nDashboard titled **\"LOC-a75b3b41 Web logs\"** created with:\n- Panel 1: Number of requests over time (bar chart)\n- Panel 2: Number of requests by HTTP response code (table)",
+ "stream_final_event": "ok",
+ "known_secret_exposures": 0,
+ "success": false,
+ "failure_reason": "describe: answer '@timestamp', expected 'timestamp'",
+ "first_failed_step": "describe",
+ "steps_passed": 0,
+ "criteria": [
+  {
+   "step": "describe",
+   "check": "tool_ok:describe_data_view",
+   "ok": true,
+   "detail": "ok"
+  },
+  {
+   "step": "describe",
+   "check": "answer",
+   "ok": false,
+   "detail": "answer '@timestamp', expected 'timestamp'"
+  },
+  {
+   "step": "dashboard",
+   "check": "dashboard",
+   "ok": true,
+   "detail": "ok"
+  }
+ ],
+ "n_dashboards": 1,
+ "n_rules": 0,
+ "rule_enabled": false,
+ "reset_removed": {
+  "objects": [
+   [
+    "dashboard",
+    "loc-a75b3b41-web-logs-6930fd05826b"
+   ]
+  ],
+  "rules": [],
+  "connectors": []
+ },
+ "model_loaded_context": 262144,
+ "model_max_context": 262144,
+ "ts_end": "2026-10-11T22:03:13.976988+00:00",
+ "n_spans": 9,
+ "otel": "sent: HTTP 200, 9 spans",
+ "complete": true,
+ "otel_sent_late": "2026-10-12T04:16:50.436104+00:00"
+}

@@ -207,6 +207,25 @@ class LMStudio:
             )
         return status, out
 
+    def load(self, model: str, context_length: int | None) -> tuple[int, object]:
+        """POST /api/v1/models/load; the context length is the model's maximum."""
+        body = {"model": model}
+        if context_length:
+            body["context_length"] = context_length
+        return http(
+            "POST", f"{self.url}/api/v1/models/load", body, headers=self.headers(), timeout=600
+        )
+
+    def unload(self, instance_id: str) -> int:
+        status, _ = http(
+            "POST",
+            f"{self.url}/api/v1/models/unload",
+            {"instance_id": instance_id},
+            headers=self.headers(),
+            timeout=120,
+        )
+        return status
+
     def chat(self, payload: dict, stream: bool, run_timeout: float, idle_timeout: float) -> dict:
         """POST /api/v1/chat. Returns http_status, error_body, result (the
         final response object), events (stream events with receive time) and
@@ -1028,8 +1047,12 @@ def payload_problems(blob: str, known: list[str]) -> list[str]:
 
 
 def send_spans(cfg: dict, spans: list[dict], known: list[str]) -> str:
+    return send_body(cfg, otlp_body(spans, cfg["honeycomb"]["dataset"]), known)
+
+
+def send_body(cfg: dict, body: dict, known: list[str]) -> str:
     hc = cfg["honeycomb"]
-    body = otlp_body(spans, hc["dataset"])
+    n_spans = sum(len(ss["spans"]) for rs in body["resourceSpans"] for ss in rs["scopeSpans"])
     blob = json.dumps(body, ensure_ascii=False)
     problems = payload_problems(blob, known)
     if problems:
@@ -1045,7 +1068,7 @@ def send_spans(cfg: dict, spans: list[dict], known: list[str]) -> str:
         timeout=60,
     )
     if 200 <= status < 300:
-        return f"sent: HTTP {status}, {len(spans)} spans"
+        return f"sent: HTTP {status}, {n_spans} spans"
     return f"failed: HTTP {status} {str(resp)[:200]}"
 
 
@@ -1123,7 +1146,37 @@ class Ctx:
         self.git_sha = git_sha()
 
 
-def run_once(ctx: Ctx, cell: dict, attempt: int) -> dict:
+def ensure_loaded(cfg: dict, lms: LMStudio, model: str) -> dict | None:
+    """``lmstudio.load: harness`` (for an LM Studio with JIT loading off): load
+    ``model`` at its maximum context unless it is resident, after unloading
+    the other study models. Models the study does not use are never touched.
+    Returns what was done, or None when nothing was (JIT mode, or resident).
+    A failed load is not raised: the chat that follows fails and the run is
+    recorded invalid, then retried."""
+    if cfg["lmstudio"].get("load", "jit") != "harness":
+        return None
+    _, models = lms.models()
+    info = next((m for m in models if m["key"] == model), None)
+    if info and info["loaded"]:
+        return None
+    unloaded = []
+    for m in models:
+        if m["key"] in cfg["models"] and m["key"] != model and m["loaded"]:
+            for inst in m["raw"].get("loaded_instances") or [{"id": m["key"]}]:
+                lms.unload(inst.get("id") or m["key"])
+                unloaded.append(inst.get("id") or m["key"])
+    t0 = time.monotonic()
+    status, body = lms.load(model, info["max_context"] if info else None)
+    return {
+        "status": status,
+        "context_length": info["max_context"] if info else None,
+        "load_s": round(time.monotonic() - t0, 1),
+        "unloaded": unloaded,
+        "error": None if status == 200 else str(body)[:300],
+    }
+
+
+def run_once(ctx: Ctx, cell: dict, attempt: int, harness_load: dict | None = None) -> dict:
     cfg = ctx.cfg
     level = next(lv for lv in cfg["task"]["levels"] if lv["id"] == cell["level"])
     model = cell["model"]
@@ -1171,6 +1224,7 @@ def run_once(ctx: Ctx, cell: dict, attempt: int) -> dict:
         "git_sha": ctx.git_sha,
         "config_sha": hashlib.sha256(Path(cfg["_path"]).read_bytes()).hexdigest()[:12],
         "ts_start": now_iso(),
+        "harness_load": harness_load,
     }
     chat = ctx.lms.chat(
         payload,
@@ -1431,7 +1485,10 @@ def run_matrix(cfg: dict, phase: str, limit: int | None = None) -> int:
                 write_progress(
                     ctx, phase, cells, recs, {"current": cell["key"], "attempt": attempt}
                 )
-                r = run_once(ctx, cell, attempt)
+                loaded = ensure_loaded(cfg, ctx.lms, cell["model"])
+                if loaded:
+                    print(f"loaded {cell['model']}: {loaded}", flush=True)
+                r = run_once(ctx, cell, attempt, loaded)
                 recs.append(r)
                 n += 1
                 verdict = (
@@ -1647,7 +1704,8 @@ def cmd_preflight(cfg: dict, load: bool, list_tools=list_server_tools) -> int:
         )
     kb = er.Kibana(url, key) if seed_ok else None
     if kb:
-        status, body = http("GET", f"{url.rstrip('/')}/api/status", timeout=10)
+        # Authenticated: an anonymous /api/status answers 200 without the version.
+        status, body = kb.call("GET", "/api/status")
         version = (
             ((body or {}).get("version") or {}).get("number") if isinstance(body, dict) else None
         )
@@ -1848,6 +1906,14 @@ def cmd_preflight(cfg: dict, load: bool, list_tools=list_server_tools) -> int:
     # load check: one short chat per model through the integration
     if load and reachable and token and not problems and entry is not None:
         for m in cfg["models"]:
+            loaded = ensure_loaded(cfg, client, m)
+            if loaded and loaded["status"] != 200:
+                rep.fail(
+                    f"load {m}",
+                    f"POST /api/v1/models/load answered {loaded['status']}: {loaded['error']}",
+                    "free memory (`lms ps`), or pick a model that fits at its maximum context",
+                )
+                continue
             chat = client.chat(
                 {
                     "model": m,
@@ -1921,6 +1987,36 @@ def cmd_preflight(cfg: dict, load: bool, list_tools=list_server_tools) -> int:
     return rep.print()
 
 
+def cmd_send_pending(cfg: dict) -> int:
+    """Send the stored spans.json of every run whose send was skipped because
+    the Honeycomb key was missing at the time. The same secret scan applies;
+    record.json keeps the result in ``otel`` and the time in ``otel_sent_late``."""
+    key_name = cfg["honeycomb"]["key_env"]
+    if not env_value(key_name):
+        print(f"FAIL: {key_name} is not set (shell or .env.local)")
+        return 1
+    _, kibana_key = load_seed(cfg)
+    known = [
+        s for s in (kibana_key, env_value(cfg["lmstudio"]["token_env"]), env_value(key_name)) if s
+    ]
+    out = repo_path(cfg["runs"]["out_dir"])
+    sent = failed = 0
+    for rec_path in sorted(out.glob("*/*/*/record.json")):
+        rec = json.loads(rec_path.read_text())
+        if not str(rec.get("otel", "")).startswith("skipped"):
+            continue
+        result = send_body(cfg, json.loads((rec_path.parent / "spans.json").read_text()), known)
+        rec["otel"] = result
+        rec["otel_sent_late"] = now_iso()
+        write_json(rec_path, rec, known)
+        ok = result.startswith("sent")
+        sent += ok
+        failed += not ok
+        print(f"{rec['run_id']}: {result}", flush=True)
+    print(f"send-pending: {sent} sent, {failed} not sent")
+    return 0 if failed == 0 else 1
+
+
 def cmd_install_sample(cfg: dict) -> int:
     url, key = load_seed(cfg)
     kb = er.Kibana(url, key)
@@ -1956,6 +2052,9 @@ def main(argv: list[str] | None = None) -> int:
             "--limit", type=int, default=None, help="stop after this many runs (testing)"
         )
     sub.add_parser("status", help="progress, pilot timings and the time estimate")
+    sub.add_parser(
+        "send-pending", help="send the stored spans of runs made without the Honeycomb key"
+    )
     args = ap.parse_args(argv)
     cfg = load_config(args.config)
     if args.cmd == "preflight":
@@ -1966,6 +2065,8 @@ def main(argv: list[str] | None = None) -> int:
         return run_matrix(cfg, "pilot", args.limit)
     if args.cmd == "run":
         return run_matrix(cfg, "full", args.limit)
+    if args.cmd == "send-pending":
+        return cmd_send_pending(cfg)
     return cmd_status(cfg)
 
 
