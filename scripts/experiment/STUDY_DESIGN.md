@@ -165,8 +165,9 @@ _2026-10-12_
 
 - **The web-logs task.** Name the data view's time field; build a dashboard with two panels (requests over time, requests by response code); create an enabled rule that fires on more than 10 5xx responses in 5 minutes, checked every minute; retitle the response-code panel and read the rule back. Both answer lines (TIME_FIELD, RULE_ENABLED) are asked for in one closing instruction.
 - **The web-logs task on flights data.** The same four steps on the flights sample data: flights over time, flights by carrier, more than 10 cancelled flights in 5 minutes.
-- **Change existing objects.** The seed holds the dashboard 'Site health' (two panels on web logs) and the disabled rule 'Server errors' (more than 10 5xx in 5 minutes, every minute). The model adds a requests-by-host panel, renames the dashboard to 'Site health overview', raises the threshold to 20 and enables the rule, in place: the seeded ids must survive and nothing new may appear.
-- **Look up existing objects.** The same seed. The model reports the dashboard's panel count and the 5xx rule's name, threshold, interval and enabled state, and changes nothing.
+- **Change existing objects.** The seed holds the dashboard 'Site health' (two panels on web logs) and the disabled rule 'Server errors' (more than 10 5xx in 5 minutes, every minute). The model adds a requests-by-host panel and enables the rule, in place: the seeded ids must survive and nothing new may appear.
+- **Look up existing objects.** The same seed. The model reports the dashboard's panel count and the 5xx rule's name, interval and enabled state, and changes nothing.
+- Every step can be done with the server's tools at the write tier. The draft also asked to rename the dashboard, raise the rule's threshold and report the threshold; the server has no tool that renames a dashboard or changes a rule's params, and `get_alert_rule` returns no params, so those steps were removed rather than measure a missing tool.
 - The prompt is the arm's preamble ("Use only the kibana tools", or the API-spec instructions of decision 5), then the task. Nothing else differs between arms.
 
 The checks:
@@ -181,7 +182,7 @@ Considered:
 
 - The lookup task first asked which dashboard is built on web logs, with a decoy on flights. Installing the web-logs sample also installs its own '[Logs] Web Traffic' dashboard, so that question has two right answers; the task names the dashboard instead and asks the model to find the rule by what it watches.
 - Tested before any pilot (`study_tasks.py replay`, live stack, Kibana 9.5.5): of the 469 rules stored from the earlier runs, 465 pass the filter and time-field checks. The four rejected: a term filter on 503 only; a terms list of 500 to 509, which misses 510 to 599; a regexp with `^…$` anchors on the analysed `response` text field, which matches nothing; a `match` query on `_source.response.keyword` with an operator Elasticsearch does not have. Every correct form passes, including filters with their own `now-5m` range and ES|QL rules that carry the threshold in the query.
-- On the live stack, correct runs of all four tasks pass, and each of these fails at its step: a 503-only filter, `utc_time` as the time field, a disabled rule, a wrong TIME_FIELD answer, a panel not retitled, a threshold of 15 instead of 20, a wrong ENABLED answer, and a lookup run that enabled the rule.
+- On the live stack, correct runs of all four tasks pass, and each of these fails at its step: a 503-only filter, `utc_time` as the time field, a disabled rule, a wrong TIME_FIELD answer, a panel not retitled, a change run that left the rule disabled, a wrong ENABLED answer, and a lookup run that enabled the rule.
 
 ## Background research
 
