@@ -12,6 +12,11 @@ version section.
 
 ### Added
 
+- **Study 5 runs four models and sends one to stage 2.**
+  `local_study.json` adds `nvidia/nemotron-3-nano-omni`; `local_run.py
+  stage2` runs the single best stage-1 model at the pass mark (most passes,
+  then the faster median time per run), and `status` names it.
+  STUDY_DESIGN.md decision 16.
 - **The web-logs task asks for all server errors.** Its alert step now
   reads "Count all server errors: every request whose response code is
   anywhere from 500 to 599", so the check that fails a filter missing any
