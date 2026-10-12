@@ -10,8 +10,19 @@ version section.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-12
+
 ### Added
 
+- **`list_rule_types` (alerting, read).** Lists the rule types this Kibana
+  offers with the consumers the caller may create each under and its licence
+  status, so `create_alert_rule`'s `rule_type_id` and `consumer` no longer have
+  to be known in advance. It does not describe `params`: Kibana's API publishes
+  no params schema. Shipped from the alerting toolbox's recorded next work.
+- **`KIBANA_MCP_OTEL_TRACEPARENT_FROM_ENV`** (default off): with OTel export
+  on, the server parents all its spans under the W3C `TRACEPARENT` it was
+  started with, so a stdio client that passes trace context only through the
+  environment (Claude Code in `-p` mode) sees the server's spans in its trace.
 - **Three-arm analysis and the live cross-check for the rerun.**
   `efficiency_analyze.py` adds `with-mcp-es` to the summaries when its runs
   are present and writes its comparisons with `no-mcp` and `with-mcp` under
@@ -66,16 +77,6 @@ version section.
   `live_smoke.py` proves the path in one probe run; `otlp_sink.py` records
   what any OTLP exporter sends. Findings and the command sequence:
   `scripts/experiment/LIVE_RERUN.md`. Without the flag the runner is unchanged.
-- **`KIBANA_MCP_OTEL_TRACEPARENT_FROM_ENV`** (default off): with OTel export
-  on, the server parents all its spans under the W3C `TRACEPARENT` it was
-  started with, so a stdio client that passes trace context only through the
-  environment (Claude Code in `-p` mode) sees the server's spans in its trace.
-- **`list_rule_types` (alerting, read).** Lists the rule types this Kibana
-  offers with the consumers the caller may create each under and its licence
-  status, so `create_alert_rule`'s `rule_type_id` and `consumer` no longer have
-  to be known in advance. It does not describe `params`: Kibana's API publishes
-  no params schema. Shipped from the alerting toolbox's recorded next work.
-
 - **Cloud sessions start ready to work.** A SessionStart hook in
   `.claude/settings.json` runs `scripts/cloud-session-start.sh`, which starts
   `dockerd` (the environment snapshot keeps the images, not the daemon) and runs
@@ -191,7 +192,6 @@ version section.
   unset; `google/gemma-4-12b-qat` is no longer the fallback or "the reference
   model". D18's measurements stay as evidence; its reference status is
   superseded.
-
 - **The Definition of Done needs no LLM** (D31). `e2e_green` is `n/a` in
   `dod.config`, as it already was in every `.github/dod` config, so `make dod`
   can reach GO on CI and in a Claude Code cloud session. The replay tiers
@@ -201,10 +201,16 @@ version section.
 
 ### Fixed
 
-- **The local study expects the alerting toolbox's 25 tools.** Its server
-  entry (dashboards, data-management, alerting at `write`) gained
-  `list_rule_types`; `local_study.json`'s `expected_tools` and the runbook
-  said 24, so preflight failed.
+- **`create_dashboard` accepts a time-series panel without `time_field`.**
+  The panel schema says `time_field` is filled in from the data view when
+  omitted, but a `date_histogram` panel without it was rejected before the
+  server could fill it in. In the efficiency study this failed the first
+  `create_dashboard` call in all 90 with-server runs. The server now fills
+  in the data view's time field first. The pre-flight rejects a
+  `date_histogram` only when the data view has no default time field, and
+  the error names the field to set (`time_field: '<field>'`). This applies
+  to `create_visualization`, `add_panel` and `update_panel` too. Tool names,
+  descriptions and schemas are unchanged (D32).
 - **A wrong dashboard or alert-rule id names the fix.** An empty `dashboard_id`
   reached the caller as a bare "Error calling tool" (kibana-py's unmapped
   ValueError), and an id that matched nothing returned Kibana's "Saved object
@@ -212,6 +218,10 @@ version section.
   (create/search or create/list tools) and that a title or name is not an id.
   Seen in the local-model study: small models passed dashboard titles, rule
   names and empty strings as ids.
+- **The local study expects the alerting toolbox's 25 tools.** Its server
+  entry (dashboards, data-management, alerting at `write`) gained
+  `list_rule_types`; `local_study.json`'s `expected_tools` and the runbook
+  said 24, so preflight failed.
 - **No-mcp runs in live mode now land in one trace.** Claude Code 2.1.296
   starts its first query before its tracer is ready when it has no MCP server
   to connect: no `claude_code.interaction` span, `TRACEPARENT` ignored, every
@@ -229,24 +239,12 @@ version section.
 - **Local-study preflight reads Kibana's version with the key.** Real Kibana
   answers an anonymous `/api/status` without the version, so preflight failed
   on a correct 9.5.5 stack.
-- **`create_dashboard` accepts a time-series panel without `time_field`.**
-  The panel schema says `time_field` is filled in from the data view when
-  omitted, but a `date_histogram` panel without it was rejected before the
-  server could fill it in. In the efficiency study this failed the first
-  `create_dashboard` call in all 90 with-server runs. The server now fills
-  in the data view's time field first. The pre-flight rejects a
-  `date_histogram` only when the data view has no default time field, and
-  the error names the field to set (`time_field: '<field>'`). This applies
-  to `create_visualization`, `add_panel` and `update_panel` too. Tool names,
-  descriptions and schemas are unchanged (D32).
 
 ### Security
 
 - **multidict 6.7.1 → 6.9.1 (CVE-2026-104874).** A transitive dependency
-  (aiohttp, through kibana-py's async extra); `pip-audit` failed the
-  `audit_clean` gate on main.
-- **multidict 6.7.1 → 6.9.1** (CVE-2026-104874; reached through
-  `kibana-py[async]` → `aiohttp`/`yarl`). Lockfile regenerated with
+  (`kibana-py[async]` → `aiohttp`/`yarl`); `pip-audit` failed the
+  `audit_clean` gate on main. Lockfile regenerated with
   `uv lock --upgrade-package multidict`; `make audit` is clean again.
 
 ## [0.2.0] - 2026-10-04
@@ -484,6 +482,7 @@ version section.
   `lms unload <identifier>`. It fails rather than skips, so the skip-green hole
   guarded in `tests/_stack_env.py` is not reopened here.
 
-[Unreleased]: https://github.com/pedro-angel/mcp-for-kibana/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/pedro-angel/mcp-for-kibana/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/pedro-angel/mcp-for-kibana/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/pedro-angel/mcp-for-kibana/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/pedro-angel/mcp-for-kibana/releases/tag/v0.1.0
