@@ -5,6 +5,7 @@
 
   "models": [
     "nvidia/nemotron-3-nano-4b",
+    "nvidia/nemotron-3-nano-omni",
     "google/gemma-4-12b-qat",
     "qwen/qwen3.8-27b"
   ],

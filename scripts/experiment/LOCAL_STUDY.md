@@ -27,10 +27,10 @@ ran; `local_report.py` reports on it.
 
 | Key | Value | Meaning |
 |---|---|---|
-| `models` | `nvidia/nemotron-3-nano-4b`, `google/gemma-4-12b-qat`, `qwen/qwen3.8-27b` | LM Studio model keys, from `lms ls`: three vendors and architectures, each already seen completing a Kibana task |
+| `models` | `nvidia/nemotron-3-nano-4b`, `nvidia/nemotron-3-nano-omni`, `google/gemma-4-12b-qat`, `qwen/qwen3.8-27b` | LM Studio model keys, from `lms ls` |
 | `tasks.file` | `scripts/experiment/tasks.json` | The shared task definition |
 | `tasks.stage1` | `weblogs` | Run for every model |
-| `tasks.stage2` | `change`, `lookup`, `flights` | Run only for the models that passed stage 1 |
+| `tasks.stage2` | `change`, `lookup`, `flights` | Run for one model: the best of stage 1 among those at the pass mark (most passes; on a tie, the faster median time per run) |
 | `tasks.pass_mark` | 14 | A model passes stage 1 with at least 14 successes in 20 runs of every stage-1 task (the Wilson lower bound is then above 0.5). Set before any run |
 | `server.entry` | `mcp-for-kibana-study` | The `~/.lmstudio/mcp.json` server the model gets, as `integrations: ["mcp/<entry>"]` |
 | `server.toolboxes`, `server.tier`, `server.expected_tools` | `dashboards,data-management,alerting`, `write`, 25 | The same tool surface as study 4's server arm |
@@ -216,7 +216,7 @@ uv run python scripts/experiment/local_run.py pilot
 uv run python scripts/experiment/local_run.py status
 ```
 
-The pilot runs the web-logs task 3 times per model (9 runs). Then check the
+The pilot runs the web-logs task 3 times per model (12 runs). Then check the
 harness against the real runtime, before stage 1:
 
 1. `status` prints no `WARN ... no chat.end stream event`. If it does, read
@@ -247,7 +247,7 @@ records carry it as `git_sha`).
 caffeinate -dims uv run python scripts/experiment/local_run.py stage1 2>&1 | tee -a scripts/experiment/runs/study5/run.log
 ```
 
-`status` estimates stage 1 from the pilot before it starts (60 runs: 3
+`status` estimates stage 1 from the pilot before it starts (80 runs: 4
 models × 20). `caffeinate -dims` keeps the Mac and its display awake while
 the command runs. Progress is in `runs/study5/progress-stage1.json` and in
 `status`, which prints each model's stage-1 successes against the pass mark.
@@ -265,9 +265,10 @@ caffeinate -dims uv run python scripts/experiment/local_run.py stage2 2>&1 | tee
 ```
 
 Stage 2 refuses to start until stage 1 is complete, then runs the change,
-lookup and flights tasks 20 times each for the models that passed (up to 180
-runs). It prints the models it runs; with none, it does nothing. It resumes
-like stage 1.
+lookup and flights tasks 20 times each for one model: the best of stage 1
+among the models at the pass mark, ranked by passes, then by the faster
+median time per run (60 runs). It prints the model it runs; with none at the
+pass mark, it does nothing. It resumes like stage 1.
 
 If Docker restarted, run `scripts/stack.sh up && scripts/stack.sh seed`, then
 `preflight`, before you resume.
@@ -328,7 +329,7 @@ Write one entry for the local-model part. Take every number from
   runs), and N per cell.
 - Invalid runs: how many, and why.
 - Stage 1: each model's successes against the pass mark, with the Wilson
-  interval; which models went on to stage 2.
+  interval and its median time per run; which model went on to stage 2.
 - Per model and task: the pass rate with its Wilson interval, median seconds
   per run, steps reached.
 - The checks that failed most, per task (`failed_checks`).

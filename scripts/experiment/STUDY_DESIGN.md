@@ -236,6 +236,19 @@ Considered:
 - Accepting any filter that counts correctly on the real data: a rule for 503 alone would pass, which is not what the task asks for.
 - The pilot runs used the earlier wording ("requests with a 5xx response code"); the stage runs use the new one.
 
+### 16. Study 5: four models, one goes on to stage 2
+
+_2026-10-12_
+
+**Question.** After the first pilot (gemma-4-12b-qat 3 of 3, qwen3.8-27b 2 of 3, nemotron-3-nano-4b 0 of 3), which models does study 5 run, and how many go on to stage 2?
+
+**Decision.** The owner's choice, superseding the model list and the stage-2 rule of decision 13:
+
+- Four models: `nvidia/nemotron-3-nano-4b`, `nvidia/nemotron-3-nano-omni`, `google/gemma-4-12b-qat`, `qwen/qwen3.8-27b`. nemotron-3-nano-4b stays in stage 1 despite its pilot.
+- Stage 2 takes one model: among the models whose stage-1 successes reach the pass mark (14 of 20), the one with the most successes; on a tie, the faster median time per run (valid runs); then the config's order. With none at the pass mark, stage 2 does not run.
+- The report covers that model on all four tasks, and every model on stage 1.
+- The pilot is re-run on the new alert wording (decision 15): 3 runs per model, 12 runs. The first pilot's records are kept under `runs/study5/pilot-v1/`.
+
 ## Background research
 
 Looked up before or during the design.
