@@ -1,0 +1,176 @@
+{
+  "_about": "The four tasks of studies 4 and 5, shared by efficiency_run.py (study 4) and local_run.py (study 5); study_tasks.py reads this file, builds the prompts, seeds the starting state and runs the success checks. Every check compares against values Kibana or Elasticsearch hold; an answer line counts only when it matches Kibana's actual value. A task's prompt is the arm's preamble, the task's intro and numbered steps, and the task's closing. STUDY_DESIGN.md decision 12 onward.",
+
+  "arms": {
+    "server": "Use only the kibana tools.",
+    "api": "A local Kibana 9.5 is available. Its URL is in the environment variable KIBANA_URL and an API key in KIBANA_TEST_API_KEY. Kibana's API reference is in ./kibana-api/ (kibana.yaml for the whole API, dashboards-api.yaml for the Dashboards and Visualizations APIs)."
+  },
+
+  "data": {
+    "logs": {
+      "sample": "logs",
+      "data_view": "Kibana Sample Data Logs",
+      "index": "kibana_sample_data_logs",
+      "match": {"field": "response.keyword", "prefix": "5"}
+    },
+    "flights": {
+      "sample": "flights",
+      "data_view": "Kibana Sample Data Flights",
+      "index": "kibana_sample_data_flights",
+      "match": {"field": "Cancelled", "equals": true}
+    }
+  },
+
+  "seed": {
+    "dashboard": {
+      "id": "study-seed-site-health",
+      "title": "Site health",
+      "data": "logs",
+      "panels": [
+        {"title": "Requests over time", "chart": "line", "breakdown": null},
+        {"title": "Requests by response code", "chart": "bar", "breakdown": "response.keyword"}
+      ]
+    },
+    "rule": {
+      "id": "study-seed-server-errors",
+      "name": "Server errors",
+      "data": "logs",
+      "interval": "1m",
+      "threshold": 10,
+      "window_minutes": 5,
+      "enabled": false
+    }
+  },
+
+  "tasks": [
+    {
+      "id": "weblogs",
+      "label": "The web-logs task",
+      "data": "logs",
+      "seeded": false,
+      "intro": "Work on Kibana's web-logs sample data (data view '{data_view}', index {index}). Do these steps in order:",
+      "steps": [
+        {
+          "id": "describe",
+          "text": "Describe the data view '{data_view}': look up its fields and name its time field.",
+          "checks": [{"kind": "answer", "line": "TIME_FIELD", "expect": "time_field"}]
+        },
+        {
+          "id": "dashboard",
+          "text": "Build a dashboard titled '{marker} Web logs' on that data view with exactly two panels: the number of requests over time, and the number of requests by HTTP response code.",
+          "checks": [{"kind": "new_dashboard", "title": "{marker} Web logs", "panels": 2, "panel_mentions": ["response"]}]
+        },
+        {
+          "id": "rule",
+          "text": "Create an alert rule named '{marker} 5xx errors' on the web-logs data for the signal of the response-code panel: it checks every minute and fires when more than 10 requests with a 5xx response code arrive within 5 minutes. The rule must be enabled when you finish: if it is created disabled, enable it.",
+          "checks": [{"kind": "new_rule", "name": "{marker} 5xx errors", "interval": "1m", "threshold": 10, "window_minutes": 5, "enabled": true}]
+        },
+        {
+          "id": "edit",
+          "text": "Edit the response-code panel of that dashboard: change its title to 'Responses by code'. Then read the alert rule back and check whether it is enabled.",
+          "checks": [
+            {"kind": "panel_title", "dashboard": "{marker} Web logs", "title": "Responses by code"},
+            {"kind": "answer", "line": "RULE_ENABLED", "expect": "rule_enabled", "rule": "{marker} 5xx errors"}
+          ]
+        }
+      ],
+      "closing": "When every step is done, end your reply with these two lines:\nTIME_FIELD: <the data view's time field>\nRULE_ENABLED: <yes or no, as you read it back>"
+    },
+    {
+      "id": "flights",
+      "label": "The web-logs task on flights data",
+      "data": "flights",
+      "seeded": false,
+      "intro": "Work on Kibana's flights sample data (data view '{data_view}', index {index}). Do these steps in order:",
+      "steps": [
+        {
+          "id": "describe",
+          "text": "Describe the data view '{data_view}': look up its fields and name its time field.",
+          "checks": [{"kind": "answer", "line": "TIME_FIELD", "expect": "time_field"}]
+        },
+        {
+          "id": "dashboard",
+          "text": "Build a dashboard titled '{marker} Flights' on that data view with exactly two panels: the number of flights over time, and the number of flights by carrier.",
+          "checks": [{"kind": "new_dashboard", "title": "{marker} Flights", "panels": 2, "panel_mentions": ["Carrier"]}]
+        },
+        {
+          "id": "rule",
+          "text": "Create an alert rule named '{marker} Cancelled flights' on the flights data: it checks every minute and fires when more than 10 cancelled flights arrive within 5 minutes. The rule must be enabled when you finish: if it is created disabled, enable it.",
+          "checks": [{"kind": "new_rule", "name": "{marker} Cancelled flights", "interval": "1m", "threshold": 10, "window_minutes": 5, "enabled": true}]
+        },
+        {
+          "id": "edit",
+          "text": "Edit the carrier panel of that dashboard: change its title to 'Flights by carrier'. Then read the alert rule back and check whether it is enabled.",
+          "checks": [
+            {"kind": "panel_title", "dashboard": "{marker} Flights", "title": "Flights by carrier"},
+            {"kind": "answer", "line": "RULE_ENABLED", "expect": "rule_enabled", "rule": "{marker} Cancelled flights"}
+          ]
+        }
+      ],
+      "closing": "When every step is done, end your reply with these two lines:\nTIME_FIELD: <the data view's time field>\nRULE_ENABLED: <yes or no, as you read it back>"
+    },
+    {
+      "id": "change",
+      "label": "Change existing objects",
+      "data": "logs",
+      "seeded": true,
+      "intro": "Kibana holds a dashboard titled 'Site health' and an alert rule named 'Server errors', both on the web-logs sample data (data view '{data_view}', index {index}). Change them in place; do not create new dashboards or rules. Do these steps in order:",
+      "steps": [
+        {
+          "id": "panel",
+          "text": "Add a third panel to the 'Site health' dashboard showing the number of requests by host.",
+          "checks": [{"kind": "seeded_dashboard", "panels": 3, "panel_mentions": ["host"]}]
+        },
+        {
+          "id": "rename",
+          "text": "Rename the dashboard to 'Site health overview'.",
+          "checks": [{"kind": "seeded_dashboard", "title": "Site health overview"}]
+        },
+        {
+          "id": "threshold",
+          "text": "Raise the 'Server errors' rule's threshold from 10 to 20 requests; keep everything else about the rule as it is.",
+          "checks": [{"kind": "seeded_rule", "threshold": 20, "interval": "1m", "window_minutes": 5}]
+        },
+        {
+          "id": "enable",
+          "text": "Enable the rule.",
+          "checks": [{"kind": "seeded_rule", "enabled": true}, {"kind": "nothing_new"}]
+        }
+      ],
+      "closing": "When every step is done, reply with a short summary."
+    },
+    {
+      "id": "lookup",
+      "label": "Look up existing objects",
+      "data": "logs",
+      "seeded": true,
+      "intro": "Kibana holds a dashboard titled 'Site health' and an alert rule that watches the web-logs sample data (data view '{data_view}', index {index}) for 5xx responses. Look them up; change nothing. Answer these questions:",
+      "steps": [
+        {
+          "id": "panels",
+          "text": "How many panels does the 'Site health' dashboard have?",
+          "checks": [{"kind": "answer", "line": "PANELS", "expect": "seeded_panels"}]
+        },
+        {
+          "id": "rule_name",
+          "text": "What is the name of the alert rule that watches for 5xx responses?",
+          "checks": [{"kind": "answer", "line": "RULE_NAME", "expect": "seeded_rule_name"}]
+        },
+        {
+          "id": "rule_settings",
+          "text": "Above how many matching requests does that rule fire, and how often does it check?",
+          "checks": [
+            {"kind": "answer", "line": "THRESHOLD", "expect": "seeded_threshold"},
+            {"kind": "answer", "line": "INTERVAL", "expect": "seeded_interval"}
+          ]
+        },
+        {
+          "id": "rule_enabled",
+          "text": "Is that rule enabled?",
+          "checks": [{"kind": "answer", "line": "ENABLED", "expect": "seeded_enabled"}, {"kind": "nothing_changed"}]
+        }
+      ],
+      "closing": "End your reply with these five lines:\nPANELS: <number>\nRULE_NAME: <the rule's name>\nTHRESHOLD: <number>\nINTERVAL: <the check interval, such as 5m>\nENABLED: <yes or no>"
+    }
+  ]
+}
