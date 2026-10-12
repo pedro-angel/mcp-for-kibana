@@ -1,0 +1,171 @@
+{
+ "elapsed_str": "72.113332ms",
+ "header": [
+  {
+   "alias": "study.model",
+   "derived": false,
+   "key_name": "study.model",
+   "per_time": 0,
+   "type": "string"
+  },
+  {
+   "alias": "study.arm",
+   "derived": false,
+   "key_name": "study.arm",
+   "per_time": 0,
+   "type": "string"
+  },
+  {
+   "alias": "study.rule_enablement",
+   "derived": false,
+   "key_name": "study.rule_enablement",
+   "per_time": 0,
+   "type": "string"
+  },
+  {
+   "alias": "COUNT",
+   "derived": false,
+   "key_name": "COUNT",
+   "per_time": 0,
+   "type": ""
+  }
+ ],
+ "info": {
+  "granularity_seconds": 1800,
+  "mean_sample_rate": 1,
+  "rows_examined": 6488
+ },
+ "other_by_aggregate": {
+  "data": {
+   "COUNT": 0
+  }
+ },
+ "query_url": "https://ui.eu1.honeycomb.io/pedro-angel/environments/test/datasets/mcp-for-kibana-study/result/Bq-WqFDWVzag",
+ "results": [
+  {
+   "data": {
+    "COUNT": 30,
+    "study.arm": "no-mcp",
+    "study.model": "claude-haiku-5-5",
+    "study.rule_enablement": "enabled_other"
+   }
+  },
+  {
+   "data": {
+    "COUNT": 8,
+    "study.arm": "with-mcp",
+    "study.model": "claude-haiku-5-5",
+    "study.rule_enablement": "enable_alert_rule_call"
+   }
+  },
+  {
+   "data": {
+    "COUNT": 22,
+    "study.arm": "with-mcp",
+    "study.model": "claude-haiku-5-5",
+    "study.rule_enablement": "enabled_true_on_create"
+   }
+  },
+  {
+   "data": {
+    "COUNT": 30,
+    "study.arm": "no-mcp",
+    "study.model": "claude-opus-5-5",
+    "study.rule_enablement": "enabled_other"
+   }
+  },
+  {
+   "data": {
+    "COUNT": 1,
+    "study.arm": "with-mcp",
+    "study.model": "claude-opus-5-5",
+    "study.rule_enablement": "enable_alert_rule_call"
+   }
+  },
+  {
+   "data": {
+    "COUNT": 29,
+    "study.arm": "with-mcp",
+    "study.model": "claude-opus-5-5",
+    "study.rule_enablement": "enabled_true_on_create"
+   }
+  },
+  {
+   "data": {
+    "COUNT": 29,
+    "study.arm": "no-mcp",
+    "study.model": "claude-sonnet-5-5",
+    "study.rule_enablement": "enabled_other"
+   }
+  },
+  {
+   "data": {
+    "COUNT": 1,
+    "study.arm": "no-mcp",
+    "study.model": "claude-sonnet-5-5",
+    "study.rule_enablement": "no_rule"
+   }
+  },
+  {
+   "data": {
+    "COUNT": 26,
+    "study.arm": "with-mcp",
+    "study.model": "claude-sonnet-5-5",
+    "study.rule_enablement": "enable_alert_rule_call"
+   }
+  },
+  {
+   "data": {
+    "COUNT": 2,
+    "study.arm": "with-mcp",
+    "study.model": "claude-sonnet-5-5",
+    "study.rule_enablement": "enabled_true_on_create"
+   }
+  },
+  {
+   "data": {
+    "COUNT": 2,
+    "study.arm": "with-mcp",
+    "study.model": "claude-sonnet-5-5",
+    "study.rule_enablement": "left_disabled"
+   }
+  }
+ ],
+ "run_pk": "Bq-WqFDWVzag",
+ "template": {
+  "breakdowns": [
+   "study.model",
+   "study.arm",
+   "study.rule_enablement"
+  ],
+  "calculations": [
+   {
+    "op": "COUNT"
+   }
+  ],
+  "end_time": 1791684000,
+  "filters": [
+   {
+    "column": "gen_ai.operation.name",
+    "join_column": "",
+    "op": "=",
+    "value": "invoke_agent"
+   }
+  ],
+  "granularity": 1800,
+  "orders": [
+   {
+    "column": "study.model"
+   },
+   {
+    "column": "study.arm"
+   }
+  ],
+  "start_time": 1791655200
+ },
+ "total_by_aggregate": {
+  "data": {
+   "COUNT": 180
+  }
+ }
+}

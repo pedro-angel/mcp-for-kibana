@@ -1,0 +1,1555 @@
+{
+ "elapsed_str": "120.848009ms",
+ "header": [
+  {
+   "alias": "study.run_id",
+   "derived": false,
+   "key_name": "study.run_id",
+   "per_time": 0,
+   "type": "string"
+  },
+  {
+   "alias": "tool_spans",
+   "derived": false,
+   "key_name": "tool_spans",
+   "per_time": 0,
+   "type": ""
+  },
+  {
+   "alias": "chat_spans",
+   "derived": false,
+   "key_name": "chat_spans",
+   "per_time": 0,
+   "type": ""
+  },
+  {
+   "alias": "chat_input_tokens",
+   "derived": false,
+   "key_name": "chat_input_tokens",
+   "per_time": 0,
+   "type": ""
+  }
+ ],
+ "info": {
+  "granularity_seconds": 1800,
+  "mean_sample_rate": 1,
+  "rows_examined": 10910
+ },
+ "other_by_aggregate": {
+  "data": {
+   "chat_input_tokens": 0,
+   "chat_spans": 0,
+   "tool_spans": 0
+  }
+ },
+ "query_url": "https://ui.eu1.honeycomb.io/pedro-angel/environments/test/datasets/mcp-for-kibana-study/result/on-jDVQrYppB",
+ "results": [
+  {
+   "data": {
+    "chat_input_tokens": 291606,
+    "chat_spans": 12,
+    "study.run_id": "20261010T184612Z-claude-haiku-5-5-with-mcp-31c334",
+    "tool_spans": 14
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 410534,
+    "chat_spans": 20,
+    "study.run_id": "20261010T184820Z-claude-haiku-5-5-no-mcp-36729c",
+    "tool_spans": 20
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 78567,
+    "chat_spans": 4,
+    "study.run_id": "20261010T185026Z-claude-sonnet-5-5-with-mcp-9f67f5",
+    "tool_spans": 5
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 149532,
+    "chat_spans": 11,
+    "study.run_id": "20261010T185054Z-claude-sonnet-5-5-no-mcp-aeb7dd",
+    "tool_spans": 11
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 143111,
+    "chat_spans": 7,
+    "study.run_id": "20261010T190321Z-claude-opus-5-5-with-mcp-c577ba",
+    "tool_spans": 6
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 435937,
+    "chat_spans": 15,
+    "study.run_id": "20261010T190417Z-claude-opus-5-5-no-mcp-963c83",
+    "tool_spans": 14
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 832503,
+    "chat_spans": 29,
+    "study.run_id": "20261010T190536Z-claude-haiku-5-5-no-mcp-8b4744",
+    "tool_spans": 29
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 207227,
+    "chat_spans": 9,
+    "study.run_id": "20261010T191047Z-claude-haiku-5-5-with-mcp-3b583a",
+    "tool_spans": 10
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 100731,
+    "chat_spans": 7,
+    "study.run_id": "20261010T191131Z-claude-sonnet-5-5-no-mcp-9d4eb3",
+    "tool_spans": 7
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 78341,
+    "chat_spans": 4,
+    "study.run_id": "20261010T191205Z-claude-sonnet-5-5-with-mcp-acd5bb",
+    "tool_spans": 5
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 295335,
+    "chat_spans": 12,
+    "study.run_id": "20261010T191232Z-claude-opus-5-5-no-mcp-de725d",
+    "tool_spans": 11
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 122566,
+    "chat_spans": 6,
+    "study.run_id": "20261010T191339Z-claude-opus-5-5-with-mcp-5fcc0b",
+    "tool_spans": 6
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 335346,
+    "chat_spans": 14,
+    "study.run_id": "20261010T191427Z-claude-haiku-5-5-with-mcp-10d57a",
+    "tool_spans": 15
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 1077031,
+    "chat_spans": 37,
+    "study.run_id": "20261010T191521Z-claude-haiku-5-5-no-mcp-61f16b",
+    "tool_spans": 36
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 97545,
+    "chat_spans": 5,
+    "study.run_id": "20261010T191809Z-claude-sonnet-5-5-with-mcp-2beca2",
+    "tool_spans": 6
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 112246,
+    "chat_spans": 9,
+    "study.run_id": "20261010T191840Z-claude-sonnet-5-5-no-mcp-51ee83",
+    "tool_spans": 9
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 99258,
+    "chat_spans": 5,
+    "study.run_id": "20261010T191922Z-claude-opus-5-5-with-mcp-b77158",
+    "tool_spans": 4
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 212343,
+    "chat_spans": 13,
+    "study.run_id": "20261010T192002Z-claude-opus-5-5-no-mcp-44ade2",
+    "tool_spans": 12
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 411249,
+    "chat_spans": 20,
+    "study.run_id": "20261010T192135Z-claude-haiku-5-5-no-mcp-700eed",
+    "tool_spans": 20
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 288912,
+    "chat_spans": 11,
+    "study.run_id": "20261010T192320Z-claude-haiku-5-5-with-mcp-151048",
+    "tool_spans": 17
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 68245,
+    "chat_spans": 6,
+    "study.run_id": "20261010T192413Z-claude-sonnet-5-5-no-mcp-07782f",
+    "tool_spans": 5
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 78056,
+    "chat_spans": 4,
+    "study.run_id": "20261010T192446Z-claude-sonnet-5-5-with-mcp-c78d98",
+    "tool_spans": 5
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 242371,
+    "chat_spans": 16,
+    "study.run_id": "20261010T192513Z-claude-opus-5-5-no-mcp-078aa1",
+    "tool_spans": 15
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 122865,
+    "chat_spans": 6,
+    "study.run_id": "20261010T192632Z-claude-opus-5-5-with-mcp-35a6ab",
+    "tool_spans": 8
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 343182,
+    "chat_spans": 14,
+    "study.run_id": "20261010T192717Z-claude-haiku-5-5-with-mcp-5ab75a",
+    "tool_spans": 15
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 982808,
+    "chat_spans": 34,
+    "study.run_id": "20261010T192816Z-claude-haiku-5-5-no-mcp-63bf90",
+    "tool_spans": 33
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 97484,
+    "chat_spans": 5,
+    "study.run_id": "20261010T193123Z-claude-sonnet-5-5-with-mcp-aa285a",
+    "tool_spans": 6
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 64474,
+    "chat_spans": 6,
+    "study.run_id": "20261010T193153Z-claude-sonnet-5-5-no-mcp-bf9dc6",
+    "tool_spans": 5
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 122118,
+    "chat_spans": 6,
+    "study.run_id": "20261010T193224Z-claude-opus-5-5-with-mcp-459a53",
+    "tool_spans": 7
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 299065,
+    "chat_spans": 16,
+    "study.run_id": "20261010T193309Z-claude-opus-5-5-no-mcp-60e7d6",
+    "tool_spans": 15
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 1285411,
+    "chat_spans": 42,
+    "study.run_id": "20261010T193456Z-claude-haiku-5-5-no-mcp-5a2fa9",
+    "tool_spans": 41
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 254561,
+    "chat_spans": 11,
+    "study.run_id": "20261010T193822Z-claude-haiku-5-5-with-mcp-1b4882",
+    "tool_spans": 12
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 186941,
+    "chat_spans": 13,
+    "study.run_id": "20261010T193930Z-claude-sonnet-5-5-no-mcp-1f87a1",
+    "tool_spans": 12
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 77890,
+    "chat_spans": 4,
+    "study.run_id": "20261010T194023Z-claude-sonnet-5-5-with-mcp-90cfa3",
+    "tool_spans": 4
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 366322,
+    "chat_spans": 12,
+    "study.run_id": "20261010T194049Z-claude-opus-5-5-no-mcp-5b8f36",
+    "tool_spans": 11
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 143798,
+    "chat_spans": 7,
+    "study.run_id": "20261010T194207Z-claude-opus-5-5-with-mcp-e3c19c",
+    "tool_spans": 6
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 362806,
+    "chat_spans": 15,
+    "study.run_id": "20261010T194258Z-claude-haiku-5-5-with-mcp-584944",
+    "tool_spans": 16
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 803683,
+    "chat_spans": 32,
+    "study.run_id": "20261010T194355Z-claude-haiku-5-5-no-mcp-be359f",
+    "tool_spans": 32
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 97864,
+    "chat_spans": 5,
+    "study.run_id": "20261010T194622Z-claude-sonnet-5-5-with-mcp-6f28f0",
+    "tool_spans": 6
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 105334,
+    "chat_spans": 8,
+    "study.run_id": "20261010T194651Z-claude-sonnet-5-5-no-mcp-9b3a5b",
+    "tool_spans": 8
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 101429,
+    "chat_spans": 5,
+    "study.run_id": "20261010T194730Z-claude-opus-5-5-with-mcp-1195c6",
+    "tool_spans": 5
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 203901,
+    "chat_spans": 13,
+    "study.run_id": "20261010T194912Z-claude-opus-5-5-no-mcp-4874cb",
+    "tool_spans": 13
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 635553,
+    "chat_spans": 25,
+    "study.run_id": "20261010T195022Z-claude-haiku-5-5-no-mcp-c02795",
+    "tool_spans": 26
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 293389,
+    "chat_spans": 12,
+    "study.run_id": "20261010T195424Z-claude-haiku-5-5-with-mcp-40f585",
+    "tool_spans": 15
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 158798,
+    "chat_spans": 12,
+    "study.run_id": "20261010T195514Z-claude-sonnet-5-5-no-mcp-369db9",
+    "tool_spans": 11
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 97576,
+    "chat_spans": 5,
+    "study.run_id": "20261010T195607Z-claude-sonnet-5-5-with-mcp-5359ba",
+    "tool_spans": 6
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 160293,
+    "chat_spans": 11,
+    "study.run_id": "20261010T195637Z-claude-opus-5-5-no-mcp-b18a38",
+    "tool_spans": 10
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 143591,
+    "chat_spans": 7,
+    "study.run_id": "20261010T195742Z-claude-opus-5-5-with-mcp-1c0458",
+    "tool_spans": 7
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 205871,
+    "chat_spans": 9,
+    "study.run_id": "20261010T195829Z-claude-haiku-5-5-with-mcp-b00ad3",
+    "tool_spans": 12
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 1421951,
+    "chat_spans": 47,
+    "study.run_id": "20261010T195916Z-claude-haiku-5-5-no-mcp-5df20b",
+    "tool_spans": 47
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 97732,
+    "chat_spans": 5,
+    "study.run_id": "20261010T200524Z-claude-sonnet-5-5-with-mcp-10d9b2",
+    "tool_spans": 6
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 85646,
+    "chat_spans": 7,
+    "study.run_id": "20261010T200555Z-claude-sonnet-5-5-no-mcp-ebaa8d",
+    "tool_spans": 7
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 124417,
+    "chat_spans": 6,
+    "study.run_id": "20261010T200632Z-claude-opus-5-5-with-mcp-c82a18",
+    "tool_spans": 6
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 163028,
+    "chat_spans": 11,
+    "study.run_id": "20261010T200722Z-claude-opus-5-5-no-mcp-91620c",
+    "tool_spans": 10
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 762591,
+    "chat_spans": 29,
+    "study.run_id": "20261010T200823Z-claude-haiku-5-5-no-mcp-10ba06",
+    "tool_spans": 30
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 279712,
+    "chat_spans": 12,
+    "study.run_id": "20261010T201020Z-claude-haiku-5-5-with-mcp-838ab5",
+    "tool_spans": 14
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 87306,
+    "chat_spans": 8,
+    "study.run_id": "20261010T201139Z-claude-sonnet-5-5-no-mcp-593c21",
+    "tool_spans": 7
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 97889,
+    "chat_spans": 5,
+    "study.run_id": "20261010T201215Z-claude-sonnet-5-5-with-mcp-a2f60e",
+    "tool_spans": 6
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 258438,
+    "chat_spans": 14,
+    "study.run_id": "20261010T201248Z-claude-opus-5-5-no-mcp-ea0a33",
+    "tool_spans": 13
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 99184,
+    "chat_spans": 5,
+    "study.run_id": "20261010T201401Z-claude-opus-5-5-with-mcp-abfe11",
+    "tool_spans": 4
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 355856,
+    "chat_spans": 14,
+    "study.run_id": "20261010T201530Z-claude-haiku-5-5-with-mcp-f17ed7",
+    "tool_spans": 18
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 710784,
+    "chat_spans": 29,
+    "study.run_id": "20261010T201806Z-claude-haiku-5-5-no-mcp-7a5fb4",
+    "tool_spans": 28
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 97909,
+    "chat_spans": 5,
+    "study.run_id": "20261010T202415Z-claude-sonnet-5-5-with-mcp-707d90",
+    "tool_spans": 6
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 147871,
+    "chat_spans": 11,
+    "study.run_id": "20261010T202445Z-claude-sonnet-5-5-no-mcp-02d9aa",
+    "tool_spans": 10
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 102376,
+    "chat_spans": 5,
+    "study.run_id": "20261010T203708Z-claude-opus-5-5-with-mcp-6e57d2",
+    "tool_spans": 8
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 160623,
+    "chat_spans": 11,
+    "study.run_id": "20261010T203751Z-claude-opus-5-5-no-mcp-8c9f74",
+    "tool_spans": 11
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 794423,
+    "chat_spans": 29,
+    "study.run_id": "20261010T204009Z-claude-haiku-5-5-no-mcp-4d4d10",
+    "tool_spans": 28
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 236279,
+    "chat_spans": 10,
+    "study.run_id": "20261010T204341Z-claude-haiku-5-5-with-mcp-1bfd6a",
+    "tool_spans": 11
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 94599,
+    "chat_spans": 7,
+    "study.run_id": "20261010T204432Z-claude-sonnet-5-5-no-mcp-b14c24",
+    "tool_spans": 6
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 97741,
+    "chat_spans": 5,
+    "study.run_id": "20261010T205658Z-claude-sonnet-5-5-with-mcp-81c94c",
+    "tool_spans": 6
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 376261,
+    "chat_spans": 14,
+    "study.run_id": "20261010T205727Z-claude-opus-5-5-no-mcp-c1246a",
+    "tool_spans": 13
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 122126,
+    "chat_spans": 6,
+    "study.run_id": "20261010T205902Z-claude-opus-5-5-with-mcp-46b69c",
+    "tool_spans": 6
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 256766,
+    "chat_spans": 11,
+    "study.run_id": "20261010T205947Z-claude-haiku-5-5-with-mcp-e93b94",
+    "tool_spans": 12
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 766237,
+    "chat_spans": 32,
+    "study.run_id": "20261010T210036Z-claude-haiku-5-5-no-mcp-3f484e",
+    "tool_spans": 32
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 78295,
+    "chat_spans": 4,
+    "study.run_id": "20261010T210324Z-claude-sonnet-5-5-with-mcp-eb8b05",
+    "tool_spans": 5
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 121822,
+    "chat_spans": 10,
+    "study.run_id": "20261010T210352Z-claude-sonnet-5-5-no-mcp-2dd856",
+    "tool_spans": 10
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 123305,
+    "chat_spans": 6,
+    "study.run_id": "20261010T210501Z-claude-opus-5-5-with-mcp-6ec64d",
+    "tool_spans": 7
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 143767,
+    "chat_spans": 10,
+    "study.run_id": "20261010T210548Z-claude-opus-5-5-no-mcp-c5d5ce",
+    "tool_spans": 9
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 629383,
+    "chat_spans": 25,
+    "study.run_id": "20261010T210654Z-claude-haiku-5-5-no-mcp-5ec909",
+    "tool_spans": 26
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 311628,
+    "chat_spans": 13,
+    "study.run_id": "20261010T210841Z-claude-haiku-5-5-with-mcp-10b6cf",
+    "tool_spans": 14
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 111440,
+    "chat_spans": 9,
+    "study.run_id": "20261010T210936Z-claude-sonnet-5-5-no-mcp-83e55a",
+    "tool_spans": 8
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 97613,
+    "chat_spans": 5,
+    "study.run_id": "20261010T212200Z-claude-sonnet-5-5-with-mcp-e4f1ea",
+    "tool_spans": 6
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 566706,
+    "chat_spans": 18,
+    "study.run_id": "20261010T212233Z-claude-opus-5-5-no-mcp-b8c607",
+    "tool_spans": 17
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 123440,
+    "chat_spans": 6,
+    "study.run_id": "20261010T212408Z-claude-opus-5-5-with-mcp-6d52c8",
+    "tool_spans": 7
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 322314,
+    "chat_spans": 13,
+    "study.run_id": "20261010T212456Z-claude-haiku-5-5-with-mcp-5a6db1",
+    "tool_spans": 15
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 1021363,
+    "chat_spans": 32,
+    "study.run_id": "20261010T212621Z-claude-haiku-5-5-no-mcp-ce6067",
+    "tool_spans": 32
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 97531,
+    "chat_spans": 5,
+    "study.run_id": "20261010T213757Z-claude-sonnet-5-5-with-mcp-fa146b",
+    "tool_spans": 6
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 302274,
+    "chat_spans": 18,
+    "study.run_id": "20261010T213825Z-claude-sonnet-5-5-no-mcp-ec0393",
+    "tool_spans": 17
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 100808,
+    "chat_spans": 5,
+    "study.run_id": "20261010T214135Z-claude-opus-5-5-with-mcp-5995b4",
+    "tool_spans": 7
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 234269,
+    "chat_spans": 15,
+    "study.run_id": "20261010T214213Z-claude-opus-5-5-no-mcp-46d9a1",
+    "tool_spans": 14
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 490891,
+    "chat_spans": 24,
+    "study.run_id": "20261010T214337Z-claude-haiku-5-5-no-mcp-72da66",
+    "tool_spans": 24
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 238441,
+    "chat_spans": 10,
+    "study.run_id": "20261010T214713Z-claude-haiku-5-5-with-mcp-defd93",
+    "tool_spans": 11
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 230867,
+    "chat_spans": 14,
+    "study.run_id": "20261010T214759Z-claude-sonnet-5-5-no-mcp-174cde",
+    "tool_spans": 14
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 78215,
+    "chat_spans": 4,
+    "study.run_id": "20261010T214902Z-claude-sonnet-5-5-with-mcp-fdeb84",
+    "tool_spans": 5
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 266297,
+    "chat_spans": 15,
+    "study.run_id": "20261010T214928Z-claude-opus-5-5-no-mcp-2fbb1d",
+    "tool_spans": 14
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 100754,
+    "chat_spans": 5,
+    "study.run_id": "20261010T215049Z-claude-opus-5-5-with-mcp-1a2471",
+    "tool_spans": 5
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 419033,
+    "chat_spans": 17,
+    "study.run_id": "20261010T215212Z-claude-haiku-5-5-with-mcp-81c318",
+    "tool_spans": 20
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 715906,
+    "chat_spans": 28,
+    "study.run_id": "20261010T215326Z-claude-haiku-5-5-no-mcp-93410c",
+    "tool_spans": 27
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 97411,
+    "chat_spans": 5,
+    "study.run_id": "20261010T215550Z-claude-sonnet-5-5-with-mcp-06a758",
+    "tool_spans": 6
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 138738,
+    "chat_spans": 10,
+    "study.run_id": "20261010T215619Z-claude-sonnet-5-5-no-mcp-4ab2b2",
+    "tool_spans": 10
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 121391,
+    "chat_spans": 6,
+    "study.run_id": "20261010T215708Z-claude-opus-5-5-with-mcp-361fb9",
+    "tool_spans": 6
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 241181,
+    "chat_spans": 10,
+    "study.run_id": "20261010T215752Z-claude-opus-5-5-no-mcp-02b8f1",
+    "tool_spans": 9
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 842365,
+    "chat_spans": 31,
+    "study.run_id": "20261010T215851Z-claude-haiku-5-5-no-mcp-822a8a",
+    "tool_spans": 30
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 255060,
+    "chat_spans": 11,
+    "study.run_id": "20261010T220128Z-claude-haiku-5-5-with-mcp-f175f5",
+    "tool_spans": 13
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 79837,
+    "chat_spans": 7,
+    "study.run_id": "20261010T220229Z-claude-sonnet-5-5-no-mcp-d08f11",
+    "tool_spans": 7
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 97836,
+    "chat_spans": 5,
+    "study.run_id": "20261010T220304Z-claude-sonnet-5-5-with-mcp-a06be9",
+    "tool_spans": 6
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 349555,
+    "chat_spans": 13,
+    "study.run_id": "20261010T220334Z-claude-opus-5-5-no-mcp-b25403",
+    "tool_spans": 12
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 99144,
+    "chat_spans": 5,
+    "study.run_id": "20261010T220442Z-claude-opus-5-5-with-mcp-711042",
+    "tool_spans": 4
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 239299,
+    "chat_spans": 10,
+    "study.run_id": "20261010T220523Z-claude-haiku-5-5-with-mcp-f05975",
+    "tool_spans": 12
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 569066,
+    "chat_spans": 27,
+    "study.run_id": "20261010T220635Z-claude-haiku-5-5-no-mcp-e91b4b",
+    "tool_spans": 26
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 97575,
+    "chat_spans": 5,
+    "study.run_id": "20261010T221203Z-claude-sonnet-5-5-with-mcp-84e6a9",
+    "tool_spans": 6
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 183452,
+    "chat_spans": 12,
+    "study.run_id": "20261010T221230Z-claude-sonnet-5-5-no-mcp-468fa3",
+    "tool_spans": 12
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 100791,
+    "chat_spans": 5,
+    "study.run_id": "20261010T221531Z-claude-opus-5-5-with-mcp-ddef01",
+    "tool_spans": 6
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 124624,
+    "chat_spans": 9,
+    "study.run_id": "20261010T221611Z-claude-opus-5-5-no-mcp-552c0f",
+    "tool_spans": 8
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 801134,
+    "chat_spans": 27,
+    "study.run_id": "20261010T221705Z-claude-haiku-5-5-no-mcp-18d065",
+    "tool_spans": 27
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 337147,
+    "chat_spans": 13,
+    "study.run_id": "20261010T221943Z-claude-haiku-5-5-with-mcp-8abecf",
+    "tool_spans": 16
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 90203,
+    "chat_spans": 8,
+    "study.run_id": "20261010T222039Z-claude-sonnet-5-5-no-mcp-24b399",
+    "tool_spans": 7
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 97743,
+    "chat_spans": 5,
+    "study.run_id": "20261010T223303Z-claude-sonnet-5-5-with-mcp-9af669",
+    "tool_spans": 6
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 149893,
+    "chat_spans": 10,
+    "study.run_id": "20261010T223330Z-claude-opus-5-5-no-mcp-29cea6",
+    "tool_spans": 9
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 122736,
+    "chat_spans": 6,
+    "study.run_id": "20261010T223435Z-claude-opus-5-5-with-mcp-831298",
+    "tool_spans": 6
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 200556,
+    "chat_spans": 9,
+    "study.run_id": "20261010T223534Z-claude-haiku-5-5-with-mcp-1bf9a4",
+    "tool_spans": 10
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 694399,
+    "chat_spans": 28,
+    "study.run_id": "20261010T223620Z-claude-haiku-5-5-no-mcp-67a153",
+    "tool_spans": 30
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 97528,
+    "chat_spans": 5,
+    "study.run_id": "20261010T223925Z-claude-sonnet-5-5-with-mcp-c3575c",
+    "tool_spans": 6
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 123380,
+    "chat_spans": 9,
+    "study.run_id": "20261010T223957Z-claude-sonnet-5-5-no-mcp-e99f8f",
+    "tool_spans": 9
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 164983,
+    "chat_spans": 8,
+    "study.run_id": "20261010T224040Z-claude-opus-5-5-with-mcp-9e9c5f",
+    "tool_spans": 7
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 205016,
+    "chat_spans": 12,
+    "study.run_id": "20261010T224128Z-claude-opus-5-5-no-mcp-1179e0",
+    "tool_spans": 11
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 711606,
+    "chat_spans": 29,
+    "study.run_id": "20261010T224230Z-claude-haiku-5-5-no-mcp-f13ca2",
+    "tool_spans": 28
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 256506,
+    "chat_spans": 11,
+    "study.run_id": "20261010T224538Z-claude-haiku-5-5-with-mcp-445721",
+    "tool_spans": 12
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 153004,
+    "chat_spans": 11,
+    "study.run_id": "20261010T224626Z-claude-sonnet-5-5-no-mcp-9c698f",
+    "tool_spans": 11
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 97711,
+    "chat_spans": 5,
+    "study.run_id": "20261010T225855Z-claude-sonnet-5-5-with-mcp-77e848",
+    "tool_spans": 6
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 203532,
+    "chat_spans": 14,
+    "study.run_id": "20261010T225924Z-claude-opus-5-5-no-mcp-479a1e",
+    "tool_spans": 13
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 123432,
+    "chat_spans": 6,
+    "study.run_id": "20261010T230030Z-claude-opus-5-5-with-mcp-94557e",
+    "tool_spans": 7
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 295164,
+    "chat_spans": 12,
+    "study.run_id": "20261010T230120Z-claude-haiku-5-5-with-mcp-de5c08",
+    "tool_spans": 14
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 954378,
+    "chat_spans": 34,
+    "study.run_id": "20261010T230231Z-claude-haiku-5-5-no-mcp-3d0e91",
+    "tool_spans": 33
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 97337,
+    "chat_spans": 5,
+    "study.run_id": "20261010T230709Z-claude-sonnet-5-5-with-mcp-3c8389",
+    "tool_spans": 5
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 177399,
+    "chat_spans": 12,
+    "study.run_id": "20261010T230738Z-claude-sonnet-5-5-no-mcp-a771f1",
+    "tool_spans": 12
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 101590,
+    "chat_spans": 5,
+    "study.run_id": "20261010T231036Z-claude-opus-5-5-with-mcp-e6f3a0",
+    "tool_spans": 5
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 257245,
+    "chat_spans": 14,
+    "study.run_id": "20261010T231120Z-claude-opus-5-5-no-mcp-c2bd5f",
+    "tool_spans": 14
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 652687,
+    "chat_spans": 29,
+    "study.run_id": "20261010T231257Z-claude-haiku-5-5-no-mcp-4ce348",
+    "tool_spans": 29
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 256969,
+    "chat_spans": 11,
+    "study.run_id": "20261010T231545Z-claude-haiku-5-5-with-mcp-3021e7",
+    "tool_spans": 12
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 88342,
+    "chat_spans": 7,
+    "study.run_id": "20261010T231640Z-claude-sonnet-5-5-no-mcp-e81fac",
+    "tool_spans": 7
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 97073,
+    "chat_spans": 5,
+    "study.run_id": "20261010T231718Z-claude-sonnet-5-5-with-mcp-bc6c1e",
+    "tool_spans": 5
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 344197,
+    "chat_spans": 11,
+    "study.run_id": "20261010T231743Z-claude-opus-5-5-no-mcp-eb6058",
+    "tool_spans": 10
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 121917,
+    "chat_spans": 6,
+    "study.run_id": "20261010T231854Z-claude-opus-5-5-with-mcp-9efe3d",
+    "tool_spans": 5
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 291371,
+    "chat_spans": 12,
+    "study.run_id": "20261010T231945Z-claude-haiku-5-5-with-mcp-be40fa",
+    "tool_spans": 15
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 898402,
+    "chat_spans": 33,
+    "study.run_id": "20261010T232039Z-claude-haiku-5-5-no-mcp-870141",
+    "tool_spans": 32
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 97550,
+    "chat_spans": 5,
+    "study.run_id": "20261010T232555Z-claude-sonnet-5-5-with-mcp-f81465",
+    "tool_spans": 6
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 227908,
+    "chat_spans": 15,
+    "study.run_id": "20261010T232624Z-claude-sonnet-5-5-no-mcp-abeab5",
+    "tool_spans": 15
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 125175,
+    "chat_spans": 6,
+    "study.run_id": "20261010T233851Z-claude-opus-5-5-with-mcp-13167a",
+    "tool_spans": 6
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 232662,
+    "chat_spans": 10,
+    "study.run_id": "20261010T233941Z-claude-opus-5-5-no-mcp-dc2b00",
+    "tool_spans": 9
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 341711,
+    "chat_spans": 17,
+    "study.run_id": "20261010T234055Z-claude-haiku-5-5-no-mcp-04a1f0",
+    "tool_spans": 19
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 543966,
+    "chat_spans": 20,
+    "study.run_id": "20261010T234216Z-claude-haiku-5-5-with-mcp-b1d666",
+    "tool_spans": 21
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 125084,
+    "chat_spans": 9,
+    "study.run_id": "20261010T234353Z-claude-sonnet-5-5-no-mcp-eaafb9",
+    "tool_spans": 9
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 97682,
+    "chat_spans": 5,
+    "study.run_id": "20261010T234436Z-claude-sonnet-5-5-with-mcp-4d46c8",
+    "tool_spans": 6
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 345516,
+    "chat_spans": 17,
+    "study.run_id": "20261010T234505Z-claude-opus-5-5-no-mcp-d9fa79",
+    "tool_spans": 16
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 142301,
+    "chat_spans": 7,
+    "study.run_id": "20261010T234644Z-claude-opus-5-5-with-mcp-d54a19",
+    "tool_spans": 7
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 338613,
+    "chat_spans": 14,
+    "study.run_id": "20261010T234726Z-claude-haiku-5-5-with-mcp-68d5b0",
+    "tool_spans": 16
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 742880,
+    "chat_spans": 25,
+    "study.run_id": "20261010T234829Z-claude-haiku-5-5-no-mcp-23e3d7",
+    "tool_spans": 27
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 97490,
+    "chat_spans": 5,
+    "study.run_id": "20261010T235106Z-claude-sonnet-5-5-with-mcp-595cc9",
+    "tool_spans": 6
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 280040,
+    "chat_spans": 17,
+    "study.run_id": "20261010T235133Z-claude-sonnet-5-5-no-mcp-2bcee0",
+    "tool_spans": 17
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 100547,
+    "chat_spans": 5,
+    "study.run_id": "20261010T235234Z-claude-opus-5-5-with-mcp-60b3d8",
+    "tool_spans": 5
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 290386,
+    "chat_spans": 11,
+    "study.run_id": "20261010T235314Z-claude-opus-5-5-no-mcp-d0f90a",
+    "tool_spans": 10
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 637619,
+    "chat_spans": 25,
+    "study.run_id": "20261010T235412Z-claude-haiku-5-5-no-mcp-af0120",
+    "tool_spans": 24
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 325412,
+    "chat_spans": 13,
+    "study.run_id": "20261010T235751Z-claude-haiku-5-5-with-mcp-2b8200",
+    "tool_spans": 15
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 134402,
+    "chat_spans": 10,
+    "study.run_id": "20261010T235850Z-claude-sonnet-5-5-no-mcp-fa4ce0",
+    "tool_spans": 10
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 97529,
+    "chat_spans": 5,
+    "study.run_id": "20261010T235934Z-claude-sonnet-5-5-with-mcp-248b6a",
+    "tool_spans": 6
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 226909,
+    "chat_spans": 13,
+    "study.run_id": "20261011T000002Z-claude-opus-5-5-no-mcp-eb91af",
+    "tool_spans": 12
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 102689,
+    "chat_spans": 5,
+    "study.run_id": "20261011T000108Z-claude-opus-5-5-with-mcp-3ec377",
+    "tool_spans": 8
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 283679,
+    "chat_spans": 12,
+    "study.run_id": "20261011T000151Z-claude-haiku-5-5-with-mcp-997307",
+    "tool_spans": 13
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 492231,
+    "chat_spans": 23,
+    "study.run_id": "20261011T000247Z-claude-haiku-5-5-no-mcp-c1fd26",
+    "tool_spans": 22
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 97311,
+    "chat_spans": 5,
+    "study.run_id": "20261011T000446Z-claude-sonnet-5-5-with-mcp-670b80",
+    "tool_spans": 5
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 137818,
+    "chat_spans": 10,
+    "study.run_id": "20261011T000512Z-claude-sonnet-5-5-no-mcp-c1e3a3",
+    "tool_spans": 9
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 123535,
+    "chat_spans": 6,
+    "study.run_id": "20261011T000556Z-claude-opus-5-5-with-mcp-c63c17",
+    "tool_spans": 7
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 179054,
+    "chat_spans": 11,
+    "study.run_id": "20261011T000639Z-claude-opus-5-5-no-mcp-dfea11",
+    "tool_spans": 10
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 970596,
+    "chat_spans": 32,
+    "study.run_id": "20261011T000739Z-claude-haiku-5-5-no-mcp-02af24",
+    "tool_spans": 32
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 256243,
+    "chat_spans": 11,
+    "study.run_id": "20261011T001101Z-claude-haiku-5-5-with-mcp-730221",
+    "tool_spans": 12
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 139416,
+    "chat_spans": 11,
+    "study.run_id": "20261011T001150Z-claude-sonnet-5-5-no-mcp-151c16",
+    "tool_spans": 12
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 98090,
+    "chat_spans": 5,
+    "study.run_id": "20261011T002418Z-claude-sonnet-5-5-with-mcp-5c790a",
+    "tool_spans": 6
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 313164,
+    "chat_spans": 12,
+    "study.run_id": "20261011T002447Z-claude-opus-5-5-no-mcp-7b25f1",
+    "tool_spans": 11
+   }
+  },
+  {
+   "data": {
+    "chat_input_tokens": 123279,
+    "chat_spans": 6,
+    "study.run_id": "20261011T002549Z-claude-opus-5-5-with-mcp-f7d242",
+    "tool_spans": 7
+   }
+  }
+ ],
+ "run_pk": "on-jDVQrYppB",
+ "template": {
+  "breakdowns": [
+   "study.run_id"
+  ],
+  "calculations": [
+   {
+    "filters": [
+     {
+      "column": "gen_ai.operation.name",
+      "join_column": "",
+      "op": "=",
+      "value": "execute_tool"
+     }
+    ],
+    "name": "tools",
+    "op": "COUNT"
+   },
+   {
+    "filters": [
+     {
+      "column": "gen_ai.operation.name",
+      "join_column": "",
+      "op": "=",
+      "value": "chat"
+     }
+    ],
+    "name": "chats",
+    "op": "COUNT"
+   },
+   {
+    "column": "gen_ai.usage.input_tokens",
+    "name": "in_tok",
+    "op": "SUM"
+   }
+  ],
+  "end_time": 1791684000,
+  "formulas": [
+   {
+    "expression": "$tools",
+    "name": "tool_spans"
+   },
+   {
+    "expression": "$chats",
+    "name": "chat_spans"
+   },
+   {
+    "expression": "$in_tok",
+    "name": "chat_input_tokens"
+   }
+  ],
+  "granularity": 1800,
+  "limit": 1000,
+  "orders": [
+   {
+    "column": "study.run_id"
+   }
+  ],
+  "start_time": 1791655200
+ },
+ "total_by_aggregate": {
+  "data": {
+   "chat_input_tokens": 50380098,
+   "chat_spans": 2246,
+   "tool_spans": 2297
+  }
+ }
+}

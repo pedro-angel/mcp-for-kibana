@@ -1,0 +1,495 @@
+{
+ "elapsed_str": "114.95014ms",
+ "header": [
+  {
+   "alias": "study.model",
+   "derived": false,
+   "key_name": "study.model",
+   "per_time": 0,
+   "type": "string"
+  },
+  {
+   "alias": "ratio_cost",
+   "derived": false,
+   "key_name": "ratio_cost",
+   "per_time": 0,
+   "type": ""
+  },
+  {
+   "alias": "ratio_total_tokens",
+   "derived": false,
+   "key_name": "ratio_total_tokens",
+   "per_time": 0,
+   "type": ""
+  },
+  {
+   "alias": "ratio_model_calls",
+   "derived": false,
+   "key_name": "ratio_model_calls",
+   "per_time": 0,
+   "type": ""
+  },
+  {
+   "alias": "ratio_turns",
+   "derived": false,
+   "key_name": "ratio_turns",
+   "per_time": 0,
+   "type": ""
+  },
+  {
+   "alias": "ratio_tool_calls",
+   "derived": false,
+   "key_name": "ratio_tool_calls",
+   "per_time": 0,
+   "type": ""
+  },
+  {
+   "alias": "ratio_wall",
+   "derived": false,
+   "key_name": "ratio_wall",
+   "per_time": 0,
+   "type": ""
+  },
+  {
+   "alias": "ratio_model_ms",
+   "derived": false,
+   "key_name": "ratio_model_ms",
+   "per_time": 0,
+   "type": ""
+  },
+  {
+   "alias": "ratio_tokens_per_call",
+   "derived": false,
+   "key_name": "ratio_tokens_per_call",
+   "per_time": 0,
+   "type": ""
+  },
+  {
+   "alias": "ratio_tool_result_bytes",
+   "derived": false,
+   "key_name": "ratio_tool_result_bytes",
+   "per_time": 0,
+   "type": ""
+  },
+  {
+   "alias": "ratio_first_tool_ms",
+   "derived": false,
+   "key_name": "ratio_first_tool_ms",
+   "per_time": 0,
+   "type": ""
+  }
+ ],
+ "info": {
+  "granularity_seconds": 1800,
+  "mean_sample_rate": 1,
+  "rows_examined": 5435
+ },
+ "other_by_aggregate": {
+  "data": {
+   "ratio_cost": 0,
+   "ratio_first_tool_ms": 0,
+   "ratio_model_calls": 0,
+   "ratio_model_ms": 0,
+   "ratio_tokens_per_call": 0,
+   "ratio_tool_calls": 0,
+   "ratio_tool_result_bytes": 0,
+   "ratio_total_tokens": 0,
+   "ratio_turns": 0,
+   "ratio_wall": 0
+  }
+ },
+ "query_url": "https://ui.eu1.honeycomb.io/pedro-angel/environments/test/datasets/mcp-for-kibana-study/result/vV-1tEbHCYU2",
+ "results": [
+  {
+   "data": {
+    "ratio_cost": 0.36440693458207324,
+    "ratio_first_tool_ms": 1.3102767946411809,
+    "ratio_model_calls": 0.41379310344827586,
+    "ratio_model_ms": 0.3047638074942284,
+    "ratio_tokens_per_call": 0.9375515350210353,
+    "ratio_tool_calls": 0.4827586206896552,
+    "ratio_tool_result_bytes": 0.11779015184629127,
+    "ratio_total_tokens": 0.3819436167363223,
+    "ratio_turns": 0.5,
+    "ratio_wall": 0.26817165995486125,
+    "study.model": "claude-haiku-5-5"
+   }
+  },
+  {
+   "data": {
+    "ratio_cost": 0.3869937835328924,
+    "ratio_first_tool_ms": 1.4128367719404407,
+    "ratio_model_calls": 0.46153846153846156,
+    "ratio_model_ms": 0.5540240518038853,
+    "ratio_tokens_per_call": 1.1126435816689144,
+    "ratio_tool_calls": 0.5,
+    "ratio_tool_result_bytes": 0.055106806933344764,
+    "ratio_total_tokens": 0.5062941505208606,
+    "ratio_turns": 0.5384615384615384,
+    "ratio_wall": 0.6105637747536986,
+    "study.model": "claude-opus-5-5"
+   }
+  },
+  {
+   "data": {
+    "ratio_cost": 0.4632472621101021,
+    "ratio_first_tool_ms": 1.3794688127472952,
+    "ratio_model_calls": 0.5,
+    "ratio_model_ms": 0.4718371975806452,
+    "ratio_tokens_per_call": 1.4446050648729645,
+    "ratio_tool_calls": 0.6,
+    "ratio_tool_result_bytes": 0.08958081838238355,
+    "ratio_total_tokens": 0.7206194805382514,
+    "ratio_turns": 0.6363636363636364,
+    "ratio_wall": 0.43851899274434486,
+    "study.model": "claude-sonnet-5-5"
+   }
+  }
+ ],
+ "run_pk": "vV-1tEbHCYU2",
+ "template": {
+  "breakdowns": [
+   "study.model"
+  ],
+  "calculations": [
+   {
+    "column": "agent.cost.usd",
+    "filters": [
+     {
+      "column": "study.arm",
+      "join_column": "",
+      "op": "=",
+      "value": "with-mcp"
+     }
+    ],
+    "name": "cost_w",
+    "op": "P50"
+   },
+   {
+    "column": "agent.cost.usd",
+    "filters": [
+     {
+      "column": "study.arm",
+      "join_column": "",
+      "op": "=",
+      "value": "no-mcp"
+     }
+    ],
+    "name": "cost_n",
+    "op": "P50"
+   },
+   {
+    "column": "total_tokens",
+    "filters": [
+     {
+      "column": "study.arm",
+      "join_column": "",
+      "op": "=",
+      "value": "with-mcp"
+     }
+    ],
+    "name": "tok_w",
+    "op": "P50"
+   },
+   {
+    "column": "total_tokens",
+    "filters": [
+     {
+      "column": "study.arm",
+      "join_column": "",
+      "op": "=",
+      "value": "no-mcp"
+     }
+    ],
+    "name": "tok_n",
+    "op": "P50"
+   },
+   {
+    "column": "agent.model.calls",
+    "filters": [
+     {
+      "column": "study.arm",
+      "join_column": "",
+      "op": "=",
+      "value": "with-mcp"
+     }
+    ],
+    "name": "calls_w",
+    "op": "P50"
+   },
+   {
+    "column": "agent.model.calls",
+    "filters": [
+     {
+      "column": "study.arm",
+      "join_column": "",
+      "op": "=",
+      "value": "no-mcp"
+     }
+    ],
+    "name": "calls_n",
+    "op": "P50"
+   },
+   {
+    "column": "agent.harness.turns",
+    "filters": [
+     {
+      "column": "study.arm",
+      "join_column": "",
+      "op": "=",
+      "value": "with-mcp"
+     }
+    ],
+    "name": "turns_w",
+    "op": "P50"
+   },
+   {
+    "column": "agent.harness.turns",
+    "filters": [
+     {
+      "column": "study.arm",
+      "join_column": "",
+      "op": "=",
+      "value": "no-mcp"
+     }
+    ],
+    "name": "turns_n",
+    "op": "P50"
+   },
+   {
+    "column": "agent.tool.calls",
+    "filters": [
+     {
+      "column": "study.arm",
+      "join_column": "",
+      "op": "=",
+      "value": "with-mcp"
+     }
+    ],
+    "name": "tools_w",
+    "op": "P50"
+   },
+   {
+    "column": "agent.tool.calls",
+    "filters": [
+     {
+      "column": "study.arm",
+      "join_column": "",
+      "op": "=",
+      "value": "no-mcp"
+     }
+    ],
+    "name": "tools_n",
+    "op": "P50"
+   },
+   {
+    "column": "agent.time.wall_ms",
+    "filters": [
+     {
+      "column": "study.arm",
+      "join_column": "",
+      "op": "=",
+      "value": "with-mcp"
+     }
+    ],
+    "name": "wall_w",
+    "op": "P50"
+   },
+   {
+    "column": "agent.time.wall_ms",
+    "filters": [
+     {
+      "column": "study.arm",
+      "join_column": "",
+      "op": "=",
+      "value": "no-mcp"
+     }
+    ],
+    "name": "wall_n",
+    "op": "P50"
+   },
+   {
+    "column": "agent.time.model_ms",
+    "filters": [
+     {
+      "column": "study.arm",
+      "join_column": "",
+      "op": "=",
+      "value": "with-mcp"
+     }
+    ],
+    "name": "model_w",
+    "op": "P50"
+   },
+   {
+    "column": "agent.time.model_ms",
+    "filters": [
+     {
+      "column": "study.arm",
+      "join_column": "",
+      "op": "=",
+      "value": "no-mcp"
+     }
+    ],
+    "name": "model_n",
+    "op": "P50"
+   },
+   {
+    "column": "agent.usage.input_tokens_per_call",
+    "filters": [
+     {
+      "column": "study.arm",
+      "join_column": "",
+      "op": "=",
+      "value": "with-mcp"
+     }
+    ],
+    "name": "tpc_w",
+    "op": "P50"
+   },
+   {
+    "column": "agent.usage.input_tokens_per_call",
+    "filters": [
+     {
+      "column": "study.arm",
+      "join_column": "",
+      "op": "=",
+      "value": "no-mcp"
+     }
+    ],
+    "name": "tpc_n",
+    "op": "P50"
+   },
+   {
+    "column": "agent.usage.tool_result_bytes",
+    "filters": [
+     {
+      "column": "study.arm",
+      "join_column": "",
+      "op": "=",
+      "value": "with-mcp"
+     }
+    ],
+    "name": "trb_w",
+    "op": "P50"
+   },
+   {
+    "column": "agent.usage.tool_result_bytes",
+    "filters": [
+     {
+      "column": "study.arm",
+      "join_column": "",
+      "op": "=",
+      "value": "no-mcp"
+     }
+    ],
+    "name": "trb_n",
+    "op": "P50"
+   },
+   {
+    "column": "agent.time.first_tool_ms",
+    "filters": [
+     {
+      "column": "study.arm",
+      "join_column": "",
+      "op": "=",
+      "value": "with-mcp"
+     }
+    ],
+    "name": "ftm_w",
+    "op": "P50"
+   },
+   {
+    "column": "agent.time.first_tool_ms",
+    "filters": [
+     {
+      "column": "study.arm",
+      "join_column": "",
+      "op": "=",
+      "value": "no-mcp"
+     }
+    ],
+    "name": "ftm_n",
+    "op": "P50"
+   }
+  ],
+  "derived": [
+   {
+    "ad_hoc": true,
+    "expression": "SUM($agent.usage.input_tokens, $agent.usage.output_tokens)",
+    "virtualcolumn": "total_tokens"
+   }
+  ],
+  "end_time": 1791684000,
+  "filters": [
+   {
+    "column": "trace.parent_id",
+    "join_column": "",
+    "op": "does-not-exist"
+   }
+  ],
+  "formulas": [
+   {
+    "expression": "$cost_w / $cost_n",
+    "name": "ratio_cost"
+   },
+   {
+    "expression": "$tok_w / $tok_n",
+    "name": "ratio_total_tokens"
+   },
+   {
+    "expression": "$calls_w / $calls_n",
+    "name": "ratio_model_calls"
+   },
+   {
+    "expression": "$turns_w / $turns_n",
+    "name": "ratio_turns"
+   },
+   {
+    "expression": "$tools_w / $tools_n",
+    "name": "ratio_tool_calls"
+   },
+   {
+    "expression": "$wall_w / $wall_n",
+    "name": "ratio_wall"
+   },
+   {
+    "expression": "$model_w / $model_n",
+    "name": "ratio_model_ms"
+   },
+   {
+    "expression": "$tpc_w / $tpc_n",
+    "name": "ratio_tokens_per_call"
+   },
+   {
+    "expression": "$trb_w / $trb_n",
+    "name": "ratio_tool_result_bytes"
+   },
+   {
+    "expression": "$ftm_w / $ftm_n",
+    "name": "ratio_first_tool_ms"
+   }
+  ],
+  "granularity": 1800,
+  "orders": [
+   {
+    "column": "study.model"
+   }
+  ],
+  "start_time": 1791655200
+ },
+ "total_by_aggregate": {
+  "data": {
+   "ratio_cost": 1.2146479802250678,
+   "ratio_first_tool_ms": 4.102582379328917,
+   "ratio_model_calls": 1.3753315649867375,
+   "ratio_model_ms": 1.330625056878759,
+   "ratio_tokens_per_call": 3.4948001815629146,
+   "ratio_tool_calls": 1.5827586206896553,
+   "ratio_tool_result_bytes": 0.2624777771620196,
+   "ratio_total_tokens": 1.6088572477954344,
+   "ratio_turns": 1.6748251748251748,
+   "ratio_wall": 1.3172544274529048
+  }
+ }
+}

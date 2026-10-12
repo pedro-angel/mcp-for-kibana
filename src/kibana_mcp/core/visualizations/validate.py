@@ -41,6 +41,14 @@ def validate_spec(spec: VizSpec, data_view: DataViewDetail) -> list[str]:
                 f"group_by date_histogram needs a date field but '{g.field}' is {fields[g.field]}"
             )
 
+    date_hist = next((g for g in spec.group_by if g.kind == "date_histogram"), None)
+    if date_hist is not None and not spec.time_field and not data_view.time_field:
+        errors.append(
+            f"group_by date_histogram on '{date_hist.field}' needs a time field, and data "
+            f"view '{data_view.name}' has no default time field — set time_field on this "
+            f"panel to a date field, e.g. time_field: '{date_hist.field}'"
+        )
+
     for f in spec.filters:
         if f.field not in fields:
             errors.append(_unknown_field(f.field, fields, "filter"))

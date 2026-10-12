@@ -146,7 +146,7 @@ and docs/tools.md#saved-objects-exportimport-data-management.
   export→overwrite (in-place, matching ids) round trips; content-free
   rejection messages and bogus-handle rejection on both import and overwrite.
 - **Unit — `tests/unit/toolboxes/test_space_threading.py`.** All 10 tools
-  inside the shared 63-tool cross-toolbox matrix: threading (the factory
+  inside the shared 64-tool cross-toolbox matrix: threading (the factory
   sees exactly the caller's space), schema (space present, optional,
   correctly patterned), echo (dict rows only, only when set), and the two
   shared error-path cases (space-not-found guidance, auth-error passthrough).

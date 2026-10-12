@@ -7,7 +7,7 @@ prompt, the pass criterion, and the progress ladder this gate implements
 were frozen before any run. The LM Studio server entry `mcp-for-kibana-alerting`
 (its own entry — the dashboards gate's `mcp-for-kibana` keeps its frozen
 24-tool surface; one shared entry cannot satisfy both designs) must expose
-KIBANA_MCP_TOOLBOXES=alerting,platform-admin (16 tools at tier=write, counted
+KIBANA_MCP_TOOLBOXES=alerting,platform-admin (17 tools at tier=write, counted
 from the toolbox registrations — create_space lives in platform-admin, the
 rule tools in alerting; this gate was authored in a session that could not run
 the stack, so the first local run is the count's live confirmation).
@@ -36,7 +36,7 @@ from tests._alerting_space_ladder import (
     sweep_default_space_marker_rules,
 )
 from tests._space_ladder import FLIGHTS_INDEX, append_jsonl
-from tests._stack_env import LMSTUDIO_REFERENCE_MODEL
+from tests._stack_env import lmstudio_model
 
 pytestmark = pytest.mark.e2e
 
@@ -54,7 +54,7 @@ def lmstudio():
         # OPTIONAL by design elsewhere; this machine's LM Studio requires it
         # (probe record 2026-08-15) — send it whenever present.
         "token": os.environ.get("LMSTUDIO_API_TOKEN"),
-        "model": os.environ.get("LMSTUDIO_MODEL", LMSTUDIO_REFERENCE_MODEL),
+        "model": lmstudio_model(),
     }
 
 

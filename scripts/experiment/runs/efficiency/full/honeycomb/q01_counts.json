@@ -1,0 +1,210 @@
+{
+ "elapsed_str": "124.585645ms",
+ "header": [
+  {
+   "alias": "study.model",
+   "derived": false,
+   "key_name": "study.model",
+   "per_time": 0,
+   "type": "string"
+  },
+  {
+   "alias": "study.arm",
+   "derived": false,
+   "key_name": "study.arm",
+   "per_time": 0,
+   "type": "string"
+  },
+  {
+   "alias": "runs",
+   "derived": false,
+   "key_name": "runs",
+   "per_time": 0,
+   "type": ""
+  },
+  {
+   "alias": "distinct_traces",
+   "derived": false,
+   "key_name": "distinct_traces",
+   "per_time": 0,
+   "type": ""
+  },
+  {
+   "alias": "pass_strict",
+   "derived": false,
+   "key_name": "pass_strict",
+   "per_time": 0,
+   "type": ""
+  },
+  {
+   "alias": "pass_lenient",
+   "derived": false,
+   "key_name": "pass_lenient",
+   "per_time": 0,
+   "type": ""
+  }
+ ],
+ "info": {
+  "granularity_seconds": 300,
+  "mean_sample_rate": 1,
+  "rows_examined": 5435
+ },
+ "other_by_aggregate": {
+  "data": {
+   "distinct_traces": 0,
+   "pass_lenient": 0,
+   "pass_strict": 0,
+   "runs": 0
+  }
+ },
+ "query_url": "https://ui.eu1.honeycomb.io/pedro-angel/environments/test/datasets/mcp-for-kibana-study/result/2g-Q9jDJEWzk",
+ "results": [
+  {
+   "data": {
+    "distinct_traces": 30,
+    "pass_lenient": 30,
+    "pass_strict": 30,
+    "runs": 30,
+    "study.arm": "no-mcp",
+    "study.model": "claude-haiku-5-5"
+   }
+  },
+  {
+   "data": {
+    "distinct_traces": 30,
+    "pass_lenient": 30,
+    "pass_strict": 30,
+    "runs": 30,
+    "study.arm": "with-mcp",
+    "study.model": "claude-haiku-5-5"
+   }
+  },
+  {
+   "data": {
+    "distinct_traces": 30,
+    "pass_lenient": 30,
+    "pass_strict": 30,
+    "runs": 30,
+    "study.arm": "no-mcp",
+    "study.model": "claude-opus-5-5"
+   }
+  },
+  {
+   "data": {
+    "distinct_traces": 30,
+    "pass_lenient": 30,
+    "pass_strict": 30,
+    "runs": 30,
+    "study.arm": "with-mcp",
+    "study.model": "claude-opus-5-5"
+   }
+  },
+  {
+   "data": {
+    "distinct_traces": 30,
+    "pass_lenient": 29,
+    "pass_strict": 29,
+    "runs": 30,
+    "study.arm": "no-mcp",
+    "study.model": "claude-sonnet-5-5"
+   }
+  },
+  {
+   "data": {
+    "distinct_traces": 30,
+    "pass_lenient": 30,
+    "pass_strict": 28,
+    "runs": 30,
+    "study.arm": "with-mcp",
+    "study.model": "claude-sonnet-5-5"
+   }
+  }
+ ],
+ "run_pk": "2g-Q9jDJEWzk",
+ "template": {
+  "breakdowns": [
+   "study.model",
+   "study.arm"
+  ],
+  "calculations": [
+   {
+    "name": "n",
+    "op": "COUNT"
+   },
+   {
+    "column": "trace.trace_id",
+    "name": "traces",
+    "op": "COUNT_DISTINCT"
+   },
+   {
+    "filters": [
+     {
+      "column": "study.success_strict",
+      "join_column": "",
+      "op": "=",
+      "value": true
+     }
+    ],
+    "name": "strict",
+    "op": "COUNT"
+   },
+   {
+    "filters": [
+     {
+      "column": "study.success_lenient",
+      "join_column": "",
+      "op": "=",
+      "value": true
+     }
+    ],
+    "name": "lenient",
+    "op": "COUNT"
+   }
+  ],
+  "end_time": 1791684000,
+  "filters": [
+   {
+    "column": "gen_ai.operation.name",
+    "join_column": "",
+    "op": "=",
+    "value": "invoke_agent"
+   }
+  ],
+  "formulas": [
+   {
+    "expression": "$n",
+    "name": "runs"
+   },
+   {
+    "expression": "$traces",
+    "name": "distinct_traces"
+   },
+   {
+    "expression": "$strict",
+    "name": "pass_strict"
+   },
+   {
+    "expression": "$lenient",
+    "name": "pass_lenient"
+   }
+  ],
+  "granularity": 300,
+  "orders": [
+   {
+    "column": "study.model"
+   },
+   {
+    "column": "study.arm"
+   }
+  ],
+  "start_time": 1791655200
+ },
+ "total_by_aggregate": {
+  "data": {
+   "distinct_traces": 180,
+   "pass_lenient": 179,
+   "pass_strict": 177,
+   "runs": 180
+  }
+ }
+}

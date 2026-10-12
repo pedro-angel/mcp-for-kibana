@@ -10,23 +10,249 @@ version section.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-12
+
 ### Added
 
+- **`list_rule_types` (alerting, read).** Lists the rule types this Kibana
+  offers with the consumers the caller may create each under and its licence
+  status, so `create_alert_rule`'s `rule_type_id` and `consumer` no longer have
+  to be known in advance. It does not describe `params`: Kibana's API publishes
+  no params schema. Shipped from the alerting toolbox's recorded next work.
+- **`KIBANA_MCP_OTEL_TRACEPARENT_FROM_ENV`** (default off): with OTel export
+  on, the server parents all its spans under the W3C `TRACEPARENT` it was
+  started with, so a stdio client that passes trace context only through the
+  environment (Claude Code in `-p` mode) sees the server's spans in its trace.
+- **Three-arm analysis and the live cross-check for the rerun.**
+  `efficiency_analyze.py` adds `with-mcp-es` to the summaries when its runs
+  are present and writes its comparisons with `no-mcp` and `with-mcp` under
+  `pairs` (own RNG streams; two-arm output byte-identical to before).
+  `live_crosscheck.py` (`specs`, `capture`, `build`) compares the transcript
+  pipeline with what Claude Code, the hook and the runner emitted live into
+  the Honeycomb dataset `mcp-for-kibana-live`, and the hook's per-run rollups
+  with the transcript values, run by run.
+- **`live_report.py`**: the live rerun's results page (three arms, the live
+  telemetry and what Honeycomb reproduced), every number read from
+  `runs/efficiency/live/analysis.json`, `honeycomb_crosscheck.json` and the
+  run records; reuses `efficiency_report.py`'s helpers and style.
+- **`run_blocks.sh --skip-done`** (additive): skips a cell whose run directory
+  already holds a `record.json`, so an interrupted chunk of the efficiency
+  study resumes where it stopped.
+- **A third arm for the efficiency study rerun**, `with-mcp-es` (additive;
+  `with-mcp` and `no-mcp` are unchanged). `efficiency_run.py --arm with-mcp-es`
+  registers mcp-for-kibana plus Elastic's Elasticsearch MCP server
+  (elastic/mcp-server-elasticsearch v0.4.6, Docker image pinned by digest,
+  stdio) so the model can look at the data through a tool instead of curling
+  Kibana's console proxy. The runner mints a per-run Elasticsearch API key that
+  can only read the web-logs data stream, passes it only to that server's
+  config and invalidates it after the run; the relay scrubs it and the record
+  keeps the key id, privileges and whether it was invalidated or seen. The
+  agent-signals hook names the answering server (`agent.tool.mcp_server`).
+  `run_blocks.sh --three-arms` runs nine cells per block with the arm order
+  rotated by block, and passes extra runner flags after `--`. Setup, the
+  server's caveats and the smoke run: `scripts/experiment/LIVE_RERUN.md`.
+- **Local-model study: harness loading and late sends.** `lmstudio.load:
+  harness` loads each study model at its maximum context through LM Studio's
+  REST API and unloads the previous study model, so the study runs with JIT
+  loading off; `local_run.py send-pending` sends the stored spans of runs made
+  without the Honeycomb key.
+- **Local-model study results page.** `scripts/experiment/local_report.py`
+  builds the page from `runs/local/<phase>/analysis.json`, the config and the
+  recorded environment: pass rate by chain length per model with Wilson
+  intervals, where chains break, tool-call failures and cost per step.
+- **Live telemetry for the efficiency study rerun** (opt-in).
+  `efficiency_run.py --live-telemetry` gets every signal at run time from the
+  component that owns it: Claude Code's own spans and log events (prompt,
+  response and tool content; never raw API bodies), the server's tool-call
+  spans, a silent Claude Code hook (`agent_signals_hook.py`) that emits the
+  `agent.*` signals of SIGNALS.md per tool call with the same classifier as
+  the transcript pipeline, and a runner root span with the outcome and per-run
+  rollups, all in one trace per run. A loopback relay (`live_telemetry.py`)
+  scrubs the Kibana and Honeycomb keys and the account identity attributes,
+  keeps a copy per run and forwards to a study dataset; the Honeycomb key
+  never reaches Claude Code, the model's shell or the server. The mode also
+  turns on the fixes parked after the first study (first result event, denials
+  from the whole stream, sample data checked not reinstalled, prompt v2) and
+  offers `--key-out-of-model-env` and `--server-label` for the open decisions.
+  `live_smoke.py` proves the path in one probe run; `otlp_sink.py` records
+  what any OTLP exporter sends. Findings and the command sequence:
+  `scripts/experiment/LIVE_RERUN.md`. Without the flag the runner is unchanged.
 - **Cloud sessions start ready to work.** A SessionStart hook in
   `.claude/settings.json` runs `scripts/cloud-session-start.sh`, which starts
   `dockerd` (the environment snapshot keeps the images, not the daemon) and runs
   `make setup` (the clone is fresh each session). It exits at once outside a
   Claude Code cloud session. Ported from kibana-py. `.claude/settings.json` is
   the one tracked file under `.claude/`; the rest stays ignored.
+- **Efficiency study runner.** `scripts/experiment/efficiency_run.py` drives
+  `claude -p` through one end-to-end web-logs task (explore the data view,
+  build a dashboard, create a 5xx alert rule) with and without the server, on
+  an identical prompt and identical built-in tools. Each run keeps its
+  transcript, metrics, success check and produced objects under
+  `scripts/experiment/runs/efficiency/`, resets Kibana to its pre-run state,
+  and sends one OpenTelemetry trace to Honeycomb when `HONEYCOMB_API_KEY` is
+  set. `.claude/settings.json` allows that one command, so a cloud session can
+  launch the runs.
+- **Efficiency study analysis.** `scripts/experiment/efficiency_analyze.py`
+  (stdlib only) re-derives every full-study run's metrics from its transcript
+  and writes `scripts/experiment/runs/efficiency/full/analysis.json`: per-run
+  metrics, a per model × arm summary (strict and lenient pass counts; median,
+  mean and IQR of cost, tokens, turns, tool calls and duration) and the
+  with-minus-without difference and ratio of medians per model and pooled,
+  with a seeded 95% bootstrap CI on all runs and on passing runs. It measures
+  at the first `result` event, because `parse_stream` keeps only the last one
+  and 8 no-mcp runs carry a second, one-turn result after a hung background
+  task was killed; the all-results totals are kept as a sensitivity check.
+  Permission denials are counted from the stream, and each run records how its
+  alert rule got enabled.
+- **Agent observability signals for the efficiency study.**
+  `scripts/experiment/SIGNALS.md` defines a three-tier signal catalogue:
+  OpenTelemetry GenAI semconv 1.41 attributes, generic `agent.*` agent-health
+  signals grouped by operator question (outcome; effort and cost; where time
+  goes; tool reliability with error classes, hidden failures, retries and
+  recovery; safety: secret exposure, environment enumeration, permission
+  denials, out-of-workdir paths, curated-tool bypass; harness anomalies), and
+  `study.*` dimensions. `efficiency_analyze.py` now derives these signals for
+  every run and writes them to `analysis.json`, together with per model × arm
+  summaries and bootstrap comparisons; the existing metrics and comparisons
+  are unchanged. The secret scan matches the runs' Kibana API key exactly
+  (without writing it anywhere) and generic credential patterns. It finds the
+  key in 2 of 90 no-mcp runs and in 0 with-mcp runs. The new
+  `scripts/experiment/efficiency_honeycomb.py` sends the study to the Honeycomb
+  dataset `mcp-for-kibana-study` as `invoke_agent`/`chat`/`execute_tool`
+  traces carrying these signals. It redacts content, refuses to send if the
+  key or any credential pattern remains, checks token and tool-call totals
+  against `analysis.json`, and has `--check` and `--dry-run` modes.
+- **Study wrap-up.** `scripts/experiment/WRAP_UP.md` is the single overview
+  after the 10–12 October sessions: the three studies' status (study 1
+  complete; the live-telemetry rerun and the local study stopped early), what
+  study 1 showed, the lessons for designing and running the next studies, the
+  owner's open items and where every file lives. The partial data of studies
+  2 and 3 and the Honeycomb datasets stay until the next studies complete.
+- **The study names the agent, not just the models.** The results page and
+  the design record state that every run drove the Claude Code agent headless
+  (`claude -p`), so the numbers describe Claude Code with each model, not the
+  bare models.
+- **Efficiency study design record.** `scripts/experiment/STUDY_DESIGN.md`
+  holds the study's ten decisions with the question, the options considered
+  and what was settled, the background research (brief, statistics for
+  repeated agent runs, Kibana release check), the findings from the runs and
+  the facts checked during the design. The study's working board keeps only
+  the current state and links here.
+- **Efficiency study results page.** `scripts/experiment/efficiency_report.py`
+  (stdlib only, deterministic) writes `<out>/index.html`, a claude.ai artifact
+  body, and copies the chosen snapshot PNGs to `<out>/img/`. Every number is
+  read from `analysis.json`, the run records or the snapshots directory, and
+  the page stamps the commit and SHA-256 of the `analysis.json` it read. It
+  answers first, then covers what was compared (with a diagram of both arms),
+  results by model with a ratio chart, why the server arm is cheaper (model
+  calls against tokens per call, a to-scale timeline of a typical Opus run per
+  arm built from its transcript, and a time-split chart), reliability, safety,
+  the snapshots, and method. Tokens per call are reported as measured (1.13×
+  pooled, 1.45× for Sonnet), and the page notes that the API key was also in
+  the shell environment of the server arm.
+- **Honeycomb cross-check of the efficiency study.**
+  `scripts/experiment/efficiency_crosscheck.py` recomputes 320 of the study's
+  numbers with 18 Honeycomb queries over the run traces: `capture` stores each
+  query result (spec, rows, run link) under
+  `scripts/experiment/runs/efficiency/full/honeycomb/`, and `build` compares
+  them with `analysis.json` into `honeycomb_crosscheck.json`. 153 match
+  exactly, 156 differ only by Honeycomb's percentile rule (the observation at
+  index floor(p·n), verified against our runs), 2 differ for an explained
+  reason (COUNT_DISTINCT is an estimate; the AI conversation view counts tokens
+  on chat spans only), 8 bootstrap CIs are not expressible and 1 value was
+  never sent; none disagrees. `scripts/experiment/honeycomb_report.py` renders
+  the cross-check as a report page (verdict, method-difference chart, each
+  query explained with its link, the full table, gaps and instrumentation
+  recommendations).
+- **Local-model study harness.** `scripts/experiment/local_run.py` drives LM
+  Studio models through mcp-for-kibana on a web-logs chain of growing length
+  (L1 describe the data view; L2 adds a two-panel dashboard; L3 adds an enabled
+  5xx alert rule; L4 adds a panel edit and a read-back of the rule), with a
+  strict check per step. Every study value lives in one config,
+  `scripts/experiment/local_study.json`. `preflight` runs read-only checks and
+  names the fix for each failure (it reads `~/.lmstudio/mcp.json` and never
+  writes it). `pilot` and `run` resume after a crash, reset Kibana after every
+  run, retry runs where the environment failed, and keep each run's prompt,
+  stream, response, artifacts and spans. Each run is sent live to Honeycomb as
+  an OpenTelemetry GenAI trace with the agent.* and study.* signals, after
+  redaction and a check that no secret remains. The runner reads the first
+  final stream event, counts denials from the stream, checks sample data with
+  `GET /api/sample_data` instead of reinstalling it per run, and keeps the
+  Kibana key out of the prompt. `scripts/experiment/local_analyze.py` writes
+  pass rates per model × level with Wilson intervals, pass^k, medians per step
+  and the chain-length breakdown, and supports the Honeycomb cross-check.
+  `scripts/experiment/LOCAL_STUDY.md` is the runbook for the Mac session. The
+  harness is tested end to end against fake LM Studio, Kibana and Honeycomb
+  servers (`tests/unit/test_local_study.py`); the real pilot runs on the Mac.
 
 ### Changed
 
+- **No model is privileged in the live-model tests (D33).** `make test-e2e`
+  drives the model `LMSTUDIO_MODEL` names and fails with the fix when it is
+  unset; `google/gemma-4-12b-qat` is no longer the fallback or "the reference
+  model". D18's measurements stay as evidence; its reference status is
+  superseded.
 - **The Definition of Done needs no LLM** (D31). `e2e_green` is `n/a` in
   `dod.config`, as it already was in every `.github/dod` config, so `make dod`
   can reach GO on CI and in a Claude Code cloud session. The replay tiers
   (`e2e_replay_green`, `wheel_replay_green`) carry the per-change guarantee; the
   three live-model tests run on demand with `make test-e2e` when a change
   touches tool names, descriptions or schemas.
+
+### Fixed
+
+- **`create_dashboard` accepts a time-series panel without `time_field`.**
+  The panel schema says `time_field` is filled in from the data view when
+  omitted, but a `date_histogram` panel without it was rejected before the
+  server could fill it in. In the efficiency study this failed the first
+  `create_dashboard` call in all 90 with-server runs. The server now fills
+  in the data view's time field first. The pre-flight rejects a
+  `date_histogram` only when the data view has no default time field, and
+  the error names the field to set (`time_field: '<field>'`). This applies
+  to `create_visualization`, `add_panel` and `update_panel` too. Tool names,
+  descriptions and schemas are unchanged (D32).
+- **A wrong dashboard or alert-rule id names the fix.** An empty `dashboard_id`
+  reached the caller as a bare "Error calling tool" (kibana-py's unmapped
+  ValueError), and an id that matched nothing returned Kibana's "Saved object
+  [alert/<name>] not found". Both now say where a valid id comes from
+  (create/search or create/list tools) and that a title or name is not an id.
+  Seen in the local-model study: small models passed dashboard titles, rule
+  names and empty strings as ids.
+- **The local study expects the alerting toolbox's 25 tools.** Its server
+  entry (dashboards, data-management, alerting at `write`) gained
+  `list_rule_types`; `local_study.json`'s `expected_tools` and the runbook
+  said 24, so preflight failed.
+- **No-mcp runs in live mode now land in one trace.** Claude Code 2.1.296
+  starts its first query before its tracer is ready when it has no MCP server
+  to connect: no `claude_code.interaction` span, `TRACEPARENT` ignored, every
+  model and tool span its own trace (found in the rerun's smoke run). In live
+  mode the runner now connects a tool-less stdio MCP server
+  (`scripts/experiment/trace_anchor_server.py`) in the no-mcp arm; the model's
+  tools and first prompt are unchanged (5,047 tokens with and without it).
+  `--no-trace-anchor` leaves it out; the record says `trace_anchor`.
+  Details: `scripts/experiment/LIVE_RERUN.md`, "The no-mcp trace anchor".
+- **Span message fitting always terminates.** `efficiency_honeycomb.fit` re-truncated
+  the same 221-character leaf forever once every leaf sat at its 200-character
+  floor and the JSON still exceeded the cap; a 75-tool-call local-study run
+  stalled the full run for four hours. It now falls back to the byte cut when
+  truncation makes no progress.
+- **Local-study preflight reads Kibana's version with the key.** Real Kibana
+  answers an anonymous `/api/status` without the version, so preflight failed
+  on a correct 9.5.5 stack.
+- **The commit-msg stage runs only the message hooks.** Without
+  `default_stages`, every file hook also ran at commit-msg, so CI's per-commit
+  message loop re-ran the full file-hook set for each commit (about 26 s per
+  commit) and the 89-commit 0.3.0 PR exceeded the job's 10-minute limit.
+  `default_stages: [pre-commit]` leaves the pre-commit hook set unchanged; the
+  commit-msg pass now runs Conventional Commit and the provenance trailer
+  check (0.19 s).
+
+### Security
+
+- **multidict 6.7.1 → 6.9.1 (CVE-2026-104874).** A transitive dependency
+  (`kibana-py[async]` → `aiohttp`/`yarl`); `pip-audit` failed the
+  `audit_clean` gate on main. Lockfile regenerated with
+  `uv lock --upgrade-package multidict`; `make audit` is clean again.
 
 ## [0.2.0] - 2026-10-04
 
@@ -263,6 +489,7 @@ version section.
   `lms unload <identifier>`. It fails rather than skips, so the skip-green hole
   guarded in `tests/_stack_env.py` is not reopened here.
 
-[Unreleased]: https://github.com/pedro-angel/mcp-for-kibana/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/pedro-angel/mcp-for-kibana/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/pedro-angel/mcp-for-kibana/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/pedro-angel/mcp-for-kibana/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/pedro-angel/mcp-for-kibana/releases/tag/v0.1.0

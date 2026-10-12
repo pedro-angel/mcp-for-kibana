@@ -1,6 +1,6 @@
 # Decisions ledger
 
-Status: Draft v1.4 (2026-10-04) — regeneration corpus. Consumes
+Status: Draft v1.5 (2026-10-11) — regeneration corpus. Consumes
 [brief.md](brief.md); read alongside [design.md](design.md).
 
 Each entry is a decision a rewrite must not silently re-litigate: what was
@@ -114,7 +114,8 @@ this ledger stands without them.
   models recovered mid-turn *because* the error text named the fix; the
   e2e-replay tier replays those recorded turns (including a rejected call
   and its recovery) and fails on guidance regression.
-- **D18 (2026-08-19)** — The e2e reference model is `gemma-4-12b-qat`:
+- **D18 (2026-08-19)** — *The reference-model status is superseded by D33;
+  the measurements stand.* The e2e reference model is `gemma-4-12b-qat`:
   5/5 on the dashboards space chain (Study L) and 2/2 on the alerting-space
   gate, while `gpt-oss-20b` characteristically drops the `space` parameter
   mid-chain (3/5 wrong-space on dashboards; on alerting 0/3 recorded — one
@@ -154,6 +155,31 @@ this ledger stands without them.
   chooses the right tools after a change to what models see, so the three
   live-model tests run on demand (`make test-e2e`) when a change touches tool
   names, descriptions or schemas — a written rule, not an automated check.
+- **D32 (2026-10-11)** — An omitted `time_field` is valid on a
+  `date_histogram` VizSpec; the pre-flight, not the schema, owns the
+  no-time-field case. Evidence: in the efficiency study's 90 with-server
+  runs (`scripts/experiment/runs/efficiency/full/`, Kibana 9.5.5) the first
+  `create_dashboard` call failed in 90/90, all with the same schema error,
+  `date_histogram group_by requires time_field`: a line/bar/area panel
+  grouped by `date_histogram` on a date field with `time_field` omitted
+  (85 runs with one such panel, 5 with two). The field's own description
+  says "Auto-filled by the server if omitted", and the toolbox does fill it,
+  but `VizSpec._chart_rules` rejected the call during argument parsing,
+  before auto-fill could run. Every retry copied the `group_by` field into
+  `time_field`; 13 Haiku runs grouped by `@timestamp` (a date field
+  in the 9.5 sample logs, not the data view's time field `timestamp`) and
+  failed a second time on the mismatch check. Now `time_field` is filled
+  from the data view first, and `validate_spec` rejects a `date_histogram`
+  only when the data view has no default time field and none was given,
+  naming the field to set. The tool surface models see (names,
+  descriptions, JSON schemas) is byte-identical, so D31's on-demand
+  live-model run is not triggered.
+- **D33 (2026-10-12)** — No model is privileged: the live-model tests drive
+  whatever `LMSTUDIO_MODEL` names and fail with the fix when it is unset.
+  Supersedes D18's reference-model status (owner, 2026-10-12): a model chosen
+  on 2026-08-19 kept a default role because it had once been named, not
+  because a later measurement chose it again. D18's numbers remain evidence
+  about the models it measured; which model to drive is the caller's choice.
 
 ## Scope and licensing (probed on Basic)
 
@@ -224,6 +250,9 @@ this ledger stands without them.
   mechanism. Surfaced by owner review of this corpus — the toolbox is only
   a safe regeneration unit because contracts cannot overlap.
 ## Superseded
+
+- ~~D18's reference-model status (`gemma-4-12b-qat` as the `LMSTUDIO_MODEL`
+  fallback)~~ — superseded by D33; D18's measurements stand.
 
 - ~~D29 (2026-09-21): track the newest 9.4 patch and defer Kibana 9.5~~ —
   deferred 9.5 until kibana-py released its supported-set module, and on the

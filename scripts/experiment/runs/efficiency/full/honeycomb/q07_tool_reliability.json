@@ -1,0 +1,311 @@
+{
+ "elapsed_str": "101.571386ms",
+ "header": [
+  {
+   "alias": "study.arm",
+   "derived": false,
+   "key_name": "study.arm",
+   "per_time": 0,
+   "type": "string"
+  },
+  {
+   "alias": "tool_calls",
+   "derived": false,
+   "key_name": "tool_calls",
+   "per_time": 0,
+   "type": ""
+  },
+  {
+   "alias": "failures",
+   "derived": false,
+   "key_name": "failures",
+   "per_time": 0,
+   "type": ""
+  },
+  {
+   "alias": "hidden_failures",
+   "derived": false,
+   "key_name": "hidden_failures",
+   "per_time": 0,
+   "type": ""
+  },
+  {
+   "alias": "harness_errors",
+   "derived": false,
+   "key_name": "harness_errors",
+   "per_time": 0,
+   "type": ""
+  },
+  {
+   "alias": "retries",
+   "derived": false,
+   "key_name": "retries",
+   "per_time": 0,
+   "type": ""
+  },
+  {
+   "alias": "failures_recovered",
+   "derived": false,
+   "key_name": "failures_recovered",
+   "per_time": 0,
+   "type": ""
+  },
+  {
+   "alias": "first_attempt_failures",
+   "derived": false,
+   "key_name": "first_attempt_failures",
+   "per_time": 0,
+   "type": ""
+  },
+  {
+   "alias": "failure_rate",
+   "derived": false,
+   "key_name": "failure_rate",
+   "per_time": 0,
+   "type": ""
+  },
+  {
+   "alias": "error_rate",
+   "derived": false,
+   "key_name": "error_rate",
+   "per_time": 0,
+   "type": ""
+  },
+  {
+   "alias": "hidden_share",
+   "derived": false,
+   "key_name": "hidden_share",
+   "per_time": 0,
+   "type": ""
+  },
+  {
+   "alias": "recovered_share",
+   "derived": false,
+   "key_name": "recovered_share",
+   "per_time": 0,
+   "type": ""
+  }
+ ],
+ "info": {
+  "granularity_seconds": 1800,
+  "mean_sample_rate": 1,
+  "rows_examined": 6488
+ },
+ "other_by_aggregate": {
+  "data": {
+   "error_rate": 0,
+   "failure_rate": 0,
+   "failures": 0,
+   "failures_recovered": 0,
+   "first_attempt_failures": 0,
+   "harness_errors": 0,
+   "hidden_failures": 0,
+   "hidden_share": 0,
+   "recovered_share": 0,
+   "retries": 0,
+   "tool_calls": 0
+  }
+ },
+ "query_url": "https://ui.eu1.honeycomb.io/pedro-angel/environments/test/datasets/mcp-for-kibana-study/result/em-88Msxxhja",
+ "results": [
+  {
+   "data": {
+    "error_rate": 0.030921052631578946,
+    "failure_rate": 0.19407894736842105,
+    "failures": 295,
+    "failures_recovered": 122,
+    "first_attempt_failures": 201,
+    "harness_errors": 47,
+    "hidden_failures": 236,
+    "hidden_share": 0.8,
+    "recovered_share": 0.4135593220338983,
+    "retries": 149,
+    "study.arm": "no-mcp",
+    "tool_calls": 1520
+   }
+  },
+  {
+   "data": {
+    "error_rate": 0.14285714285714285,
+    "failure_rate": 0.28314028314028317,
+    "failures": 220,
+    "failures_recovered": 112,
+    "first_attempt_failures": 194,
+    "harness_errors": 111,
+    "hidden_failures": 109,
+    "hidden_share": 0.4954545454545455,
+    "recovered_share": 0.509090909090909,
+    "retries": 122,
+    "study.arm": "with-mcp",
+    "tool_calls": 777
+   }
+  }
+ ],
+ "run_pk": "em-88Msxxhja",
+ "template": {
+  "breakdowns": [
+   "study.arm"
+  ],
+  "calculations": [
+   {
+    "name": "calls",
+    "op": "COUNT"
+   },
+   {
+    "filters": [
+     {
+      "column": "agent.tool.failed",
+      "join_column": "",
+      "op": "=",
+      "value": true
+     }
+    ],
+    "name": "failed",
+    "op": "COUNT"
+   },
+   {
+    "filters": [
+     {
+      "column": "agent.tool.hidden_failure",
+      "join_column": "",
+      "op": "=",
+      "value": true
+     }
+    ],
+    "name": "hidden",
+    "op": "COUNT"
+   },
+   {
+    "filters": [
+     {
+      "column": "agent.tool.error",
+      "join_column": "",
+      "op": "=",
+      "value": true
+     }
+    ],
+    "name": "is_error",
+    "op": "COUNT"
+   },
+   {
+    "filters": [
+     {
+      "column": "agent.tool.retry",
+      "join_column": "",
+      "op": "=",
+      "value": true
+     }
+    ],
+    "name": "retry",
+    "op": "COUNT"
+   },
+   {
+    "filters": [
+     {
+      "column": "agent.tool.failed",
+      "join_column": "",
+      "op": "=",
+      "value": true
+     },
+     {
+      "column": "agent.tool.recovered",
+      "join_column": "",
+      "op": "=",
+      "value": true
+     }
+    ],
+    "name": "recovered",
+    "op": "COUNT"
+   },
+   {
+    "filters": [
+     {
+      "column": "agent.tool.first_attempt_failed",
+      "join_column": "",
+      "op": "=",
+      "value": true
+     }
+    ],
+    "name": "first_fail",
+    "op": "COUNT"
+   }
+  ],
+  "end_time": 1791684000,
+  "filters": [
+   {
+    "column": "gen_ai.operation.name",
+    "join_column": "",
+    "op": "=",
+    "value": "execute_tool"
+   }
+  ],
+  "formulas": [
+   {
+    "expression": "$calls",
+    "name": "tool_calls"
+   },
+   {
+    "expression": "$failed",
+    "name": "failures"
+   },
+   {
+    "expression": "$hidden",
+    "name": "hidden_failures"
+   },
+   {
+    "expression": "$is_error",
+    "name": "harness_errors"
+   },
+   {
+    "expression": "$retry",
+    "name": "retries"
+   },
+   {
+    "expression": "$recovered",
+    "name": "failures_recovered"
+   },
+   {
+    "expression": "$first_fail",
+    "name": "first_attempt_failures"
+   },
+   {
+    "expression": "$failed / $calls",
+    "name": "failure_rate"
+   },
+   {
+    "expression": "$is_error / $calls",
+    "name": "error_rate"
+   },
+   {
+    "expression": "$hidden / $failed",
+    "name": "hidden_share"
+   },
+   {
+    "expression": "$recovered / $failed",
+    "name": "recovered_share"
+   }
+  ],
+  "granularity": 1800,
+  "orders": [
+   {
+    "column": "study.arm"
+   }
+  ],
+  "start_time": 1791655200
+ },
+ "total_by_aggregate": {
+  "data": {
+   "error_rate": 0.1737781954887218,
+   "failure_rate": 0.4772192305087042,
+   "failures": 515,
+   "failures_recovered": 234,
+   "first_attempt_failures": 395,
+   "harness_errors": 158,
+   "hidden_failures": 345,
+   "hidden_share": 1.2954545454545454,
+   "recovered_share": 0.9226502311248073,
+   "retries": 271,
+   "tool_calls": 2297
+  }
+ }
+}

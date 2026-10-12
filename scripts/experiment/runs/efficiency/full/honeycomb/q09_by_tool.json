@@ -1,0 +1,480 @@
+{
+ "elapsed_str": "307.278866ms",
+ "header": [
+  {
+   "alias": "study.arm",
+   "derived": false,
+   "key_name": "study.arm",
+   "per_time": 0,
+   "type": "string"
+  },
+  {
+   "alias": "gen_ai.tool.name",
+   "derived": false,
+   "key_name": "gen_ai.tool.name",
+   "per_time": 0,
+   "type": "string"
+  },
+  {
+   "alias": "calls",
+   "derived": false,
+   "key_name": "calls",
+   "per_time": 0,
+   "type": ""
+  },
+  {
+   "alias": "failures",
+   "derived": false,
+   "key_name": "failures",
+   "per_time": 0,
+   "type": ""
+  },
+  {
+   "alias": "first_attempt_failures",
+   "derived": false,
+   "key_name": "first_attempt_failures",
+   "per_time": 0,
+   "type": ""
+  },
+  {
+   "alias": "retries",
+   "derived": false,
+   "key_name": "retries",
+   "per_time": 0,
+   "type": ""
+  },
+  {
+   "alias": "harness_errors",
+   "derived": false,
+   "key_name": "harness_errors",
+   "per_time": 0,
+   "type": ""
+  },
+  {
+   "alias": "runs_first_attempt_failed",
+   "derived": false,
+   "key_name": "runs_first_attempt_failed",
+   "per_time": 0,
+   "type": ""
+  },
+  {
+   "alias": "runs_with_a_success",
+   "derived": false,
+   "key_name": "runs_with_a_success",
+   "per_time": 0,
+   "type": ""
+  }
+ ],
+ "info": {
+  "granularity_seconds": 1800,
+  "mean_sample_rate": 1,
+  "rows_examined": 5435
+ },
+ "other_by_aggregate": {
+  "data": {
+   "calls": 0,
+   "failures": 0,
+   "first_attempt_failures": 0,
+   "harness_errors": 0,
+   "retries": 0,
+   "runs_first_attempt_failed": 0,
+   "runs_with_a_success": 0
+  }
+ },
+ "query_url": "https://ui.eu1.honeycomb.io/pedro-angel/environments/test/datasets/mcp-for-kibana-study/result/B2-7CSSDUCcy",
+ "results": [
+  {
+   "data": {
+    "calls": 1509,
+    "failures": 295,
+    "first_attempt_failures": 201,
+    "gen_ai.tool.name": "Bash",
+    "harness_errors": 47,
+    "retries": 149,
+    "runs_first_attempt_failed": 72,
+    "runs_with_a_success": 90,
+    "study.arm": "no-mcp"
+   }
+  },
+  {
+   "data": {
+    "calls": 193,
+    "failures": 103,
+    "first_attempt_failures": 90,
+    "gen_ai.tool.name": "mcp__mcp-for-kibana__create_dashboard",
+    "harness_errors": 103,
+    "retries": 103,
+    "runs_first_attempt_failed": 90,
+    "runs_with_a_success": 90,
+    "study.arm": "with-mcp"
+   }
+  },
+  {
+   "data": {
+    "calls": 184,
+    "failures": 113,
+    "first_attempt_failures": 100,
+    "gen_ai.tool.name": "Bash",
+    "harness_errors": 4,
+    "retries": 16,
+    "runs_first_attempt_failed": 49,
+    "runs_with_a_success": 31,
+    "study.arm": "with-mcp"
+   }
+  },
+  {
+   "data": {
+    "calls": 93,
+    "failures": 3,
+    "first_attempt_failures": 3,
+    "gen_ai.tool.name": "mcp__mcp-for-kibana__create_alert_rule",
+    "harness_errors": 3,
+    "retries": 3,
+    "runs_first_attempt_failed": 3,
+    "runs_with_a_success": 90,
+    "study.arm": "with-mcp"
+   }
+  },
+  {
+   "data": {
+    "calls": 90,
+    "failures": 0,
+    "first_attempt_failures": 0,
+    "gen_ai.tool.name": "mcp__mcp-for-kibana__describe_data_view",
+    "harness_errors": 0,
+    "retries": 0,
+    "runs_first_attempt_failed": 0,
+    "runs_with_a_success": 90,
+    "study.arm": "with-mcp"
+   }
+  },
+  {
+   "data": {
+    "calls": 54,
+    "failures": 0,
+    "first_attempt_failures": 0,
+    "gen_ai.tool.name": "mcp__mcp-for-kibana__list_data_views",
+    "harness_errors": 0,
+    "retries": 0,
+    "runs_first_attempt_failed": 0,
+    "runs_with_a_success": 54,
+    "study.arm": "with-mcp"
+   }
+  },
+  {
+   "data": {
+    "calls": 49,
+    "failures": 0,
+    "first_attempt_failures": 0,
+    "gen_ai.tool.name": "mcp__mcp-for-kibana__get_alert_rule",
+    "harness_errors": 0,
+    "retries": 0,
+    "runs_first_attempt_failed": 0,
+    "runs_with_a_success": 49,
+    "study.arm": "with-mcp"
+   }
+  },
+  {
+   "data": {
+    "calls": 42,
+    "failures": 0,
+    "first_attempt_failures": 0,
+    "gen_ai.tool.name": "mcp__mcp-for-kibana__get_dashboard",
+    "harness_errors": 0,
+    "retries": 0,
+    "runs_first_attempt_failed": 0,
+    "runs_with_a_success": 42,
+    "study.arm": "with-mcp"
+   }
+  },
+  {
+   "data": {
+    "calls": 35,
+    "failures": 0,
+    "first_attempt_failures": 0,
+    "gen_ai.tool.name": "mcp__mcp-for-kibana__enable_alert_rule",
+    "harness_errors": 0,
+    "retries": 0,
+    "runs_first_attempt_failed": 0,
+    "runs_with_a_success": 35,
+    "study.arm": "with-mcp"
+   }
+  },
+  {
+   "data": {
+    "calls": 11,
+    "failures": 0,
+    "first_attempt_failures": 0,
+    "gen_ai.tool.name": "mcp__mcp-for-kibana__list_alert_rules",
+    "harness_errors": 0,
+    "retries": 0,
+    "runs_first_attempt_failed": 0,
+    "runs_with_a_success": 11,
+    "study.arm": "with-mcp"
+   }
+  },
+  {
+   "data": {
+    "calls": 10,
+    "failures": 0,
+    "first_attempt_failures": 0,
+    "gen_ai.tool.name": "Read",
+    "harness_errors": 0,
+    "retries": 0,
+    "runs_first_attempt_failed": 0,
+    "runs_with_a_success": 5,
+    "study.arm": "no-mcp"
+   }
+  },
+  {
+   "data": {
+    "calls": 7,
+    "failures": 0,
+    "first_attempt_failures": 0,
+    "gen_ai.tool.name": "mcp__mcp-for-kibana__add_esql_metric_panel",
+    "harness_errors": 0,
+    "retries": 0,
+    "runs_first_attempt_failed": 0,
+    "runs_with_a_success": 7,
+    "study.arm": "with-mcp"
+   }
+  },
+  {
+   "data": {
+    "calls": 5,
+    "failures": 0,
+    "first_attempt_failures": 0,
+    "gen_ai.tool.name": "mcp__mcp-for-kibana__get_alerting_health",
+    "harness_errors": 0,
+    "retries": 0,
+    "runs_first_attempt_failed": 0,
+    "runs_with_a_success": 5,
+    "study.arm": "with-mcp"
+   }
+  },
+  {
+   "data": {
+    "calls": 5,
+    "failures": 0,
+    "first_attempt_failures": 0,
+    "gen_ai.tool.name": "mcp__mcp-for-kibana__search_dashboards",
+    "harness_errors": 0,
+    "retries": 0,
+    "runs_first_attempt_failed": 0,
+    "runs_with_a_success": 5,
+    "study.arm": "with-mcp"
+   }
+  },
+  {
+   "data": {
+    "calls": 4,
+    "failures": 0,
+    "first_attempt_failures": 0,
+    "gen_ai.tool.name": "mcp__mcp-for-kibana__list_connectors",
+    "harness_errors": 0,
+    "retries": 0,
+    "runs_first_attempt_failed": 0,
+    "runs_with_a_success": 4,
+    "study.arm": "with-mcp"
+   }
+  },
+  {
+   "data": {
+    "calls": 3,
+    "failures": 0,
+    "first_attempt_failures": 0,
+    "gen_ai.tool.name": "Grep",
+    "harness_errors": 0,
+    "retries": 0,
+    "runs_first_attempt_failed": 0,
+    "runs_with_a_success": 3,
+    "study.arm": "with-mcp"
+   }
+  },
+  {
+   "data": {
+    "calls": 1,
+    "failures": 0,
+    "first_attempt_failures": 0,
+    "gen_ai.tool.name": "Write",
+    "harness_errors": 0,
+    "retries": 0,
+    "runs_first_attempt_failed": 0,
+    "runs_with_a_success": 1,
+    "study.arm": "no-mcp"
+   }
+  },
+  {
+   "data": {
+    "calls": 1,
+    "failures": 0,
+    "first_attempt_failures": 0,
+    "gen_ai.tool.name": "Read",
+    "harness_errors": 0,
+    "retries": 0,
+    "runs_first_attempt_failed": 0,
+    "runs_with_a_success": 1,
+    "study.arm": "with-mcp"
+   }
+  },
+  {
+   "data": {
+    "calls": 1,
+    "failures": 1,
+    "first_attempt_failures": 1,
+    "gen_ai.tool.name": "mcp__mcp-for-kibana__execute_esql_query",
+    "harness_errors": 1,
+    "retries": 0,
+    "runs_first_attempt_failed": 1,
+    "runs_with_a_success": 0,
+    "study.arm": "with-mcp"
+   }
+  }
+ ],
+ "run_pk": "B2-7CSSDUCcy",
+ "template": {
+  "breakdowns": [
+   "study.arm",
+   "gen_ai.tool.name"
+  ],
+  "calculations": [
+   {
+    "name": "c",
+    "op": "COUNT"
+   },
+   {
+    "filters": [
+     {
+      "column": "agent.tool.failed",
+      "join_column": "",
+      "op": "=",
+      "value": true
+     }
+    ],
+    "name": "f",
+    "op": "COUNT"
+   },
+   {
+    "filters": [
+     {
+      "column": "agent.tool.first_attempt_failed",
+      "join_column": "",
+      "op": "=",
+      "value": true
+     }
+    ],
+    "name": "ff",
+    "op": "COUNT"
+   },
+   {
+    "filters": [
+     {
+      "column": "agent.tool.retry",
+      "join_column": "",
+      "op": "=",
+      "value": true
+     }
+    ],
+    "name": "r",
+    "op": "COUNT"
+   },
+   {
+    "filters": [
+     {
+      "column": "agent.tool.error",
+      "join_column": "",
+      "op": "=",
+      "value": true
+     }
+    ],
+    "name": "e",
+    "op": "COUNT"
+   },
+   {
+    "column": "trace.trace_id",
+    "filters": [
+     {
+      "column": "agent.tool.first_attempt_failed",
+      "join_column": "",
+      "op": "=",
+      "value": true
+     }
+    ],
+    "name": "runs_ff",
+    "op": "COUNT_DISTINCT"
+   },
+   {
+    "column": "trace.trace_id",
+    "filters": [
+     {
+      "column": "agent.tool.failed",
+      "join_column": "",
+      "op": "=",
+      "value": false
+     }
+    ],
+    "name": "runs_ok",
+    "op": "COUNT_DISTINCT"
+   }
+  ],
+  "end_time": 1791684000,
+  "filters": [
+   {
+    "column": "gen_ai.operation.name",
+    "join_column": "",
+    "op": "=",
+    "value": "execute_tool"
+   }
+  ],
+  "formulas": [
+   {
+    "expression": "$c",
+    "name": "calls"
+   },
+   {
+    "expression": "$f",
+    "name": "failures"
+   },
+   {
+    "expression": "$ff",
+    "name": "first_attempt_failures"
+   },
+   {
+    "expression": "$r",
+    "name": "retries"
+   },
+   {
+    "expression": "$e",
+    "name": "harness_errors"
+   },
+   {
+    "expression": "$runs_ff",
+    "name": "runs_first_attempt_failed"
+   },
+   {
+    "expression": "$runs_ok",
+    "name": "runs_with_a_success"
+   }
+  ],
+  "granularity": 1800,
+  "limit": 40,
+  "orders": [
+   {
+    "column": "calls",
+    "order": "descending"
+   }
+  ],
+  "start_time": 1791655200
+ },
+ "total_by_aggregate": {
+  "data": {
+   "calls": 2297,
+   "failures": 515,
+   "first_attempt_failures": 395,
+   "harness_errors": 158,
+   "retries": 271,
+   "runs_first_attempt_failed": 215,
+   "runs_with_a_success": 613
+  }
+ }
+}

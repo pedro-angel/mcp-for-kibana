@@ -1,0 +1,411 @@
+{
+ "elapsed_str": "99.288481ms",
+ "header": [
+  {
+   "alias": "ratio_cost",
+   "derived": false,
+   "key_name": "ratio_cost",
+   "per_time": 0,
+   "type": ""
+  },
+  {
+   "alias": "ratio_total_tokens",
+   "derived": false,
+   "key_name": "ratio_total_tokens",
+   "per_time": 0,
+   "type": ""
+  },
+  {
+   "alias": "ratio_model_calls",
+   "derived": false,
+   "key_name": "ratio_model_calls",
+   "per_time": 0,
+   "type": ""
+  },
+  {
+   "alias": "ratio_model_ms",
+   "derived": false,
+   "key_name": "ratio_model_ms",
+   "per_time": 0,
+   "type": ""
+  },
+  {
+   "alias": "ratio_tokens_per_call",
+   "derived": false,
+   "key_name": "ratio_tokens_per_call",
+   "per_time": 0,
+   "type": ""
+  },
+  {
+   "alias": "ratio_tool_result_bytes",
+   "derived": false,
+   "key_name": "ratio_tool_result_bytes",
+   "per_time": 0,
+   "type": ""
+  },
+  {
+   "alias": "ratio_first_tool_ms",
+   "derived": false,
+   "key_name": "ratio_first_tool_ms",
+   "per_time": 0,
+   "type": ""
+  },
+  {
+   "alias": "median_trb_with",
+   "derived": false,
+   "key_name": "median_trb_with",
+   "per_time": 0,
+   "type": ""
+  },
+  {
+   "alias": "median_trb_without",
+   "derived": false,
+   "key_name": "median_trb_without",
+   "per_time": 0,
+   "type": ""
+  },
+  {
+   "alias": "model_share_with",
+   "derived": false,
+   "key_name": "model_share_with",
+   "per_time": 0,
+   "type": ""
+  },
+  {
+   "alias": "model_share_without",
+   "derived": false,
+   "key_name": "model_share_without",
+   "per_time": 0,
+   "type": ""
+  }
+ ],
+ "info": {
+  "granularity_seconds": 1800,
+  "mean_sample_rate": 1,
+  "rows_examined": 6488
+ },
+ "other_by_aggregate": {
+  "data": {
+   "median_trb_with": 0,
+   "median_trb_without": 0,
+   "model_share_with": 0,
+   "model_share_without": 0,
+   "ratio_cost": 0,
+   "ratio_first_tool_ms": 0,
+   "ratio_model_calls": 0,
+   "ratio_model_ms": 0,
+   "ratio_tokens_per_call": 0,
+   "ratio_tool_result_bytes": 0,
+   "ratio_total_tokens": 0
+  }
+ },
+ "query_url": "https://ui.eu1.honeycomb.io/pedro-angel/environments/test/datasets/mcp-for-kibana-study/result/gM-j7KJcHnnu",
+ "results": [
+  {
+   "data": {
+    "median_trb_with": 2572,
+    "median_trb_without": 39187,
+    "model_share_with": 0.8125168666126935,
+    "model_share_without": 0.8402842715541425,
+    "ratio_cost": 0.4632472593549852,
+    "ratio_first_tool_ms": 1.3746534683968716,
+    "ratio_model_calls": 0.42857142857142855,
+    "ratio_model_ms": 0.5485034985529545,
+    "ratio_tokens_per_call": 1.112643571434641,
+    "ratio_tool_result_bytes": 0.06563401127925077,
+    "ratio_total_tokens": 0.4758192803406725
+   }
+  }
+ ],
+ "run_pk": "gM-j7KJcHnnu",
+ "template": {
+  "calculations": [
+   {
+    "column": "agent.cost.usd",
+    "filters": [
+     {
+      "column": "study.arm",
+      "join_column": "",
+      "op": "=",
+      "value": "with-mcp"
+     }
+    ],
+    "name": "cost_w",
+    "op": "P50"
+   },
+   {
+    "column": "agent.cost.usd",
+    "filters": [
+     {
+      "column": "study.arm",
+      "join_column": "",
+      "op": "=",
+      "value": "no-mcp"
+     }
+    ],
+    "name": "cost_n",
+    "op": "P50"
+   },
+   {
+    "column": "total_tokens",
+    "filters": [
+     {
+      "column": "study.arm",
+      "join_column": "",
+      "op": "=",
+      "value": "with-mcp"
+     }
+    ],
+    "name": "tok_w",
+    "op": "P50"
+   },
+   {
+    "column": "total_tokens",
+    "filters": [
+     {
+      "column": "study.arm",
+      "join_column": "",
+      "op": "=",
+      "value": "no-mcp"
+     }
+    ],
+    "name": "tok_n",
+    "op": "P50"
+   },
+   {
+    "column": "agent.model.calls",
+    "filters": [
+     {
+      "column": "study.arm",
+      "join_column": "",
+      "op": "=",
+      "value": "with-mcp"
+     }
+    ],
+    "name": "calls_w",
+    "op": "P50"
+   },
+   {
+    "column": "agent.model.calls",
+    "filters": [
+     {
+      "column": "study.arm",
+      "join_column": "",
+      "op": "=",
+      "value": "no-mcp"
+     }
+    ],
+    "name": "calls_n",
+    "op": "P50"
+   },
+   {
+    "column": "agent.time.model_ms",
+    "filters": [
+     {
+      "column": "study.arm",
+      "join_column": "",
+      "op": "=",
+      "value": "with-mcp"
+     }
+    ],
+    "name": "model_w",
+    "op": "P50"
+   },
+   {
+    "column": "agent.time.model_ms",
+    "filters": [
+     {
+      "column": "study.arm",
+      "join_column": "",
+      "op": "=",
+      "value": "no-mcp"
+     }
+    ],
+    "name": "model_n",
+    "op": "P50"
+   },
+   {
+    "column": "agent.usage.input_tokens_per_call",
+    "filters": [
+     {
+      "column": "study.arm",
+      "join_column": "",
+      "op": "=",
+      "value": "with-mcp"
+     }
+    ],
+    "name": "tpc_w",
+    "op": "P50"
+   },
+   {
+    "column": "agent.usage.input_tokens_per_call",
+    "filters": [
+     {
+      "column": "study.arm",
+      "join_column": "",
+      "op": "=",
+      "value": "no-mcp"
+     }
+    ],
+    "name": "tpc_n",
+    "op": "P50"
+   },
+   {
+    "column": "agent.usage.tool_result_bytes",
+    "filters": [
+     {
+      "column": "study.arm",
+      "join_column": "",
+      "op": "=",
+      "value": "with-mcp"
+     }
+    ],
+    "name": "trb_w",
+    "op": "P50"
+   },
+   {
+    "column": "agent.usage.tool_result_bytes",
+    "filters": [
+     {
+      "column": "study.arm",
+      "join_column": "",
+      "op": "=",
+      "value": "no-mcp"
+     }
+    ],
+    "name": "trb_n",
+    "op": "P50"
+   },
+   {
+    "column": "agent.time.first_tool_ms",
+    "filters": [
+     {
+      "column": "study.arm",
+      "join_column": "",
+      "op": "=",
+      "value": "with-mcp"
+     }
+    ],
+    "name": "ftm_w",
+    "op": "P50"
+   },
+   {
+    "column": "agent.time.first_tool_ms",
+    "filters": [
+     {
+      "column": "study.arm",
+      "join_column": "",
+      "op": "=",
+      "value": "no-mcp"
+     }
+    ],
+    "name": "ftm_n",
+    "op": "P50"
+   },
+   {
+    "column": "agent.time.model_share",
+    "filters": [
+     {
+      "column": "study.arm",
+      "join_column": "",
+      "op": "=",
+      "value": "with-mcp"
+     }
+    ],
+    "name": "ms_w",
+    "op": "P50"
+   },
+   {
+    "column": "agent.time.model_share",
+    "filters": [
+     {
+      "column": "study.arm",
+      "join_column": "",
+      "op": "=",
+      "value": "no-mcp"
+     }
+    ],
+    "name": "ms_n",
+    "op": "P50"
+   }
+  ],
+  "derived": [
+   {
+    "ad_hoc": true,
+    "expression": "SUM($agent.usage.input_tokens, $agent.usage.output_tokens)",
+    "virtualcolumn": "total_tokens"
+   }
+  ],
+  "end_time": 1791684000,
+  "filters": [
+   {
+    "column": "trace.parent_id",
+    "join_column": "",
+    "op": "does-not-exist"
+   }
+  ],
+  "formulas": [
+   {
+    "expression": "$cost_w / $cost_n",
+    "name": "ratio_cost"
+   },
+   {
+    "expression": "$tok_w / $tok_n",
+    "name": "ratio_total_tokens"
+   },
+   {
+    "expression": "$calls_w / $calls_n",
+    "name": "ratio_model_calls"
+   },
+   {
+    "expression": "$model_w / $model_n",
+    "name": "ratio_model_ms"
+   },
+   {
+    "expression": "$tpc_w / $tpc_n",
+    "name": "ratio_tokens_per_call"
+   },
+   {
+    "expression": "$trb_w / $trb_n",
+    "name": "ratio_tool_result_bytes"
+   },
+   {
+    "expression": "$ftm_w / $ftm_n",
+    "name": "ratio_first_tool_ms"
+   },
+   {
+    "expression": "$trb_w",
+    "name": "median_trb_with"
+   },
+   {
+    "expression": "$trb_n",
+    "name": "median_trb_without"
+   },
+   {
+    "expression": "$ms_w",
+    "name": "model_share_with"
+   },
+   {
+    "expression": "$ms_n",
+    "name": "model_share_without"
+   }
+  ],
+  "granularity": 1800,
+  "start_time": 1791655200
+ },
+ "total_by_aggregate": {
+  "data": {
+   "median_trb_with": 2572,
+   "median_trb_without": 39187,
+   "model_share_with": 0.8125168666126935,
+   "model_share_without": 0.8402842715541425,
+   "ratio_cost": 0.4632472593549852,
+   "ratio_first_tool_ms": 1.3746534683968716,
+   "ratio_model_calls": 0.42857142857142855,
+   "ratio_model_ms": 0.5485034985529545,
+   "ratio_tokens_per_call": 1.112643571434641,
+   "ratio_tool_result_bytes": 0.06563401127925077,
+   "ratio_total_tokens": 0.4758192803406725
+  }
+ }
+}

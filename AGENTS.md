@@ -29,8 +29,8 @@ KIBANA_MCP_DOD_CYCLE_STACK=1 make dod          # full Definition-of-Done → VER
 `make dod` needs no LLM: the live-model tier (`e2e_green`) is `n/a` in
 `dod.config` as in CI's configs (D31), so the gate can reach GO on CI and in a
 cloud session. The live-model tests run on demand with `make test-e2e` — a
-local LM Studio runtime with the reference model loaded
-([docs/e2e-setup.md](docs/e2e-setup.md)) — when a change touches tool names,
+local LM Studio runtime with a tool-use model loaded and named in
+`LMSTUDIO_MODEL` ([docs/e2e-setup.md](docs/e2e-setup.md)) — when a change touches tool names,
 descriptions or schemas.
 
 ## House rules

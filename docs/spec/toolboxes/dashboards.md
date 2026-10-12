@@ -1,6 +1,6 @@
 # dashboards — behavior contract
 
-Status: Draft v1.0 (2026-08-19) — regeneration corpus, reconciled to shipped code
+Status: Draft v1.1 (2026-10-11) — regeneration corpus, reconciled to shipped code
 Surface reference: docs/tools.md#dashboards-toolbox · Enforcement: named per section below
 
 ## Purpose & persona
@@ -89,6 +89,11 @@ but are owned and registered once by data-management, not here.
 - VizSpec-based tools (`create_dashboard`, `create_visualization`,
   `add_panel`, `update_panel`) must fully pre-flight-validate against the
   real, just-fetched data view — one batched error — before any write.
+- An omitted `time_field` is valid in every VizSpec, `date_histogram`
+  included: it is auto-filled from the data view before the pre-flight,
+  so no parse-time rule may reject it. Only a `date_histogram` on a data
+  view with no default time field, and no `time_field` given, is
+  rejected — by the pre-flight, naming the field to set (D32).
 - `add_esql_*_panel` tools must never validate the query or its columns
   server-side; a wrong query/column still yields a created panel.
 - ES|QL panels can only be appended to an existing dashboard, never created
@@ -96,6 +101,12 @@ but are owned and registered once by data-management, not here.
 - Every dashboard-scoped `url` is
   `{public_kibana_url}{/s/<space> if space else ""}/app/dashboards#/view/{dashboard_id}`.
 - `delete_dashboard`/`delete_panel` require no parameter beyond tier gating.
+- Every tool taking a `dashboard_id` answers an empty one with "dashboard_id is
+  empty — pass the id that create_dashboard or search_dashboards returns"
+  (before this, kibana-py's unmapped ValueError reached the caller as a bare
+  "Error calling tool"), and an id that matches no dashboard with "dashboard
+  '<id>' not found — dashboard_id is the id … not the dashboard's title; call
+  search_dashboards to find it" (D17; the space suffix still applies).
 
 ## Deliberate exclusions & caveats
 
@@ -124,6 +135,11 @@ but are owned and registered once by data-management, not here.
 
 - **Unit — test_dashboards_read.py**: read-tool registration/annotations,
   not-found guidance, empty-search shape.
+- **Unit — test_dashboards_first_call.py**: the efficiency study's
+  recorded first `create_dashboard` calls (date_histogram panels without
+  `time_field`) create the dashboard with the auto-filled time field; the
+  no-time-field data view gets the fix-naming pre-flight error and no
+  write (D32).
 - **Unit — test_dashboards_write.py**: pre-flight validation +
   suggestions; ESQL appends and arg guards; title-based idempotency
   (`created`/`replaced`, dedup, settings preservation, unroundtrippable
@@ -136,7 +152,8 @@ but are owned and registered once by data-management, not here.
   and error-path (`gateway_errors()` wraps factory errors) parity.
 - **Contract — test_gateway_contract.py**: live lifecycle round-trip with
   zero warnings; live idempotent-create through the actual tool; long-title
-  id derivation; missing-dashboard-not-found; all three ES|QL panel shapes
+  id derivation; a date_histogram panel without `time_field` auto-filled
+  and round-tripped with zero warnings; missing-dashboard-not-found; all three ES|QL panel shapes
   round-tripping losslessly; the space-scoped chain (invisible from the
   default space, 409 on a same-id twin create, only the owning space's
   delete removes it).
@@ -148,3 +165,6 @@ but are owned and registered once by data-management, not here.
   `space-dashboard-gemma-4-12b-qat.json` replays a REAL model-chosen turn
   over the same surface — together pinning space-echo and URL-prefix
   behavior through a real client/server.
+- `tests/unit/adapters/test_id_guidance.py` — the empty-id and unknown-id
+  guidance for dashboards and alert rules, and that a missing space still
+  reports the space.

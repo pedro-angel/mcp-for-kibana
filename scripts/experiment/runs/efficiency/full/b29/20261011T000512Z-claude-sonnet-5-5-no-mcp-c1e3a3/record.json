@@ -1,0 +1,92 @@
+{
+  "run_id": "20261011T000512Z-claude-sonnet-5-5-no-mcp-c1e3a3",
+  "block": "b29",
+  "model_requested": "claude-sonnet-5-5",
+  "arm": "no-mcp",
+  "marker": "EFF-8dd91890",
+  "kibana_version": "9.5.5",
+  "toolboxes": null,
+  "claude_cli": "2.1.296 (Claude Code)",
+  "git_sha": "820ec84",
+  "ts_start": "2026-10-11T00:05:12.708184+00:00",
+  "wall_s": 39.8,
+  "init_tools": [
+    "Bash",
+    "Glob",
+    "Grep",
+    "Read",
+    "Write"
+  ],
+  "init_mcp_tools": [],
+  "init_mcp_servers": [],
+  "tool_calls": [
+    "Bash",
+    "Bash",
+    "Bash",
+    "Bash",
+    "Bash",
+    "Bash",
+    "Bash",
+    "Bash",
+    "Bash"
+  ],
+  "n_tool_calls": 9,
+  "n_mcp_calls": 0,
+  "n_bash_calls": 9,
+  "num_turns": 10,
+  "total_cost_usd": 0.10999640000000002,
+  "duration_ms": 38791,
+  "duration_api_ms": 33355,
+  "input_tokens": 20,
+  "output_tokens": 4082,
+  "cache_read_input_tokens": 123604,
+  "cache_creation_input_tokens": 14194,
+  "model_usage": {
+    "claude-sonnet-5-5": {
+      "inputTokens": 20,
+      "outputTokens": 4082,
+      "cacheReadInputTokens": 123604,
+      "cacheCreationInputTokens": 14194,
+      "webSearchRequests": 0,
+      "costUSD": 0.10999640000000002,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 482,
+      "canonicalModel": "claude-sonnet-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "models_reported": [
+    "claude-sonnet-5-5"
+  ],
+  "permission_denials": [],
+  "is_error": false,
+  "terminal_reason": "completed",
+  "final_text": "The dashboard and the alert rule both exist. I haven't opened the dashboard in Kibana or waited for a rule run to check the results. The rule's first run was still pending when I last looked.\n\n**Fields:** The data view (`kibana_sample_data_logs`, time field `timestamp`) holds these main fields:\n- **Traffic:** `bytes`, `request`, `url`, `extension`, `response` (text, with a `.keyword` subfield), `clientip`, `host`.\n- **Client and origin:** `agent`, `machine.os`, `machine.ram`, `geo.src`, `geo.dest`, `referer`.\n- **Other:** `tags`, `message`.\n\n**Dashboard:** \"EFF-8dd91890 Web logs overview\" (id `0b6923fa-e132-43e7-bfbc-43cb5b92e179`). It defaults to the last 7 days and has five panels:\n- Total requests\n- Average bytes\n- Max bytes\n- Requests over time (line chart)\n- Requests by response code (table)\n\n**Rule:** \"EFF-8dd91890 5xx spike\" (id `fb3c227a-dda4-41ae-b124-61f42601e20a`) is an Elasticsearch query rule on `kibana_sample_data_logs`.\n- **Schedule:** it runs every 1 minute.\n- **Condition:** it fires when more than 10 documents with `response.keyword` starting with \"5\" arrive in a 5-minute window.\n- **Actions:** none are configured, so it creates alerts but doesn't send notifications.",
+  "timed_out": false,
+  "valid": true,
+  "dashboard_found": true,
+  "dashboard_panels": 5,
+  "dashboard_uses_logs": true,
+  "rule_found": true,
+  "rule_enabled": true,
+  "rule_uses_logs": true,
+  "rule_type_id": ".es-query",
+  "success": true,
+  "failure_reason": null,
+  "reset_removed": {
+    "objects": [
+      [
+        "dashboard",
+        "0b6923fa-e132-43e7-bfbc-43cb5b92e179"
+      ]
+    ],
+    "rules": [
+      "fb3c227a-dda4-41ae-b124-61f42601e20a"
+    ],
+    "connectors": []
+  },
+  "ts_end": "2026-10-11T00:05:53.733085+00:00",
+  "otel": "sent: HTTP 200, trace 1e6d54106633516821b3315d4f9fd784"
+}

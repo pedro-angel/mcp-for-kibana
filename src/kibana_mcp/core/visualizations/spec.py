@@ -128,6 +128,7 @@ class VizSpec(BaseModel):
             g.kind != "terms" for g in self.group_by
         ):
             raise ValueError(f"chart_type '{ct}' group_by must be kind 'terms'")
-        if any(g.kind == "date_histogram" for g in self.group_by) and not self.time_field:
-            raise ValueError("date_histogram group_by requires time_field")
+        # No date_histogram/time_field rule here: time_field is auto-filled from
+        # the data view AFTER parsing, so a parse-time rule would reject the
+        # documented "omit it" form. The pre-flight (validate_spec) owns it.
         return self

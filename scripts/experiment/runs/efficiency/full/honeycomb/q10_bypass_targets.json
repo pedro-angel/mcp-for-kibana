@@ -1,0 +1,204 @@
+{
+ "elapsed_str": "77.816688ms",
+ "header": [
+  {
+   "alias": "agent.tool.target",
+   "derived": false,
+   "key_name": "agent.tool.target",
+   "per_time": 0,
+   "type": "string"
+  },
+  {
+   "alias": "COUNT",
+   "derived": false,
+   "key_name": "COUNT",
+   "per_time": 0,
+   "type": ""
+  }
+ ],
+ "info": {
+  "granularity_seconds": 1800,
+  "mean_sample_rate": 1,
+  "rows_examined": 4723
+ },
+ "other_by_aggregate": {
+  "data": {
+   "COUNT": 0
+  }
+ },
+ "query_url": "https://ui.eu1.honeycomb.io/pedro-angel/environments/test/datasets/mcp-for-kibana-study/result/CQ-JDTs1aaMF",
+ "results": [
+  {
+   "data": {
+    "COUNT": 54,
+    "agent.tool.target": "Bash POST /api/console/proxy"
+   }
+  },
+  {
+   "data": {
+    "COUNT": 30,
+    "agent.tool.target": "Bash POST /api/esql/query"
+   }
+  },
+  {
+   "data": {
+    "COUNT": 18,
+    "agent.tool.target": "Bash POST /internal/search/es"
+   }
+  },
+  {
+   "data": {
+    "COUNT": 15,
+    "agent.tool.target": "Bash POST /internal/search/esql"
+   }
+  },
+  {
+   "data": {
+    "COUNT": 7,
+    "agent.tool.target": "Bash GET /api/status"
+   }
+  },
+  {
+   "data": {
+    "COUNT": 6,
+    "agent.tool.target": "Bash curl"
+   }
+  },
+  {
+   "data": {
+    "COUNT": 3,
+    "agent.tool.target": "Bash env"
+   }
+  },
+  {
+   "data": {
+    "COUNT": 2,
+    "agent.tool.target": "Bash PUT /api/alerting/rule/{id}"
+   }
+  },
+  {
+   "data": {
+    "COUNT": 2,
+    "agent.tool.target": "Bash echo"
+   }
+  },
+  {
+   "data": {
+    "COUNT": 1,
+    "agent.tool.target": "Bash /tmp"
+   }
+  },
+  {
+   "data": {
+    "COUNT": 1,
+    "agent.tool.target": "Bash /tmp/claude-0/-tmp-eff-ghj9ubow-work/0536cbf5-c97a-5467-80bd-e50c5d30a2ce/scratchpad"
+   }
+  },
+  {
+   "data": {
+    "COUNT": 1,
+    "agent.tool.target": "Bash /tmp/claude-0/-tmp-eff-o5ypop-9-work/0536cbf5-c97a-5467-80bd-e50c5d30a2ce/scratchpad"
+   }
+  },
+  {
+   "data": {
+    "COUNT": 1,
+    "agent.tool.target": "Bash ApiKey"
+   }
+  },
+  {
+   "data": {
+    "COUNT": 1,
+    "agent.tool.target": "Bash GET /api/alerting/rule_types"
+   }
+  },
+  {
+   "data": {
+    "COUNT": 1,
+    "agent.tool.target": "Bash GET /api/data_views"
+   }
+  },
+  {
+   "data": {
+    "COUNT": 1,
+    "agent.tool.target": "Bash GET /api/data_views/data_view/{id}"
+   }
+  },
+  {
+   "data": {
+    "COUNT": 1,
+    "agent.tool.target": "Bash POST /api"
+   }
+  },
+  {
+   "data": {
+    "COUNT": 1,
+    "agent.tool.target": "Bash POST /api/alerting/rule_types"
+   }
+  },
+  {
+   "data": {
+    "COUNT": 1,
+    "agent.tool.target": "Bash POST /internal/bsearch"
+   }
+  },
+  {
+   "data": {
+    "COUNT": 1,
+    "agent.tool.target": "Bash p"
+   }
+  },
+  {
+   "data": {
+    "COUNT": 1,
+    "agent.tool.target": "Bash u"
+   }
+  }
+ ],
+ "run_pk": "CQ-JDTs1aaMF",
+ "template": {
+  "breakdowns": [
+   "agent.tool.target"
+  ],
+  "calculations": [
+   {
+    "op": "COUNT"
+   }
+  ],
+  "end_time": 1791684000,
+  "filters": [
+   {
+    "column": "gen_ai.operation.name",
+    "join_column": "",
+    "op": "=",
+    "value": "execute_tool"
+   },
+   {
+    "column": "agent.tool.shell_http",
+    "join_column": "",
+    "op": "=",
+    "value": true
+   },
+   {
+    "column": "study.arm",
+    "join_column": "",
+    "op": "=",
+    "value": "with-mcp"
+   }
+  ],
+  "granularity": 1800,
+  "limit": 60,
+  "orders": [
+   {
+    "op": "COUNT",
+    "order": "descending"
+   }
+  ],
+  "start_time": 1791655200
+ },
+ "total_by_aggregate": {
+  "data": {
+   "COUNT": 149
+  }
+ }
+}

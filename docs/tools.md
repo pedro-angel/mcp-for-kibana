@@ -8,7 +8,7 @@ Toolboxes are selected via
 **[observability](#observability-toolbox)**,
 **[security-detections](#security-detections-toolbox)**,
 **[platform-admin](#platform-admin-toolbox)**,
-**[streams](#streams-toolbox)**, and **[fleet](#fleet-toolbox)** — 133 tools in
+**[streams](#streams-toolbox)**, and **[fleet](#fleet-toolbox)** — 134 tools in
 all. This reference details every toolbox in full. A drift-guard test
 (`tests/unit/test_docs_tool_reference.py`) asserts that every registered tool
 name appears on this page, so it cannot silently fall behind the code.
@@ -124,9 +124,9 @@ to be a **numeric** data-view field — checked during pre-flight validation
 | `kind` | `terms` \| `date_histogram` | `terms` | `terms` = top values; `date_histogram` = bucket over time. |
 | `limit` | integer, 1–100 | `10` | Top-N buckets. Only meaningful for `terms`. |
 
-A `date_histogram` entry additionally requires `time_field` to be set on
-the `VizSpec` — see the next section, since this interacts with when
-auto-fill happens.
+A `date_histogram` entry needs a time field on the `VizSpec`; omit
+`time_field` and the server fills in the data view's own — see
+[the auto-filled `time_field`](#the-auto-filled-time_field).
 
 ### FilterSpec — `filters`
 
@@ -165,27 +165,21 @@ Notes:
   even though column existence is not.
 - ES|QL is a **separate set of tools on purpose** — deliberately kept out of
   VizSpec so the field-based `create_dashboard`/`add_panel` schema (and small
-  local models' reliability on it) is unchanged.
+  local models' reli### The auto-filled `time_field`
 
-### The auto-filled `time_field`
+Omit `time_field`: the toolbox code (`_prepare_config` in `toolbox.py`)
+looks up the named `data_view` and, when `time_field` is `null` and the
+data view has a default time field, copies it onto the spec before the
+pre-flight runs. This holds for every chart type, `date_histogram`
+included — `group_by` names the x-axis date field, `time_field` scopes the
+Lens data source, and the two need not be the same field.
 
-The server fills in `time_field` from the data view's own default time
-field when the caller omits it — but the mechanics matter:
+Set `time_field` only when the data view has **no** default time field and
+a `group_by` entry is a `date_histogram`; the pre-flight then rejects the
+spec with a message naming the fix (see [error behavior](#error-behavior)).
+An explicit `time_field` must match the data view's own when it has one.
 
-1. FastMCP parses the tool call arguments into a `VizSpec`, running the
-   `_chart_rules` validator immediately. If any `group_by` entry has
-   `kind: "date_histogram"` and `time_field` is still `null` at this
-   point, **the call fails right here** with `"date_histogram group_by
-   requires time_field"` — auto-fill has not happened yet.
-2. Only if the spec passed step 1 does the toolbox code
-   (`_prepare_config` in `toolbox.py`) look up the named `data_view` and,
-   if `time_field` is still `null` and the data view has a default time
-   field, copy it onto the spec.
-
-In practice: for chart types that don't use `date_histogram`, you can omit
-`time_field` and the server fills it in (used to scope the Lens data
-source). For a `date_histogram` group_by, supply `time_field` explicitly —
-call `describe_data_view` first to learn it (it's returned as the
+ed as the
 `time_field` key).
 
 ## Returns
@@ -315,6 +309,11 @@ The specific checks, each producing its own bullet:
   it doesn't match the data view's actual time field →
   `"time_field '{spec.time_field}' does not match the data view's time
   field '{data_view.time_field}'"`.
+- **`date_histogram` with no time field at all** (the caller omitted
+  `time_field` and the data view has no default one) →
+  `"group_by date_histogram on '{field}' needs a time field, and data view
+  '{name}' has no default time field — set time_field on this panel to a
+  date field, e.g. time_field: '{field}'"`.
 
 ### The unsupported-panels refusal
 
@@ -354,7 +353,7 @@ This is a deliberate fail-closed guard — see
 
 ## Space targeting
 
-Every one of the 63 tools in the **dashboards**, **data-management**,
+Every one of the 64 tools in the **dashboards**, **data-management**,
 **alerting**, **cases**, and **security-detections** toolboxes — including
 the 14 destructive-tier ones — accepts an optional `space` parameter that
 targets a Kibana space by id:
@@ -385,7 +384,7 @@ sets `space`:
 - **Result echo.** Every **dict-returning** tool's result gains
   `"space": "<the value passed>"` so the model can see where it acted. The
   **list-returning** tools — `search_dashboards`, `list_data_views`,
-  `list_alert_rules`, `list_connectors`, `list_cases`,
+  `list_alert_rules`, `list_connectors`, `list_rule_types`, `list_cases`,
   `find_detection_rules`, `list_detection_rule_tags` (a bare string array),
   `search_detection_alerts`, `find_exception_lists`, `find_exception_items`,
   `find_value_lists`, `find_value_list_items`, and `find_timelines` — keep
@@ -463,6 +462,7 @@ Alerting rules and action connectors.
 | `get_alert_rule` | read | Get one alerting rule's summary by id. |
 | `get_alerting_health` | read | Kibana alerting framework health status. |
 | `list_connectors` | read | List configured action connectors (id, name, connector_type_id). |
+| `list_rule_types` | read | List rule types: `id` (the `rule_type_id`), the `consumers` the caller may create it under, licence status. No `params` schema (Kibana's API has none). |
 | `create_alert_rule` | write | Create an alerting rule (e.g. `rule_type_id` `.es-query`). |
 | `enable_alert_rule` | write | Enable (start running) an alerting rule. |
 | `disable_alert_rule` | write | Disable (stop running) an alerting rule. |

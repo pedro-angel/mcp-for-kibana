@@ -1,0 +1,366 @@
+{
+ "dashboards": [
+  {
+   "id": "loc-e53a7175-web-logs-5b727b4b5a81",
+   "data": {
+    "description": "",
+    "options": {
+     "auto_apply_filters": true,
+     "hide_panel_borders": false,
+     "hide_panel_titles": false,
+     "sync_colors": false,
+     "sync_cursor": true,
+     "sync_tooltips": false,
+     "use_margins": true
+    },
+    "tags": [],
+    "time_range": {
+     "from": "now-7d",
+     "to": "now"
+    },
+    "title": "LOC-e53a7175 Web logs",
+    "filters": [],
+    "panels": [
+     {
+      "grid": {
+       "x": 0,
+       "y": 0,
+       "w": 48,
+       "h": 12
+      },
+      "config": {
+       "title": "Requests Over Time",
+       "type": "xy",
+       "layers": [
+        {
+         "type": "bar",
+         "data_source": {
+          "type": "data_view_spec",
+          "index_pattern": "kibana_sample_data_logs",
+          "time_field": "timestamp",
+          "name": "kibana_sample_data_logs"
+         },
+         "sampling": 1,
+         "ignore_global_filters": false,
+         "x": {
+          "operation": "date_histogram",
+          "field": "@timestamp",
+          "suggested_interval": "auto",
+          "use_original_time_range": false,
+          "include_empty_rows": true,
+          "drop_partial_intervals": false
+         },
+         "y": [
+          {
+           "operation": "count",
+           "empty_as_null": false,
+           "color": {
+            "type": "auto"
+           }
+          }
+         ]
+        }
+       ],
+       "axis": {
+        "x": {
+         "title": {
+          "visible": true
+         },
+         "ticks": {
+          "visible": true
+         },
+         "grid": {
+          "visible": true
+         },
+         "domain": {
+          "type": "fit",
+          "rounding": false
+         },
+         "labels": {
+          "orientation": "horizontal"
+         }
+        },
+        "y": {
+         "title": {
+          "visible": true
+         },
+         "scale": "linear",
+         "ticks": {
+          "visible": true
+         },
+         "grid": {
+          "visible": true
+         },
+         "domain": {
+          "type": "full",
+          "rounding": true
+         },
+         "labels": {
+          "orientation": "horizontal"
+         }
+        }
+       },
+       "styling": {
+        "overlays": {
+         "partial_buckets": {
+          "visible": false
+         },
+         "current_time_marker": {
+          "visible": false
+         }
+        },
+        "bars": {
+         "minimum_height": 1,
+         "data_labels": {
+          "visible": false
+         }
+        }
+       },
+       "legend": {
+        "placement": "outside",
+        "position": "right",
+        "layout": {
+         "type": "grid",
+         "truncate": {
+          "max_lines": 1
+         }
+        },
+        "visibility": "hidden"
+       }
+      },
+      "id": "9663aea6-a047-4d0a-a14b-5e651360cc8b",
+      "type": "vis"
+     },
+     {
+      "grid": {
+       "x": 0,
+       "y": 12,
+       "w": 24,
+       "h": 10
+      },
+      "config": {
+       "title": "Requests Over Time",
+       "type": "xy",
+       "layers": [
+        {
+         "type": "bar",
+         "data_source": {
+          "type": "data_view_spec",
+          "index_pattern": "kibana_sample_data_logs",
+          "time_field": "timestamp",
+          "name": "kibana_sample_data_logs"
+         },
+         "sampling": 1,
+         "ignore_global_filters": false,
+         "x": {
+          "operation": "date_histogram",
+          "field": "@timestamp",
+          "suggested_interval": "auto",
+          "use_original_time_range": false,
+          "include_empty_rows": true,
+          "drop_partial_intervals": false
+         },
+         "y": [
+          {
+           "operation": "count",
+           "empty_as_null": false,
+           "color": {
+            "type": "auto"
+           }
+          }
+         ]
+        }
+       ],
+       "axis": {
+        "x": {
+         "title": {
+          "visible": true
+         },
+         "ticks": {
+          "visible": true
+         },
+         "grid": {
+          "visible": true
+         },
+         "domain": {
+          "type": "fit",
+          "rounding": false
+         },
+         "labels": {
+          "orientation": "horizontal"
+         }
+        },
+        "y": {
+         "title": {
+          "visible": true
+         },
+         "scale": "linear",
+         "ticks": {
+          "visible": true
+         },
+         "grid": {
+          "visible": true
+         },
+         "domain": {
+          "type": "full",
+          "rounding": true
+         },
+         "labels": {
+          "orientation": "horizontal"
+         }
+        }
+       },
+       "styling": {
+        "overlays": {
+         "partial_buckets": {
+          "visible": false
+         },
+         "current_time_marker": {
+          "visible": false
+         }
+        },
+        "bars": {
+         "minimum_height": 1,
+         "data_labels": {
+          "visible": false
+         }
+        }
+       },
+       "legend": {
+        "placement": "outside",
+        "position": "right",
+        "layout": {
+         "type": "grid",
+         "truncate": {
+          "max_lines": 1
+         }
+        },
+        "visibility": "hidden"
+       }
+      },
+      "id": "ac81b91f-a3e2-4866-b46d-180a1844e7ce",
+      "type": "vis"
+     },
+     {
+      "grid": {
+       "x": 0,
+       "y": 22,
+       "w": 24,
+       "h": 10
+      },
+      "config": {
+       "title": "Requests Over Time",
+       "type": "xy",
+       "layers": [
+        {
+         "type": "bar",
+         "data_source": {
+          "type": "data_view_spec",
+          "index_pattern": "kibana_sample_data_logs",
+          "time_field": "timestamp",
+          "name": "kibana_sample_data_logs"
+         },
+         "sampling": 1,
+         "ignore_global_filters": false,
+         "x": {
+          "operation": "date_histogram",
+          "field": "@timestamp",
+          "suggested_interval": "auto",
+          "use_original_time_range": false,
+          "include_empty_rows": true,
+          "drop_partial_intervals": false
+         },
+         "y": [
+          {
+           "operation": "count",
+           "empty_as_null": false,
+           "color": {
+            "type": "auto"
+           }
+          }
+         ]
+        }
+       ],
+       "axis": {
+        "x": {
+         "title": {
+          "visible": true
+         },
+         "ticks": {
+          "visible": true
+         },
+         "grid": {
+          "visible": true
+         },
+         "domain": {
+          "type": "fit",
+          "rounding": false
+         },
+         "labels": {
+          "orientation": "horizontal"
+         }
+        },
+        "y": {
+         "title": {
+          "visible": true
+         },
+         "scale": "linear",
+         "ticks": {
+          "visible": true
+         },
+         "grid": {
+          "visible": true
+         },
+         "domain": {
+          "type": "full",
+          "rounding": true
+         },
+         "labels": {
+          "orientation": "horizontal"
+         }
+        }
+       },
+       "styling": {
+        "overlays": {
+         "partial_buckets": {
+          "visible": false
+         },
+         "current_time_marker": {
+          "visible": false
+         }
+        },
+        "bars": {
+         "minimum_height": 1,
+         "data_labels": {
+          "visible": false
+         }
+        }
+       },
+       "legend": {
+        "placement": "outside",
+        "position": "right",
+        "layout": {
+         "type": "grid",
+         "truncate": {
+          "max_lines": 1
+         }
+        },
+        "visibility": "hidden"
+       }
+      },
+      "id": "0ac047f6-2286-475b-aa45-bfcd2f78574b",
+      "type": "vis"
+     }
+    ],
+    "pinned_panels": []
+   },
+   "meta": {
+    "created_at": "2026-10-11T22:57:25.603Z",
+    "managed": false,
+    "updated_at": "2026-10-11T22:59:32.485Z",
+    "version": "Wzk5NCw4XQ=="
+   }
+  }
+ ],
+ "rules": []
+}
