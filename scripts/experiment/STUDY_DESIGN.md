@@ -202,6 +202,26 @@ Considered:
 
 - The earlier local design (one task cut into chain lengths L1 to L4, to find where a model loses track) is replaced; its records stay in `runs/local/` with the config they ran with (`local_study_levels.json`). Study 5 writes to `runs/study5/`.
 
+### 14. Study 4: the runner, the plan and the stall alert
+
+_2026-10-12_
+
+**Question.** How does the efficiency runner run the four tasks, in what order, and how do we notice a run that hangs?
+
+**Decision.** `efficiency_run.py --task <id>` (off by default; the first study's single task runs unchanged without it) takes the prompt, the seed and the checks from `study_tasks.py`; the runner defines none of them. `--blocks FIRST LAST` runs every (task, model, arm) cell once per block: 4 tasks × 3 models × 2 arms = 24 runs a block, 12 blocks for the study, 1 block for the pilot.
+
+- Arms: `with-mcp` gets the tasks.json `server` preamble, `no-mcp` the `api` one. Both keep the same built-in tools and working directory with the pinned API reference; only the preamble, the server and the key differ (decision 12). The Kibana key never reaches the with-mcp model's environment (the board's running rule); the no-mcp model needs it to reach Kibana at all.
+- A run is cut at 30 minutes and counts as a failure, recorded as `timed_out`.
+- Every task run starts from the seed: the seeded dashboard and rule are recreated at their fixed ids before the run, and what the run created is deleted after it.
+- Order: tasks and models each rotate by one place per block and the arm order flips every other block, so over 12 blocks each task leads 3 times, each model 4 times, each arm 6 times. `--skip-done` resumes an interrupted plan.
+- Evidence per run: transcript (written as it streams), record, `outcome.json` with every check's expected and actual value, `artifacts.json`, and with `--live-telemetry` the scrubbed telemetry copy. The first result event is read (the fault found after the first study). `study_tasks.span_attributes(outcome)` goes on the root span, with `study.steps_passed`, `study.first_failed_step` and `study.tasks_sha` (the hash of tasks.json the run used); every component's resource carries `study.task`.
+- Stall alert: when neither a transcript line nor a finished run has appeared for 40 minutes (`--stall-minutes`), the plan writes a STALL line to stderr and an entry to `<out>/stalls.jsonl`, and a RESUMED entry when progress returns. It never stops the plan. A single run is cut at 30 minutes, so 40 minutes without progress means the harness, not the model, is stuck.
+- The agent-signals hook judged outside-work-directory paths against the first hook payload's `cwd`, which a leading `cd sub` moves; the runner now writes the work directory into the hook's config.
+
+Considered:
+
+- Smoke runs, Haiku, local telemetry only (`runs/efficiency/study4/`): on the draft tasks, the web-logs task passed and the change task with the server stopped at the rename step, the model naming the missing tools (`smoke/`); that led to the removal recorded in decision 12. On the revised tasks, change with and without the server and lookup with the server passed (`smoke2/`).
+
 ### 15. The rule must catch all server errors
 
 _2026-10-12_
@@ -228,6 +248,33 @@ _2026-10-12_
 - Stage 2 takes one model: among the models whose stage-1 successes reach the pass mark (14 of 20), the one with the most successes; on a tie, the faster median time per run (valid runs); then the config's order. With none at the pass mark, stage 2 does not run.
 - The report covers that model on all four tasks, and every model on stage 1.
 - The pilot is re-run on the new alert wording (decision 15): 3 runs per model, 12 runs. The first pilot's records are kept under `runs/study5/pilot-v1/`.
+
+### 17. Study 4: TMPDIR inside the run's working directory
+
+_2026-10-12_
+
+**Question.** In the study 4 pilot, Sonnet without the server ran `cat > $TMPDIR/d.json` with `TMPDIR` empty: the command became `cat > /d.json`, waited on input until the 120-second limit, and the model's next command, `rm /d.json`, was refused because it names a path outside the working directory. The model concluded the shell was denied and stopped; the run is invalid (2 permission denials). The first study's b20 failed the same way. Should the harness prevent it?
+
+**Decision.** Yes. In `--task` runs both arms get `TMPDIR` set to `tmp/` inside the run's working directory, created before the run. The first study's runner is unchanged. Decided through the coordinator session on 2026-10-12, after the pilot.
+
+Considered:
+
+- Leaving it: the failure measures an empty variable in the harness, not the work, and it costs the arm without the server a run now and then (1 of 24 in the pilot, 1 of 90 in the first study).
+- The pilot records keep the failed run as it happened; one run of the same cell after the fix confirms it (`runs/efficiency/study4/pilot-tmpdir/`).
+
+### 18. Study 4: how cost and time are compared
+
+_2026-10-12_
+
+**Question.** How do the 288 runs answer what the work costs with the server, compared with no server?
+
+**Decision.** `study4_analyze.py` reads every run's record and writes `runs/efficiency/study4/full/analysis.json` and the results page [STUDY4_RESULTS.md](STUDY4_RESULTS.md); no number on the page is typed by hand.
+
+- Cost per run is Claude Code's list-price cost of the run (`total_cost_usd`); time per run is the agent's wall-clock time as the runner measured it (`wall_s`).
+- Per model, arm and task: the median with a 95% percentile-bootstrap interval, quartiles, mean and range. Only valid runs count.
+- Per model and task: median with the server ÷ median without, with its interval (the first study's `efficiency_analyze.compare`).
+- Per model: the geometric mean of its four per-task ratios, so each task weighs the same however much its runs cost; the interval comes from resampling the runs of every cell. Fixed seed, 10,000 resamples.
+- Every headline number is computed twice: by the script and by a Honeycomb query on the runner's root spans (`honeycomb_crosscheck.json`, with the query runs). Honeycomb's P50 returns one of the two middle values where the script averages them; every cell that differs by more than 1% equals one of its two middle run values.
 
 ## Background research
 

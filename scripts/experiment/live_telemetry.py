@@ -477,6 +477,8 @@ ROOT_KEYS = (
     "cache_creation_input_tokens", "duration_ms", "duration_api_ms", "wall_s",
     "timed_out", "valid", "n_permission_denials", "n_result_events",
     "rule_enabled", "dashboard_panels",
+    # --task runs only (study 4); the checks come from study_tasks.span_attributes
+    "steps_passed", "first_failed_step", "tasks_sha",
     # with-mcp-es arm only (absent elsewhere, so not on the span)
     "es_mcp_image", "es_key_privileges", "n_es_mcp_calls", "es_key_in_output",
     "es_key_invalidated",

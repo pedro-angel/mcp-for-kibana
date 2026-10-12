@@ -1,0 +1,52 @@
+{
+  "task": "lookup",
+  "success": true,
+  "failure_reason": null,
+  "first_failed_step": null,
+  "steps_passed": 4,
+  "steps_total": 4,
+  "criteria": [
+    {
+      "step": "panels",
+      "check": "answer:PANELS",
+      "ok": true,
+      "expected": 2,
+      "actual": "2",
+      "detail": "ok"
+    },
+    {
+      "step": "rule_name",
+      "check": "answer:RULE_NAME",
+      "ok": true,
+      "expected": "Server errors",
+      "actual": "Server errors",
+      "detail": "ok"
+    },
+    {
+      "step": "rule_interval",
+      "check": "answer:INTERVAL",
+      "ok": true,
+      "expected": "1m",
+      "actual": "1m",
+      "detail": "ok"
+    },
+    {
+      "step": "rule_enabled",
+      "check": "answer:ENABLED",
+      "ok": true,
+      "expected": "no",
+      "actual": "no",
+      "detail": "ok"
+    },
+    {
+      "step": "rule_enabled",
+      "check": "nothing_changed",
+      "ok": true,
+      "expected": "no change",
+      "actual": "no change",
+      "detail": "ok"
+    }
+  ],
+  "n_dashboards": 0,
+  "n_rules": 0
+}

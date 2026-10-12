@@ -40,6 +40,36 @@ version section.
   gemma-4-12b-qat, qwen3.8-27b; records under `runs/study5/`. The earlier
   chain-length config is kept as `local_study_levels.json` for
   `local_report.py`. STUDY_DESIGN.md decision 13.
+- **Study 4 in the efficiency runner** (default off). `efficiency_run.py
+  --task <id>` runs one of the four tasks with prompt, seed and checks from
+  `study_tasks.py`, writes `outcome.json`, and puts every check on the run's
+  root span (`study_tasks.span_attributes`). `--blocks FIRST LAST` drives
+  every (task, model, arm) cell once per block in an order rotated by block,
+  resumes with `--skip-done`, and raises a stall alert (stderr and
+  `stalls.jsonl`) after 40 minutes without progress. A run is cut at 30
+  minutes and the Kibana key stays out of the with-mcp model's environment. Haiku smoke runs are
+  kept in `runs/efficiency/study4/`. STUDY_DESIGN.md decision 14.
+
+- **Study 4's analysis and results page** (`study4_analyze.py`): cost and
+  time per run by model, arm and task with bootstrap intervals, the
+  with/without ratio per model and task, and per model the geometric mean of
+  the task ratios; writes `analysis.json` and `STUDY4_RESULTS.md` from the
+  records. The full study's 288 runs and the Honeycomb cross-check of the
+  headline numbers are under `runs/efficiency/study4/full/`. STUDY_DESIGN.md
+  decision 18.
+
+### Fixed
+
+- **Study 4 runs give the model a TMPDIR.** It was empty, so a model's
+  `cat > $TMPDIR/x` wrote to `/x`, hung on input, and the follow-up `rm /x`
+  was refused as outside the working directory; the run ended invalid.
+  `--task` runs now set `TMPDIR` to `tmp/` inside the run's working
+  directory, in both arms. STUDY_DESIGN.md decision 17.
+- **The agent-signals hook judges paths against the run's work directory.**
+  It took the work directory from the first hook payload's `cwd`, which a
+  leading `cd sub` moves, so later calls inside the work directory were
+  flagged as outside it. The runner now writes the work directory into the
+  hook's config.
 
 ## [0.3.0] - 2026-10-12
 

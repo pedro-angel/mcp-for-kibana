@@ -1,0 +1,95 @@
+{
+  "task": "flights",
+  "success": true,
+  "failure_reason": null,
+  "first_failed_step": null,
+  "steps_passed": 4,
+  "steps_total": 4,
+  "criteria": [
+    {
+      "step": "describe",
+      "check": "answer:TIME_FIELD",
+      "ok": true,
+      "expected": "timestamp",
+      "actual": "timestamp",
+      "detail": "ok"
+    },
+    {
+      "step": "dashboard",
+      "check": "dashboard",
+      "ok": true,
+      "expected": "2 panels on kibana_sample_data_flights",
+      "actual": "2 panels",
+      "detail": "ok"
+    },
+    {
+      "step": "rule",
+      "check": "rule.enabled",
+      "ok": true,
+      "expected": true,
+      "actual": true,
+      "detail": "ok"
+    },
+    {
+      "step": "rule",
+      "check": "rule.interval",
+      "ok": true,
+      "expected": "1m",
+      "actual": "1m",
+      "detail": "ok"
+    },
+    {
+      "step": "rule",
+      "check": "rule.threshold",
+      "ok": true,
+      "expected": "> 10",
+      "actual": "in query: cancelled_flights = COUNT(*) | WHERE cancelled_flights > 10",
+      "detail": "ok"
+    },
+    {
+      "step": "rule",
+      "check": "rule.window",
+      "ok": true,
+      "expected": "5m",
+      "actual": "5m",
+      "detail": "ok"
+    },
+    {
+      "step": "rule",
+      "check": "rule.time_field",
+      "ok": true,
+      "expected": "timestamp",
+      "actual": "timestamp",
+      "detail": "ok"
+    },
+    {
+      "step": "rule",
+      "check": "rule.filter",
+      "ok": true,
+      "expected": "selects exactly the matching documents",
+      "actual": "ok",
+      "detail": "ok"
+    },
+    {
+      "step": "edit",
+      "check": "panel_title",
+      "ok": true,
+      "expected": "Flights by carrier",
+      "actual": [
+        "Number of flights over time",
+        "Flights by carrier"
+      ],
+      "detail": "ok"
+    },
+    {
+      "step": "edit",
+      "check": "answer:RULE_ENABLED",
+      "ok": true,
+      "expected": "yes",
+      "actual": "yes",
+      "detail": "ok"
+    }
+  ],
+  "n_dashboards": 1,
+  "n_rules": 1
+}

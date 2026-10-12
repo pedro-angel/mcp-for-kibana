@@ -18,7 +18,8 @@ scrubs secrets); errors go to <state>.errors, never to stdout or stderr.
 
 config.json (written per run by the runner, mode 0600): relay, service,
 resource (dict), state (path), known_secret (the run's Kibana key, used only
-for exact-match exposure detection, never sent).
+for exact-match exposure detection, never sent), workdir (the run's working
+directory; outside-workdir paths are judged against it).
 """
 
 from __future__ import annotations
@@ -217,7 +218,9 @@ def handle(payload: dict, cfg: dict, environ) -> dict | None:
         fh.seek(0)
         raw = fh.read()
         state = json.loads(raw) if raw.strip() else {"tools": [], "denied": [], "hook_ms": []}
-        state.setdefault("cwd", payload.get("cwd"))
+        # The runner's work directory when the config names it: the payload's
+        # cwd is Claude Code's current directory, which a `cd sub` moves.
+        state.setdefault("cwd", cfg.get("workdir") or payload.get("cwd"))
         if event == "Stop":
             import efficiency_analyze as ea
 
