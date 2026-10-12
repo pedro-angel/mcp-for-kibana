@@ -1,0 +1,16 @@
+loaded nvidia/nemotron-3-nano-4b: {'status': 200, 'context_length': 1048576, 'load_s': 2.0, 'unloaded': ['qwen/qwen3.8-27b'], 'error': None}
+[1/12] pilot/pilot/nvidia-nemotron-3-nano-4b/weblogs-r1 FAIL steps=0/4 tools=1 invalid=3 out_tok=None 627.6s otel=sent: HTTP 200, 10 spans (describe: answer:TIME_FIELD: no TIME_FIELD: line in the reply; dashboard: dashboard: no new dashboard titled 'LOC-7f02b009 Web logs'; rule: rule: no new rule named 'LOC-7f02b009 5xx errors'; edit: panel_title: expected 'Responses by code', got []; edit: answer:RULE_ENABLED: no RULE_ENABLED: line in the reply)
+[2/12] pilot/pilot/nvidia-nemotron-3-nano-4b/weblogs-r2 FAIL steps=2/4 tools=13 invalid=10 out_tok=6356 130.1s otel=sent: HTTP 200, 48 spans (rule: rule.filter: expected 'selects exactly the matching documents', got 'rule query does not run on the real index')
+[3/12] pilot/pilot/nvidia-nemotron-3-nano-4b/weblogs-r3 FAIL steps=1/4 tools=9 invalid=2 out_tok=5074 100.5s otel=sent: HTTP 200, 24 spans (dashboard: dashboard: no new dashboard titled 'LOC-ac4c7cc1 Web logs'; rule: rule: no new rule named 'LOC-ac4c7cc1 5xx errors'; edit: panel_title: expected 'Responses by code', got []; edit: answer:RULE_ENABLED: expected None, got 'yes')
+loaded nvidia/nemotron-3-nano-omni: {'status': 200, 'context_length': 262144, 'load_s': 6.6, 'unloaded': ['nvidia/nemotron-3-nano-4b'], 'error': None}
+[4/12] pilot/pilot/nvidia-nemotron-3-nano-omni/weblogs-r1 PASS steps=4/4 tools=8 invalid=1 out_tok=4455 90.6s otel=sent: HTTP 200, 20 spans
+[5/12] pilot/pilot/nvidia-nemotron-3-nano-omni/weblogs-r2 PASS steps=4/4 tools=7 invalid=0 out_tok=3350 64.4s otel=sent: HTTP 200, 16 spans
+[6/12] pilot/pilot/nvidia-nemotron-3-nano-omni/weblogs-r3 PASS steps=4/4 tools=8 invalid=0 out_tok=4297 86.6s otel=sent: HTTP 200, 18 spans
+loaded google/gemma-4-12b-qat: {'status': 200, 'context_length': 262144, 'load_s': 2.5, 'unloaded': ['nvidia/nemotron-3-nano-omni'], 'error': None}
+[7/12] pilot/pilot/google-gemma-4-12b-qat/weblogs-r1 PASS steps=4/4 tools=10 invalid=0 out_tok=5418 219.2s otel=sent: HTTP 200, 22 spans
+[8/12] pilot/pilot/google-gemma-4-12b-qat/weblogs-r2 PASS steps=4/4 tools=8 invalid=0 out_tok=3798 150.2s otel=sent: HTTP 200, 18 spans
+[9/12] pilot/pilot/google-gemma-4-12b-qat/weblogs-r3 PASS steps=4/4 tools=8 invalid=0 out_tok=3764 143.5s otel=sent: HTTP 200, 18 spans
+loaded qwen/qwen3.8-27b: {'status': 200, 'context_length': 262144, 'load_s': 7.1, 'unloaded': ['google/gemma-4-12b-qat'], 'error': None}
+[10/12] pilot/pilot/qwen-qwen3-8-27b/weblogs-r1 PASS steps=4/4 tools=7 invalid=0 out_tok=2354 135.6s otel=sent: HTTP 200, 16 spans
+[11/12] pilot/pilot/qwen-qwen3-8-27b/weblogs-r2 PASS steps=4/4 tools=7 invalid=0 out_tok=3402 163.3s otel=sent: HTTP 200, 16 spans
+[12/12] pilot/pilot/qwen-qwen3-8-27b/weblogs-r3 PASS steps=4/4 tools=8 invalid=0 out_tok=2834 138.9s otel=sent: HTTP 200, 16 spans
