@@ -14,8 +14,9 @@ dataset) lives in ``local_study.json``; ``--config`` points at another file.
 The tasks (prompts, seeded starting state, success checks) live in the
 shared ``tasks.json`` that ``study_tasks.py`` reads, the same definition
 study 4 uses. Stage 1 runs the stage-1 tasks for every model; stage 2 runs
-the stage-2 tasks only for the models whose stage-1 successes reach the
-pass mark, and refuses to start before stage 1 is complete. The runbook is
+the stage-2 tasks for one model, the best of stage 1 among those whose
+successes reach the pass mark (most passes; on a tie, the faster median
+time per run), and refuses to start before stage 1 is complete. The runbook is
 ``LOCAL_STUDY.md``.
 
 One run sends one task's prompt to LM Studio's ``/api/v1/chat`` with the
@@ -1252,7 +1253,7 @@ def plan(cfg: dict, phase: str, models: list[str] | None = None) -> list[dict]:
     """Deterministic cell order. Block b rotates the model order by b and the
     task order by b, so every model and task takes every position. The pilot
     and stage 1 run the stage-1 tasks; stage 2 runs the stage-2 tasks for the
-    `models` given (those that passed stage 1)."""
+    `models` given (the stage-2 model chosen by `stage2_model`)."""
     models = list(cfg["models"] if models is None else models)
     tasks = phase_tasks(cfg, phase)
     if not models or not tasks:
@@ -1372,9 +1373,10 @@ def cell_success(cell: dict, recs: list[dict]) -> bool:
 
 
 def stage1_verdict(cfg: dict, recs: list[dict]) -> dict:
-    """Per model: stage-1 successes, cells done, cells planned, and whether
-    the model passed (successes on every stage-1 task reach the pass mark;
-    decided only when all its cells are done)."""
+    """Per model: stage-1 successes, cells done, cells planned, the median
+    seconds of its valid runs, and whether the model passed (successes on
+    every stage-1 task reach the pass mark; decided only when all its cells
+    are done)."""
     mark = cfg["tasks"]["pass_mark"]
     out = {}
     for m in cfg["models"]:
@@ -1385,14 +1387,38 @@ def stage1_verdict(cfg: dict, recs: list[dict]) -> dict:
             for t in phase_tasks(cfg, "stage1")
         }
         complete = len(done) == len(cells)
+        keys = {c["key"] for c in done}
+        walls = [
+            r["wall_ms"] / 1000
+            for r in recs
+            if r.get("cell") in keys and r.get("valid") and r.get("wall_ms")
+        ]
         out[m] = {
             "successes": per_task,
             "done": len(done),
             "cells": len(cells),
             "complete": complete,
             "passed": complete and all(n >= mark for n in per_task.values()),
+            "median_s": _median(walls),
         }
     return out
+
+
+def stage2_model(cfg: dict, verdict: dict) -> str | None:
+    """The one model that goes on to stage 2: among the models that passed
+    stage 1, the most stage-1 successes; on a tie, the faster median time per
+    run; then the config's model order. None when no model passed."""
+    passed = [m for m in cfg["models"] if verdict.get(m, {}).get("passed")]
+    if not passed:
+        return None
+    return min(
+        passed,
+        key=lambda m: (
+            -sum(verdict[m]["successes"].values()),
+            verdict[m]["median_s"] if verdict[m]["median_s"] is not None else float("inf"),
+            cfg["models"].index(m),
+        ),
+    )
 
 
 def run_matrix(cfg: dict, phase: str, limit: int | None = None) -> int:
@@ -1419,10 +1445,11 @@ def run_matrix(cfg: dict, phase: str, limit: int | None = None) -> int:
                 f"FAIL: stage 1 is not complete for {open_}; finish it first: "
                 "`uv run python scripts/experiment/local_run.py stage1`"
             )
-        models = [m for m, v in verdict.items() if v["passed"]]
-        print(f"stage 2 models (passed stage 1): {models or 'none'}", flush=True)
-        if not models:
+        best = stage2_model(cfg, verdict)
+        print(f"stage 2 model (best of stage 1 at the pass mark): {best or 'none'}", flush=True)
+        if best is None:
             return 0
+        models = [best]
     cells = plan(cfg, phase, models)
     with run_lock(ctx.out):
         for d in recover_interrupted(ctx, phase):
@@ -1505,7 +1532,8 @@ def cmd_status(cfg: dict) -> int:
         if not ok_cfg:
             cells = []
         elif phase == "stage2":
-            cells = plan(cfg, phase, [m for m, v in verdict.items() if v["passed"]])
+            best = stage2_model(cfg, verdict)
+            cells = plan(cfg, phase, [best] if best else [])
         else:
             cells = plan(cfg, phase)
         recs = load_records(out, phase)
@@ -1520,6 +1548,8 @@ def cmd_status(cfg: dict) -> int:
                     else f"open ({v['done']}/{v['cells']} cells)"
                 )
                 print(f"   stage 1 {m}: successes {v['successes']}, pass mark {mark}: {state}")
+            if verdict and all(v["complete"] for v in verdict.values()):
+                print(f"   stage 2 model: {stage2_model(cfg, verdict) or 'none (no model passed)'}")
         prog = out / f"progress-{phase}.json"
         if prog.exists():
             p = json.loads(prog.read_text())
@@ -2028,7 +2058,7 @@ def main(argv: list[str] | None = None) -> int:
     for name, text in (
         ("pilot", "pilot_per_cell runs per model x stage-1 task"),
         ("stage1", "stage 1: every model x stage-1 task (resumable)"),
-        ("stage2", "stage 2: the stage-2 tasks for the models that passed stage 1 (resumable)"),
+        ("stage2", "stage 2: the stage-2 tasks for the best stage-1 model at the pass mark (resumable)"),
     ):
         q = sub.add_parser(name, help=text)
         q.add_argument(

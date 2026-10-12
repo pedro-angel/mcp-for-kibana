@@ -1,0 +1,12 @@
+loaded nvidia/nemotron-3-nano-4b: {'status': 200, 'context_length': 1048576, 'load_s': 2.1, 'unloaded': ['qwen/qwen3.8-27b'], 'error': None}
+[1/9] pilot/pilot/nvidia-nemotron-3-nano-4b/weblogs-r1 FAIL steps=2/4 tools=5 invalid=5 out_tok=3576 66.0s otel=sent: HTTP 200, 22 spans (rule: rule: no new rule named 'LOC-ab89e2ba 5xx errors'; edit: answer:RULE_ENABLED: expected None, got 'no')
+[2/9] pilot/pilot/nvidia-nemotron-3-nano-4b/weblogs-r2 FAIL steps=0/4 tools=0 invalid=1 out_tok=166 3.2s otel=sent: HTTP 200, 4 spans (describe: answer:TIME_FIELD: no TIME_FIELD: line in the reply; dashboard: dashboard: no new dashboard titled 'LOC-c639743c Web logs'; rule: rule: no new rule named 'LOC-c639743c 5xx errors'; edit: panel_title: expected 'Responses by code', got []; edit: answer:RULE_ENABLED: no RULE_ENABLED: line in the reply)
+[3/9] pilot/pilot/nvidia-nemotron-3-nano-4b/weblogs-r3 FAIL steps=2/4 tools=28 invalid=10 out_tok=9202 155.2s otel=sent: HTTP 200, 78 spans (rule: rule: no new rule named 'LOC-88a430cf 5xx errors'; edit: answer:RULE_ENABLED: expected None, got 'no')
+loaded google/gemma-4-12b-qat: {'status': 200, 'context_length': 262144, 'load_s': 2.3, 'unloaded': ['nvidia/nemotron-3-nano-4b'], 'error': None}
+[4/9] pilot/pilot/google-gemma-4-12b-qat/weblogs-r1 PASS steps=4/4 tools=8 invalid=0 out_tok=3195 121.3s otel=sent: HTTP 200, 18 spans
+[5/9] pilot/pilot/google-gemma-4-12b-qat/weblogs-r2 PASS steps=4/4 tools=8 invalid=0 out_tok=3587 140.7s otel=sent: HTTP 200, 18 spans
+[6/9] pilot/pilot/google-gemma-4-12b-qat/weblogs-r3 PASS steps=4/4 tools=10 invalid=0 out_tok=4545 176.9s otel=sent: HTTP 200, 22 spans
+loaded qwen/qwen3.8-27b: {'status': 200, 'context_length': 262144, 'load_s': 6.9, 'unloaded': ['google/gemma-4-12b-qat'], 'error': None}
+[7/9] pilot/pilot/qwen-qwen3-8-27b/weblogs-r1 FAIL steps=2/4 tools=6 invalid=0 out_tok=2350 122.5s otel=sent: HTTP 200, 13 spans (rule: rule.filter: expected 'selects exactly the matching documents', got 'probe index: filter selects 4 documents, 4 of them matching; 5 match')
+[8/9] pilot/pilot/qwen-qwen3-8-27b/weblogs-r2 PASS steps=4/4 tools=6 invalid=0 out_tok=2751 121.5s otel=sent: HTTP 200, 14 spans
+[9/9] pilot/pilot/qwen-qwen3-8-27b/weblogs-r3 PASS steps=4/4 tools=6 invalid=0 out_tok=2335 107.8s otel=sent: HTTP 200, 13 spans

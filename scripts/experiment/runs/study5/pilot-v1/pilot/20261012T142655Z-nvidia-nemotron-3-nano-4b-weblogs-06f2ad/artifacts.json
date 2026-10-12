@@ -1,0 +1,209 @@
+{
+ "dashboards": [
+  {
+   "id": "loc-88a430cf-web-logs-fb1761bf8740",
+   "data": {
+    "description": "",
+    "options": {
+     "auto_apply_filters": true,
+     "hide_panel_borders": false,
+     "hide_panel_titles": false,
+     "sync_colors": false,
+     "sync_cursor": true,
+     "sync_tooltips": false,
+     "use_margins": true
+    },
+    "tags": [],
+    "time_range": {
+     "from": "now-7d",
+     "to": "now"
+    },
+    "title": "LOC-88a430cf Web logs",
+    "filters": [],
+    "panels": [
+     {
+      "grid": {
+       "x": 0,
+       "y": 0,
+       "w": 24,
+       "h": 10
+      },
+      "config": {
+       "title": "Requests over time",
+       "type": "xy",
+       "layers": [
+        {
+         "type": "line",
+         "data_source": {
+          "type": "data_view_spec",
+          "index_pattern": "kibana_sample_data_logs",
+          "time_field": "timestamp",
+          "name": "kibana_sample_data_logs"
+         },
+         "sampling": 1,
+         "ignore_global_filters": false,
+         "x": {
+          "operation": "date_histogram",
+          "field": "timestamp",
+          "suggested_interval": "auto",
+          "use_original_time_range": false,
+          "include_empty_rows": true,
+          "drop_partial_intervals": false
+         },
+         "y": [
+          {
+           "operation": "count",
+           "empty_as_null": false,
+           "color": {
+            "type": "auto"
+           }
+          }
+         ]
+        }
+       ],
+       "axis": {
+        "x": {
+         "title": {
+          "visible": true
+         },
+         "ticks": {
+          "visible": true
+         },
+         "grid": {
+          "visible": true
+         },
+         "domain": {
+          "type": "fit",
+          "rounding": false
+         },
+         "labels": {
+          "orientation": "horizontal"
+         }
+        },
+        "y": {
+         "title": {
+          "visible": true
+         },
+         "scale": "linear",
+         "ticks": {
+          "visible": true
+         },
+         "grid": {
+          "visible": true
+         },
+         "domain": {
+          "type": "full",
+          "rounding": true
+         },
+         "labels": {
+          "orientation": "horizontal"
+         }
+        }
+       },
+       "styling": {
+        "overlays": {
+         "partial_buckets": {
+          "visible": false
+         },
+         "current_time_marker": {
+          "visible": false
+         }
+        },
+        "interpolation": "linear",
+        "points": {
+         "visibility": "auto"
+        }
+       },
+       "legend": {
+        "placement": "outside",
+        "position": "right",
+        "layout": {
+         "type": "grid",
+         "truncate": {
+          "max_lines": 1
+         }
+        },
+        "visibility": "hidden"
+       }
+      },
+      "id": "b119991d-04b1-477a-8c83-bb566fb60ab6",
+      "type": "vis"
+     },
+     {
+      "grid": {
+       "x": 24,
+       "y": 0,
+       "w": 24,
+       "h": 10
+      },
+      "config": {
+       "title": "Responses by code",
+       "type": "pie",
+       "sampling": 1,
+       "ignore_global_filters": false,
+       "metrics": [
+        {
+         "operation": "count",
+         "empty_as_null": false
+        }
+       ],
+       "group_by": [
+        {
+         "operation": "terms",
+         "fields": [
+          "response"
+         ],
+         "limit": 10,
+         "rank_by": {
+          "type": "metric",
+          "metric_index": 0,
+          "direction": "desc"
+         },
+         "color": {
+          "mode": "categorical",
+          "palette": "default",
+          "mapping": []
+         }
+        }
+       ],
+       "data_source": {
+        "type": "data_view_spec",
+        "index_pattern": "kibana_sample_data_logs",
+        "time_field": "timestamp",
+        "name": "kibana_sample_data_logs"
+       },
+       "legend": {
+        "visibility": "auto"
+       },
+       "styling": {
+        "labels": {
+         "visible": true,
+         "position": "outside"
+        },
+        "values": {
+         "visible": true,
+         "mode": "percentage"
+        }
+       }
+      },
+      "id": "27bdb8ac-0758-4f35-a0c5-19af938cc81b",
+      "type": "vis"
+     }
+    ],
+    "pinned_panels": []
+   },
+   "meta": {
+    "created_at": "2026-10-12T14:27:25.759Z",
+    "managed": false,
+    "updated_at": "2026-10-12T14:27:25.759Z",
+    "version": "WzgzMiw4XQ=="
+   }
+  }
+ ],
+ "rules": [],
+ "seeded": {
+  "dashboard": null,
+  "rule": null
+ },
+ "filters": {}
+}
