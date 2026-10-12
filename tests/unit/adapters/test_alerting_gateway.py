@@ -127,3 +127,36 @@ def test_create_connector_omits_config_secrets_when_none():
 
     _gw(connectors=SimpleNamespace(create=create)).create_connector("n", ".server-log", None, None)
     assert "config" not in captured and "secrets" not in captured
+
+
+def test_list_rule_types_maps_writable_consumers_and_licence():
+    body = [
+        {
+            "id": ".es-query", "name": "Elasticsearch query", "category": "management",
+            "producer": "stackAlerts", "enabled_in_license": True,
+            "minimum_license_required": "basic", "is_internally_managed": False,
+            "authorized_consumers": {
+                "stackAlerts": {"read": True, "all": True},
+                "discover": {"read": True, "all": True},
+                "infrastructure": {"read": True, "all": False},
+            },
+            "action_variables": {"params": [{"name": "size", "description": "x"}]},
+        },
+        {"id": ".geo-containment", "name": "Tracking containment", "producer": "stackAlerts",
+         "enabled_in_license": False, "minimum_license_required": "gold",
+         "authorized_consumers": {}},
+    ]
+    alerting = SimpleNamespace(rule_types=lambda: FakeResponse(body))
+    types = _gw(alerting=alerting).list_rule_types()
+    es = types[0]
+    assert (es.id, es.name, es.category, es.producer) == (
+        ".es-query", "Elasticsearch query", "management", "stackAlerts"
+    )
+    assert es.consumers == ("discover", "stackAlerts")  # writable (all) only, sorted
+    assert (es.enabled_in_license, es.minimum_license_required, es.internally_managed) == (
+        True, "basic", False
+    )
+    geo = types[1]
+    assert (geo.consumers, geo.enabled_in_license, geo.category, geo.internally_managed) == (
+        (), False, "", False
+    )

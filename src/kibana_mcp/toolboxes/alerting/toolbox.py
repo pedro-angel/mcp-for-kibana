@@ -77,6 +77,21 @@ class AlertingToolbox:
                 return with_space(asdict(gw.get_alerting_health()), space)
 
         @mcp.tool(tags={self.name, "read"}, annotations=_READ)
+        def list_rule_types(
+            space: Annotated[str, Field(pattern=SPACE_ID_PATTERN)] | None = None,
+        ) -> list[dict[str, Any]]:
+            """List the alerting rule types this Kibana offers, to choose
+            create_alert_rule's arguments: `id` is the `rule_type_id`,
+            `consumers` are the values its `consumer` may take for you, and a
+            type with `enabled_in_license` false cannot be created on this
+            licence. Kibana's API does not describe each type's `params`; this
+            list does not either.
+
+            `space` targets a Kibana space by id (default: the default space)."""
+            with gateway_errors(), deps.gateway_factory(space) as gw:
+                return [asdict(t) for t in gw.list_rule_types()]
+
+        @mcp.tool(tags={self.name, "read"}, annotations=_READ)
         def list_connectors(
             space: Annotated[str, Field(pattern=SPACE_ID_PATTERN)] | None = None,
         ) -> list[dict[str, Any]]:

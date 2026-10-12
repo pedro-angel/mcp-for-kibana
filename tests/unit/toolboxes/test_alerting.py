@@ -26,6 +26,7 @@ async def test_exposes_expected_tools(mcp):
         names = {t.name for t in await client.list_tools()}
     assert names == {
         "list_alert_rules", "get_alert_rule", "get_alerting_health", "list_connectors",
+        "list_rule_types",
         "create_alert_rule", "enable_alert_rule", "disable_alert_rule", "create_connector",
         "delete_alert_rule", "delete_connector", "execute_connector",
     }
@@ -107,3 +108,14 @@ async def test_tier_tags(mcp):
     assert exec_ann.destructiveHint is True
     assert exec_ann.idempotentHint is False
     assert exec_ann.openWorldHint is True
+
+
+async def test_list_rule_types_returns_types_with_their_consumers(mcp, gateway):
+    async with Client(mcp) as client:
+        tools = {t.name: t for t in await client.list_tools()}
+        result = await client.call_tool("list_rule_types", {})
+    assert tools["list_rule_types"].annotations.readOnlyHint is True
+    es = next(t for t in result.structured_content["result"] if t["id"] == ".es-query")
+    assert "stackAlerts" in es["consumers"]
+    assert es["enabled_in_license"] is True
+    assert "space" not in es  # list results never echo space

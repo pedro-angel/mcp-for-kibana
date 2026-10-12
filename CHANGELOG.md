@@ -10,6 +10,22 @@ version section.
 
 ## [Unreleased]
 
+### Security
+
+- **multidict 6.7.1 → 6.9.1 (CVE-2026-104874).** A transitive dependency
+  (aiohttp, through kibana-py's async extra); `pip-audit` failed the
+  `audit_clean` gate on main.
+
+### Fixed
+
+- **A wrong dashboard or alert-rule id names the fix.** An empty `dashboard_id`
+  reached the caller as a bare "Error calling tool" (kibana-py's unmapped
+  ValueError), and an id that matched nothing returned Kibana's "Saved object
+  [alert/<name>] not found". Both now say where a valid id comes from
+  (create/search or create/list tools) and that a title or name is not an id.
+  Seen in the local-model study: small models passed dashboard titles, rule
+  names and empty strings as ids.
+
 ### Added
 
 - **Three-arm analysis and the live cross-check for the rerun.**
@@ -70,6 +86,11 @@ version section.
   on, the server parents all its spans under the W3C `TRACEPARENT` it was
   started with, so a stdio client that passes trace context only through the
   environment (Claude Code in `-p` mode) sees the server's spans in its trace.
+- **`list_rule_types` (alerting, read).** Lists the rule types this Kibana
+  offers with the consumers the caller may create each under and its licence
+  status, so `create_alert_rule`'s `rule_type_id` and `consumer` no longer have
+  to be known in advance. It does not describe `params`: Kibana's API publishes
+  no params schema. Shipped from the alerting toolbox's recorded next work.
 
 - **Cloud sessions start ready to work.** A SessionStart hook in
   `.claude/settings.json` runs `scripts/cloud-session-start.sh`, which starts
