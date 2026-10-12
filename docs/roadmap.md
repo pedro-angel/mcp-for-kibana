@@ -166,10 +166,10 @@ alerting, cases and security-detections on 2026-08-19.)
   credentials regenerate into gitignored `elastic-start-local/.env.seed`.
 - **LM Studio (0.4.12):** the mcp.json toggle is gated behind *Require
   Authentication* and API tokens need the *Use MCP Servers* permission —
-  full path in [e2e-setup](e2e-setup.md). `google/gemma-4-12b-qat` is the
-  reference E2E model (5/5 on the dashboards space chain, 2/2 on the
-  alerting-space gate); `openai/gpt-oss-20b` characteristically drops the
-  `space` parameter mid-chain (3/5 wrong-space) and was retired from this
+  full path in [e2e-setup](e2e-setup.md). `google/gemma-4-12b-qat`
+  measured 5/5 on the dashboards space chain and 2/2 on the alerting-space
+  gate (D18; no model is privileged since D33); `openai/gpt-oss-20b`
+  characteristically drops the `space` parameter mid-chain (3/5 wrong-space) and was retired from this
   duty 2026-08-19; qwen2.5-coder-14b garbles tool syntax ~1 run in 3.
 - **`/api/v1/chat` response shape (observed 2026-08-09, not inferred):**
   `output` is a list of typed items — `reasoning`, `tool_call` (`tool`,

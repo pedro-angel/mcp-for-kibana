@@ -172,6 +172,12 @@ version section.
 
 ### Changed
 
+- **No model is privileged in the live-model tests (D33).** `make test-e2e`
+  drives the model `LMSTUDIO_MODEL` names and fails with the fix when it is
+  unset; `google/gemma-4-12b-qat` is no longer the fallback or "the reference
+  model". D18's measurements stay as evidence; its reference status is
+  superseded.
+
 - **The Definition of Done needs no LLM** (D31). `e2e_green` is `n/a` in
   `dod.config`, as it already was in every `.github/dod` config, so `make dod`
   can reach GO on CI and in a Claude Code cloud session. The replay tiers
