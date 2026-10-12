@@ -113,12 +113,13 @@ def fit(obj, redact: Redactor, cap: int) -> str:
             return out.encode()[:cap].decode(errors="ignore")
         path, longest = max(leaves, key=lambda pv: len(pv[1]))
         keep = max(200, len(longest) - over - 64)
-        if keep >= len(longest):
+        shorter = longest[:keep] + f" [truncated {len(longest) - keep} chars]"
+        if len(shorter) >= len(longest):  # every leaf is at the floor: no progress left
             return out.encode()[:cap].decode(errors="ignore")
         target = obj
         for k in path[:-1]:
             target = target[k]
-        target[path[-1]] = longest[:keep] + f" [truncated {len(longest) - keep} chars]"
+        target[path[-1]] = shorter
 
 
 def clip(text: str, redact: Redactor, cap: int = TOOL_CAP) -> str:

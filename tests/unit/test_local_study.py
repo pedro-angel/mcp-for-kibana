@@ -497,3 +497,19 @@ def test_compacted_events_parse_like_the_raw_stream():
     assert a["output"] == b["output"] and a["tool_ms"] == b["tool_ms"] == 6.0
     assert b["message_text"] == "TIME_FIELD: timestamp"
     assert raw[0]["data"]["content"] == "I will "  # the raw events are not mutated
+
+
+def test_span_messages_fit_their_cap_when_many_leaves_are_short():
+    """Seventy-five tool results of ~230 chars each exceed the message cap even
+    when every leaf is at the 200-char floor: fit must still return (it once
+    re-truncated the same 221-char leaf forever, stalling the full run)."""
+    import threading
+
+    obj = [{"role": "tool", "content": "x" * 230} for _ in range(400)]
+    out: list[str] = []
+    t = threading.Thread(target=lambda: out.append(lr.eh.fit(obj, lr.eh.Redactor(None), 32000)))
+    t.daemon = True
+    t.start()
+    t.join(10)
+    assert out, "fit did not return within 10 s"
+    assert len(out[0].encode()) <= 32000

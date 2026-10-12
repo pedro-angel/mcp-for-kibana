@@ -157,6 +157,11 @@ version section.
 
 ### Fixed
 
+- **Span message fitting always terminates.** `efficiency_honeycomb.fit` re-truncated
+  the same 221-character leaf forever once every leaf sat at its 200-character
+  floor and the JSON still exceeded the cap; a 75-tool-call local-study run
+  stalled the full run for four hours. It now falls back to the byte cut when
+  truncation makes no progress.
 - **Local-study preflight reads Kibana's version with the key.** Real Kibana
   answers an anonymous `/api/status` without the version, so preflight failed
   on a correct 9.5.5 stack.
