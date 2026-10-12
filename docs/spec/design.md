@@ -30,8 +30,8 @@ implementation may change any mechanism this document does *not* name.
   owning its tools, tiers, and guards. Rewrites happen toolbox-at-a-time
   against the behavior contracts under `docs/spec/toolboxes/`.
 - **Every tool name has exactly one owning toolbox.** No two toolboxes
-  register the same tool (133 names, zero duplicates — verified
-  2026-08-20); when two toolboxes want the same capability, the resolution
+  register the same tool (137 names, zero duplicates — verified
+  2026-10-12); when two toolboxes want the same capability, the resolution
   is extraction into a single owner or a distinguishing prefix, never
   sharing. Composition is defensively deterministic besides: duplicate
   registrations are ignored first-in-wins, so even a future overlap could

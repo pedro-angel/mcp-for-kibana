@@ -61,13 +61,15 @@ async def test_destructive_tier_shows_everything():
 
 ALERTING_TOOLS = {
     "list_alert_rules", "get_alert_rule", "get_alerting_health", "list_connectors",
-    "list_rule_types", "create_alert_rule", "enable_alert_rule", "disable_alert_rule", "create_connector",
+    "list_rule_types", "get_connector", "create_alert_rule", "update_alert_rule",
+    "enable_alert_rule", "disable_alert_rule", "create_connector", "update_connector",
     "delete_alert_rule", "delete_connector", "execute_connector",
 }
 ALERTING_READ = {
     "list_alert_rules", "get_alert_rule", "get_alerting_health", "list_connectors",
-    "list_rule_types",
+    "list_rule_types", "get_connector",
 }
+ALERTING_DESTRUCTIVE = {"delete_alert_rule", "delete_connector", "execute_connector"}
 
 
 async def test_unknown_toolbox_fails_fast():
@@ -80,6 +82,8 @@ async def test_alerting_toolbox_boots_all_tiers():
     assert names == ALERTING_TOOLS
     read_only = await visible_tools(Settings(toolboxes=["alerting"], tier=Tier.READ))
     assert read_only == ALERTING_READ
+    write = await visible_tools(Settings(toolboxes=["alerting"], tier=Tier.WRITE))
+    assert write == ALERTING_TOOLS - ALERTING_DESTRUCTIVE  # update_* visible at the default tier
 
 
 CASES_TOOLS = {

@@ -8,7 +8,7 @@ Toolboxes are selected via
 **[observability](#observability-toolbox)**,
 **[security-detections](#security-detections-toolbox)**,
 **[platform-admin](#platform-admin-toolbox)**,
-**[streams](#streams-toolbox)**, and **[fleet](#fleet-toolbox)** — 134 tools in
+**[streams](#streams-toolbox)**, and **[fleet](#fleet-toolbox)** — 137 tools in
 all. This reference details every toolbox in full. A drift-guard test
 (`tests/unit/test_docs_tool_reference.py`) asserts that every registered tool
 name appears on this page, so it cannot silently fall behind the code.
@@ -353,7 +353,7 @@ This is a deliberate fail-closed guard — see
 
 ## Space targeting
 
-Every one of the 64 tools in the **dashboards**, **data-management**,
+Every one of the 67 tools in the **dashboards**, **data-management**,
 **alerting**, **cases**, and **security-detections** toolboxes — including
 the 14 destructive-tier ones — accepts an optional `space` parameter that
 targets a Kibana space by id:
@@ -463,13 +463,70 @@ Alerting rules and action connectors.
 | `get_alerting_health` | read | Kibana alerting framework health status. |
 | `list_connectors` | read | List configured action connectors (id, name, connector_type_id). |
 | `list_rule_types` | read | List rule types: `id` (the `rule_type_id`), the `consumers` the caller may create it under, licence status. No `params` schema (Kibana's API has none). |
+| `get_connector` | read | Get one connector by id: name, type, its non-secret `config` and flags (`is_preconfigured`, `is_missing_secrets`, ...). Never returns secrets. |
 | `create_alert_rule` | write | Create an alerting rule (e.g. `rule_type_id` `.es-query`). |
+| `update_alert_rule` | write | Edit a rule in place by id (read-modify-write): `name`, `tags`, `schedule_interval`, `params` (merged key-by-key), `actions`. Never toggles `enabled`. |
 | `enable_alert_rule` | write | Enable (start running) an alerting rule. |
 | `disable_alert_rule` | write | Disable (stop running) an alerting rule. |
 | `create_connector` | write | Create an action connector (e.g. `.index`, `.webhook`). |
+| `update_connector` | write | Edit a connector in place by id: `name`, `config` (merged key-by-key), and `secrets` only when passed. Refuses preconfigured connectors. |
 | `delete_alert_rule` | destructive | Permanently delete an alerting rule. |
 | `delete_connector` | destructive | Permanently delete an action connector. This cannot be undone. |
 | `execute_connector` | destructive | Run a connector now with the given type-specific params. |
+
+A tier includes everything below it: `write` (the default) shows the 6 reads +
+6 writes; `destructive` adds the 2 deletes and `execute_connector`; `read`
+shows only the 6 reads.
+
+Notes:
+
+- **Edits keep what you did not pass.** Kibana's rule and connector updates are
+  full replaces: a rule update that omits `actions` or `tags` empties them and
+  one that omits `params` is rejected; a connector update that omits `config`
+  resets it. `update_alert_rule` and `update_connector` therefore read the
+  object, re-send every field, and overlay only the arguments given. `params`
+  and `config` merge key by key, so pass only the keys that change
+  (`params={"threshold": [10]}`); `tags` and `actions` replace the whole list
+  (`[]` clears it).
+- **`update_alert_rule` does not start or stop a rule.** `enabled` is not an
+  argument (Kibana rejects it on update); an enabled rule stays enabled. Use
+  `enable_alert_rule` / `disable_alert_rule`. `rule_type_id` and `consumer`
+  cannot change. A rule's action is
+  `{"id": <connector id>, "group": "query matched", "params": {...}, "frequency": {"summary": false, "notify_when": "onActionGroupChange", "throttle": null}}`;
+  the rule-level `notify_when`/`throttle` are not arguments (Kibana refuses
+  them beside a per-action `frequency`), but a rule that already has them
+  keeps them.
+- **Connector secrets are write-only.** Kibana never returns them, so
+  `get_connector` and `update_connector` cannot either, and a connector
+  update that omits `secrets` resets them. For every type except `.index`
+  and `.server-log` (whose secrets schema is empty) `update_connector`
+  refuses a call without `secrets` and says to pass the full secret values;
+  `secrets={}` clears them deliberately. Passed secrets are sent to Kibana
+  and never echoed back.
+- **Preconfigured connectors cannot be edited.** A connector defined in
+  `kibana.yml` (`is_preconfigured: true`) is refused before any write, with a
+  pointer to `kibana.yml` or `create_connector`.
+- **A wrong id names its source.** An id that matches nothing fails with
+  `connector '<id>' not found — connector_id is the id that create_connector
+  or list_connectors returns, not the connector's name; call list_connectors
+  to find it` (and the rule equivalent naming `list_alert_rules`), plus the
+  `(in space '<id>')` suffix when `space` is set. Kibana validation failures
+  keep the `Kibana rejected the payload:` prefix.
+
+Returns:
+
+```jsonc
+// get_connector / update_connector  (+ "space" when the caller passed one)
+{"id": "032a5771-...", "name": "Alert index", "connector_type_id": ".index",
+ "config": {"index": "alerts-out", "refresh": false, "executionTimeField": null},
+ "is_preconfigured": false, "is_system_action": false, "is_deprecated": false,
+ "is_missing_secrets": false, "is_connector_type_deprecated": false}
+
+// update_alert_rule  (the same summary get_alert_rule returns)
+{"id": "8b1c...", "name": "Flights over threshold", "rule_type_id": ".es-query",
+ "consumer": "stackAlerts", "enabled": true, "schedule_interval": "5m",
+ "status": "ok", "tags": ["flights"]}
+```
 
 ## cases toolbox
 

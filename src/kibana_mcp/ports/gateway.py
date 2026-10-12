@@ -13,6 +13,7 @@ from kibana_mcp.core.models import (
     ApmSourcemap,
     Case,
     Connector,
+    ConnectorDetail,
     DashboardDetail,
     DashboardSummary,
     DataViewDetail,
@@ -120,6 +121,16 @@ class KibanaGateway(Protocol):
         enabled: bool,
     ) -> AlertRule: ...
 
+    def update_alert_rule(
+        self,
+        rule_id: str,
+        name: str | None,
+        tags: list[str] | None,
+        schedule_interval: str | None,
+        params: dict[str, Any] | None,
+        actions: list[dict[str, Any]] | None,
+    ) -> AlertRule: ...
+
     def enable_alert_rule(self, rule_id: str) -> None: ...
 
     def disable_alert_rule(self, rule_id: str) -> None: ...
@@ -128,9 +139,19 @@ class KibanaGateway(Protocol):
 
     def list_connectors(self) -> list[Connector]: ...
 
+    def get_connector(self, connector_id: str) -> ConnectorDetail: ...
+
     def create_connector(
         self, name: str, connector_type_id: str, config: dict[str, Any] | None, secrets: dict[str, Any] | None
     ) -> Connector: ...
+
+    def update_connector(
+        self,
+        connector_id: str,
+        name: str | None,
+        config: dict[str, Any] | None,
+        secrets: dict[str, Any] | None,
+    ) -> ConnectorDetail: ...
 
     def delete_connector(self, connector_id: str) -> None: ...
 

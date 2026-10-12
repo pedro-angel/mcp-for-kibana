@@ -1,6 +1,6 @@
 # Decisions ledger
 
-Status: Draft v1.5 (2026-10-11) — regeneration corpus. Consumes
+Status: Draft v1.6 (2026-10-12) — regeneration corpus. Consumes
 [brief.md](brief.md); read alongside [design.md](design.md).
 
 Each entry is a decision a rewrite must not silently re-litigate: what was
@@ -126,6 +126,23 @@ this ledger stands without them.
   fine-grained PAT scoped to this repository; branch protection (no
   deletions, no force pushes, required checks) is the enforcement locus,
   not agent instructions.
+- **D35 (2026-10-12, probes on 9.5.4)** — In-place alerting edits are
+  read-modify-write, and a connector edit never drops secrets silently.
+  Observed: Kibana's rule PUT wipes omitted `actions`/`tags` to `[]`, rejects
+  omitted `params`, resets an omitted `notify_when`, rejects GET's
+  `actions[].connector_type_id` and any `enabled` key; its connector PUT resets
+  omitted `config` to `{}` (`.index` then fails validation). So
+  `update_alert_rule`/`update_connector` re-send every writable field and merge
+  `params`/`config` key by key. Secrets cannot be read back, and kibana-py
+  0.6.0 documents that an omitted `secrets` is reset to `{}`; every type that
+  holds secrets is Gold+ (`.webhook` 403s on Basic), so the wipe is not
+  observable on the reference stack. Decision: only `.index` and
+  `.server-log` — whose secrets schema rejects any key, observed — may be
+  updated without `secrets`; any other type is refused before the write with
+  guidance to pass the full secrets (`{}` clears deliberately), and results
+  never carry secrets. Preconfigured connectors are refused client-side from
+  `is_preconfigured` (no such connector on the stack to probe). Contract:
+  [alerting](toolboxes/alerting.md).
 
 ## Reliability and models (measured)
 

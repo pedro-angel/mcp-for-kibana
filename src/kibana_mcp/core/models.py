@@ -102,6 +102,22 @@ class Connector:
 
 
 @dataclass(frozen=True, slots=True)
+class ConnectorDetail:
+    # One connector as get_connector/update_connector return it. There is no
+    # secrets field: Kibana never returns a connector's secrets, and nothing
+    # here may carry them back to the caller.
+    id: str
+    name: str
+    connector_type_id: str
+    config: dict[str, object]    # the type's non-secret configuration
+    is_preconfigured: bool       # defined in kibana.yml: instance-global, not editable via the API
+    is_system_action: bool
+    is_deprecated: bool
+    is_missing_secrets: bool
+    is_connector_type_deprecated: bool
+
+
+@dataclass(frozen=True, slots=True)
 class RuleType:
     id: str                      # the rule_type_id create_alert_rule takes
     name: str

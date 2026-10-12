@@ -122,8 +122,8 @@ def _seed(gateway: FakeGateway, export_dir: Path) -> Seed:
 #   resolve_short_url, export_saved_objects, import_saved_objects,
 #   create_data_view, create_short_url, delete_data_view,
 #   delete_short_url, overwrite_saved_objects
-# alerting (12), cases (6), security-detections (25): the extension rows
-#   below — 64 space-aware tools in all
+# alerting (15), cases (6), security-detections (25): the extension rows
+#   below — 67 space-aware tools in all
 _TOOLS: list[tuple[str, Callable[[Seed], dict[str, Any]], str]] = [
     ("search_dashboards", lambda s: {}, "list"),
     ("get_dashboard", lambda s: {"dashboard_id": s.dashboard_id}, "dict"),
@@ -173,12 +173,13 @@ _TOOLS: list[tuple[str, Callable[[Seed], dict[str, Any]], str]] = [
     ("delete_data_view", lambda s: {"view_id": "dv1"}, "dict"),
     ("delete_short_url", lambda s: {"short_url_id": s.short_url_id}, "dict"),
     ("overwrite_saved_objects", lambda s: {"handle": s.handle}, "dict"),
-    # alerting (12): list_alert_rules, list_connectors, list_rule_types (list), the rest dict
+    # alerting (15): list_alert_rules, list_connectors, list_rule_types (list), the rest dict
     ("list_alert_rules", lambda s: {}, "list"),
     ("get_alert_rule", lambda s: {"rule_id": s.rule_id}, "dict"),
     ("get_alerting_health", lambda s: {}, "dict"),
     ("list_connectors", lambda s: {}, "list"),
     ("list_rule_types", lambda s: {}, "list"),
+    ("get_connector", lambda s: {"connector_id": s.connector_id}, "dict"),
     (
         "create_alert_rule",
         lambda s: {
@@ -187,6 +188,7 @@ _TOOLS: list[tuple[str, Callable[[Seed], dict[str, Any]], str]] = [
         },
         "dict",
     ),
+    ("update_alert_rule", lambda s: {"rule_id": s.rule_id, "name": "renamed"}, "dict"),
     ("enable_alert_rule", lambda s: {"rule_id": s.rule_id}, "dict"),
     ("disable_alert_rule", lambda s: {"rule_id": s.rule_id}, "dict"),
     (
@@ -194,6 +196,7 @@ _TOOLS: list[tuple[str, Callable[[Seed], dict[str, Any]], str]] = [
         lambda s: {"name": "c", "connector_type_id": ".server-log"},
         "dict",
     ),
+    ("update_connector", lambda s: {"connector_id": s.connector_id, "name": "renamed"}, "dict"),
     ("delete_alert_rule", lambda s: {"rule_id": s.rule_id}, "dict"),
     ("delete_connector", lambda s: {"connector_id": s.connector_id}, "dict"),
     (
@@ -254,7 +257,7 @@ _TOOLS: list[tuple[str, Callable[[Seed], dict[str, Any]], str]] = [
     ("delete_value_list_item", lambda s: {"item_id": s.value_list_item_id}, "dict"),
 ]
 
-assert len(_TOOLS) == 64
+assert len(_TOOLS) == 67
 
 
 def _make_server(gateway_factory: Any, export_dir: Path, *, with_platform_admin: bool = False) -> FastMCP:
@@ -295,10 +298,10 @@ async def test_space_threads_to_the_factory(tmp_path, name, args_builder, kind, 
     assert calls == [space]
 
 
-# --- Group 2: schema — exactly the 64 tools expose `space`, correctly shaped ---
+# --- Group 2: schema — exactly the 67 tools expose `space`, correctly shaped ---
 
 
-async def test_schema_exactly_64_tools_expose_space(tmp_path):
+async def test_schema_exactly_67_tools_expose_space(tmp_path):
     gateway = FakeGateway()
     server = _make_server(lambda space=None: gateway, tmp_path, with_platform_admin=True)
     async with Client(server) as client:
@@ -317,7 +320,7 @@ async def test_schema_exactly_64_tools_expose_space(tmp_path):
         t.name for t in all_tools
         if "space" in t.inputSchema.get("properties", {})
     } - {name for name, _, _ in _TOOLS}
-    assert not outsiders, f"tools outside the 64 gained a space param: {sorted(outsiders)}"
+    assert not outsiders, f"tools outside the 67 gained a space param: {sorted(outsiders)}"
     for tool in with_space.values():
         prop = tool.inputSchema["properties"]["space"]
         # Annotated[str, Field(pattern=...)] | None renders as an anyOf of

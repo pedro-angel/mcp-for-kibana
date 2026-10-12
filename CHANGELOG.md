@@ -21,6 +21,20 @@ version section.
   a "did you mean" suggestion. Read at start time only. The list only hides
   tools, so it can never publish one the tier hid; it is curation, not a
   security boundary — the API key's RBAC is. Decision D34.
+- **`update_alert_rule`, `update_connector` (alerting, write) and
+  `get_connector` (alerting, read).** An agent at the default `write` tier can
+  now fix a rule or connector in place instead of deleting (destructive) and
+  recreating it. Both updates read the object and re-send what the caller did
+  not pass, because Kibana's updates are full replaces that would otherwise
+  empty a rule's actions and tags or a connector's config; a rule's `params`
+  and a connector's `config` merge key by key. `update_alert_rule` never
+  changes `enabled`. `get_connector` returns the non-secret config and flags,
+  never secrets. `update_connector` refuses preconfigured connectors, and
+  refuses a call without `secrets` on any type except `.index` and
+  `.server-log`, since Kibana resets omitted secrets and cannot return them.
+  All three take `space`. Decision D35. The local study's server entry
+  (dashboards, data-management, alerting at `write`) now lists 28 tools;
+  `local_study.json`'s `expected_tools` and its runbook follow.
 
 ## [0.3.0] - 2026-10-12
 

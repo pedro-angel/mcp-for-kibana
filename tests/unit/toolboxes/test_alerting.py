@@ -1,5 +1,6 @@
 import pytest
 from fastmcp import Client, FastMCP
+from fastmcp.exceptions import ToolError
 
 from kibana_mcp.toolboxes.alerting.toolbox import AlertingToolbox
 from kibana_mcp.toolboxes.base import ToolboxDeps
@@ -26,8 +27,9 @@ async def test_exposes_expected_tools(mcp):
         names = {t.name for t in await client.list_tools()}
     assert names == {
         "list_alert_rules", "get_alert_rule", "get_alerting_health", "list_connectors",
-        "list_rule_types",
-        "create_alert_rule", "enable_alert_rule", "disable_alert_rule", "create_connector",
+        "list_rule_types", "get_connector",
+        "create_alert_rule", "update_alert_rule", "enable_alert_rule", "disable_alert_rule",
+        "create_connector", "update_connector",
         "delete_alert_rule", "delete_connector", "execute_connector",
     }
 
@@ -119,3 +121,137 @@ async def test_list_rule_types_returns_types_with_their_consumers(mcp, gateway):
     assert "stackAlerts" in es["consumers"]
     assert es["enabled_in_license"] is True
     assert "space" not in es  # list results never echo space
+
+
+# --- in-place maintenance: update_alert_rule, get_connector, update_connector ---
+
+
+async def test_maintenance_tools_are_tagged_read_and_write(mcp):
+    async with Client(mcp) as client:
+        tools = {t.name: t for t in await client.list_tools()}
+    assert tools["get_connector"].annotations.readOnlyHint is True
+    for name in ("update_alert_rule", "update_connector"):
+        ann = tools[name].annotations
+        assert ann.readOnlyHint is False and ann.destructiveHint is False
+    # the tier tags themselves are pinned per tier in test_server_assembly
+
+
+async def test_update_alert_rule_changes_only_passed_fields(mcp, gateway):
+    async with Client(mcp) as client:
+        rid = (await client.call_tool("create_alert_rule", {**RULE, "tags": ["a"]})).data["id"]
+        updated = await client.call_tool(
+            "update_alert_rule", {"rule_id": rid, "schedule_interval": "5m"}
+        )
+    assert updated.data["schedule_interval"] == "5m"
+    assert updated.data["name"] == "r" and updated.data["tags"] == ["a"]  # kept
+    assert updated.data["enabled"] is False  # never toggled by an update
+    assert "space" not in updated.data
+    assert gateway.rule_updates == [{
+        "rule_id": rid, "name": None, "tags": None, "schedule_interval": "5m",
+        "params": None, "actions": None,
+    }]
+
+
+async def test_update_alert_rule_has_no_enabled_parameter(mcp):
+    async with Client(mcp) as client:
+        tools = {t.name: t for t in await client.list_tools()}
+    props = tools["update_alert_rule"].inputSchema["properties"]
+    assert "enabled" not in props
+    assert set(props) == {
+        "rule_id", "name", "tags", "schedule_interval", "params", "actions", "space"
+    }
+
+
+async def test_update_alert_rule_needs_a_field_before_the_gateway(gateway):
+    calls = []
+
+    def factory(space=None):
+        calls.append(space)
+        return gateway
+
+    server = FastMCP("test")
+    AlertingToolbox().register(
+        server, ToolboxDeps(gateway_factory=factory, public_kibana_url="http://kb:5601")
+    )
+    async with Client(server) as client:
+        with pytest.raises(ToolError, match=r"provide at least one field .*enable_alert_rule"):
+            await client.call_tool("update_alert_rule", {"rule_id": "r1", "space": "sales"})
+        with pytest.raises(ToolError, match=r"provide at least one field to update: name, config or secrets"):
+            await client.call_tool("update_connector", {"connector_id": "c1", "space": "sales"})
+    assert calls == []  # guard ran before the factory: no space validation
+
+
+async def test_update_alert_rule_threads_space_and_echoes(gateway):
+    calls = []
+
+    def factory(space=None):
+        calls.append(space)
+        return gateway
+
+    server = FastMCP("test")
+    AlertingToolbox().register(
+        server, ToolboxDeps(gateway_factory=factory, public_kibana_url="http://kb:5601")
+    )
+    async with Client(server) as client:
+        rid = (await client.call_tool("create_alert_rule", RULE)).data["id"]
+        updated = await client.call_tool(
+            "update_alert_rule", {"rule_id": rid, "name": "renamed", "space": "sales"}
+        )
+    assert calls == [None, "sales"]
+    assert updated.data["space"] == "sales" and updated.data["name"] == "renamed"
+
+
+async def test_get_connector_returns_config_and_never_secrets(mcp, gateway):
+    async with Client(mcp) as client:
+        cid = (await client.call_tool("create_connector", {
+            "name": "idx", "connector_type_id": ".index",
+            "config": {"index": "alerts-out"}, "secrets": {"token": "s3cr3t"},
+        })).data["id"]
+        got = await client.call_tool("get_connector", {"connector_id": cid})
+    assert got.data["config"] == {"index": "alerts-out"}
+    assert got.data["connector_type_id"] == ".index"
+    assert got.data["is_preconfigured"] is False
+    assert "secrets" not in got.data and "s3cr3t" not in str(got.content)
+    assert "space" not in got.data
+
+
+async def test_update_connector_merges_config_and_never_echoes_secrets(mcp, gateway):
+    async with Client(mcp) as client:
+        cid = (await client.call_tool("create_connector", {
+            "name": "idx", "connector_type_id": ".index",
+            "config": {"index": "a", "refresh": False},
+        })).data["id"]
+        updated = await client.call_tool("update_connector", {
+            "connector_id": cid, "config": {"index": "b"}, "secrets": {"token": "s3cr3t"},
+            "space": "sales",
+        })
+    assert updated.data["config"] == {"index": "b", "refresh": False}  # merged
+    assert updated.data["name"] == "idx"  # kept
+    assert updated.data["space"] == "sales"
+    assert gateway.connector_secrets[cid] == {"token": "s3cr3t"}  # reached the gateway
+    assert "secrets" not in updated.data and "s3cr3t" not in str(updated.content)
+
+
+async def test_connector_not_found_surfaces_as_tool_error(mcp):
+    async with Client(mcp) as client:
+        for tool, args in (
+            ("get_connector", {"connector_id": "nope"}),
+            ("update_connector", {"connector_id": "nope", "name": "x"}),
+            ("update_alert_rule", {"rule_id": "nope", "name": "x"}),
+        ):
+            with pytest.raises(ToolError, match=r"not found"):
+                await client.call_tool(tool, args)
+
+
+@pytest.mark.parametrize("tool,args", [
+    ("get_connector", {"connector_id": ""}),
+    ("update_connector", {"connector_id": "", "name": "x"}),
+    ("update_connector", {"connector_id": "c1", "name": ""}),
+    ("update_alert_rule", {"rule_id": "", "name": "x"}),
+    ("update_alert_rule", {"rule_id": "r1", "name": ""}),
+    ("update_alert_rule", {"rule_id": "r1", "schedule_interval": ""}),
+])
+async def test_empty_identifiers_and_names_fail_the_schema(mcp, tool, args):
+    async with Client(mcp) as client:
+        with pytest.raises(ToolError):
+            await client.call_tool(tool, args)

@@ -148,7 +148,7 @@ wording, not incidental phrasing.
   tests deliberately fetch an `immutable=true` rule to prove they don't
   refuse it).
 - **Unit, cross-cutting** — `tests/unit/toolboxes/test_space_threading.py`,
-  the 25 `security-detections` rows of the shared 63-tool table: threading,
+  the 25 `security-detections` rows of the shared 67-tool table: threading,
   schema shape, dict-vs-list echo, not-found-as-guidance, and auth-passthrough
   shared with the other four space-aware toolboxes.
 - **Contract, live Kibana** — `tests/contract/test_gateway_contract.py`:

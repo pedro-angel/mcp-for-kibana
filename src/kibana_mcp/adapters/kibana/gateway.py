@@ -43,6 +43,7 @@ from kibana_mcp.core.models import (
     ApmSourcemap,
     Case,
     Connector,
+    ConnectorDetail,
     DashboardDetail,
     DashboardSummary,
     DataViewDetail,
@@ -148,7 +149,19 @@ def _translated(e: BaseException, space: str | None) -> BaseException:
 _ID_SOURCES = {
     "dashboard": ("dashboard_id", "create_dashboard or search_dashboards", "title"),
     "alert rule": ("rule_id", "create_alert_rule or list_alert_rules", "name"),
+    "connector": ("connector_id", "create_connector or list_connectors", "name"),
 }
+
+# Rule fields a PUT /api/alerting/rule/{id} drops or resets when omitted, beyond
+# the ones update_alert_rule exposes: re-sent from the current rule whenever it
+# carries them (probed on 9.5.4: an omitted notify_when resets to null).
+_RULE_PRESERVED_KEYS = ("notify_when", "throttle", "alert_delay", "flapping", "artifacts")
+
+# Connector types whose secrets schema is empty: Kibana rejects ANY secrets key on
+# them ("Unrecognized key", probed on 9.5.4), so an update that omits `secrets`
+# cannot lose one. They are also the only types the Basic licence enables. Every
+# other type may hold secrets that a PUT without `secrets` resets to {}.
+_SECRETLESS_CONNECTOR_TYPES = frozenset({".index", ".server-log"})
 
 
 @contextlib.contextmanager
@@ -265,6 +278,22 @@ def _to_connector(body: dict[str, Any]) -> Connector:
         connector_type_id=body.get("connector_type_id", ""),
         is_missing_secrets=bool(body.get("is_missing_secrets", False)),
         is_preconfigured=bool(body.get("is_preconfigured", False)),
+    )
+
+
+def _to_connector_detail(body: dict[str, Any]) -> ConnectorDetail:
+    # Built from named keys only: a secrets key in a response could never
+    # reach the caller through this mapping.
+    return ConnectorDetail(
+        id=body["id"],
+        name=body.get("name", ""),
+        connector_type_id=body.get("connector_type_id", ""),
+        config=dict(body.get("config") or {}),
+        is_preconfigured=bool(body.get("is_preconfigured", False)),
+        is_system_action=bool(body.get("is_system_action", False)),
+        is_deprecated=bool(body.get("is_deprecated", False)),
+        is_missing_secrets=bool(body.get("is_missing_secrets", False)),
+        is_connector_type_deprecated=bool(body.get("is_connector_type_deprecated", False)),
     )
 
 
@@ -1025,6 +1054,42 @@ class KibanaPyGateway:
         return _to_alert_rule(body)
 
     @_translate_errors
+    def update_alert_rule(
+        self, rule_id: str, name: str | None, tags: list[str] | None,
+        schedule_interval: str | None, params: dict[str, Any] | None,
+        actions: list[dict[str, Any]] | None,
+    ) -> AlertRule:
+        # Read-modify-write. PUT /api/alerting/rule/{id} is a full replace
+        # (probed on 9.5.4): omitted `actions` and `tags` are wiped to [], and
+        # omitted `params` fail validation. So fetch the rule, re-send every
+        # writable field, and overlay only what the caller passed. `enabled`,
+        # `rule_type_id` and `consumer` are not writable here (Kibana 400s
+        # `enabled` in the body); enable/disable_alert_rule own `enabled`.
+        with _known_id("alert rule", rule_id):
+            cur = self._client.alerting.rule.get(id=rule_id).body
+        current_params = dict(cur.get("params") or {})
+        body: dict[str, Any] = {
+            "name": name if name is not None else cur.get("name", ""),
+            "schedule": ({"interval": schedule_interval} if schedule_interval is not None
+                         else cur.get("schedule") or {}),
+            # params merge key-by-key: the caller passes only what changes.
+            "params": {**current_params, **params} if params is not None else current_params,
+            "tags": list(tags) if tags is not None else list(cur.get("tags") or []),
+            # GET echoes each action's connector_type_id, which the PUT schema
+            # rejects ("Additional properties are not allowed"); uuid is accepted
+            # and keeps the action's identity.
+            "actions": (list(actions) if actions is not None else [
+                {k: v for k, v in a.items() if k != "connector_type_id"}
+                for a in cur.get("actions") or []
+            ]),
+        }
+        for key in _RULE_PRESERVED_KEYS:
+            if cur.get(key) is not None:
+                body[key] = cur[key]
+        with _known_id("alert rule", rule_id):
+            return _to_alert_rule(self._client.alerting.rule.update(id=rule_id, **body).body)
+
+    @_translate_errors
     def enable_alert_rule(self, rule_id: str) -> None:
         with _known_id("alert rule", rule_id):
             self._client.alerting.rule.enable(id=rule_id)
@@ -1054,6 +1119,48 @@ class KibanaPyGateway:
         if secrets is not None:
             kwargs["secrets"] = secrets
         return _to_connector(self._client.connectors.create(**kwargs).body)
+
+    @_translate_errors
+    def get_connector(self, connector_id: str) -> ConnectorDetail:
+        with _known_id("connector", connector_id):
+            return _to_connector_detail(self._client.connectors.get(id=connector_id).body)
+
+    @_translate_errors
+    def update_connector(
+        self, connector_id: str, name: str | None, config: dict[str, Any] | None,
+        secrets: dict[str, Any] | None,
+    ) -> ConnectorDetail:
+        # PUT /api/actions/connector/{id} is a full replace: `name` is required,
+        # an omitted `config` is reset to {} (a .index connector then fails
+        # validation, probed on 9.5.4) and an omitted `secrets` is reset to {}.
+        # Config is read-modify-write; secrets cannot be — Kibana never returns
+        # them — so a type that may hold secrets needs them passed explicitly.
+        with _known_id("connector", connector_id):
+            cur = self._client.connectors.get(id=connector_id).body
+        if cur.get("is_preconfigured"):
+            raise KibanaRejected(
+                f"connector '{connector_id}' is preconfigured (defined in kibana.yml) and "
+                "cannot be edited through the API — change it in kibana.yml, or create a "
+                "new one with create_connector and point your rules' actions at it"
+            )
+        type_id = cur.get("connector_type_id", "")
+        if secrets is None and type_id not in _SECRETLESS_CONNECTOR_TYPES:
+            raise KibanaRejected(
+                f"connector '{connector_id}' is a {type_id} connector, whose secrets Kibana "
+                "never returns and resets to empty on any update that omits them — pass "
+                "`secrets` with its full secret values (secrets={} only if it has none)"
+            )
+        current_config = dict(cur.get("config") or {})
+        kwargs: dict[str, Any] = {
+            "id": connector_id,
+            "name": name if name is not None else cur.get("name", ""),
+            # config merges key-by-key: the caller passes only what changes.
+            "config": {**current_config, **config} if config is not None else current_config,
+        }
+        if secrets is not None:
+            kwargs["secrets"] = secrets
+        with _known_id("connector", connector_id):
+            return _to_connector_detail(self._client.connectors.update(**kwargs).body)
 
     @_translate_errors
     def delete_connector(self, connector_id: str) -> None:

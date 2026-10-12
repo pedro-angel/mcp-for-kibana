@@ -1,4 +1,4 @@
-"""Dashboard and alert-rule ids: an empty id or one that matches nothing names
+"""Dashboard, alert-rule and connector ids: an empty id or one that matches nothing names
 the fix (D17) — where a valid id comes from — instead of kibana-py's bare
 "Parameter 'id' is required" (unmapped, so the caller saw only "Error calling
 tool") or Kibana's "Saved object [alert/<name>] not found"."""
@@ -26,8 +26,12 @@ def _dash_gw(fn):
 
 
 def _rule_gw(fn):
-    rule = SimpleNamespace(get=fn, enable=fn, disable=fn, delete=fn)
+    rule = SimpleNamespace(get=fn, enable=fn, disable=fn, delete=fn, update=fn)
     return KibanaPyGateway(make_fake_client(alerting=SimpleNamespace(rule=rule)))
+
+
+def _conn_gw(fn):
+    return KibanaPyGateway(make_fake_client(connectors=SimpleNamespace(get=fn, update=fn)))
 
 
 _DASH_CALLS = [
@@ -41,6 +45,11 @@ _RULE_CALLS = [
     lambda gw, i: gw.enable_alert_rule(i),
     lambda gw, i: gw.disable_alert_rule(i),
     lambda gw, i: gw.delete_alert_rule(i),
+    lambda gw, i: gw.update_alert_rule(i, "renamed", None, None, None, None),
+]
+_CONN_CALLS = [
+    lambda gw, i: gw.get_connector(i),
+    lambda gw, i: gw.update_connector(i, "renamed", None, None),
 ]
 
 
@@ -81,3 +90,32 @@ def test_a_missing_space_is_still_reported_as_the_space(call):
     gw = _dash_gw(_no_space) if call is _DASH_CALLS[1] else _rule_gw(_no_space)
     with pytest.raises(KibanaSpaceNotFound):
         call(gw, "x")
+
+
+@pytest.mark.parametrize("call", _CONN_CALLS)
+@pytest.mark.parametrize("empty", ["", "  "])
+def test_empty_connector_id_names_where_ids_come_from(call, empty):
+    with pytest.raises(
+        KibanaRejected, match=r"connector_id is empty — .*create_connector or list_connectors"
+    ):
+        call(_conn_gw(_missing), empty)
+
+
+@pytest.mark.parametrize("call", _CONN_CALLS)
+def test_unknown_connector_id_says_it_is_not_the_name(call):
+    with pytest.raises(
+        KibanaNotFound,
+        match=r"connector 'Ops log' not found — connector_id is the id .*not the connector's "
+              r"name; call list_connectors to find it",
+    ):
+        call(_conn_gw(_missing), "Ops log")
+
+
+def test_unknown_connector_in_a_space_carries_the_suffix_once():
+    gw = KibanaPyGateway(
+        make_fake_client(connectors=SimpleNamespace(get=_missing)), space="sales"
+    )
+    with pytest.raises(KibanaNotFound) as exc:
+        gw.get_connector("nope")
+    assert exc.value.message.endswith(" (in space 'sales')")
+    assert exc.value.message.count("(in space") == 1

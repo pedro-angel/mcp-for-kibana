@@ -147,7 +147,7 @@ but are owned and registered once by data-management, not here.
   `delete_panel` index and type/section guards; the annotation matrix; the
   space matrix (factory scoping, echo, `/s/<space>` URL prefix across all
   5 URL-emitting tools × `{explicit, "default", omitted}`).
-- **Unit — test_space_threading.py**: the 63-tool cross-toolbox space
+- **Unit — test_space_threading.py**: the 67-tool cross-toolbox space
   contract (all 11 dashboards tools included) — threading, schema, echo,
   and error-path (`gateway_errors()` wraps factory errors) parity.
 - **Contract — test_gateway_contract.py**: live lifecycle round-trip with

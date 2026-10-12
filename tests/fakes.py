@@ -6,7 +6,7 @@ from dataclasses import replace
 from kibana_mcp.core.errors import KibanaNotFound, KibanaRejected
 from kibana_mcp.core.models import (
     AlertingHealth, AlertRule, RuleType, ApiDeprecation, ApmAgentConfig, ApmAnnotation, ApmEnvironment,
-    ApmSourcemap, Case, Connector, DashboardDetail, DashboardSummary, DataViewDetail,
+    ApmSourcemap, Case, Connector, ConnectorDetail, DashboardDetail, DashboardSummary, DataViewDetail,
     DataViewSummary, DetectionAlert, DetectionRule, EmailDefaults, ExceptionItem, ExceptionList,
     FleetAgent, FleetAgentPolicy, FleetAgentStatus, FleetEnrollmentKey, FleetOutput, FleetOutputHealth,
     FleetPackage, FleetPackageCategory, FleetPackagePolicy, FleetPermissions, FleetServerHost,
@@ -48,6 +48,11 @@ class FakeGateway:
         self.short_urls: dict[str, ShortUrl] = {}
         self.alert_rules: dict[str, AlertRule] = {}
         self.connectors: dict[str, Connector] = {}
+        # Per-connector config and the secrets last written (write-only in
+        # Kibana: no fake read path returns them).
+        self.connector_configs: dict[str, dict] = {}
+        self.connector_secrets: dict[str, dict] = {}
+        self.rule_updates: list[dict] = []  # update_alert_rule calls, as passed
         self.cases: dict[str, Case] = {}
         self.alerting_health = AlertingHealth(
             status="ok", has_permanent_encryption_key=True, is_sufficiently_secure=True
@@ -322,6 +327,21 @@ class FakeGateway:
         self.alert_rules[new_id] = rule
         return rule
 
+    def update_alert_rule(self, rule_id, name, tags, schedule_interval, params, actions):
+        cur = self.get_alert_rule(rule_id)
+        self.rule_updates.append({
+            "rule_id": rule_id, "name": name, "tags": tags,
+            "schedule_interval": schedule_interval, "params": params, "actions": actions,
+        })
+        self.alert_rules[rule_id] = replace(
+            cur,
+            name=name if name is not None else cur.name,
+            tags=tuple(tags) if tags is not None else cur.tags,
+            schedule_interval=(schedule_interval if schedule_interval is not None
+                               else cur.schedule_interval),
+        )
+        return self.alert_rules[rule_id]
+
     def enable_alert_rule(self, rule_id):
         self.alert_rules[rule_id] = replace(self.get_alert_rule(rule_id), enabled=True)
 
@@ -352,7 +372,31 @@ class FakeGateway:
             is_missing_secrets=False, is_preconfigured=False,
         )
         self.connectors[new_id] = conn
+        self.connector_configs[new_id] = dict(config or {})
+        if secrets is not None:
+            self.connector_secrets[new_id] = dict(secrets)
         return conn
+
+    def get_connector(self, connector_id):
+        if connector_id not in self.connectors:
+            raise KibanaNotFound(f"connector '{connector_id}' not found")
+        c = self.connectors[connector_id]
+        return ConnectorDetail(
+            id=c.id, name=c.name, connector_type_id=c.connector_type_id,
+            config=dict(self.connector_configs.get(connector_id, {})),
+            is_preconfigured=c.is_preconfigured, is_system_action=False, is_deprecated=False,
+            is_missing_secrets=c.is_missing_secrets, is_connector_type_deprecated=False,
+        )
+
+    def update_connector(self, connector_id, name, config, secrets):
+        cur = self.get_connector(connector_id)
+        if name is not None:
+            self.connectors[connector_id] = replace(self.connectors[connector_id], name=name)
+        if config is not None:
+            self.connector_configs[connector_id] = {**cur.config, **config}
+        if secrets is not None:
+            self.connector_secrets[connector_id] = dict(secrets)
+        return self.get_connector(connector_id)
 
     def delete_connector(self, connector_id):
         if connector_id not in self.connectors:

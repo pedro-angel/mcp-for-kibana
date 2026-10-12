@@ -37,11 +37,11 @@ edit one, edit both.
 it" (`read` ⊂ `write` ⊂ `destructive`):
 
 Every tool in every toolbox is tagged with its tier (across all 10 toolboxes:
-64 read, 40 write, 29 destructive):
+66 read, 42 write, 29 destructive):
 
-- `read` — read-only tools (64 of 133), e.g. `list_data_views`,
+- `read` — read-only tools (66 of 137), e.g. `list_data_views`,
   `describe_data_view`, `search_dashboards`, `get_dashboard`.
-- `write` (**default**) — read tools plus creates/updates (40), e.g.
+- `write` (**default**) — read tools plus creates/updates (42), e.g.
   `create_dashboard`, `create_visualization`, `add_panel`, `update_panel`.
   Destructive tools do not exist as far as the model can tell.
 - `destructive` — everything (29 more), including `delete_dashboard`,

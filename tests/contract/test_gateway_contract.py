@@ -6,8 +6,10 @@ import contextlib
 import os
 import uuid
 
+import kibana
 import pytest
 from fastmcp import Client, FastMCP
+from fastmcp.exceptions import ToolError
 
 from kibana_mcp.adapters.kibana.gateway import KibanaPyGateway
 from kibana_mcp.core.dashboards.compose import build_dashboard_data, layout_panels
@@ -23,6 +25,7 @@ from kibana_mcp.core.visualizations.translate import (
     esql_xy_config,
     to_lens_config,
 )
+from kibana_mcp.toolboxes.alerting.toolbox import AlertingToolbox
 from kibana_mcp.toolboxes.base import ToolboxDeps
 from kibana_mcp.toolboxes.dashboards.toolbox import DashboardsToolbox
 from kibana_mcp.toolboxes.data_management.toolbox import DataManagementToolbox
@@ -332,6 +335,101 @@ def test_connector_execute_lifecycle_live(gateway):
         result = gateway.execute_connector(conn.id, {"message": "mcp-for-kibana contract test", "level": "info"})
         assert result["status"] == "ok"
         assert any(c.id == conn.id for c in gateway.list_connectors())
+    finally:
+        gateway.delete_connector(conn.id)
+
+
+@contextlib.contextmanager
+def _raw_kibana(space=None):
+    """A raw kibana-py client for reading what the summaries do not return
+    (a rule's params/actions): the assertion side only, never the code path."""
+    client = kibana.Kibana(os.environ["KIBANA_URL"], api_key=os.environ["KIBANA_TEST_API_KEY"])
+    try:
+        yield client.space(space) if space else client
+    finally:
+        client.close()
+
+
+def test_update_alert_rule_preserves_what_it_was_not_given_live(gateway):
+    # PUT /api/alerting/rule/{id} wipes omitted actions/tags and rejects omitted
+    # params (probed on 9.5.4); the RMW must keep all three, keep `enabled`,
+    # and merge params key-by-key.
+    conn = gateway.create_connector(f"contract-log-{uuid.uuid4().hex[:8]}", ".server-log", None, None)
+    rule = gateway.create_alert_rule(
+        f"contract-esq-upd-{uuid.uuid4().hex[:8]}", ".es-query", "stackAlerts", "1m",
+        _ESQ_PARAMS, ["contract"], False,
+    )
+    action = {
+        "id": conn.id, "group": "query matched", "params": {"message": "ct {{rule.name}}"},
+        "frequency": {"summary": False, "notify_when": "onActionGroupChange", "throttle": None},
+    }
+    try:
+        gateway.update_alert_rule(rule.id, None, None, None, None, [action])
+        with _raw_kibana() as raw:
+            before = raw.alerting.rule.get(id=rule.id).body
+        assert [a["id"] for a in before["actions"]] == [conn.id]
+        gateway.enable_alert_rule(rule.id)
+
+        updated = gateway.update_alert_rule(rule.id, None, None, None, {"threshold": [5]}, None)
+        with _raw_kibana() as raw:
+            after = raw.alerting.rule.get(id=rule.id).body
+        assert after["params"]["threshold"] == [5]
+        assert after["params"]["size"] == 100 and after["params"]["index"] == [FLIGHTS]  # merged
+        assert [a["uuid"] for a in after["actions"]] == [a["uuid"] for a in before["actions"]]
+        assert after["tags"] == ["contract"] and after["name"] == rule.name
+        assert updated.enabled is True and after["enabled"] is True  # never toggled
+
+        renamed = gateway.update_alert_rule(rule.id, "contract renamed", ["x", "y"], "5m", None, None)
+        assert (renamed.name, renamed.tags, renamed.schedule_interval) == (
+            "contract renamed", ("x", "y"), "5m"
+        )
+        cleared = gateway.update_alert_rule(rule.id, None, [], None, None, [])
+        assert cleared.tags == ()
+        with _raw_kibana() as raw:
+            assert raw.alerting.rule.get(id=rule.id).body["actions"] == []
+    finally:
+        gateway.delete_alert_rule(rule.id)
+        gateway.delete_connector(conn.id)
+
+
+def test_update_alert_rule_rejections_name_the_fix_live(gateway):
+    with pytest.raises(KibanaNotFound, match=r"call list_alert_rules to find it"):
+        gateway.update_alert_rule("no-such-rule-id-xyz", "x", None, None, None, None)
+    rule = gateway.create_alert_rule(
+        f"contract-esq-rej-{uuid.uuid4().hex[:8]}", ".es-query", "stackAlerts", "1m",
+        _ESQ_PARAMS, ["contract"], False,
+    )
+    try:
+        with pytest.raises(KibanaRejected) as exc:
+            gateway.update_alert_rule(rule.id, None, None, "banana", None, None)
+        assert exc.value.message == "Kibana rejected the payload"
+        assert "not a valid duration" in (exc.value.detail or "")
+    finally:
+        gateway.delete_alert_rule(rule.id)
+
+
+def test_connector_get_and_update_live(gateway):
+    # .index: the Basic type with REQUIRED config — a PUT without config 400s,
+    # so a rename that keeps the connector valid proves the config RMW.
+    index = f"contract-idx-{uuid.uuid4().hex[:8]}"
+    conn = gateway.create_connector(
+        f"contract-idx-{uuid.uuid4().hex[:8]}", ".index", {"index": index, "refresh": False}, None
+    )
+    try:
+        got = gateway.get_connector(conn.id)
+        assert got.connector_type_id == ".index" and got.config["index"] == index
+        assert got.is_preconfigured is False and got.is_missing_secrets is False
+        renamed = gateway.update_connector(conn.id, "contract renamed idx", None, None)
+        assert renamed.name == "contract renamed idx" and renamed.config["index"] == index
+        merged = gateway.update_connector(conn.id, None, {"refresh": True}, None)
+        assert merged.config["refresh"] is True and merged.config["index"] == index
+        assert merged.name == "contract renamed idx"
+        assert gateway.get_connector(conn.id).config == merged.config
+        with pytest.raises(KibanaRejected) as exc:  # .index has no secrets schema
+            gateway.update_connector(conn.id, None, None, {"token": "x"})
+        assert exc.value.message == "Kibana rejected the payload"
+        with pytest.raises(KibanaNotFound, match=r"call list_connectors to find it"):
+            gateway.get_connector("no-such-connector-xyz")
     finally:
         gateway.delete_connector(conn.id)
 
@@ -1476,6 +1574,62 @@ def test_alerting_connector_scoped_execute_live(gateway):
             # (kibana.yml) connectors are instance-global and appear in every
             # space, so the root list need not be empty.
             assert not any(c.id == conn.id for c in gateway.list_connectors())
+
+
+def _alerting_tool_server():
+    server = FastMCP("contract-alerting")
+    AlertingToolbox().register(
+        server,
+        ToolboxDeps(
+            gateway_factory=lambda space=None: KibanaPyGateway.connect(
+                os.environ["KIBANA_URL"], os.environ["KIBANA_TEST_API_KEY"], space
+            ),
+            public_kibana_url="http://kb:5601",
+        ),
+    )
+    return server
+
+
+async def test_alerting_maintenance_tools_scoped_live(gateway):
+    # Through the MCP surface in a space: edits land in that space only, dict
+    # results echo it, a miss carries the suffix once, and no secrets field
+    # ever appears.
+    with _temp_space(gateway, "mcp-for-kibana-ct-alrt-upd") as space_id:
+        async with Client(_alerting_tool_server()) as client:
+            conn = (await client.call_tool("create_connector", {
+                "name": "contract scoped log", "connector_type_id": ".server-log",
+                "space": space_id,
+            })).data
+            rule = (await client.call_tool("create_alert_rule", {
+                "name": "contract scoped rule", "rule_type_id": ".es-query",
+                "consumer": "stackAlerts", "params": _ESQ_PARAMS, "space": space_id,
+            })).data
+            upd_rule = (await client.call_tool("update_alert_rule", {
+                "rule_id": rule["id"], "name": "contract scoped renamed",
+                "params": {"threshold": [3]}, "space": space_id,
+            })).data
+            got = (await client.call_tool(
+                "get_connector", {"connector_id": conn["id"], "space": space_id}
+            )).data
+            upd_conn = (await client.call_tool("update_connector", {
+                "connector_id": conn["id"], "name": "contract scoped renamed log",
+                "space": space_id,
+            })).data
+            with pytest.raises(ToolError) as miss:
+                await client.call_tool(
+                    "get_connector", {"connector_id": "no-such-connector-xyz", "space": space_id}
+                )
+        assert upd_rule["name"] == "contract scoped renamed" and upd_rule["space"] == space_id
+        assert upd_rule["enabled"] is False
+        assert got["space"] == space_id and got["connector_type_id"] == ".server-log"
+        assert upd_conn["name"] == "contract scoped renamed log" and upd_conn["space"] == space_id
+        assert "secrets" not in got and "secrets" not in upd_conn
+        assert str(miss.value).endswith(f" (in space '{space_id}')")
+        assert str(miss.value).count("(in space") == 1
+        with pytest.raises(KibanaNotFound):  # invisible from the root space
+            gateway.get_connector(conn["id"])
+        with pytest.raises(KibanaNotFound):
+            gateway.update_alert_rule(rule["id"], "x", None, None, None, None)
 
 
 def test_case_scoped_lifecycle_live(gateway):
