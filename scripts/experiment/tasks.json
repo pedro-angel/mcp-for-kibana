@@ -122,18 +122,8 @@
           "checks": [{"kind": "seeded_dashboard", "panels": 3, "panel_mentions": ["host"]}]
         },
         {
-          "id": "rename",
-          "text": "Rename the dashboard to 'Site health overview'.",
-          "checks": [{"kind": "seeded_dashboard", "title": "Site health overview"}]
-        },
-        {
-          "id": "threshold",
-          "text": "Raise the 'Server errors' rule's threshold from 10 to 20 requests; keep everything else about the rule as it is.",
-          "checks": [{"kind": "seeded_rule", "threshold": 20, "interval": "1m", "window_minutes": 5}]
-        },
-        {
           "id": "enable",
-          "text": "Enable the rule.",
+          "text": "Enable the 'Server errors' rule.",
           "checks": [{"kind": "seeded_rule", "enabled": true}, {"kind": "nothing_new"}]
         }
       ],
@@ -157,12 +147,9 @@
           "checks": [{"kind": "answer", "line": "RULE_NAME", "expect": "seeded_rule_name"}]
         },
         {
-          "id": "rule_settings",
-          "text": "Above how many matching requests does that rule fire, and how often does it check?",
-          "checks": [
-            {"kind": "answer", "line": "THRESHOLD", "expect": "seeded_threshold"},
-            {"kind": "answer", "line": "INTERVAL", "expect": "seeded_interval"}
-          ]
+          "id": "rule_interval",
+          "text": "How often does that rule check?",
+          "checks": [{"kind": "answer", "line": "INTERVAL", "expect": "seeded_interval"}]
         },
         {
           "id": "rule_enabled",
@@ -170,7 +157,7 @@
           "checks": [{"kind": "answer", "line": "ENABLED", "expect": "seeded_enabled"}, {"kind": "nothing_changed"}]
         }
       ],
-      "closing": "End your reply with these five lines:\nPANELS: <number>\nRULE_NAME: <the rule's name>\nTHRESHOLD: <number>\nINTERVAL: <the check interval, such as 5m>\nENABLED: <yes or no>"
+      "closing": "End your reply with these four lines:\nPANELS: <number>\nRULE_NAME: <the rule's name>\nINTERVAL: <the check interval, such as 5m>\nENABLED: <yes or no>"
     }
   ]
 }
