@@ -54,14 +54,16 @@ gets the "server" preamble, the no-mcp arm the "api" one. Before every task
 run the seeded dashboard and rule are restored; after it, every check's
 expected and actual value goes to outcome.json and, through
 study_tasks.span_attributes, onto the run's root span. The first result event
-is read (the parked fix), and the transcript is written as it streams.
+is read (the parked fix), the transcript is written as it streams, a run is
+cut at 30 minutes, and the Kibana key stays out of the with-mcp model's
+environment (the no-mcp arm needs it to reach Kibana).
 
 --blocks FIRST LAST drives a whole plan: every (task, model, arm) cell once
 per block, the order rotated by block (tasks by one place, models by one
 place, arms swapped every other block), with a stall alert when nothing has
 progressed for --stall-minutes (default 40): no transcript line, no finished
 run. The alert is a STALL line on stderr and an entry in <out>/stalls.jsonl;
-the plan keeps going. STUDY_DESIGN.md decision 13.
+the plan keeps going. STUDY_DESIGN.md decision 14.
 """
 
 import argparse
@@ -86,6 +88,7 @@ _SEED = _REPO_ROOT / "elastic-start-local" / ".env.seed"
 _DEFAULT_OUT = Path(__file__).resolve().parent / "runs" / "efficiency"
 _DEFAULT_LIVE_OUT = _DEFAULT_OUT / "live"
 _TIMEOUT_S = 1200
+TASK_TIMEOUT_S = 1800  # --task runs: 30 minutes, the studies' limit (board d16)
 _DEFAULT_STUDY4_OUT = _DEFAULT_OUT / "study4"
 STALL_MINUTES = 40
 STUDY4_MODELS = ("claude-haiku-5-5", "claude-sonnet-5-5", "claude-opus-5-5")
@@ -631,6 +634,15 @@ def _stream_denials(events: list[dict], results: list[dict]) -> list[str]:
     return sorted(denied)
 
 
+def key_in_model_env(arm: str, task: str | None, live: dict | None) -> bool:
+    """Whether KIBANA_TEST_API_KEY goes into the model's environment. --task
+    runs: never for a server arm (the study's running rule); the no-mcp arm
+    needs it to reach Kibana. Otherwise only --key-out-of-model-env drops it."""
+    if arm not in SERVER_ARMS:
+        return True
+    return not (task or (live or {}).get("key_out_of_model_env"))
+
+
 def run_captured(cmd: list[str], workdir: Path, env: dict) -> tuple[str, str, bool]:
     """(stdout, stderr, timed_out) of the claude call, output kept in memory
     (the first study's way)."""
@@ -773,11 +785,13 @@ def run_once(
                 "es_key_privileges": f"{LOGS_INDEX}:{','.join(ES_KEY_PRIVILEGES)}",
             }
         )
+    key_in_env = key_in_model_env(arm, task, live)
+    if task:
+        record["key_in_model_env"] = key_in_env
     lt = tel = None
     if live:
         import live_telemetry as lt
 
-        key_in_env = not (arm in SERVER_ARMS and live.get("key_out_of_model_env"))
         record.update(
             {
                 "prompt_version": prompt_version,
@@ -863,9 +877,9 @@ def run_once(
         cmd[at:at] = mcp_allowed
         env = {k: v for k, v in os.environ.items() if k not in _STRIP_ENV}
         env.update({"KIBANA_URL": kibana_url, "KIBANA_TEST_API_KEY": api_key})
+        if not key_in_env:
+            env.pop("KIBANA_TEST_API_KEY")
         if tel:
-            if not record["key_in_model_env"]:
-                env.pop("KIBANA_TEST_API_KEY")
             env = lt.claude_env(
                 env,
                 tel["relay"].url,
@@ -876,7 +890,7 @@ def run_once(
             )
         if task:  # written as it streams: the stall watchdog reads its mtime
             stdout, stderr, timed_out = run_streaming(
-                cmd, workdir, env, run_dir / "transcript.jsonl"
+                cmd, workdir, env, run_dir / "transcript.jsonl", TASK_TIMEOUT_S
             )
         else:
             stdout, stderr, timed_out = run_captured(cmd, workdir, env)
