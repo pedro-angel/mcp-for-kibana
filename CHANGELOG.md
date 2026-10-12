@@ -201,6 +201,10 @@ version section.
 
 ### Fixed
 
+- **The local study expects the alerting toolbox's 25 tools.** Its server
+  entry (dashboards, data-management, alerting at `write`) gained
+  `list_rule_types`; `local_study.json`'s `expected_tools` and the runbook
+  said 24, so preflight failed.
 - **A wrong dashboard or alert-rule id names the fix.** An empty `dashboard_id`
   reached the caller as a bare "Error calling tool" (kibana-py's unmapped
   ValueError), and an id that matched nothing returned Kibana's "Saved object

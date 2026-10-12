@@ -346,7 +346,7 @@ def test_preflight_passes_on_a_ready_setup(env, capsys):
     rc = lr.cmd_preflight(cfg, load=True)  # lists the real server's tools over stdio
     out = capsys.readouterr().out
     assert rc == 0, out
-    assert "PASS  server_tools: the entry starts and lists 24 tools" in out
+    assert "PASS  server_tools: the entry starts and lists 25 tools" in out
     assert "PASS  load fake/pass" in out
     assert KIBANA_KEY not in out and LM_TOKEN not in out
     assert env.mcp_json.read_bytes() == mcp_before
@@ -371,7 +371,7 @@ def test_preflight_names_the_fix_for_each_failure(env, capsys, monkeypatch):
         "FAIL  sample_data",
         "local_run.py install-sample",
         "FAIL  mcp_json_entry: KIBANA_MCP_TOOLBOXES is 'dashboards'",
-        "FAIL  server_tools: 1 tools (want 24)",
+        "FAIL  server_tools: 1 tools (want 25)",
         "FAIL  honeycomb_key",
     ):
         assert needle in out, needle

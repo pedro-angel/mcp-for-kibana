@@ -25,7 +25,7 @@
     "entry": "mcp-for-kibana-study",
     "toolboxes": "dashboards,data-management,alerting",
     "tier": "write",
-    "expected_tools": 24,
+    "expected_tools": 25,
     "required_tools": [
       "describe_data_view",
       "create_dashboard",
