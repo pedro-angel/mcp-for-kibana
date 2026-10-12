@@ -1,0 +1,263 @@
+{
+  "cells": [
+    {
+      "arm": "with-mcp",
+      "cost_usd_honeycomb": 0.0024700000000000004,
+      "cost_usd_script": 0.002424,
+      "model": "claude-haiku-5-5",
+      "task": "change",
+      "time_s_honeycomb": 14.0,
+      "time_s_script": 13.9
+    },
+    {
+      "arm": "no-mcp",
+      "cost_usd_honeycomb": 0.00657,
+      "cost_usd_script": 0.006468,
+      "model": "claude-haiku-5-5",
+      "task": "change",
+      "time_s_honeycomb": 29.9,
+      "time_s_script": 29.05
+    },
+    {
+      "arm": "with-mcp",
+      "cost_usd_honeycomb": 0.00376,
+      "cost_usd_script": 0.003754,
+      "model": "claude-haiku-5-5",
+      "task": "flights",
+      "time_s_honeycomb": 19.4,
+      "time_s_script": 19.3
+    },
+    {
+      "arm": "no-mcp",
+      "cost_usd_honeycomb": 0.01813,
+      "cost_usd_script": 0.017759,
+      "model": "claude-haiku-5-5",
+      "task": "flights",
+      "time_s_honeycomb": 64.5,
+      "time_s_script": 64.05
+    },
+    {
+      "arm": "with-mcp",
+      "cost_usd_honeycomb": 0.00134,
+      "cost_usd_script": 0.00134,
+      "model": "claude-haiku-5-5",
+      "task": "lookup",
+      "time_s_honeycomb": 8.8,
+      "time_s_script": 8.5
+    },
+    {
+      "arm": "no-mcp",
+      "cost_usd_honeycomb": 0.0029500000000000004,
+      "cost_usd_script": 0.002909,
+      "model": "claude-haiku-5-5",
+      "task": "lookup",
+      "time_s_honeycomb": 13.6,
+      "time_s_script": 13.4
+    },
+    {
+      "arm": "with-mcp",
+      "cost_usd_honeycomb": 0.00428,
+      "cost_usd_script": 0.004281,
+      "model": "claude-haiku-5-5",
+      "task": "weblogs",
+      "time_s_honeycomb": 22.9,
+      "time_s_script": 22.8
+    },
+    {
+      "arm": "no-mcp",
+      "cost_usd_honeycomb": 0.02206,
+      "cost_usd_script": 0.022046,
+      "model": "claude-haiku-5-5",
+      "task": "weblogs",
+      "time_s_honeycomb": 82.6,
+      "time_s_script": 82.15
+    },
+    {
+      "arm": "with-mcp",
+      "cost_usd_honeycomb": 0.05669,
+      "cost_usd_script": 0.056683,
+      "model": "claude-opus-5-5",
+      "task": "change",
+      "time_s_honeycomb": 18.1,
+      "time_s_script": 18.1
+    },
+    {
+      "arm": "no-mcp",
+      "cost_usd_honeycomb": 0.10806,
+      "cost_usd_script": 0.107995,
+      "model": "claude-opus-5-5",
+      "task": "change",
+      "time_s_honeycomb": 27.8,
+      "time_s_script": 27.5
+    },
+    {
+      "arm": "with-mcp",
+      "cost_usd_honeycomb": 0.09043000000000001,
+      "cost_usd_script": 0.09034,
+      "model": "claude-opus-5-5",
+      "task": "flights",
+      "time_s_honeycomb": 25.6,
+      "time_s_script": 25.5
+    },
+    {
+      "arm": "no-mcp",
+      "cost_usd_honeycomb": 0.35464,
+      "cost_usd_script": 0.322721,
+      "model": "claude-opus-5-5",
+      "task": "flights",
+      "time_s_honeycomb": 53.8,
+      "time_s_script": 53.5
+    },
+    {
+      "arm": "with-mcp",
+      "cost_usd_honeycomb": 0.03528,
+      "cost_usd_script": 0.035241,
+      "model": "claude-opus-5-5",
+      "task": "lookup",
+      "time_s_honeycomb": 12.2,
+      "time_s_script": 12.2
+    },
+    {
+      "arm": "no-mcp",
+      "cost_usd_honeycomb": 0.048170000000000004,
+      "cost_usd_script": 0.047968,
+      "model": "claude-opus-5-5",
+      "task": "lookup",
+      "time_s_honeycomb": 13.1,
+      "time_s_script": 13.0
+    },
+    {
+      "arm": "with-mcp",
+      "cost_usd_honeycomb": 0.1003,
+      "cost_usd_script": 0.100171,
+      "model": "claude-opus-5-5",
+      "task": "weblogs",
+      "time_s_honeycomb": 28.4,
+      "time_s_script": 28.25
+    },
+    {
+      "arm": "no-mcp",
+      "cost_usd_honeycomb": 0.39696,
+      "cost_usd_script": 0.393606,
+      "model": "claude-opus-5-5",
+      "task": "weblogs",
+      "time_s_honeycomb": 61.0,
+      "time_s_script": 60.75
+    },
+    {
+      "arm": "with-mcp",
+      "cost_usd_honeycomb": 0.02624,
+      "cost_usd_script": 0.02618,
+      "model": "claude-sonnet-5-5",
+      "task": "change",
+      "time_s_honeycomb": 15.1,
+      "time_s_script": 15.1
+    },
+    {
+      "arm": "no-mcp",
+      "cost_usd_honeycomb": 0.04772,
+      "cost_usd_script": 0.047585,
+      "model": "claude-sonnet-5-5",
+      "task": "change",
+      "time_s_honeycomb": 22.0,
+      "time_s_script": 21.95
+    },
+    {
+      "arm": "with-mcp",
+      "cost_usd_honeycomb": 0.04224,
+      "cost_usd_script": 0.042129,
+      "model": "claude-sonnet-5-5",
+      "task": "flights",
+      "time_s_honeycomb": 20.8,
+      "time_s_script": 20.8
+    },
+    {
+      "arm": "no-mcp",
+      "cost_usd_honeycomb": 0.10929000000000001,
+      "cost_usd_script": 0.106736,
+      "model": "claude-sonnet-5-5",
+      "task": "flights",
+      "time_s_honeycomb": 40.3,
+      "time_s_script": 38.55
+    },
+    {
+      "arm": "with-mcp",
+      "cost_usd_honeycomb": 0.01668,
+      "cost_usd_script": 0.016678,
+      "model": "claude-sonnet-5-5",
+      "task": "lookup",
+      "time_s_honeycomb": 11.0,
+      "time_s_script": 10.95
+    },
+    {
+      "arm": "no-mcp",
+      "cost_usd_honeycomb": 0.02469,
+      "cost_usd_script": 0.024675,
+      "model": "claude-sonnet-5-5",
+      "task": "lookup",
+      "time_s_honeycomb": 12.2,
+      "time_s_script": 12.1
+    },
+    {
+      "arm": "with-mcp",
+      "cost_usd_honeycomb": 0.04639,
+      "cost_usd_script": 0.046252,
+      "model": "claude-sonnet-5-5",
+      "task": "weblogs",
+      "time_s_honeycomb": 23.4,
+      "time_s_script": 23.3
+    },
+    {
+      "arm": "no-mcp",
+      "cost_usd_honeycomb": 0.11181,
+      "cost_usd_script": 0.110033,
+      "model": "claude-sonnet-5-5",
+      "task": "weblogs",
+      "time_s_honeycomb": 40.0,
+      "time_s_script": 39.7
+    }
+  ],
+  "difference_cause": "every difference over 1% is that P50 choice: for Opus without the server on the flights task the middle two costs are $0.2908 and $0.3546, which the script averages to $0.3227 and Honeycomb reports as $0.3546.",
+  "largest_cell_difference_pct": 9.89,
+  "missing": "one root span of claude-opus-5-5 with-mcp change (11 of 12 in Honeycomb): run 20261012T192808Z-claude-opus-5-5-with-mcp-change-2e4c2e, whose record shows 1 of 34 telemetry requests not forwarded",
+  "note": "Honeycomb's P50 returns one of the two middle values; the script averages them. Cost read as P50 x 1000 rounded to 0.01 milli-dollar.",
+  "per_model": {
+    "claude-haiku-5-5": {
+      "cost_usd": {
+        "ratio_honeycomb": 0.2879,
+        "ratio_script": 0.2902
+      },
+      "time_s": {
+        "ratio_honeycomb": 0.3987,
+        "ratio_script": 0.3992
+      }
+    },
+    "claude-opus-5-5": {
+      "cost_usd": {
+        "ratio_honeycomb": 0.3967,
+        "ratio_script": 0.4071
+      },
+      "time_s": {
+        "ratio_honeycomb": 0.6054,
+        "ratio_script": 0.6083
+      }
+    },
+    "claude-sonnet-5-5": {
+      "cost_usd": {
+        "ratio_honeycomb": 0.494,
+        "ratio_script": 0.4984
+      },
+      "time_s": {
+        "ratio_honeycomb": 0.6575,
+        "ratio_script": 0.6663
+      }
+    }
+  },
+  "query_run_pks": {
+    "cost_and_time": "3f-2UhFEioY4",
+    "counts_and_time": "hZ-2foHPftQ7"
+  },
+  "root_spans_found": 287,
+  "runs": 288,
+  "source": "Honeycomb environment test, dataset mcp-for-kibana-study4, root spans name=efficiency.run, 2026-10-12T17:10Z to 20:10Z, P50 by study.model x study.task x study.arm"
+}

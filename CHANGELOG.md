@@ -50,6 +50,14 @@ version section.
   minutes and the Kibana key stays out of the with-mcp model's environment. Haiku smoke runs are
   kept in `runs/efficiency/study4/`. STUDY_DESIGN.md decision 14.
 
+- **Study 4's analysis and results page** (`study4_analyze.py`): cost and
+  time per run by model, arm and task with bootstrap intervals, the
+  with/without ratio per model and task, and per model the geometric mean of
+  the task ratios; writes `analysis.json` and `STUDY4_RESULTS.md` from the
+  records. The full study's 288 runs and the Honeycomb cross-check of the
+  headline numbers are under `runs/efficiency/study4/full/`. STUDY_DESIGN.md
+  decision 18.
+
 ### Fixed
 
 - **Study 4 runs give the model a TMPDIR.** It was empty, so a model's

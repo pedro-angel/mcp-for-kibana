@@ -262,6 +262,20 @@ Considered:
 - Leaving it: the failure measures an empty variable in the harness, not the work, and it costs the arm without the server a run now and then (1 of 24 in the pilot, 1 of 90 in the first study).
 - The pilot records keep the failed run as it happened; one run of the same cell after the fix confirms it (`runs/efficiency/study4/pilot-tmpdir/`).
 
+### 18. Study 4: how cost and time are compared
+
+_2026-10-12_
+
+**Question.** How do the 288 runs answer what the work costs with the server, compared with no server?
+
+**Decision.** `study4_analyze.py` reads every run's record and writes `runs/efficiency/study4/full/analysis.json` and the results page [STUDY4_RESULTS.md](STUDY4_RESULTS.md); no number on the page is typed by hand.
+
+- Cost per run is Claude Code's list-price cost of the run (`total_cost_usd`); time per run is the agent's wall-clock time as the runner measured it (`wall_s`).
+- Per model, arm and task: the median with a 95% percentile-bootstrap interval, quartiles, mean and range. Only valid runs count.
+- Per model and task: median with the server ÷ median without, with its interval (the first study's `efficiency_analyze.compare`).
+- Per model: the geometric mean of its four per-task ratios, so each task weighs the same however much its runs cost; the interval comes from resampling the runs of every cell. Fixed seed, 10,000 resamples.
+- Every headline number is computed twice: by the script and by a Honeycomb query on the runner's root spans (`honeycomb_crosscheck.json`, with the query runs). Honeycomb's P50 returns one of the two middle values where the script averages them; every cell that differs by more than 1% equals one of its two middle run values.
+
 ## Background research
 
 Looked up before or during the design.
