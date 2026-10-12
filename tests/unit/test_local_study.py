@@ -1,6 +1,8 @@
-"""The local-model study harness end to end, against HTTP fakes of LM Studio,
-Kibana and Honeycomb (tests/_local_study_fakes.py): records written, scoring,
-resume, retries of environment failures, redaction, preflight, analysis.
+"""The local-model study harness (study 5) end to end, against HTTP fakes of
+LM Studio, Kibana and Honeycomb and an in-memory checker Elasticsearch
+(tests/_local_study_fakes.py): records written, scoring with the shared
+study tasks, the stage-1 verdict and stage 2, resume, retries of environment
+failures, redaction, preflight, analysis.
 
 What only the owner's Mac can verify (real LM Studio stream shape, real model
 behaviour, real Kibana objects) is listed in scripts/experiment/LOCAL_STUDY.md.
@@ -15,7 +17,7 @@ from pathlib import Path
 
 import pytest
 
-from tests._local_study_fakes import FakeHoneycomb, FakeKibana, FakeLMStudio
+from tests._local_study_fakes import FakeElastic, FakeHoneycomb, FakeKibana, FakeLMStudio
 
 REPO = Path(__file__).resolve().parents[2]
 EXP = REPO / "scripts" / "experiment"
@@ -61,7 +63,8 @@ def env(tmp_path, monkeypatch):
     cfg["models"] = ["fake/pass", "fake/fail"]
     cfg["lmstudio"].update(url=lm.url, mcp_json=str(mcp_json), run_timeout_s=30, idle_timeout_s=10)
     cfg["kibana"]["seed_file"] = str(seed)
-    cfg["runs"].update(out_dir=str(tmp_path / "runs"), per_cell=2, max_attempts=2)
+    cfg["runs"].update(out_dir=str(tmp_path / "runs"), per_cell=2, max_attempts=2, pilot_per_cell=1)
+    cfg["tasks"]["pass_mark"] = 2
     cfg["honeycomb"].update(endpoint=f"{hc.url}/v1/traces", required=True)
     path = tmp_path / "local_study.json"
 
@@ -69,11 +72,14 @@ def env(tmp_path, monkeypatch):
         path.write_text(json.dumps(c or cfg))
         return lr.load_config(path)
 
+    es = FakeElastic()
+    monkeypatch.setattr(lr.st.Elastic, "from_stack", classmethod(lambda cls: es))
     monkeypatch.setenv("LMSTUDIO_API_TOKEN", LM_TOKEN)
     monkeypatch.setenv("HONEYCOMB_API_KEY", HC_KEY)
     ns = type("Env", (), {})()
     ns.kb, ns.lm, ns.hc, ns.cfg, ns.write, ns.out = kb, lm, hc, cfg, write, tmp_path / "runs"
     ns.mcp_json = mcp_json
+    ns.es = es
     yield ns
     for s in (kb, lm, hc):
         s.close()
@@ -103,30 +109,32 @@ def test_pilot_records_scores_resets_and_traces(env):
     cfg = env.write()
     assert lr.run_matrix(cfg, "pilot") == 0
     recs = _records(env.out, "pilot")
-    assert len(recs) == 8  # 2 models x 4 levels x 1
+    assert len(recs) == 2  # 2 models x the stage-1 task x 1
+    assert {r["task"] for r in recs} == {"weblogs"}
 
-    passing = {r["level"]: r for r in recs if r["model"] == "fake/pass"}
-    failing = {r["level"]: r for r in recs if r["model"] == "fake/fail"}
-    for lv, r in passing.items():
-        assert r["valid"] and r["success"], (lv, r["failure_reason"])
-        assert r["steps_passed"] == r["chain_length"]
-        assert r["stream_final_event"] == "ok"
-        # the first chat.end is the result; the fake sends a bogus second one
-        assert r["end_events"] == 2 and r["output_tokens"] > 1
-    assert passing["L2"]["n_failed_tool_calls"] == 1  # the recovered create_dashboard
-    assert passing["L2"]["failure_classes"] == {"validation": 1}
-    assert passing["L4"]["tool_names"][-2:] == ["update_panel", "get_alert_rule"]
+    passing = next(r for r in recs if r["model"] == "fake/pass")
+    failing = next(r for r in recs if r["model"] == "fake/fail")
+    assert passing["valid"] and passing["success"], passing["failure_reason"]
+    assert passing["steps_passed"] == passing["steps_total"] == 4
+    assert passing["stream_final_event"] == "ok"
+    # the first chat.end is the result; the fake sends a bogus second one
+    assert passing["end_events"] == 2 and passing["output_tokens"] > 1
+    assert passing["n_failed_tool_calls"] == 1  # the recovered create_dashboard
+    assert passing["failure_classes"] == {"validation": 1}
+    assert passing["tool_names"][-2:] == ["update_panel", "get_alert_rule"]
 
-    assert all(r["valid"] and not r["success"] for r in failing.values())
-    assert failing["L1"]["steps_passed"] == 0
-    assert "answer '@timestamp', expected 'timestamp'" in failing["L1"]["failure_reason"]
-    assert failing["L1"]["n_invalid_tool_calls"] == 1
-    assert "dashboard has 1 panels, expected 2" in failing["L2"]["failure_reason"]
-    assert "rule disabled" in failing["L3"]["failure_reason"]
-    l4 = failing["L4"]["failure_reason"]
-    assert "no successful update_panel call" in l4 and "no panel titled 'Responses by code'" in l4
-    # leading-steps-passed is the chain depth: L3 fails at step 1 (answer) already
-    assert failing["L3"]["first_failed_step"] == "describe"
+    assert failing["valid"] and not failing["success"]
+    assert failing["steps_passed"] == 0 and failing["first_failed_step"] == "describe"
+    assert failing["n_invalid_tool_calls"] == 1
+    reason = failing["failure_reason"]
+    for needle in (
+        "answer:TIME_FIELD: expected 'timestamp', got '@timestamp'",
+        "dashboard: 1 panels, expected 2",
+        "rule.enabled: expected True, got False",
+        "panel_title: expected 'Responses by code'",
+        "answer:RULE_ENABLED: expected 'no', got 'yes'",  # it claims; Kibana disagrees
+    ):
+        assert needle in reason, needle
 
     # every run's evidence
     for r in recs:
@@ -154,17 +162,12 @@ def test_pilot_records_scores_resets_and_traces(env):
         assert set(req) == {"model", "input", "integrations", "stream"}
         assert req["integrations"] == [f"mcp/{ENTRY}"]
         assert KIBANA_KEY not in req["input"]
-    l3 = next(
-        q
-        for q in env.lm.requests
-        if "alert rule named" in q["input"] and "Responses" not in q["input"]
-    )
-    assert "must be enabled" in l3["input"]
+    assert all("must be enabled" in q["input"] for q in env.lm.requests)
 
     # Honeycomb: one trace per run, conversation id = run id, span counts match
     spans = env.hc.spans()
     roots = [s for s in spans if s["name"].startswith("invoke_agent")]
-    assert len(roots) == 8
+    assert len(roots) == 2
     by_run = {}
     for s in spans:
         a = _attrs(s)
@@ -175,38 +178,49 @@ def test_pilot_records_scores_resets_and_traces(env):
         tools = [a for s, a in group if a["gen_ai.operation.name"] == "execute_tool"]
         assert len(tools) == r["n_tool_calls"] + r["n_invalid_tool_calls"]
         root = next(a for s, a in group if a["gen_ai.operation.name"] == "invoke_agent")
-        assert root["study.level"] == r["level"] and root["agent.task.success"] == r["success"]
+        assert root["study.task"] == r["task"] and root["agent.task.success"] == r["success"]
         assert int(root["gen_ai.usage.output_tokens"]) == r["output_tokens"]
+        # every check, with its expected and actual value, is on the root span
+        assert int(root["study.checks_total"]) == len(r["criteria"])  # OTLP int64 as string
+        for c in r["criteria"]:
+            key = f"study.check.{c['step']}.{c['check']}".replace(":", "_")
+            assert root[f"{key}.ok"] is c["ok"], key
+    fail_root = next(
+        a for s, a in by_run[failing["run_id"]] if a["gen_ai.operation.name"] == "invoke_agent"
+    )
+    assert fail_root["study.check.rule.rule.enabled.ok"] is False
+    assert fail_root["study.check.describe.answer_TIME_FIELD.actual"] == "@timestamp"
     assert env.mcp_json.read_bytes() == mcp_before  # user-owned, never written
 
 
 def test_resume_skips_done_cells_and_recovers_an_interrupted_run(env):
     env.cfg["models"] = ["fake/pass"]
+    env.cfg["runs"]["per_cell"] = 3
     cfg = env.write()
-    lr.run_matrix(cfg, "full", limit=3)
-    assert len(_records(env.out, "full")) == 3
+    lr.run_matrix(cfg, "stage1", limit=1)
+    assert len(_records(env.out, "stage1")) == 1
 
     # a run that crashed mid-way: dir with before.json, no record.json, and
     # what it created still in Kibana
     ctx = lr.Ctx(cfg)
     before = ctx.kb.snapshot()
-    crashed = env.out / "full" / "b02" / "20990101T000000Z-crashed"
+    crashed = env.out / "stage1" / "b02" / "20990101T000000Z-crashed"
     crashed.mkdir(parents=True)
     (crashed / "cell.json").write_text(json.dumps({"key": "x"}))
     (crashed / "before.json").write_text(json.dumps(before))
     env.kb.create_dashboard("LOC-deadbeef Web logs", [])
 
-    lr.run_matrix(cfg, "full")
-    recs = _records(env.out, "full")
-    assert len(recs) == len(lr.plan(cfg, "full")) == 8  # 1 model x 4 levels x 2 blocks
-    assert len({r["cell"] for r in recs}) == 8  # nothing ran twice
+    lr.run_matrix(cfg, "stage1")
+    recs = _records(env.out, "stage1")
+    assert len(recs) == len(lr.plan(cfg, "stage1")) == 3  # 1 model x 1 task x 3 blocks
+    assert len({r["cell"] for r in recs}) == 3  # nothing ran twice
     assert (crashed / "abandoned.json").exists()
     assert set(env.kb.dashboards) == {"preexisting-flights"}
-    prog = json.loads((env.out / "progress-full.json").read_text())
-    assert prog["cells_done"] == prog["cells_total"] == 8
+    prog = json.loads((env.out / "progress-stage1.json").read_text())
+    assert prog["cells_done"] == prog["cells_total"] == 3
 
     n_requests = len(env.lm.requests)
-    lr.run_matrix(cfg, "full")  # complete: a rerun does nothing
+    lr.run_matrix(cfg, "stage1")  # complete: a rerun does nothing
     assert len(env.lm.requests) == n_requests
 
 
@@ -219,7 +233,7 @@ def test_harness_loading_keeps_one_study_model_at_full_context(env):
     cfg = env.write()
     assert lr.run_matrix(cfg, "pilot") == 0
     recs = _records(env.out, "pilot")
-    assert len(recs) == 8 and all(r["valid"] for r in recs)
+    assert len(recs) == 2 and all(r["valid"] for r in recs)
     loads = [x for x in env.lm.load_log if x[0] == "load"]
     assert loads == [("load", "fake/pass", 131072), ("load", "fake/fail", 131072)]
     assert ("unload", "fake/pass", None) in env.lm.load_log
@@ -258,7 +272,6 @@ def test_send_pending_sends_the_spans_of_runs_without_a_key(env, monkeypatch):
 
 def test_environment_failures_are_invalid_and_retried(env):
     env.cfg["models"] = ["fake/oom"]
-    env.cfg["task"]["levels"] = env.cfg["task"]["levels"][:1]
     cfg = env.write()
     lr.run_matrix(cfg, "pilot")
     recs = _records(env.out, "pilot")
@@ -273,7 +286,6 @@ def test_environment_failures_are_invalid_and_retried(env):
 
 def test_timeout_keeps_the_streamed_calls(env):
     env.cfg["models"] = ["fake/hang"]
-    env.cfg["task"]["levels"] = env.cfg["task"]["levels"][:1]
     env.cfg["lmstudio"].update(run_timeout_s=1, idle_timeout_s=1)
     env.lm.hang_s = 3
     cfg = env.write()
@@ -290,7 +302,7 @@ def test_non_streaming_mode(env):
     cfg = env.write()
     lr.run_matrix(cfg, "pilot")
     recs = _records(env.out, "pilot")
-    assert len(recs) == 4 and all(r["success"] for r in recs)
+    assert len(recs) == 1 and all(r["success"] for r in recs)
     assert all(r["stream_final_event"] == "n/a" for r in recs)
 
 
@@ -299,7 +311,6 @@ def test_non_streaming_mode(env):
 
 def test_redaction_keeps_the_key_out_of_files_and_traces(env):
     env.cfg["models"] = ["fake/leak"]
-    env.cfg["task"]["levels"] = env.cfg["task"]["levels"][:1]
     cfg = env.write()
     lr.run_matrix(cfg, "pilot")
     (r,) = _records(env.out, "pilot")
@@ -329,7 +340,6 @@ def test_send_is_refused_when_redaction_misses_the_key(env, monkeypatch):
 
     monkeypatch.setattr(lr, "MultiRedactor", NoRedaction)
     env.cfg["models"] = ["fake/leak"]
-    env.cfg["task"]["levels"] = env.cfg["task"]["levels"][:1]
     cfg = env.write()
     lr.run_matrix(cfg, "pilot")
     (r,) = _records(env.out, "pilot")
@@ -398,33 +408,70 @@ def test_run_refuses_without_the_honeycomb_key_when_required(env, monkeypatch):
 # ---------------------------------------------------------------- plan, status, analysis
 
 
-def test_plan_rotates_models_and_levels_per_block(env):
+def test_plan_rotates_models_and_tasks_per_block(env):
     env.cfg["models"] = ["a/x", "b/y", "c/z"]
     env.cfg["runs"]["per_cell"] = 3
     cfg = env.write()
-    cells = lr.plan(cfg, "full")
-    assert len(cells) == 3 * 4 * 3 and len({c["key"] for c in cells}) == len(cells)
+    cells = lr.plan(cfg, "stage1")
+    assert len(cells) == 3 * 1 * 3 and len({c["key"] for c in cells}) == len(cells)
+    assert {c["task"] for c in cells} == {"weblogs"}
     blocks = {}
     for c in cells:
         blocks.setdefault(c["block"], []).append(c)
     assert [b[0]["model"] for b in blocks.values()] == ["a/x", "b/y", "c/z"]
-    assert [b[0]["level"] for b in blocks.values()] == ["L1", "L2", "L3"]
-    for b in blocks.values():
-        assert len({(c["model"], c["level"]) for c in b}) == 12
-    assert len(lr.plan(cfg, "pilot")) == 12
+    stage2 = lr.plan(cfg, "stage2", ["b/y"])
+    assert len(stage2) == 1 * 3 * 3 and {c["model"] for c in stage2} == {"b/y"}
+    firsts = [c["task"] for c in stage2 if c["key"].endswith(("/change", "/lookup", "/flights"))][::3]
+    assert firsts == ["change", "lookup", "flights"]
+    assert len(lr.plan(cfg, "pilot")) == 3
+    assert lr.plan(cfg, "stage2", []) == []
 
 
-def test_prompts_grow_by_level_and_state_the_checks(env):
+def test_runner_prompt_is_the_shared_task_prompt(env):
     cfg = env.write()
-    levels = cfg["task"]["levels"]
-    prompts = [lr.build_prompt(cfg, lv, "LOC-00000000") for lv in levels]
-    for i, p in enumerate(prompts, 1):
-        assert f"{i}. " in p and f"{i + 1}. " not in p
-    assert "TIME_FIELD:" in prompts[0] and "exactly two panels" in prompts[1]
-    assert "must be enabled" in prompts[2] and "RULE_ENABLED:" in prompts[3]
+    lr.run_matrix(cfg, "pilot", limit=1)
+    (r,) = _records(env.out, "pilot")
+    expected = lr.st.build_prompt(lr.tasks_cfg(cfg), "weblogs", "server", r["marker"])
+    assert r["prompt"] == expected
+    assert expected.startswith("Use only the kibana tools.")
 
 
-def test_status_estimates_the_full_run_from_the_pilot(env, capsys):
+def test_config_problems_name_unknown_tasks_and_a_bad_pass_mark(env):
+    env.cfg["tasks"]["stage2"] = ["change", "nope"]
+    env.cfg["tasks"]["pass_mark"] = 99
+    cfg = env.write()
+    problems = "; ".join(lr.config_problems(cfg))
+    assert "stage2 names unknown tasks ['nope']" in problems
+    assert "pass_mark 99 is outside 1..2" in problems
+
+
+def test_stage2_waits_for_stage1_then_runs_only_the_models_that_passed(env, monkeypatch):
+    cfg = env.write()
+    with pytest.raises(SystemExit, match="stage 1 is not complete"):
+        lr.run_matrix(cfg, "stage2")
+    assert lr.run_matrix(cfg, "stage1") == 0
+    verdict = lr.stage1_verdict(cfg, _records(env.out, "stage1"))
+    assert verdict["fake/pass"] == {
+        "successes": {"weblogs": 2}, "done": 2, "cells": 2, "complete": True, "passed": True,
+    }
+    assert verdict["fake/fail"]["passed"] is False
+
+    restored = []
+    monkeypatch.setattr(
+        lr.st, "restore_seed", lambda kb, tcfg: restored.append(1) or {"dashboard": None, "rule": None}
+    )
+    assert lr.run_matrix(cfg, "stage2") == 0
+    recs = _records(env.out, "stage2")
+    assert {r["model"] for r in recs} == {"fake/pass"}
+    assert sorted(r["task"] for r in recs) == sorted(["change", "lookup", "flights"] * 2)
+    assert len(restored) == 4  # change and lookup are seeded; flights is not
+    seeded = [r for r in recs if r["task"] in ("change", "lookup")]
+    assert all(
+        (env.out / "stage2" / r["block"] / r["run_id"] / "seed.json").exists() for r in seeded
+    )
+
+
+def test_status_estimates_stage1_from_the_pilot(env, capsys):
     cfg = env.write()
     lr.run_matrix(cfg, "pilot")
     est = lr.estimate(cfg, _records(env.out, "pilot"))
@@ -432,29 +479,30 @@ def test_status_estimates_the_full_run_from_the_pilot(env, capsys):
     assert est["max_runs_per_cell_in_budget"] > 1000  # fake runs take well under a second
     assert lr.cmd_status(cfg) == 0
     out = capsys.readouterr().out
-    assert "== pilot: 8/8 cells done" in out and "estimate from the pilot" in out
+    assert "== pilot: 2/2 cells done" in out and "stage-1 estimate from the pilot" in out
+    assert "stage 1 fake/pass" in out and "open (0/2 cells)" in out
 
 
-def test_analysis_rates_intervals_and_chain(env, tmp_path):
+def test_analysis_rates_intervals_and_stage1_verdict(env, tmp_path):
     env.cfg["runs"]["per_cell"] = 3
+    env.cfg["tasks"]["pass_mark"] = 3
     cfg = env.write()
-    lr.run_matrix(cfg, "full")
-    a = la.analyze(cfg, "full")
-    cell = a["cells"]["fake/pass"]["L4"]
+    lr.run_matrix(cfg, "stage1")
+    a = la.analyze(cfg, "stage1")
+    cell = a["cells"]["fake/pass"]["weblogs"]
     assert cell["n_valid"] == 3 and cell["passes"] == 3
     assert cell["wilson95"][0] == pytest.approx(3 / (3 + 1.959964**2), abs=1e-3)
     assert cell["pass_hat_k"]["3"] == 1.0
-    fail = a["cells"]["fake/fail"]["L2"]
+    fail = a["cells"]["fake/fail"]["weblogs"]
     assert fail["passes"] == 0 and fail["first_failed_step"] == {"describe": 3}
-    assert a["chain"]["fake/pass"]["lose_track_at"] is None
-    assert a["chain"]["fake/fail"]["lose_track_at"] == "L1"
-    assert a["chain"]["fake/pass"]["rates"] == [1.0, 1.0, 1.0, 1.0]
+    assert a["stage1_verdict"]["fake/pass"]["passed"] is True
+    assert a["stage1_verdict"]["fake/fail"]["passed"] is False
     m = cell["metrics"]
     assert m["output_tokens"]["median"] > 0 and m["s_per_step"]["n"] == 3
     # re-derived from the stored responses: same as the records
     assert a["consistency"]["mismatches"] == []
     queries = la.honeycomb_queries(cfg)
-    assert queries["q01_runs"]["breakdowns"] == ["study.model", "study.level"]
+    assert queries["q01_runs"]["breakdowns"] == ["study.model", "study.task"]
 
 
 def test_wilson_interval_matches_the_design_record():

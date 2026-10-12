@@ -184,6 +184,24 @@ Considered:
 - Tested before any pilot (`study_tasks.py replay`, live stack, Kibana 9.5.5): of the 469 rules stored from the earlier runs, 465 pass the filter and time-field checks. The four rejected: a term filter on 503 only; a terms list of 500 to 509, which misses 510 to 599; a regexp with `^…$` anchors on the analysed `response` text field, which matches nothing; a `match` query on `_source.response.keyword` with an operator Elasticsearch does not have. Every correct form passes, including filters with their own `now-5m` range and ES|QL rules that carry the threshold in the query.
 - On the live stack, correct runs of all four tasks pass, and each of these fails at its step: a 503-only filter, `utc_time` as the time field, a disabled rule, a wrong TIME_FIELD answer, a panel not retitled, a change run that left the rule disabled, a wrong ENABLED answer, and a lookup run that enabled the rule.
 
+### 13. Study 5: local models in two stages
+
+_2026-10-12_
+
+**Question.** How reliably do local models that can do the work complete the four tasks through mcp-for-kibana, and how long do they take?
+
+**Decision.** Three models: `nvidia/nemotron-3-nano-4b`, `google/gemma-4-12b-qat`, `qwen/qwen3.8-27b` (three vendors and architectures, each already seen completing a Kibana task). With the server only, frozen at one commit after the pilot. Two stages, run by `local_run.py stage1` and `stage2` from [local_study.json](local_study.json); runbook [LOCAL_STUDY.md](LOCAL_STUDY.md).
+
+- Stage 1: the web-logs task, 20 runs per model. Pass mark, set before any run: at least 14 of 20 (the Wilson lower bound is then above 0.5).
+- Stage 2: the change, lookup and flights tasks, 20 runs each, only for the models that passed stage 1. The runner refuses to start it before stage 1 is complete.
+- Pilot: the web-logs task, 3 runs per model, to confirm the checks, the telemetry and the stall alert before the harness is frozen.
+- Main measures: pass rate with its Wilson interval, time per run, steps reached. 20 of 20 shows a pass rate of at least 0.84.
+- The report covers only the models that passed stage 1, on all four tasks, stated as chosen because preliminary tests showed they can complete the tasks.
+
+Considered:
+
+- The earlier local design (one task cut into chain lengths L1 to L4, to find where a model loses track) is replaced; its records stay in `runs/local/` with the config they ran with (`local_study_levels.json`). Study 5 writes to `runs/study5/`.
+
 ### 14. Study 4: the runner, the plan and the stall alert
 
 _2026-10-12_
@@ -203,6 +221,20 @@ _2026-10-12_
 Considered:
 
 - Smoke runs, Haiku, local telemetry only (`runs/efficiency/study4/`): on the draft tasks, the web-logs task passed and the change task with the server stopped at the rename step, the model naming the missing tools (`smoke/`); that led to the removal recorded in decision 12. On the revised tasks, change with and without the server and lookup with the server passed (`smoke2/`).
+
+### 15. The rule must catch all server errors
+
+_2026-10-12_
+
+**Question.** In study 5's pilot, one rule counted response codes 500 to 509 only. On the web-logs data it counts the same requests as a correct rule, because 503 is the only server-error code there, but it would miss 510 to 599. Should the check accept it?
+
+**Decision.** No: the check stays as decision 12 defines it, and a filter that misses any code from 500 to 599 fails. The web-logs task now says so: the rule fires on more than 10 server errors in 5 minutes, counting every request whose response code is anywhere from 500 to 599. The owner's reason: failing such a rule is fair only when the task asks for all server errors in words.
+
+Considered:
+
+- Accepting any filter that covers the registered codes 500 to 511: the 500-to-509 rule would still fail, and the line between registered and unregistered codes is not what the task is about.
+- Accepting any filter that counts correctly on the real data: a rule for 503 alone would pass, which is not what the task asks for.
+- The pilot runs used the earlier wording ("requests with a 5xx response code"); the stage runs use the new one.
 
 ## Background research
 
