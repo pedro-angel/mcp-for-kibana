@@ -6,7 +6,7 @@ tracked on this page, under *Open work*, not as GitHub issues.
 
 ## Where the project stands
 
-The server ships **10 toolboxes / 137 tools** (dashboards, data-management,
+The server ships **10 toolboxes / 138 tools** (dashboards, data-management,
 alerting, cases, security-detections, fleet, streams, observability,
 platform-admin, platform-health) — see the [Tool reference](tools.md) for every
 one. Every tool is classified read / write / destructive and contract-tested
@@ -66,7 +66,7 @@ Basic-buildable **toolboxes** that had never been filed. Now filed, in build ord
   names a tool set — with coherence warnings for lists that split working
   pairs (read-modify-write partners, fork lifecycles); today the docs name
   the foot-gun and the server does not check it.
-- **Unordered Basic backlog from the 2026-08-19 audit** (file individually when picked up): `spaces.copy_saved_objects` + `update_objects_spaces` (natural extension of space targeting), `timeline` depth (1/19 wrapped), data-view runtime fields + default get/set, exception-list update/duplicate/export/import, granular `saved_objects` reads (find/get — raw CRUD stays out: Kibana marks it deprecated), `apm` writes (agent-config upsert, annotations), fleet advanced ops (package install/uninstall, diagnostics, tags, k8s manifest), streams queries/attachments/content (significant-events likely needs an AI connector — verify before filing).
+- **Unordered Basic backlog from the 2026-08-19 audit** (file individually when picked up): `spaces.copy_saved_objects` + `update_objects_spaces` (natural extension of space targeting), `timeline` depth (1/19 wrapped), data-view runtime fields + default get/set (in-place data-view edit shipped 2026-10-12 as `update_data_view`, D36), exception-list update/duplicate/export/import, granular `saved_objects` reads (find/get — raw CRUD stays out: Kibana marks it deprecated), `apm` writes (agent-config upsert, annotations), fleet advanced ops (package install/uninstall, diagnostics, tags, k8s manifest), streams queries/attachments/content (significant-events likely needs an AI connector — verify before filing).
 
 `security-entity-analytics` is **out of scope** (subscription-gated). `security-response`
 remains **classified (2026-07-18) and deferred** (infra-gated:

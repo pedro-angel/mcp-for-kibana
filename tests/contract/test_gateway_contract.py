@@ -270,6 +270,71 @@ def test_create_and_delete_data_view_live(gateway):
     assert not any(v.id == created.id for v in gateway.list_data_views())  # gone
 
 
+def _dv_pattern():
+    # Unique (no two runs share a title) yet carries the flights fields: the
+    # second, never-matching member keeps it unique.
+    return f"{FLIGHTS},mcp-for-kibana-ct-{uuid.uuid4().hex[:8]}-*"
+
+
+def test_update_data_view_partial_and_time_field_guard_live(gateway):
+    # Kibana's data-view POST merges what it is sent but checks nothing: it
+    # stores a missing or non-date time field (probed on 9.5.4). The adapter
+    # guards that, before the write or, when the pattern changes, by writing
+    # the pattern back.
+    pattern = _dv_pattern()
+    created = gateway.create_data_view(pattern, "ct-update-dv", "timestamp")
+    try:
+        renamed = gateway.update_data_view(created.id, "ct-update-dv renamed", None, None)
+        assert (renamed.name, renamed.index_pattern, renamed.time_field) == (
+            "ct-update-dv renamed", pattern, "timestamp"
+        )
+        assert renamed.fields["AvgTicketPrice"] == "number"
+        with pytest.raises(KibanaRejected) as exc:
+            gateway.update_data_view(created.id, None, None, "Carrier")
+        assert exc.value.message.startswith(
+            f"time field 'Carrier' is a string field, not a date field, of '{pattern}' — "
+            "pass time_field as one of its date fields: timestamp"
+        )
+        other = _dv_pattern()
+        with pytest.raises(KibanaRejected, match=r"\(nothing was changed\)$"):
+            gateway.update_data_view(created.id, None, other, "Carrier")
+        with _raw_kibana() as raw:
+            kept = raw.data_views.get(view_id=created.id).body["data_view"]
+        assert (kept["title"], kept["timeFieldName"], kept["name"]) == (
+            pattern, "timestamp", "ct-update-dv renamed"
+        )
+        # A pattern that matches no index yet is accepted; its fields are empty.
+        future = f"mcp-for-kibana-ct-{uuid.uuid4().hex[:8]}-*"
+        moved = gateway.update_data_view(created.id, None, future, None)
+        assert (moved.index_pattern, moved.time_field, moved.fields) == (future, "timestamp", {})
+        back = gateway.update_data_view(created.id, None, pattern, "timestamp")
+        assert back.index_pattern == pattern and back.fields["timestamp"] == "date"
+        with pytest.raises(KibanaNotFound, match=r"call list_data_views to find it"):
+            gateway.update_data_view("ct-update-dv renamed", "x", None, None)
+    finally:
+        gateway.delete_data_view(created.id)
+
+
+def test_data_view_edit_leaves_built_panels_alone_live(gateway):
+    # Panels this server builds embed the pattern and time field inline
+    # (data_view_spec), not the data view's id, so an edit does not reach them.
+    pattern = _dv_pattern()
+    created = gateway.create_data_view(pattern, "ct-panel-dv", "timestamp")
+    data = build_dashboard_data(
+        f"mcp-for-kibana ct dv edit {uuid.uuid4().hex[:8]}", "created by a contract test",
+        layout_panels([to_lens_config(flights_spec(data_view=pattern))]), None,
+    )
+    dash_id = gateway.create_dashboard(data)
+    try:
+        before, _ = gateway.get_dashboard_data(dash_id)
+        gateway.update_data_view(created.id, "ct-panel-dv renamed", _dv_pattern(), None)
+        after, warnings = gateway.get_dashboard_data(dash_id)
+        assert after == before and warnings == []
+    finally:
+        gateway.delete_dashboard(dash_id)
+        gateway.delete_data_view(created.id)
+
+
 def test_short_url_lifecycle_live(gateway):
     created = gateway.create_short_url("LEGACY_SHORT_URL_LOCATOR", {"url": "/app/dashboards"})
     try:
@@ -1684,3 +1749,34 @@ def test_search_detection_alerts_uninitialized_space_live(gateway):
     with _temp_space(gateway) as space_id:
         with _live_gateway(space_id) as gw:
             assert gw.search_detection_alerts(1) == []
+
+
+async def test_update_data_view_tool_scoped_live(gateway, tmp_path):
+    # Through the MCP surface in a space: the edit lands there only, the result
+    # echoes the space, and a miss carries the scoped suffix once.
+    with _temp_space(gateway, "mcp-for-kibana-ct-dv-upd") as space_id:
+        async with Client(_dm_tool_server(tmp_path)) as client:
+            created = (await client.call_tool("create_data_view", {
+                "index_pattern": FLIGHTS, "name": "ct scoped dv", "space": space_id,
+            })).data
+            updated = (await client.call_tool("update_data_view", {
+                "view_id": created["id"], "name": "ct scoped dv renamed",
+                "time_field": "timestamp", "space": space_id,
+            })).data
+            with pytest.raises(ToolError) as miss:
+                await client.call_tool(
+                    "update_data_view",
+                    {"view_id": "no-such-dv-xyz", "name": "x", "space": space_id},
+                )
+            with pytest.raises(ToolError, match=r"call list_data_views to find it$"):
+                await client.call_tool(  # the root space cannot see it
+                    "update_data_view", {"view_id": created["id"], "name": "x"}
+                )
+        assert updated == {
+            "id": created["id"], "name": "ct scoped dv renamed", "index_pattern": FLIGHTS,
+            "time_field": "timestamp", "field_count": updated["field_count"], "space": space_id,
+        }
+        assert updated["field_count"] > 0
+        assert "call list_data_views to find it" in str(miss.value)
+        assert str(miss.value).endswith(f" (in space '{space_id}')")
+        assert str(miss.value).count("(in space") == 1

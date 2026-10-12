@@ -45,8 +45,8 @@ model, through our server, into a real Kibana dashboard.
    is what you want here — the endpoint docs note that *"higher values [are]
    recommended for MCP usage"*. (How many tools that means depends on your
    config: the default `KIBANA_MCP_TOOLBOXES` of `dashboards,data-management`
-   with `KIBANA_MCP_TIER=write` advertises 16 — verified by listing them over
-   stdio — not the 137 the full ten-toolbox set would.) If you
+   with `KIBANA_MCP_TIER=write` advertises 17 — verified by listing them over
+   stdio — not the 138 the full ten-toolbox set would.) If you
    load with a small context, a reasoning-heavy model can burn its whole budget
    thinking and get truncated before it emits a tool call; the test then fails
    on `assert tool_calls` (MEASURED with `nvidia/nemotron-3-nano-omni` at 8000).
@@ -137,8 +137,9 @@ model, through our server, into a real Kibana dashboard.
    The alerting-space gate (`test_lmstudio_alerting_space.py`) needs a
    **second** entry named `mcp-for-kibana-alerting` — same command and env,
    but `KIBANA_MCP_TOOLBOXES: "alerting,platform-admin"`. Each gate keeps its
-   own frozen tool surface (24 tools for the dashboards gate, 17 for
-   alerting); one shared entry cannot satisfy both experiment designs.
+   own toolbox set (designed on 24 tools for the dashboards gate and 17 for
+   alerting; data-management and alerting have grown since); one shared
+   entry cannot satisfy both experiment designs.
 
    > Need a fresh API key? Delete `elastic-start-local/.env.seed` (or its `KIBANA_TEST_API_KEY`
    > line) and re-run `scripts/stack.sh seed` — your `.env.local` is a

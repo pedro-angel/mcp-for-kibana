@@ -50,11 +50,11 @@ check stack health; change nothing. Toolboxes: `dashboards` (read) +
 `export_saved_objects`, `get_kibana_status`, `get_kibana_stats`, `get_task_manager_health`.
 *Persona:* an analyst or on-device model browsing what's already in Kibana.
 
-### [`dashboards-analyst.mcp.json`](./dashboards-analyst.mcp.json) — 16 tools · `write`
+### [`dashboards-analyst.mcp.json`](./dashboards-analyst.mcp.json) — 17 tools · `write`
 Turn plain-English asks into real Lens visualizations and dashboards (idempotent —
 re-creating the same title updates rather than duplicates). Toolboxes: `dashboards`
 + `data-management`. Adds `create_dashboard`, `create_visualization`, `add_panel`,
-`update_panel`, `create_data_view`, `create_short_url` to the read tools. This is
+`update_panel`, `create_data_view`, `update_data_view`, `create_short_url` to the read tools. This is
 the project's MVP default. *Persona:* data/BI analyst, dashboard builder.
 *(Deletion tools exist but are `destructive`-tier — raise `KIBANA_MCP_TIER` to
 `destructive` only if you want the model to delete dashboards/panels.)*

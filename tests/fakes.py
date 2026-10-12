@@ -43,6 +43,7 @@ FLIGHTS_DV = DataViewDetail(
 class FakeGateway:
     def __init__(self):
         self.data_views = {FLIGHTS_DV.id: FLIGHTS_DV}
+        self.data_view_updates: list[dict] = []  # update_data_view calls, as passed
         self.dashboards: dict[str, dict] = {}
         self.visualizations: dict[str, dict] = {}
         self.short_urls: dict[str, ShortUrl] = {}
@@ -280,6 +281,30 @@ class FakeGateway:
             time_field=time_field, fields={},
         )
         return DataViewSummary(id=new_id, name=name or index_pattern, index_pattern=index_pattern)
+
+    def update_data_view(self, view_id, name, index_pattern, time_field):
+        # Mirrors the adapter's contract, not Kibana: a partial merge, and a time
+        # field that must be a date field whenever the view's fields are known.
+        if view_id not in self.data_views:
+            raise KibanaNotFound(
+                f"data view '{view_id}' not found — view_id is the id that create_data_view "
+                "or list_data_views returns, not the view's name or index pattern; "
+                "call list_data_views to find it"
+            )
+        cur = self.data_views[view_id]
+        self.data_view_updates.append({
+            "view_id": view_id, "name": name, "index_pattern": index_pattern,
+            "time_field": time_field,
+        })
+        if time_field is not None and cur.fields and cur.fields.get(time_field) != "date":
+            raise KibanaRejected(f"time field '{time_field}' is not a date field of '{cur.index_pattern}'")
+        self.data_views[view_id] = replace(
+            cur,
+            name=name if name is not None else cur.name,
+            index_pattern=index_pattern if index_pattern is not None else cur.index_pattern,
+            time_field=time_field if time_field is not None else cur.time_field,
+        )
+        return self.data_views[view_id]
 
     def delete_data_view(self, view_id):
         if view_id not in self.data_views:

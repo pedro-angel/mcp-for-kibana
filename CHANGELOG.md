@@ -35,6 +35,19 @@ version section.
   All three take `space`. Decision D35. The local study's server entry
   (dashboards, data-management, alerting at `write`) now lists 28 tools;
   `local_study.json`'s `expected_tools` and its runbook follow.
+- **`update_data_view` (data-management, write).** An agent at the default
+  `write` tier can now fix a data view's `name`, `index_pattern` or
+  `time_field` in place, by id, instead of deleting it (destructive) and
+  recreating it. Only the fields passed change. Kibana stores any time field,
+  even one that does not exist or is not a date, and every chart built on the
+  view then inherits it, so the tool refuses a time field that is not
+  a date field of the view and lists the ones that are. When the index
+  pattern changes, the time field is checked against the new pattern's
+  fields, and a mismatch writes the old pattern back, so a refused call
+  changes nothing. A pattern that matches no index yet is accepted with
+  `field_count` 0. A wrong id names `list_data_views`. Takes `space`.
+  Decision D36. The `dashboards-analyst` profile now lists 17 tools and the
+  local study's server entry 29; `local_study.json` and its runbook follow.
 
 ## [0.3.0] - 2026-10-12
 

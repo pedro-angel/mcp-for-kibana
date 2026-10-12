@@ -23,11 +23,13 @@ DASHBOARDS_DESTRUCTIVE = {"delete_dashboard", "delete_panel"}
 # data-management toolbox (#28).
 DATA_MGMT_TOOLS = {
     "list_data_views", "describe_data_view", "resolve_short_url", "export_saved_objects",
-    "create_data_view", "create_short_url", "import_saved_objects",
+    "create_data_view", "update_data_view", "create_short_url", "import_saved_objects",
     "delete_data_view", "delete_short_url", "overwrite_saved_objects",
 }
 DATA_MGMT_READ = {"list_data_views", "describe_data_view", "resolve_short_url", "export_saved_objects"}
-DATA_MGMT_WRITE = {"create_data_view", "create_short_url", "import_saved_objects"}
+DATA_MGMT_WRITE = {
+    "create_data_view", "update_data_view", "create_short_url", "import_saved_objects",
+}
 DATA_MGMT_DESTRUCTIVE = {"delete_data_view", "delete_short_url", "overwrite_saved_objects"}
 
 PLATFORM_HEALTH_TOOLS = {"get_kibana_status", "get_kibana_stats", "get_task_manager_health"}
@@ -234,6 +236,8 @@ async def test_data_management_toolbox_boots_all_tiers():
     assert names == DATA_MGMT_TOOLS
     read_only = await visible_tools(Settings(toolboxes=["data-management"], tier=Tier.READ))
     assert read_only == DATA_MGMT_READ
+    write = await visible_tools(Settings(toolboxes=["data-management"], tier=Tier.WRITE))
+    assert write == DATA_MGMT_READ | DATA_MGMT_WRITE  # update_data_view at the default tier
 
 
 async def test_platform_health_combines_with_dashboards():

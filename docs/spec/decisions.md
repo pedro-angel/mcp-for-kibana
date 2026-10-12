@@ -1,6 +1,6 @@
 # Decisions ledger
 
-Status: Draft v1.6 (2026-10-12) — regeneration corpus. Consumes
+Status: Draft v1.7 (2026-10-12) — regeneration corpus. Consumes
 [brief.md](brief.md); read alongside [design.md](design.md).
 
 Each entry is a decision a rewrite must not silently re-litigate: what was
@@ -143,6 +143,22 @@ this ledger stands without them.
   never carry secrets. Preconfigured connectors are refused client-side from
   `is_preconfigured` (no such connector on the stack to probe). Contract:
   [alerting](toolboxes/alerting.md).
+- **D36 (2026-10-12, probes on 9.5.4)** — An in-place data-view edit checks
+  the time field Kibana does not, and a refused edit changes nothing.
+  Observed: the data-view update merges the keys it is sent (omitted ones
+  survive), validates only types, and stores a time field that is missing or
+  a keyword, an empty time field, and an empty title (which then matches
+  every index); a view's fields are recomputed from its pattern on every
+  read and write and are empty for a pattern that matches no index. So
+  `update_data_view` sends only the changed keys, refuses empty values,
+  and requires the time field to keep to be a `date` field of the view —
+  checked before the write, or, when the pattern changes, after writing the
+  pattern alone, with the old pattern written back on a mismatch. Rejected
+  alternatives: re-sending every field (needless: the update merges);
+  checking a new pattern's fields through Kibana's internal fields-for-wildcard
+  route (internal, and absent from kibana-py). An empty field list skips the
+  check, matching `create_data_view`'s acceptance of a pattern for data not
+  yet ingested. Contract: [data-management](toolboxes/data-management.md).
 
 ## Reliability and models (measured)
 

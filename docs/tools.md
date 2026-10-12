@@ -8,7 +8,7 @@ Toolboxes are selected via
 **[observability](#observability-toolbox)**,
 **[security-detections](#security-detections-toolbox)**,
 **[platform-admin](#platform-admin-toolbox)**,
-**[streams](#streams-toolbox)**, and **[fleet](#fleet-toolbox)** — 137 tools in
+**[streams](#streams-toolbox)**, and **[fleet](#fleet-toolbox)** — 138 tools in
 all. This reference details every toolbox in full. A drift-guard test
 (`tests/unit/test_docs_tool_reference.py`) asserts that every registered tool
 name appears on this page, so it cannot silently fall behind the code.
@@ -353,7 +353,7 @@ This is a deliberate fail-closed guard — see
 
 ## Space targeting
 
-Every one of the 67 tools in the **dashboards**, **data-management**,
+Every one of the 68 tools in the **dashboards**, **data-management**,
 **alerting**, **cases**, and **security-detections** toolboxes — including
 the 14 destructive-tier ones — accepts an optional `space` parameter that
 targets a Kibana space by id:
@@ -448,9 +448,54 @@ export/import/overwrite tools are also part of this toolbox — see
 | `describe_data_view` | read | Get a data view's fields and types. |
 | `resolve_short_url` | read | Resolve a Kibana short-URL slug to its locator and target app path. |
 | `create_data_view` | write | Create a Kibana data view over an index pattern (e.g. `logs-*`). |
+| `update_data_view` | write | Edit a data view in place by id: `name`, `index_pattern` and/or `time_field`. Only the fields passed change; the time field must be a date field of the view. |
 | `create_short_url` | write | Create a Kibana short URL for a locator + app path. |
 | `delete_data_view` | destructive | Permanently delete a data view by id. This cannot be recovered. |
 | `delete_short_url` | destructive | Permanently delete a short URL by id. |
+
+Notes on `update_data_view`:
+
+- **Only what you pass changes.** Kibana's data-view update merges the keys it
+  is sent, so `name`, `index_pattern` and `time_field` are each optional and
+  an omitted one keeps its value. At least one is required, and a blank one is
+  refused before anything reaches Kibana. The argument names match
+  `create_data_view` and `describe_data_view`'s result.
+- **The time field is checked, because Kibana does not check it.** Kibana
+  stores any string as a data view's time field — one that does not exist, or
+  a keyword — and every chart the dashboards toolbox builds on the view then
+  inherits it. So the tool refuses a `time_field` that is not a `date` field of the view, and
+  lists the view's date fields: `time field 'Carrier' is a string field, not
+  a date field, of 'kibana_sample_data_flights' — pass time_field as one of
+  its date fields: timestamp`.
+- **A new index pattern is checked against its own fields.** When
+  `index_pattern` changes, the time field (the one passed, or the one the view
+  already has) must be a date field of the **new** pattern. The fields of a
+  pattern are known only once Kibana stores it, so the tool writes the pattern
+  first, checks, and on a mismatch writes the old pattern back and fails with
+  `... (nothing was changed)`. A pattern that matches no index yet has no
+  fields, so it is accepted unchecked and the result's `field_count` is `0`.
+- **What it does not do.** It cannot remove a time field (Kibana rejects
+  `null`). A name that Kibana defaulted to the old pattern (a view created
+  without `name`) keeps the old pattern as its name; pass `name` to change it.
+  Kibana does not keep names or patterns unique, so a duplicate name makes
+  `describe_data_view` by that name ambiguous (it then asks for the id).
+- **Built dashboards are unaffected.** Panels this server builds carry the
+  pattern and time field inline, not the data view's id, so an edit does not
+  reach them; rebuild a panel with `update_panel` to use the new values.
+  New panels resolve the data view by its current name, pattern, or id.
+- **A wrong id names its source.** `data view '<id>' not found — view_id is
+  the id that create_data_view or list_data_views returns, not the view's
+  name or index pattern; call list_data_views to find it`, plus the
+  `(in space '<id>')` suffix when `space` is set. Kibana validation failures
+  keep the `Kibana rejected the payload:` prefix.
+
+Returns:
+
+```jsonc
+// update_data_view  (+ "space" when the caller passed one)
+{"id": "7902514d-...", "name": "Flights", "index_pattern": "kibana_sample_data_flights",
+ "time_field": "timestamp", "field_count": 32}
+```
 
 ## alerting toolbox
 

@@ -118,12 +118,12 @@ def _seed(gateway: FakeGateway, export_dir: Path) -> Seed:
 #   create_visualization, add_panel, add_esql_metric_panel,
 #   add_esql_table_panel, add_esql_xy_panel, update_panel,
 #   delete_dashboard, delete_panel
-# data-management (10): list_data_views(list), describe_data_view,
+# data-management (11): list_data_views(list), describe_data_view,
 #   resolve_short_url, export_saved_objects, import_saved_objects,
-#   create_data_view, create_short_url, delete_data_view,
+#   create_data_view, update_data_view, create_short_url, delete_data_view,
 #   delete_short_url, overwrite_saved_objects
 # alerting (15), cases (6), security-detections (25): the extension rows
-#   below — 67 space-aware tools in all
+#   below — 68 space-aware tools in all
 _TOOLS: list[tuple[str, Callable[[Seed], dict[str, Any]], str]] = [
     ("search_dashboards", lambda s: {}, "list"),
     ("get_dashboard", lambda s: {"dashboard_id": s.dashboard_id}, "dict"),
@@ -165,6 +165,7 @@ _TOOLS: list[tuple[str, Callable[[Seed], dict[str, Any]], str]] = [
     ),
     ("import_saved_objects", lambda s: {"handle": s.handle}, "dict"),
     ("create_data_view", lambda s: {"index_pattern": "logs-*"}, "dict"),
+    ("update_data_view", lambda s: {"view_id": "dv1", "name": "renamed"}, "dict"),
     (
         "create_short_url",
         lambda s: {"locator_id": "LEGACY_SHORT_URL_LOCATOR", "params": {"url": "/app/dashboards"}},
@@ -257,7 +258,7 @@ _TOOLS: list[tuple[str, Callable[[Seed], dict[str, Any]], str]] = [
     ("delete_value_list_item", lambda s: {"item_id": s.value_list_item_id}, "dict"),
 ]
 
-assert len(_TOOLS) == 67
+assert len(_TOOLS) == 68
 
 
 def _make_server(gateway_factory: Any, export_dir: Path, *, with_platform_admin: bool = False) -> FastMCP:
@@ -298,10 +299,10 @@ async def test_space_threads_to_the_factory(tmp_path, name, args_builder, kind, 
     assert calls == [space]
 
 
-# --- Group 2: schema — exactly the 67 tools expose `space`, correctly shaped ---
+# --- Group 2: schema — exactly the 68 tools expose `space`, correctly shaped ---
 
 
-async def test_schema_exactly_67_tools_expose_space(tmp_path):
+async def test_schema_exactly_68_tools_expose_space(tmp_path):
     gateway = FakeGateway()
     server = _make_server(lambda space=None: gateway, tmp_path, with_platform_admin=True)
     async with Client(server) as client:
@@ -320,7 +321,7 @@ async def test_schema_exactly_67_tools_expose_space(tmp_path):
         t.name for t in all_tools
         if "space" in t.inputSchema.get("properties", {})
     } - {name for name, _, _ in _TOOLS}
-    assert not outsiders, f"tools outside the 67 gained a space param: {sorted(outsiders)}"
+    assert not outsiders, f"tools outside the 68 gained a space param: {sorted(outsiders)}"
     for tool in with_space.values():
         prop = tool.inputSchema["properties"]["space"]
         # Annotated[str, Field(pattern=...)] | None renders as an anyOf of

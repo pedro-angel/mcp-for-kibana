@@ -1,6 +1,6 @@
 # data-management — behavior contract
 
-Status: Draft v1.0 (2026-08-19) — regeneration corpus, reconciled to shipped code
+Status: Draft v1.1 (2026-10-12) — regeneration corpus, reconciled to shipped code
 Surface reference: docs/tools.md#data-management-toolbox · Enforcement: named per section below
 
 ## Purpose & persona
@@ -12,7 +12,7 @@ objects between spaces or takes a portable snapshot, without ever routing
 their bytes through the model. It is bundled with `dashboards` in both live
 profiles: `read-only-explorer` (`read` tier — browse data views, resolve
 links, take an export) and `dashboards-analyst` (`write` tier — also create
-data views and short URLs), because charting needs to know what datasets
+and edit data views and create short URLs), because charting needs to know what datasets
 exist before it can chart them. The export/import/overwrite trio additionally
 serves a portability job — cloning content into a new space, or restoring a
 space from a prior export — that the planned `platform-admin` profile pairs
@@ -20,15 +20,15 @@ this toolbox with.
 
 ## Surface
 
-10 tools across three tiers (`src/kibana_mcp/toolboxes/data_management/toolbox.py`),
+11 tools across three tiers (`src/kibana_mcp/toolboxes/data_management/toolbox.py`),
 tagged `{"data-management", <tier>}`:
 
 - read (4): `list_data_views`, `describe_data_view`, `resolve_short_url`, `export_saved_objects`
-- write (3): `import_saved_objects`, `create_data_view`, `create_short_url`
+- write (4): `import_saved_objects`, `create_data_view`, `update_data_view`, `create_short_url`
 - destructive (3): `delete_data_view`, `delete_short_url`, `overwrite_saved_objects`
 
 A tier includes everything below it (docs/tools.md#tiers-and-annotations):
-the default `write` tier exposes 7 tools, `destructive` all 10, `read` only
+the default `write` tier exposes 8 tools, `destructive` all 11, `read` only
 the 4. `export_saved_objects` sits in `read` despite writing a file on the
 server, because the tier reflects Kibana-side mutation, not local disk
 activity — it stays a sensitive read regardless (see Deliberate exclusions).
@@ -37,7 +37,7 @@ and docs/tools.md#saved-objects-exportimport-data-management.
 
 ## Behavioral guarantees
 
-- **Space targeting.** All 10 tools accept optional `space` per
+- **Space targeting.** All 11 tools accept optional `space` per
   docs/tools.md#space-targeting. `list_data_views` never carries the `space`
   echo (the one list-returning tool here); every other tool echoes it only
   when set. Data views and short URLs are cleanly space-isolated — neither
@@ -45,7 +45,8 @@ and docs/tools.md#saved-objects-exportimport-data-management.
   catalogues for other toolboxes.
 - **Guard-before-gateway ordering.** `export_saved_objects`'s exactly-one-of
   `types`/`objects` check, `create_short_url`'s locator/url/`/s/`-prefix
-  checks, and the import/overwrite handle-format-and-existence check all run
+  checks, `update_data_view`'s at-least-one-field and no-blank-field checks,
+  and the import/overwrite handle-format-and-existence check all run
   before the tool obtains a gateway via `deps.gateway_factory(space)` on the
   gateway PORT (`ports/gateway.py`) — a guard failure performs no space
   validation and reaches Kibana never.
@@ -64,13 +65,32 @@ and docs/tools.md#saved-objects-exportimport-data-management.
   unit and e2e-replay tiers: the locator/url/`/s/`-prefix rejections, the
   exactly-one-selector message, the `<verb> failed for handle '<handle>'`
   message (verb is `import`/`restore`, never the Kibana rejection's own
-  detail text — that text can carry object bytes), and the data-view
-  not-found guidance `describe_data_view` shares with the gateway port.
-- **No read-modify-write, no derived identity, no confirm gate beyond
-  tier.** Every write/destructive tool opens one scoped gateway and performs
-  exactly one Kibana operation — unlike `dashboards`' panel tools or
-  `platform-admin`'s `update_space`, nothing here fetches-then-merges-then-
-  writes. Data-view and short-url ids are minted by Kibana, never derived
+  detail text — that text can carry object bytes), the data-view
+  not-found guidance `describe_data_view` shares with the gateway port, and
+  `update_data_view`'s time-field rejection (which names the view's date
+  fields) and wrong-id guidance (which names `list_data_views`, D17).
+- **In-place data-view edits read first and leave a refused call without
+  effect (D36).** `update_data_view` is the one tool here that does more
+  than one Kibana operation. Probed on 9.5.4: Kibana's data-view update
+  (`POST /api/data_views/data_view/{id}`) merges the keys it is sent, so
+  omitted fields survive without a re-send; it validates no value
+  semantically — a time field that does not exist or is a keyword is
+  stored, `""` is stored as a time field, an empty title is stored and then
+  matches every index, duplicate names and titles are accepted — and it
+  rejects only type errors (`null` time field, unknown keys); a view's
+  fields are recomputed from the pattern on every read and write (with or
+  without `refresh_fields`), and are empty for a pattern that matches no
+  index. So the tool reads the view (not-found surfaces here), checks that
+  the time field to keep is a `date` field of the view, and sends only the
+  changed keys. When `index_pattern` changes, the new pattern's fields are
+  known only after the write, so it writes the pattern alone, checks the
+  time field (passed, or kept) against the returned fields, and on a
+  mismatch writes the old pattern back and fails; only then are `name` and
+  `time_field` written. An empty field list skips the check (a pattern for
+  data not yet ingested is legitimate, as `create_data_view` allows).
+- **No derived identity, no confirm gate beyond tier.** Every other
+  write/destructive tool opens one scoped gateway and performs exactly one
+  Kibana operation. Data-view and short-url ids are minted by Kibana, never derived
   (unlike the dashboards toolbox's title-derived id). `delete_data_view`,
   `delete_short_url`, and `overwrite_saved_objects` require nothing beyond
   the `destructive` tier cap — no `force`/`confirm` parameter, unlike
@@ -79,7 +99,7 @@ and docs/tools.md#saved-objects-exportimport-data-management.
 
 ## Invariants
 
-- Exposes exactly 10 tools tagged `data-management`, tiered as in Surface.
+- Exposes exactly 11 tools tagged `data-management`, tiered as in Surface.
 - Every tool accepts optional `space` (`^[a-z0-9_-]+$`, no maximum length),
   byte-identical to today's behavior when omitted.
 - Call order is always: a tool's own argument guard (if any) → space
@@ -108,6 +128,13 @@ and docs/tools.md#saved-objects-exportimport-data-management.
   name, or index pattern interchangeably.
 - Data views and short URLs must be visible only through a gateway scoped to
   the space that holds them.
+- `update_data_view` must change only the fields passed, must refuse a call
+  that passes none, and must never leave a data view with a time field that
+  is not a `date` field of its pattern whenever that pattern has fields; a
+  call it refuses must leave the data view as it found it.
+- `update_data_view`'s result must carry `field_count`, never the field map
+  (a broad pattern has thousands of fields; `describe_data_view` returns
+  them).
 
 ## Deliberate exclusions & caveats
 
@@ -130,6 +157,14 @@ and docs/tools.md#saved-objects-exportimport-data-management.
   mechanics.** A handle that resolves but names a Kibana-incompatible export
   produces the generic "invalid or incompatible" rejection, not field-level
   diagnostics.
+- **`update_data_view` cannot remove a time field** — Kibana rejects `null`
+  and would store `""`, whose meaning the reference stack does not pin; a
+  view that should have no time field is recreated. A name Kibana defaulted
+  to the old pattern does not follow a pattern change (observed: it keeps
+  the old pattern); the caller passes `name` too. Panels the dashboards
+  toolbox built embed the pattern and time field inline
+  (`data_view_spec`, observed on 9.5.4), so an edit does not reach them;
+  `update_panel` rebuilds one against the edited view.
 - **Deferred, recorded on the roadmap, not stubbed:** data-view runtime-field
   management and default-data-view get/set; granular `saved_objects` find/get
   reads (raw CRUD stays out — Kibana itself marks it deprecated).
@@ -139,14 +174,23 @@ and docs/tools.md#saved-objects-exportimport-data-management.
 ## Enforcement
 
 - **Unit — `tests/unit/toolboxes/test_data_management.py`.** The exact
-  10-tool surface; data-view create/delete and optional `time_field`;
+  11-tool surface; data-view create/delete and optional `time_field`;
+  `update_data_view`'s partial update, guards before the factory, schema
+  rejection of empty strings, time-field and wrong-id guidance, space
+  threading and echo;
   short-url create/resolve/delete and the locator/same-origin/`/s/` guards
   (and the no-`space` exemption); tier annotation hints; space threading and
   echo on `create_data_view`; export→import (clone, regenerated id) and
   export→overwrite (in-place, matching ids) round trips; content-free
   rejection messages and bogus-handle rejection on both import and overwrite.
-- **Unit — `tests/unit/toolboxes/test_space_threading.py`.** All 10 tools
-  inside the shared 64-tool cross-toolbox matrix: threading (the factory
+- **Unit — `tests/unit/adapters/test_data_management_gateway.py` and
+  `test_id_guidance.py`.** `update_data_view` posts only the given keys,
+  checks the time field before the write, writes a new pattern alone and
+  restores it on a mismatch, accepts a field-less pattern, caps the listed
+  date fields, keeps the `Kibana rejected the payload:` prefix, and turns an
+  empty or unknown `view_id` into guidance (scoped suffix once).
+- **Unit — `tests/unit/toolboxes/test_space_threading.py`.** All 11 tools
+  inside the shared 68-tool cross-toolbox matrix: threading (the factory
   sees exactly the caller's space), schema (space present, optional,
   correctly patterned), echo (dict rows only, only when set), and the two
   shared error-path cases (space-not-found guidance, auth-error passthrough).
@@ -154,11 +198,14 @@ and docs/tools.md#saved-objects-exportimport-data-management.
   `test_create_and_delete_data_view_live`, `test_short_url_lifecycle_live`,
   `test_saved_objects_export_import_roundtrip_live`,
   `test_read_export_confines_to_export_dir`,
+  `test_update_data_view_partial_and_time_field_guard_live`,
+  `test_data_view_edit_leaves_built_panels_alone_live`,
   `test_export_overwrite_restores_in_place_tool_live` (drives the MCP tool
   surface, not just the gateway); the space-scoped block —
   `test_scoped_gateway_full_chain_live`,
   `test_visualization_and_short_url_scoped_live`,
-  `test_cross_space_import_clones`, `test_cross_space_overwrite_replaces_twin`.
+  `test_cross_space_import_clones`, `test_cross_space_overwrite_replaces_twin`,
+  `test_update_data_view_tool_scoped_live` (MCP surface, echo, suffix).
 - **e2e-replay — `tests/e2e_replay/transcripts/`.** `space-dashboard.json`
   (and its gemma variant) pin `create_data_view`'s space echo through a real
   MCP client and server; `flights-dashboard.json` pins the data-view

@@ -150,7 +150,11 @@ _ID_SOURCES = {
     "dashboard": ("dashboard_id", "create_dashboard or search_dashboards", "title"),
     "alert rule": ("rule_id", "create_alert_rule or list_alert_rules", "name"),
     "connector": ("connector_id", "create_connector or list_connectors", "name"),
+    "data view": ("view_id", "create_data_view or list_data_views", "name or index pattern"),
 }
+
+# How many date fields a time-field rejection lists before eliding the rest.
+_DATE_FIELDS_SHOWN = 20
 
 # Rule fields a PUT /api/alerting/rule/{id} drops or resets when omitted, beyond
 # the ones update_alert_rule exposes: re-sent from the current rule whenever it
@@ -233,6 +237,37 @@ def _normalize_fields(raw: dict[str, Any] | list[dict[str, Any]]) -> dict[str, s
     if isinstance(raw, dict):
         return {name: spec.get("type", "unknown") for name, spec in raw.items()}
     return {f["name"]: f.get("type", "unknown") for f in raw}
+
+
+def _to_data_view_detail(raw: dict[str, Any]) -> DataViewDetail:
+    return DataViewDetail(
+        id=raw["id"],
+        name=raw.get("name") or raw["title"],
+        index_pattern=raw["title"],
+        time_field=raw.get("timeFieldName"),
+        fields=_normalize_fields(raw.get("fields", {})),
+    )
+
+
+def _time_field_problem(time_field: str, fields: dict[str, str], pattern: str) -> str | None:
+    """Why `time_field` cannot be the time field of a view over `pattern`, or
+    None when it can. Kibana stores any string here (probed on 9.5.4: a missing
+    field and a keyword field were both accepted), so this is the only check.
+    A pattern that matches no index has no fields yet: nothing to check against."""
+    if not fields or fields.get(time_field) == "date":
+        return None
+    if time_field in fields:
+        what = f"is a {fields[time_field]} field, not a date field, of '{pattern}'"
+    else:
+        what = f"is not a field of '{pattern}'"
+    dates = sorted(n for n, t in fields.items() if t == "date")
+    if not dates:
+        return (
+            f"time field '{time_field}' {what} — '{pattern}' has no date fields, so a data "
+            "view over it cannot have a time field; use create_data_view without time_field"
+        )
+    shown = ", ".join(dates[:_DATE_FIELDS_SHOWN]) + (", …" if len(dates) > _DATE_FIELDS_SHOWN else "")
+    return f"time field '{time_field}' {what} — pass time_field as one of its date fields: {shown}"
 
 
 def _to_short_url(body: dict[str, Any]) -> ShortUrl:
@@ -951,13 +986,7 @@ class KibanaPyGateway:
                 f"data view '{name_or_id}' not found — call list_data_views to see what exists"
             )
         raw = self._client.data_views.get(view_id=match.id).body["data_view"]
-        return DataViewDetail(
-            id=raw["id"],
-            name=raw.get("name") or raw["title"],
-            index_pattern=raw["title"],
-            time_field=raw.get("timeFieldName"),
-            fields=_normalize_fields(raw.get("fields", {})),
-        )
+        return _to_data_view_detail(raw)
 
     @_translate_errors
     def create_data_view(
@@ -972,6 +1001,54 @@ class KibanaPyGateway:
         return DataViewSummary(
             id=raw["id"], name=raw.get("name") or raw["title"], index_pattern=raw["title"]
         )
+
+    def _post_data_view(
+        self, view_id: str, changes: dict[str, Any], refresh_fields: bool = False
+    ) -> dict[str, Any]:
+        kwargs: dict[str, Any] = {"view_id": view_id, "data_view": changes}
+        if refresh_fields:
+            kwargs["refresh_fields"] = True
+        with _known_id("data view", view_id):
+            return dict(self._client.data_views.update(**kwargs).body["data_view"])
+
+    @_translate_errors
+    def update_data_view(
+        self, view_id: str, name: str | None, index_pattern: str | None, time_field: str | None
+    ) -> DataViewDetail:
+        # POST /api/data_views/data_view/{id} merges: only the keys sent change
+        # (probed on 9.5.4), so omitted fields need no re-send. The read is for
+        # what Kibana does not check: it stores a time field that is missing or
+        # not a date. A pattern change is written first and checked against the
+        # NEW pattern's fields (Kibana recomputes them on write); on a mismatch
+        # the old pattern is written back, so a refused call changes nothing.
+        with _known_id("data view", view_id):
+            cur = dict(self._client.data_views.get(view_id=view_id).body["data_view"])
+        old_pattern = cur["title"]
+        new_pattern = index_pattern if index_pattern not in (None, old_pattern) else None
+        rest = {k: v for k, v in (("name", name), ("timeFieldName", time_field)) if v is not None}
+        # The time field to check: the one passed, else the kept one when the
+        # pattern under it changes. A view with no time field keeps none.
+        check = time_field if time_field is not None else (
+            (cur.get("timeFieldName") or None) if new_pattern is not None else None
+        )
+        if new_pattern is None:
+            if check is not None:
+                problem = _time_field_problem(
+                    check, _normalize_fields(cur.get("fields", {})), old_pattern
+                )
+                if problem:
+                    raise KibanaRejected(problem)
+            return _to_data_view_detail(self._post_data_view(view_id, rest) if rest else cur)
+        if check is None:
+            return _to_data_view_detail(
+                self._post_data_view(view_id, {**rest, "title": new_pattern}, refresh_fields=True)
+            )
+        raw = self._post_data_view(view_id, {"title": new_pattern}, refresh_fields=True)
+        problem = _time_field_problem(check, _normalize_fields(raw.get("fields", {})), new_pattern)
+        if problem:
+            self._post_data_view(view_id, {"title": old_pattern}, refresh_fields=True)
+            raise KibanaRejected(f"{problem} (nothing was changed)")
+        return _to_data_view_detail(self._post_data_view(view_id, rest) if rest else raw)
 
     @_translate_errors
     def delete_data_view(self, view_id: str) -> None:

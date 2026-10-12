@@ -2,7 +2,7 @@
 export/import.
 
 Owns the `data_views` namespace (the two read tools were extracted from the
-dashboards toolbox so the namespace is owned once) plus data-view create/delete,
+dashboards toolbox so the namespace is owned once) plus data-view create/update/delete,
 short-URL create/resolve/delete, and saved-objects export/import (#37) — the
 latter handle-based so a whole-space NDJSON export never crosses the model
 context.
@@ -157,6 +157,44 @@ class DataManagementToolbox:
             with gateway_errors(), deps.gateway_factory(space) as gw:
                 view = gw.create_data_view(index_pattern, name, time_field)
                 return with_space(asdict(view), space)
+
+        @mcp.tool(tags={self.name, "write"}, annotations=_WRITE)
+        def update_data_view(
+            view_id: Annotated[str, Field(min_length=1)],
+            name: Annotated[str, Field(min_length=1)] | None = None,
+            index_pattern: Annotated[str, Field(min_length=1)] | None = None,
+            time_field: Annotated[str, Field(min_length=1)] | None = None,
+            space: Annotated[str, Field(pattern=SPACE_ID_PATTERN)] | None = None,
+        ) -> dict[str, Any]:
+            """Edit an existing data view in place, by id (from list_data_views):
+            its display `name`, its `index_pattern` (e.g. 'logs-*') and/or its
+            default `time_field`. Only the fields you pass change. The time field
+            must be a date field of the view: when you change the index pattern,
+            the time field (the one you pass, or the current one) is checked
+            against the NEW pattern's fields, and on a mismatch nothing changes.
+            A pattern that matches no index yet is accepted, but its time field
+            cannot be checked (field_count is then 0). A name that defaulted to
+            the old pattern stays as it is; pass `name` to change it too. The
+            time field cannot be removed. Dashboard panels built by this server
+            keep the pattern and time field they were built with; rebuild one
+            with update_panel to use the new ones. Returns id, name,
+            index_pattern, time_field and field_count.
+
+            `space` targets a Kibana space by id (default: the default space)."""
+            given = {"name": name, "index_pattern": index_pattern, "time_field": time_field}
+            if all(v is None for v in given.values()):
+                raise ToolError(
+                    "provide at least one field to update: name, index_pattern or time_field"
+                )
+            for key, value in given.items():
+                if value is not None and not value.strip():
+                    raise ToolError(f"`{key}` is blank — pass a value, or omit it to keep the current one")
+            with gateway_errors(), deps.gateway_factory(space) as gw:
+                view = gw.update_data_view(view_id, name, index_pattern, time_field)
+            return with_space({
+                "id": view.id, "name": view.name, "index_pattern": view.index_pattern,
+                "time_field": view.time_field, "field_count": len(view.fields),
+            }, space)
 
         @mcp.tool(tags={self.name, "write"}, annotations=_WRITE)
         def create_short_url(

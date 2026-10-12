@@ -120,7 +120,7 @@ guidance, not a masking of the auth cause.
   guard-before-gateway ordering for `update_case`.
 - **Unit, cross-cutting** — `tests/unit/toolboxes/test_space_threading.py`,
   the 6 `cases` rows: threading to the gateway factory with/without a value;
-  schema shape as part of the shared 67-tool assertion; dict-vs-list echo;
+  schema shape as part of the shared 68-tool assertion; dict-vs-list echo;
   not-found-surfaces-as-guidance and auth-error-passthrough on the shared
   error path.
 - **Contract, live Kibana** —

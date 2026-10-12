@@ -29,7 +29,7 @@ below are the proposal the file ships with.
 | `models` | placeholders | LM Studio model keys, from `lms ls` |
 | `task.steps`, `task.levels` | 4 steps, levels L1–L4 | Level *k* is one prompt with steps 1..*k*, and it is checked against every check of those steps |
 | `server.entry` | `mcp-for-kibana-study` | The `~/.lmstudio/mcp.json` server the model gets, as `integrations: ["mcp/<entry>"]` |
-| `server.toolboxes`, `server.tier`, `server.expected_tools` | `dashboards,data-management,alerting`, `write`, 28 | The same toolboxes and tier as the Claude study's server arm (24 tools when that study ran; alerting has grown since) |
+| `server.toolboxes`, `server.tier`, `server.expected_tools` | `dashboards,data-management,alerting`, `write`, 29 | The same toolboxes and tier as the Claude study's server arm (24 tools when that study ran; alerting and data-management have grown since) |
 | `runs.pilot_per_cell` | 1 | Pilot runs per model × level |
 | `runs.per_cell` | 10 | Full runs per model × level, one per block `b01`..`bNN` |
 | `runs.order` | `rotate` | Block *b* rotates the model order and the level order by *b* |
@@ -73,7 +73,7 @@ retried, a timed-out stream's calls kept, Kibana reset to its pre-run state
 with existing objects untouched, resume after a crash, redaction of the
 Kibana key on disk and in traces, refusal to send when redaction misses the
 key, preflight reporting a fix for each failure, mcp.json never written,
-listing the real server's 28 tools over stdio, and the analysis (Wilson
+listing the real server's 29 tools over stdio, and the analysis (Wilson
 intervals, pass^k, chain breakdown, re-derivation consistency).
 
 Only the Mac verifies:
@@ -200,7 +200,7 @@ Each check prints `PASS`, `WARN` or `FAIL`, and each failure names its fix.
 The checks cover: the config, the seed, Kibana up at 9.5.5, the key, web logs
 installed, no leftover `LOC-*` rules, LM Studio reachable, the token, each
 model present and its context length, the mcp.json entry (toolboxes, tier,
-URL, key), the entry starting and listing 28 tools, Honeycomb accepting the
+URL, key), the entry starting and listing 29 tools, Honeycomb accepting the
 key, and the output directory. `--load` also loads every model once through
 the integration with a one-word prompt, which catches memory failures and a
 missing mcp.json permission. Continue only when the last line reads

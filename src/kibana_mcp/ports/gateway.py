@@ -94,6 +94,14 @@ class KibanaGateway(Protocol):
         self, index_pattern: str, name: str | None, time_field: str | None
     ) -> DataViewSummary: ...
 
+    def update_data_view(
+        self,
+        view_id: str,
+        name: str | None,
+        index_pattern: str | None,
+        time_field: str | None,
+    ) -> DataViewDetail: ...
+
     def delete_data_view(self, view_id: str) -> None: ...
 
     def create_short_url(self, locator_id: str, params: dict[str, Any]) -> ShortUrl: ...

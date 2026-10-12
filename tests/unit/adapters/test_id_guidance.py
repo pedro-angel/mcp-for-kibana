@@ -1,4 +1,4 @@
-"""Dashboard, alert-rule and connector ids: an empty id or one that matches nothing names
+"""Dashboard, alert-rule, connector and data-view ids: an empty id or one that matches nothing names
 the fix (D17) — where a valid id comes from — instead of kibana-py's bare
 "Parameter 'id' is required" (unmapped, so the caller saw only "Error calling
 tool") or Kibana's "Saved object [alert/<name>] not found"."""
@@ -119,3 +119,39 @@ def test_unknown_connector_in_a_space_carries_the_suffix_once():
         gw.get_connector("nope")
     assert exc.value.message.endswith(" (in space 'sales')")
     assert exc.value.message.count("(in space") == 1
+
+
+def _dv_gw(fn, space=None):
+    return KibanaPyGateway(
+        make_fake_client(data_views=SimpleNamespace(get=fn, update=fn)), space=space
+    )
+
+
+@pytest.mark.parametrize("empty", ["", "  "])
+def test_empty_view_id_names_where_ids_come_from(empty):
+    with pytest.raises(
+        KibanaRejected, match=r"view_id is empty — .*create_data_view or list_data_views"
+    ):
+        _dv_gw(_missing).update_data_view(empty, "renamed", None, None)
+
+
+def test_unknown_view_id_says_it_is_not_the_name():
+    # Kibana's own text is "Saved object [index-pattern/<id>] not found" (9.5.4).
+    with pytest.raises(
+        KibanaNotFound,
+        match=r"data view 'Kibana Sample Data Flights' not found — view_id is the id .*"
+              r"not the view's name or index pattern; call list_data_views to find it",
+    ):
+        _dv_gw(_missing).update_data_view("Kibana Sample Data Flights", "x", None, None)
+
+
+def test_unknown_view_id_in_a_space_carries_the_suffix_once():
+    with pytest.raises(KibanaNotFound) as exc:
+        _dv_gw(_missing, space="sales").update_data_view("nope", "x", None, None)
+    assert exc.value.message.endswith(" (in space 'sales')")
+    assert exc.value.message.count("(in space") == 1
+
+
+def test_update_data_view_missing_space_is_still_the_space():
+    with pytest.raises(KibanaSpaceNotFound):
+        _dv_gw(_no_space).update_data_view("x", "renamed", None, None)
