@@ -11,7 +11,7 @@ All runs are stopped. Nothing is running and nothing is scheduled.
 | Study | What ran | State | Data |
 |---|---|---|---|
 | 1. Claude Code efficiency | 180 runs: Claude Code (`claude -p`) with Haiku, Sonnet and Opus 5.5 × with / without the server × 30 | Complete, analysed, reported | `runs/efficiency/full/` (`analysis.json`, `honeycomb_crosscheck.json`) |
-| 2. Claude Code rerun, live telemetry | Started on 270 runs (3 models × 3 arms × 30); about 250 had run when stopped, all passing | Stopped early; not analysed | `runs/efficiency/live/`; Honeycomb dataset `mcp-for-kibana-live` |
+| 2. Claude Code rerun, live telemetry | 266 of 270 runs (3 models × 3 arms × 30; blocks 1–29 complete, 5 of block 30), all 266 passing | Stopped early; not analysed (tools ready: `efficiency_analyze.py` 3-arm, `live_crosscheck.py`, `live_report.py`) | `runs/efficiency/live/`; Honeycomb dataset `mcp-for-kibana-live` |
 | 3. Local models (LM Studio, Mac) | Pilot (16 runs) plus the start of 192 runs (4 models × 4 chain levels × 12) | Stopped early; not analysed | branch `claude/local-study`, `runs/local/`; Honeycomb dataset `mcp-for-kibana-local` |
 
 Run counts for studies 2 and 3 are in the stop commits on their branches.
