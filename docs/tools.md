@@ -8,7 +8,7 @@ Toolboxes are selected via
 **[observability](#observability-toolbox)**,
 **[security-detections](#security-detections-toolbox)**,
 **[platform-admin](#platform-admin-toolbox)**,
-**[streams](#streams-toolbox)**, and **[fleet](#fleet-toolbox)** — 133 tools in
+**[streams](#streams-toolbox)**, and **[fleet](#fleet-toolbox)** — 134 tools in
 all. This reference details every toolbox in full. A drift-guard test
 (`tests/unit/test_docs_tool_reference.py`) asserts that every registered tool
 name appears on this page, so it cannot silently fall behind the code.

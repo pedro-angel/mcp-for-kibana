@@ -37,7 +37,7 @@ surfaces are not worth duplicating here.
 
 ## Status
 
-**v0.2.0 — 10 toolboxes, 134 tools, live-tested.** The server exposes 134 tools
+**v0.3.0 — 10 toolboxes, 134 tools, live-tested.** The server exposes 134 tools
 across 10 composable toolboxes (dashboards, data management, alerting, cases,
 security detections, fleet, streams, observability, platform admin, and platform
 health), each classified read / write / destructive and contract-tested against
