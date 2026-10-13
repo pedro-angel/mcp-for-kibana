@@ -1,0 +1,9 @@
+{
+ "model": "google/gemma-4-12b-qat",
+ "input": "Use only the kibana tools.\n\nKibana holds a dashboard titled 'Site health' and an alert rule that watches the web-logs sample data (data view 'Kibana Sample Data Logs', index kibana_sample_data_logs) for 5xx responses. Look them up; change nothing. Answer these questions:\n1. How many panels does the 'Site health' dashboard have?\n2. What is the name of the alert rule that watches for 5xx responses?\n3. How often does that rule check?\n4. Is that rule enabled?\n\nEnd your reply with these four lines:\nPANELS: <number>\nRULE_NAME: <the rule's name>\nINTERVAL: <the check interval, such as 5m>\nENABLED: <yes or no>",
+ "integrations": [
+  "mcp/mcp-for-kibana-study"
+ ],
+ "stream": true,
+ "url": "http://localhost:1234/api/v1/chat"
+}
