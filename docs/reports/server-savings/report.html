@@ -1,0 +1,867 @@
+<title>mcp-for-kibana Server Savings</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..100,500..800&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap">
+<style>
+/* Layout: one reading column (~44rem) for prose; figures widen to ~64rem, each a self-contained 16:9 slot. Answer first (cost, time), then where the savings come from, then whether they hold, then method collapsed. */
+:root {
+  --bg: #f4f6f9;
+  --surface: #ffffff;
+  --ink: #121821;
+  --ink-2: #4a5464;
+  --muted: #6f7a8a;
+  --rule: #dfe4ea;
+  --rule-strong: #b7c0cc;
+  --with: #2a78d6;
+  --with-wash: rgba(42, 120, 214, 0.08);
+  --without: #eb6834;
+  --rest: #8f99a7;
+  --llm: #7d8796;
+  --code-bg: #f0f3f7;
+  --tip-bg: #121821;
+  --tip-fg: #f4f6f9;
+  --img-bg: #ffffff;
+  --font-display: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e1116; --surface: #161a21; --ink: #edf1f6; --ink-2: #b8c1cd; --muted: #8a94a3;
+    --rule: #262c35; --rule-strong: #4a5361; --with: #3987e5; --with-wash: rgba(57, 135, 229, 0.14);
+    --without: #d95926; --rest: #6b7584; --llm: #9aa3b0; --code-bg: #10141a; --tip-bg: #edf1f6; --tip-fg: #0e1116; --img-bg: #ffffff; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e1116; --surface: #161a21; --ink: #edf1f6; --ink-2: #b8c1cd; --muted: #8a94a3;
+  --rule: #262c35; --rule-strong: #4a5361; --with: #3987e5; --with-wash: rgba(57, 135, 229, 0.14);
+  --without: #d95926; --rest: #6b7584; --llm: #9aa3b0; --code-bg: #10141a; --tip-bg: #edf1f6; --tip-fg: #0e1116; --img-bg: #ffffff; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 16px; line-height: 1.55; }
+.page { max-width: 64rem; margin: 0 auto; padding-left: max(20px, env(safe-area-inset-left, 0px)); padding-right: max(20px, env(safe-area-inset-right, 0px)); padding-block: 40px 56px; display: flex; flex-direction: column; gap: 64px; }
+@media (max-width: 480px) { .page { padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 24px 40px; gap: 48px; } }
+.prose { max-width: 44rem; display: flex; flex-direction: column; gap: 14px; }
+h1, h2, h3 { font-family: var(--font-display); font-stretch: 85%; text-wrap: balance; margin: 0; letter-spacing: -0.01em; }
+h1 { font-size: clamp(1.9rem, 4.4vw, 3rem); line-height: 1.08; font-weight: 750; }
+h2 { font-size: clamp(1.5rem, 3.4vw, 2rem); line-height: 1.12; font-weight: 700; }
+h3 { font-size: 1.1rem; font-weight: 700; font-stretch: 90%; }
+p { margin: 0; }
+a { color: var(--with); text-underline-offset: 2px; overflow-wrap: anywhere; }
+a:focus-visible, [tabindex]:focus-visible { outline: 2px solid var(--with); outline-offset: 2px; border-radius: 4px; }
+.eyebrow { font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.lede { font-size: 1.2rem; color: var(--ink-2); max-width: 44rem; text-wrap: pretty; }
+section { display: flex; flex-direction: column; gap: 22px; }
+.sec-head { display: flex; flex-direction: column; gap: 8px; max-width: 44rem; }
+.dim { color: var(--muted); }
+.small { font-size: 13.5px; }
+b, strong { font-weight: 600; }
+.mono, code { font-family: var(--font-mono); font-size: 0.86em; }
+ul.plain { margin: 0; padding-left: 1.1rem; display: flex; flex-direction: column; gap: 6px; }
+.k-with, .k-without, .k-rest, .k-llm { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: 0; }
+.k-with { background: var(--with); } .k-without { background: var(--without); } .k-rest { background: var(--rest); border-radius: 2px; } .k-llm { background: var(--llm); border-radius: 2px; }
+.card { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; }
+
+/* hero */
+header { display: flex; flex-direction: column; gap: 22px; }
+.tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; background: var(--rule); border: 1px solid var(--rule); border-radius: 10px; overflow: hidden; }
+.tile { background: var(--surface); padding: 18px 20px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.tile .lab { font-size: 13px; color: var(--ink-2); font-weight: 600; }
+.tile .val { font-family: var(--font-display); font-stretch: 80%; font-weight: 750; font-size: clamp(2.1rem, 4.6vw, 2.8rem); line-height: 1.05; letter-spacing: -0.02em; }
+.tile .val small { font-size: 0.42em; font-weight: 600; color: var(--ink-2); letter-spacing: 0; }
+.tile .note { font-size: 12.5px; color: var(--muted); margin-top: 4px; }
+@media (max-width: 720px) { .tiles { grid-template-columns: 1fr; } }
+.easy { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+@media (max-width: 900px) { .easy { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 520px) { .easy { grid-template-columns: minmax(0, 1fr); } }
+.easy .card { padding: 16px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.easy .what { font-family: var(--font-mono); font-size: 11.5px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.easy h3 { font-size: 1.05rem; }
+.easy p { font-size: 14px; color: var(--ink-2); }
+.easy a.go { font-size: 13px; margin-top: auto; }
+
+/* telemetry tree */
+.tree { padding: 16px 18px; display: flex; flex-direction: column; gap: 6px; font-size: 14px; min-width: 0; }
+.tree .n { display: grid; grid-template-columns: minmax(0, 15rem) minmax(0, 1fr); gap: 12px; align-items: baseline; padding: 6px 0; border-top: 1px solid var(--rule); }
+.tree .n:first-child { border-top: 0; }
+.tree .n .s { font-family: var(--font-mono); font-size: 12.5px; color: var(--ink); }
+.tree .n .d { color: var(--ink-2); font-size: 13.5px; }
+.tree .i1 .s { padding-left: 1.2rem; } .tree .i2 .s { padding-left: 2.4rem; }
+.tree .s::before { content: ""; }
+.tree .i1 .s::before, .tree .i2 .s::before { content: "└ "; color: var(--muted); }
+@media (max-width: 600px) { .tree .n { grid-template-columns: minmax(0, 1fr); gap: 2px; } }
+
+/* figures */
+figure { margin: 0; }
+.fig { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; padding: 20px 20px 14px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.fc { display: flex; flex-direction: column; gap: 3px; }
+.fc-num { font-family: var(--font-mono); font-size: 11.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.fc-title { font-family: var(--font-display); font-stretch: 85%; font-weight: 700; font-size: 1.25rem; line-height: 1.2; }
+.fc-sub { font-size: 13.5px; color: var(--ink-2); max-width: 48rem; }
+.fig-body { display: flex; flex-direction: column; justify-content: center; gap: 12px; min-width: 0; }
+@media (min-width: 760px) { .fig-body { aspect-ratio: 16 / 9; } .fig.wide .fig-body { aspect-ratio: auto; } }
+.fig-note { font-size: 13px; color: var(--ink-2); }
+/* figures fill their 16:9 body: the chart part grows, its rows spread out */
+.fig-body > .facets, .fig-body > .single, .fig-body > .ts, .fig-body > .sv, .fig-body > .meters { flex: 1 1 auto; }
+.facet { justify-content: space-between; }
+.ts, .sv { display: flex; flex-direction: column; justify-content: space-evenly; }
+.single { display: flex; flex-direction: column; }
+.single > .rows { flex: 1 1 auto; display: flex; flex-direction: column; justify-content: space-evenly; }
+.meters { justify-content: center; gap: 28px; }
+.fig { --bh: 16px; }
+.fig.bh-s { --bh: 20px; } .fig.bh-m { --bh: 19px; } .fig.bh-l { --bh: 30px; } .fig.bh-xl { --bh: 48px; }
+@media (max-width: 759px) { .fig.bh-l { --bh: 22px; } .fig.bh-xl { --bh: 30px; } .fig.bh-m, .fig.bh-s { --bh: 16px; } }
+.src { font-size: 12.5px; color: var(--muted); border-top: 1px solid var(--rule); padding-top: 10px; }
+.src-k { display: inline-block; font-family: var(--font-mono); font-size: 10.5px; letter-spacing: 0.06em; text-transform: uppercase; border-radius: 4px; padding: 1px 6px; margin-right: 6px; border: 1px solid var(--rule-strong); color: var(--ink-2); }
+.src-k.k-real { border-color: var(--with); color: var(--with); }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 13px; color: var(--ink-2); align-items: center; }
+.legend i { flex: none; }
+
+/* paired bars */
+.facets { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 22px; }
+@media (max-width: 900px) { .facets { grid-template-columns: minmax(0, 1fr); gap: 16px; } }
+.facet { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.facet-h { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; border-bottom: 1px solid var(--rule); padding-bottom: 4px; }
+.facet-h b { font-family: var(--font-display); font-stretch: 85%; font-size: 1.05rem; }
+.facet-h span { font-family: var(--font-mono); font-size: 11px; color: var(--muted); white-space: nowrap; }
+.pb-group { display: grid; grid-template-columns: minmax(0, 1fr) 3.4rem; grid-template-areas: "lab lab" "bars ratio"; gap: 2px 8px; align-items: center; }
+.single .pb-group { grid-template-columns: 8rem minmax(0, 1fr) 5.6rem; grid-template-areas: "lab bars ratio"; gap: 8px 12px; padding-block: 6px; }
+.single.compact .pb-group { padding-block: 3px; }
+.pb-lab { grid-area: lab; font-size: 13px; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pb-bars { grid-area: bars; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.pb-row { display: grid; grid-template-columns: minmax(0, 1fr) 4.6rem; gap: 6px; align-items: center; height: var(--bh); border-radius: 3px; }
+.pb-track { position: relative; height: calc(var(--bh) - 4px); }
+.pb-bar { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 0 3px 3px 0; display: block; }
+.pb-bar.w { background: var(--with); } .pb-bar.o { background: var(--without); }
+.pb-v { font-family: var(--font-mono); font-size: 11.5px; color: var(--ink-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pb-ratio { grid-area: ratio; font-family: var(--font-mono); font-size: 12.5px; color: var(--ink); text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pb-axis { display: grid; grid-template-columns: 8rem minmax(0, 1fr) 5.6rem; gap: 12px; }
+.pb-axis .ticks { margin-right: calc(4.6rem + 6px); }
+.ticks { position: relative; height: 16px; border-top: 1px solid var(--rule); }
+.ticks span { position: absolute; top: 2px; transform: translateX(-50%); font-family: var(--font-mono); font-size: 11px; color: var(--muted); white-space: nowrap; }
+.ticks span:first-child { transform: none; }
+.ticks span:last-child { transform: translateX(-100%); }
+.wf-axis .ticks span:last-child { transform: translateX(-50%); }
+@media (max-width: 520px) {
+  .single .pb-group { grid-template-columns: minmax(0, 1fr) 4.8rem; grid-template-areas: "lab lab" "bars ratio"; gap: 2px 8px; }
+  .pb-axis { grid-template-columns: minmax(0, 1fr) 4.8rem; gap: 8px; }
+  .pb-axis > div:first-child { display: none; }
+  .pb-axis .ticks span:not(:first-child):not(:last-child) { display: none; }
+}
+
+/* meters (fig 6) */
+.meters { display: flex; flex-direction: column; gap: 14px; }
+.meter { display: grid; grid-template-columns: 9rem minmax(0, 1fr) 11rem; gap: 12px; align-items: center; }
+.m-lab { font-size: 14px; color: var(--ink-2); }
+.m-track { height: 64px; background: var(--code-bg); border-radius: 4px; overflow: hidden; }
+.m-track i { display: block; height: 100%; }
+.m-track i.w { background: var(--with); } .m-track i.o { background: var(--without); }
+.m-val { font-family: var(--font-mono); font-size: 12.5px; color: var(--ink-2); text-align: right; }
+.m-val b { color: var(--ink); font-size: 14px; }
+@media (max-width: 759px) { .m-track { height: 28px; } }
+@media (max-width: 520px) { .meter { grid-template-columns: minmax(0, 1fr); gap: 4px; } .m-val { text-align: left; } }
+
+/* real honeycomb image */
+.hc-img { background: var(--img-bg); border: 1px solid var(--rule); border-radius: 8px; padding: 8px; display: flex; justify-content: center; }
+.hc-img img { width: 100%; height: auto; display: block; }
+
+/* time split */
+.ts { display: flex; flex-direction: column; gap: 2px; }
+.ts-model { font-family: var(--font-display); font-stretch: 85%; font-weight: 700; font-size: 1rem; margin-top: 6px; }
+.ts-model:first-child { margin-top: 0; }
+.ts-row, .ts-axis { display: grid; grid-template-columns: 8rem minmax(0, 1fr) 7.4rem; gap: 12px; align-items: center; }
+.ts-row { height: 30px; border-radius: 3px; }
+.ts-lab { font-size: 13px; color: var(--ink-2); white-space: nowrap; }
+.ts-track { display: flex; gap: 2px; height: 20px; }
+.ts-track i { display: block; height: 100%; }
+.ts-api { border-radius: 2px 0 0 2px; } .ts-api.w { background: var(--with); } .ts-api.o { background: var(--without); }
+.ts-rest { background: var(--rest); border-radius: 0 3px 3px 0; }
+.ts-val { font-family: var(--font-mono); font-size: 12px; color: var(--ink-2); text-align: right; white-space: nowrap; }
+@media (max-width: 520px) {
+  .ts-row, .ts-axis { grid-template-columns: 6.6rem minmax(0, 1fr); }
+  .ts-row { height: auto; padding-block: 3px; }
+  .ts-val { grid-column: 2; text-align: left; font-size: 11.5px; }
+}
+
+/* server spans */
+.sv { display: flex; flex-direction: column; }
+.sv-row { display: grid; grid-template-columns: 11rem minmax(0, 1fr) 3rem 5rem; gap: 12px; align-items: center; height: 30px; border-radius: 3px; }
+.sv-head { font-size: 12px; color: var(--muted); height: 22px; border-bottom: 1px solid var(--rule); margin-bottom: 4px; }
+.sv-head span:nth-child(2) { visibility: hidden; }
+.sv-head .r { text-align: right; }
+.sv-lab { font-size: 12.5px; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sv-track { height: 16px; position: relative; }
+.sv-track i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--with); border-radius: 0 3px 3px 0; }
+.sv-n, .sv-ms { font-family: var(--font-mono); font-size: 12px; text-align: right; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+@media (max-width: 520px) { .sv-row { grid-template-columns: 8.4rem minmax(0, 1fr) 2.4rem 4.2rem; gap: 6px; } .sv-lab { font-size: 11.5px; } }
+
+/* waterfall */
+.wf-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px; }
+@media (max-width: 900px) { .wf-pair { grid-template-columns: minmax(0, 1fr); } }
+.wf { display: flex; flex-direction: column; min-width: 0; }
+.wf-h { display: flex; flex-direction: column; gap: 2px; padding-bottom: 8px; border-bottom: 1px solid var(--rule); margin-bottom: 4px; }
+.wf-h b { font-family: var(--font-display); font-stretch: 85%; font-size: 1.05rem; }
+.wf-h span { font-family: var(--font-mono); font-size: 12px; color: var(--ink-2); }
+.wf-row, .wf-axis { display: grid; grid-template-columns: minmax(0, 13.5rem) minmax(0, 1fr) 3.4rem; gap: 8px; align-items: center; }
+.wf-row { height: 21px; border-radius: 3px; }
+.wf-row:hover { background: var(--with-wash); }
+.wf-lab { font-size: 11.5px; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wf-row.ind0 .wf-lab { color: var(--ink); font-weight: 600; }
+.wf-row.ind2 .wf-lab { padding-left: 14px; color: var(--muted); }
+.wf-row.ind1 .wf-lab { padding-left: 6px; }
+.wf-lab .err { color: var(--without); font-weight: 600; }
+.wf-track { position: relative; height: 11px; background: linear-gradient(90deg, var(--rule) 1px, transparent 1px) 0 0 / calc(100% * 20 / 64) 100%; }
+.wf-bar { position: absolute; top: 0; bottom: 0; border-radius: 2px; display: block; }
+.wf-bar.root { background: var(--ink-2); opacity: 0.5; }
+.wf-bar.llm { background: var(--llm); }
+.wf-bar.tool-w, .wf-bar.srv { background: var(--with); }
+.wf-bar.srv { opacity: 0.6; }
+.wf-bar.tool-o { background: var(--without); }
+.wf-bar.aux { background: var(--rest); }
+.wf-d { font-family: var(--font-mono); font-size: 11px; color: var(--muted); text-align: right; white-space: nowrap; }
+.wf-axis { margin-top: 4px; }
+@media (max-width: 520px) { .wf-axis .ticks span:nth-child(2), .wf-axis .ticks span:nth-child(3) { display: none; } .wf-row, .wf-axis { grid-template-columns: minmax(0, 9.5rem) minmax(0, 1fr) 3rem; gap: 6px; } .wf-lab { font-size: 11px; } }
+
+/* tables */
+.tbl-wrap { overflow-x: auto; border: 1px solid var(--rule); border-radius: 10px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th, td { padding: 9px 14px; text-align: left; border-bottom: 1px solid var(--rule); vertical-align: top; }
+thead th { font-size: 12px; font-weight: 600; color: var(--ink-2); vertical-align: bottom; white-space: nowrap; }
+tbody tr:last-child th, tbody tr:last-child td { border-bottom: 0; }
+tbody th { font-weight: 500; }
+td.n { text-align: right; font-variant-numeric: tabular-nums; font-family: var(--font-mono); font-size: 13px; white-space: nowrap; }
+th.r { text-align: right; }
+.th-group { text-align: center; }
+caption { caption-side: top; text-align: left; padding: 12px 14px 4px; font-size: 13px; color: var(--muted); }
+table.bu th[scope=row] { min-width: 13rem; }
+table.wide td, table.wide th { white-space: normal; }
+table.wide { min-width: 40rem; }
+.note { font-size: 14px; color: var(--ink-2); max-width: 44rem; }
+.callout { padding: 14px 16px; font-size: 14px; color: var(--ink-2); max-width: 48rem; }
+.callout b { color: var(--ink); }
+pre.code { margin: 0; overflow-x: auto; background: var(--code-bg); border: 1px solid var(--rule); border-radius: 8px; padding: 12px 14px; font-family: var(--font-mono); font-size: 12px; line-height: 1.6; color: var(--ink); white-space: pre; }
+.cols2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+@media (max-width: 760px) { .cols2 { grid-template-columns: minmax(0, 1fr); } }
+.box { padding: 16px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.box h3 { font-size: 1rem; }
+.attrs { margin: 0; display: flex; flex-direction: column; border: 1px solid var(--rule); border-radius: 8px; }
+.attrs > div { padding: 8px 12px; border-top: 1px solid var(--rule); display: flex; flex-direction: column; gap: 2px; }
+.attrs > div:first-child { border-top: 0; }
+.attrs dt { font-size: 12px; color: var(--ink); overflow-wrap: anywhere; }
+.attrs dd { margin: 0; font-size: 13px; color: var(--ink-2); }
+.links { display: flex; flex-wrap: wrap; gap: 8px 18px; font-size: 14px; }
+
+/* tooltip */
+#tip { position: fixed; z-index: 10; pointer-events: none; background: var(--tip-bg); color: var(--tip-fg); font-size: 12.5px; line-height: 1.35; padding: 6px 9px; border-radius: 6px; max-width: 18rem; opacity: 0; transition: opacity .1s; }
+#tip.on { opacity: 1; }
+[data-tip] { cursor: default; }
+@media (prefers-reduced-motion: reduce) { #tip { transition: none; } }
+footer { font-size: 13px; color: var(--muted); border-top: 1px solid var(--rule); padding-top: 16px; }
+
+/* v2: figure blocks. The <figure> itself is the swap slot (16:9 from 760 px up); caption, takeaway and source sit outside it. */
+.figblock { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; padding: 20px 20px 14px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.figblock .fc h3.fc-title { margin: 0; }
+.fig-slot { margin: 0; display: flex; flex-direction: column; justify-content: center; gap: 12px; min-width: 0; }
+@media (min-width: 760px) { .fig-slot { aspect-ratio: 16 / 9; } }
+.fig-slot > img { width: 100%; height: 100%; object-fit: contain; }
+.fig-slot > .facets, .fig-slot > .single, .fig-slot > .ts, .fig-slot > .sv, .fig-slot > .meters, .fig-slot > .wf-pair { flex: 1 1 auto; }
+.figblock { --bh: 16px; }
+.figblock.bh-s { --bh: 20px; } .figblock.bh-m { --bh: 19px; } .figblock.bh-l { --bh: 30px; } .figblock.bh-xl { --bh: 48px; }
+@media (max-width: 759px) { .figblock.bh-l { --bh: 22px; } .figblock.bh-xl { --bh: 30px; } .figblock.bh-m, .figblock.bh-s { --bh: 16px; } }
+.fig-top { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 6px 16px; }
+.rh { font-family: var(--font-mono); font-size: 11px; color: var(--muted); }
+.src-k { border-color: var(--rule-strong); color: var(--ink-2); }
+.rows.target .pb-track::after { content: ""; position: absolute; top: -3px; bottom: -3px; left: 90%; border-left: 2px dashed var(--ink-2); opacity: .6; }
+
+/* real Honeycomb images: white frame in both themes, natural size, scroll on phones */
+.hc-frame { background: var(--img-bg); border: 1px solid var(--rule); border-radius: 8px; padding: 10px; overflow-x: auto; display: flex; justify-content: center; align-items: center; flex: 1 1 auto; }
+.hc-frame img { width: 100%; max-width: 800px; height: auto; display: block; }
+.hc-link { display: block; width: 100%; max-width: 800px; }
+@media (max-width: 759px) { .hc-frame { justify-content: flex-start; } .hc-frame img, .hc-link { min-width: 640px; } }
+
+/* waterfall fits the 16:9 slot on wide screens */
+@media (min-width: 760px) { .wf-row { height: 16px; } .wf-lab { font-size: 11px; } .wf-track { height: 9px; } .wf-h { padding-bottom: 6px; } }
+.wf-bar.llm.side { background: var(--rest); }
+.wf-lab .err { color: var(--ink); font-weight: 700; }
+@media (max-width: 520px) { .wf-row { height: auto; min-height: 20px; padding-block: 2px; } .wf-lab { white-space: normal; overflow: visible; line-height: 1.25; } }
+
+/* BubbleUp tables: three columns that fit a phone */
+.bu-wrap table.bu { min-width: 0; }
+table.bu th[scope=row] { min-width: 0; font-weight: 500; }
+table.bu thead th { white-space: normal; }
+table.bu td.n, table.bu thead th.r { width: 5.5rem; }
+table.bu tr.design th, table.bu tr.design td { color: var(--ink-2); }
+.tag { display: inline-block; font-family: var(--font-mono); font-size: 10px; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); border: 1px solid var(--rule-strong); border-radius: 4px; padding: 0 5px; margin-left: 6px; vertical-align: 1px; }
+@media (max-width: 520px) { table.bu th, table.bu td { padding: 8px 10px; } }
+
+/* boxes */
+.sent { padding: 16px 18px; display: flex; flex-direction: column; gap: 10px; max-width: 52rem; }
+.sent h3 { font-size: 1.05rem; }
+.sent ul { margin: 0; padding-left: 1.1rem; display: flex; flex-direction: column; gap: 6px; font-size: 14px; color: var(--ink-2); }
+.sent b { color: var(--ink); }
+.callout-row { display: flex; gap: 12px; align-items: baseline; font-size: 14px; color: var(--ink-2); padding: 12px 16px; max-width: 52rem; }
+.callout-row b { color: var(--ink); }
+.vs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+@media (max-width: 760px) { .vs { grid-template-columns: minmax(0, 1fr); } }
+.vs .box ul { margin: 0; padding-left: 1.1rem; display: flex; flex-direction: column; gap: 6px; font-size: 14px; color: var(--ink-2); }
+.scope td, .scope th { white-space: normal; }
+.scope { min-width: 40rem; }
+.pill { display: inline-block; font-size: 11.5px; font-weight: 600; border-radius: 999px; padding: 1px 8px; border: 1px solid var(--rule-strong); color: var(--ink-2); white-space: nowrap; }
+.pill.free { border-color: var(--with); color: var(--with); }
+details.more { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; }
+details.more > summary { cursor: pointer; padding: 12px 16px; font-weight: 600; font-size: 15px; list-style: none; display: flex; gap: 10px; align-items: center; }
+details.more > summary::-webkit-details-marker { display: none; }
+details.more > summary::before { content: ""; width: 8px; height: 8px; border-right: 2px solid var(--ink-2); border-bottom: 2px solid var(--ink-2); transform: rotate(-45deg); transition: transform .15s; flex: none; }
+details.more[open] > summary::before { transform: rotate(45deg); }
+details.more > summary:focus-visible { outline: 2px solid var(--with); outline-offset: 2px; }
+details.more > .inner { padding: 4px 16px 18px; display: flex; flex-direction: column; gap: 18px; }
+details.more summary .dim { font-weight: 400; font-size: 13.5px; }
+.gloss { font-size: 14px; color: var(--ink-2); max-width: 46rem; border-left: 2px solid var(--rule-strong); padding-left: 12px; }
+@media (prefers-reduced-motion: reduce) { details.more > summary::before { transition: none; } }
+
+/* P25-P75 line across each P50 bar */
+.pb-iqr { position: absolute; top: 50%; height: 2px; margin-top: -1px; background: var(--ink); opacity: .75; }
+.pb-iqr::before, .pb-iqr::after { content: ""; position: absolute; top: -3px; width: 2px; height: 8px; background: var(--ink); }
+.pb-iqr::before { left: 0; } .pb-iqr::after { right: 0; }
+.k-iqr { display: inline-block; width: 16px; height: 2px; background: var(--ink); vertical-align: 4px; margin-right: 6px; position: relative; }
+.pb-row { overflow: visible; }
+.pb-track { overflow: visible; }
+.facets .pb-row { grid-template-columns: minmax(0, 1fr) 4.2rem; }
+
+/* setup diagram (not a figure) */
+.diagram { padding: 18px 20px; display: flex; flex-direction: column; gap: 14px; max-width: 64rem; }
+.lane { display: grid; grid-template-columns: 9rem minmax(0, 1fr) 2rem minmax(0, 1.3fr) 2rem minmax(0, 1fr); align-items: stretch; gap: 8px; }
+.lane-lab { font-size: 13px; font-weight: 600; color: var(--ink-2); align-self: center; }
+.node { border: 1px solid var(--rule-strong); border-radius: 8px; padding: 10px 12px; font-family: var(--font-display); font-stretch: 85%; font-weight: 700; font-size: 1rem; display: flex; flex-direction: column; justify-content: center; gap: 2px; min-width: 0; background: var(--bg); }
+.node small { font-family: var(--font-body); font-stretch: 100%; font-weight: 400; font-size: 12.5px; color: var(--ink-2); overflow-wrap: anywhere; }
+.node-with { border-color: var(--with); box-shadow: inset 3px 0 0 var(--with); }
+.node-without { border-color: var(--without); box-shadow: inset 3px 0 0 var(--without); }
+.arrow { position: relative; align-self: center; height: 2px; background: var(--rule-strong); }
+.arrow::after { content: ""; position: absolute; right: -1px; top: -4px; border: 5px solid transparent; border-left: 7px solid var(--rule-strong); border-right: 0; }
+.diagram .after { font-size: 13.5px; color: var(--ink-2); border-top: 1px solid var(--rule); padding-top: 12px; max-width: 52rem; }
+@media (max-width: 760px) {
+  .lane { grid-template-columns: minmax(0, 1fr); gap: 6px; }
+  .arrow { justify-self: center; width: 2px; height: 16px; }
+  .arrow::after { right: auto; left: -4px; top: auto; bottom: -1px; border: 5px solid transparent; border-top: 7px solid var(--rule-strong); border-bottom: 0; }
+  .lane + .lane { border-top: 1px solid var(--rule); padding-top: 12px; }
+}
+table.ratio { min-width: 38rem; }
+/* Fig 3: two numbers */
+.fig-slot > .spend { flex: 1 1 auto; }
+.spend { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 40px; align-content: center; padding-inline: 4%; }
+.spend-n { display: flex; flex-direction: column; gap: 6px; min-width: 0; border-top: 1px solid var(--rule); padding-top: 14px; }
+.spend-lab { font-size: 15px; font-weight: 600; color: var(--ink-2); }
+.spend-val { font-family: var(--font-display); font-stretch: 80%; font-weight: 750; font-size: clamp(3rem, 9vw, 6.5rem); line-height: 1; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.spend-sub { font-family: var(--font-mono); font-size: 12px; color: var(--muted); }
+.spend-ratio { grid-column: 1 / -1; font-family: var(--font-mono); font-size: 14px; color: var(--ink-2); margin-top: 8px; }
+@media (max-width: 520px) { .spend { grid-template-columns: minmax(0, 1fr); padding-inline: 0; gap: 18px; } }
+</style>
+<div class="page">
+
+<header>
+  <span class="eyebrow">mcp-for-kibana · Claude Code on Kibana · runs of 12 Oct 2026</span>
+  <h1>Does the mcp-for-kibana server make an AI agent's Kibana work cheaper and faster?</h1>
+  <p class="lede">mcp-for-kibana is an MCP server: it gives an AI agent ready-made Kibana tools in place of Kibana's raw REST API. To measure what it saves, Claude Code did four Kibana tasks with and without the server, 288 runs in all, measured with Honeycomb. With the server, a run cost 51 to 71% less and took 34 to 60% less time, depending on the model, and every run passed its checks. The savings come from what the server keeps out of the model: without it, the agent read back 10 to 19 times more tool output per run.</p>
+  <div class="tiles">
+    <div class="tile"><span class="lab">Cost per run, with the server</span><span class="val">51–71<small>% less</small></span><span class="note">Per model, from Honeycomb's medians: Haiku 71%, Sonnet 51%, Opus 60%. Figure 1.</span></div>
+    <div class="tile"><span class="lab">Time per run, with the server</span><span class="val">34–60<small>% less</small></span><span class="note">Per model, from Honeycomb's medians: Haiku 60%, Sonnet 34%, Opus 39%. Figure 2.</span></div>
+    <div class="tile"><span class="lab">Tool output read back, without the server</span><span class="val">10–19<small>× more</small></span><span class="note">Average per run, per model. Figure 5.</span></div>
+  </div>
+  <div class="easy">
+    <div class="card"><span class="what">Question 1 · Figures 1, 3</span><h3>How much cost does the server save per run?</h3><p>51 to 71% per run, and it is cheaper in all 12 model-and-task pairs. All runs together cost $5.04 with it and $14.49 without.</p><a class="go" href="#fig-1">See the cost</a></div>
+    <div class="card"><span class="what">Question 2 · Figure 2</span><h3>How much time does it save?</h3><p>34 to 60% per run. Building a dashboard and alert rule saves the most.</p><a class="go" href="#fig-2">See the time</a></div>
+    <div class="card"><span class="what">Question 3 · Figures 4 to 10</span><h3>Where do the savings come from?</h3><p>Less text through the model and less time waiting on it: 7 short tool calls against 10 shell commands and 20 seconds of reading API docs.</p><a class="go" href="#fig-4">See where they come from</a></div>
+    <div class="card"><span class="what">Question 4 · Figures 11 to 14</span><h3>Does it hold across models and tasks?</h3><p>Yes, for all three models and four tasks. The costliest and slowest runs were all without the server, and every check passed in both setups.</p><a class="go" href="#fig-11">See every run</a></div>
+  </div>
+  <p class="gloss">Terms used below. A <b>trace</b> is the timeline of one run; a <b>span</b> is one step in it, and each run's summary (cost, time, result) is one span. <b>P50</b> is Honeycomb's median; <b>P25</b> and <b>P75</b> mark the middle half of the runs. A <b>heatmap</b> plots every run at once. <b>BubbleUp</b> lists what a selected group of runs has in common, compared with the rest.</p>
+</header>
+
+<section>
+  <div class="sec-head">
+    <span class="eyebrow">The setup</span>
+    <h2>Same agent, same tasks, two ways to reach Kibana</h2>
+    <p class="note">Claude Code ran four Kibana tasks with no person involved: build a dashboard and alert rule on web-log data, the same on flight data, change an existing dashboard and rule, and look up facts about them. Each task ran with Haiku, Sonnet and Opus 5.5, in both setups, 12 times: 288 runs. Each run sent one trace to Honeycomb; 287 arrived, and every number below covers those 287.</p>
+  </div>
+  <div class="diagram card" role="img" aria-label="Diagram of the two setups. With the server: Claude Code calls the mcp-for-kibana server's tools, and the server calls Kibana. Without: Claude Code uses a shell and curl, with Kibana's API reference as files, against Kibana's REST API. After each run a checker reads Kibana back, Kibana is reset, and the run's trace goes to Honeycomb.">
+    <div class="lane">
+      <span class="lane-lab"><i class="k-with"></i>With the server</span>
+      <span class="node">Claude Code<small>Haiku, Sonnet or Opus 5.5</small></span>
+      <span class="arrow" aria-hidden="true"></span>
+      <span class="node node-with">mcp-for-kibana server<small>Kibana tools such as describe_data_view, create_dashboard, create_alert_rule, update_panel</small></span>
+      <span class="arrow" aria-hidden="true"></span>
+      <span class="node">Kibana</span>
+    </div>
+    <div class="lane">
+      <span class="lane-lab"><i class="k-without"></i>Without</span>
+      <span class="node">Claude Code<small>Haiku, Sonnet or Opus 5.5</small></span>
+      <span class="arrow" aria-hidden="true"></span>
+      <span class="node node-without">Shell and curl<small>with Kibana's API reference as files to read</small></span>
+      <span class="arrow" aria-hidden="true"></span>
+      <span class="node">Kibana REST API</span>
+    </div>
+    <p class="after">After every run: a checker reads Kibana back and scores the result, Kibana is reset, and the run's trace goes to Honeycomb. The trace holds Claude Code's model and tool calls, the server's own spans and one summary span with the run's model, setup, task, cost, time and checks.</p>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head">
+    <span class="eyebrow">Questions 1 and 2 · cost and time per run</span>
+    <h2>Cheaper and faster on every task</h2>
+    <p class="note">Each bar is one model, task and setup: the median of its 12 runs, with a line across the middle half (P25 to P75) so the spread is visible.</p>
+  </div>
+  <div class="figblock bh-m">
+<div class="fc"><span class="fc-num">Figure 1</span><h3 class="fc-title">Cost per run by model, task and setup</h3><p class="fc-sub">Median (P50) list-price cost of a run, with a line from P25 to P75: the middle half of the 12 runs. Each model has its own scale.</p></div>
+<figure id="fig-1" class="fig-slot" aria-label="Figure 1: Cost per run by model, task and setup"><div class="fig-top"><div class="legend"><span><i class="k-with"></i>With the server</span><span><i class="k-without"></i>Without</span><span><i class="k-iqr"></i>P25 to P75</span></div><span class="rh">bar: P50 · right: with ÷ without</span></div><div class="facets"><div class="facet"><div class="facet-h"><b>Haiku 5.5</b><span>scale 0–$0.030</span></div><div class="pb-group">
+  <div class="pb-lab">Build on web logs</div>
+  <div class="pb-bars">
+    <div class="pb-row" data-tip="Haiku 5.5 · Build on web logs · with the server: P50 $0.0043 (P25 $0.0042, P75 $0.0046)"><span class="pb-track"><i class="pb-bar w" style="width:14.28%"></i><i class="pb-iqr" style="left:13.93%;width:1.48%"></i></span><span class="pb-v">$0.0043</span></div>
+    <div class="pb-row" data-tip="Haiku 5.5 · Build on web logs · without: P50 $0.022 (P25 $0.020, P75 $0.026)"><span class="pb-track"><i class="pb-bar o" style="width:73.55%"></i><i class="pb-iqr" style="left:68.18%;width:19.47%"></i></span><span class="pb-v">$0.022</span></div>
+  </div>
+  <div class="pb-ratio">0.19×</div>
+</div><div class="pb-group">
+  <div class="pb-lab">Build on flights</div>
+  <div class="pb-bars">
+    <div class="pb-row" data-tip="Haiku 5.5 · Build on flights · with the server: P50 $0.0038 (P25 $0.0036, P75 $0.0040)"><span class="pb-track"><i class="pb-bar w" style="width:12.53%"></i><i class="pb-iqr" style="left:12.02%;width:1.41%"></i></span><span class="pb-v">$0.0038</span></div>
+    <div class="pb-row" data-tip="Haiku 5.5 · Build on flights · without: P50 $0.018 (P25 $0.015, P75 $0.021)"><span class="pb-track"><i class="pb-bar o" style="width:60.43%"></i><i class="pb-iqr" style="left:49.46%;width:21.02%"></i></span><span class="pb-v">$0.018</span></div>
+  </div>
+  <div class="pb-ratio">0.21×</div>
+</div><div class="pb-group">
+  <div class="pb-lab">Change existing</div>
+  <div class="pb-bars">
+    <div class="pb-row" data-tip="Haiku 5.5 · Change existing · with the server: P50 $0.0025 (P25 $0.0022, P75 $0.0026)"><span class="pb-track"><i class="pb-bar w" style="width:8.22%"></i><i class="pb-iqr" style="left:7.49%;width:1.17%"></i></span><span class="pb-v">$0.0025</span></div>
+    <div class="pb-row" data-tip="Haiku 5.5 · Change existing · without: P50 $0.0066 (P25 $0.0059, P75 $0.0081)"><span class="pb-track"><i class="pb-bar o" style="width:21.90%"></i><i class="pb-iqr" style="left:19.82%;width:7.13%"></i></span><span class="pb-v">$0.0066</span></div>
+  </div>
+  <div class="pb-ratio">0.38×</div>
+</div><div class="pb-group">
+  <div class="pb-lab">Look up</div>
+  <div class="pb-bars">
+    <div class="pb-row" data-tip="Haiku 5.5 · Look up · with the server: P50 $0.0013 (P25 $0.0013, P75 $0.0017)"><span class="pb-track"><i class="pb-bar w" style="width:4.47%"></i><i class="pb-iqr" style="left:4.44%;width:1.26%"></i></span><span class="pb-v">$0.0013</span></div>
+    <div class="pb-row" data-tip="Haiku 5.5 · Look up · without: P50 $0.0030 (P25 $0.0027, P75 $0.0036)"><span class="pb-track"><i class="pb-bar o" style="width:9.84%"></i><i class="pb-iqr" style="left:9.15%;width:2.86%"></i></span><span class="pb-v">$0.0030</span></div>
+  </div>
+  <div class="pb-ratio">0.45×</div>
+</div></div><div class="facet"><div class="facet-h"><b>Sonnet 5.5</b><span>scale 0–$0.150</span></div><div class="pb-group">
+  <div class="pb-lab">Build on web logs</div>
+  <div class="pb-bars">
+    <div class="pb-row" data-tip="Sonnet 5.5 · Build on web logs · with the server: P50 $0.046 (P25 $0.045, P75 $0.047)"><span class="pb-track"><i class="pb-bar w" style="width:30.93%"></i><i class="pb-iqr" style="left:30.19%;width:1.09%"></i></span><span class="pb-v">$0.046</span></div>
+    <div class="pb-row" data-tip="Sonnet 5.5 · Build on web logs · without: P50 $0.112 (P25 $0.106, P75 $0.118)"><span class="pb-track"><i class="pb-bar o" style="width:74.54%"></i><i class="pb-iqr" style="left:70.36%;width:8.05%"></i></span><span class="pb-v">$0.112</span></div>
+  </div>
+  <div class="pb-ratio">0.41×</div>
+</div><div class="pb-group">
+  <div class="pb-lab">Build on flights</div>
+  <div class="pb-bars">
+    <div class="pb-row" data-tip="Sonnet 5.5 · Build on flights · with the server: P50 $0.042 (P25 $0.042, P75 $0.042)"><span class="pb-track"><i class="pb-bar w" style="width:28.16%"></i><i class="pb-iqr" style="left:27.88%;width:0.35%"></i></span><span class="pb-v">$0.042</span></div>
+    <div class="pb-row" data-tip="Sonnet 5.5 · Build on flights · without: P50 $0.109 (P25 $0.102, P75 $0.121)"><span class="pb-track"><i class="pb-bar o" style="width:72.86%"></i><i class="pb-iqr" style="left:67.67%;width:13.06%"></i></span><span class="pb-v">$0.109</span></div>
+  </div>
+  <div class="pb-ratio">0.39×</div>
+</div><div class="pb-group">
+  <div class="pb-lab">Change existing</div>
+  <div class="pb-bars">
+    <div class="pb-row" data-tip="Sonnet 5.5 · Change existing · with the server: P50 $0.026 (P25 $0.025, P75 $0.026)"><span class="pb-track"><i class="pb-bar w" style="width:17.49%"></i><i class="pb-iqr" style="left:16.43%;width:1.15%"></i></span><span class="pb-v">$0.026</span></div>
+    <div class="pb-row" data-tip="Sonnet 5.5 · Change existing · without: P50 $0.048 (P25 $0.040, P75 $0.050)"><span class="pb-track"><i class="pb-bar o" style="width:31.81%"></i><i class="pb-iqr" style="left:26.50%;width:6.66%"></i></span><span class="pb-v">$0.048</span></div>
+  </div>
+  <div class="pb-ratio">0.55×</div>
+</div><div class="pb-group">
+  <div class="pb-lab">Look up</div>
+  <div class="pb-bars">
+    <div class="pb-row" data-tip="Sonnet 5.5 · Look up · with the server: P50 $0.017 (P25 $0.017, P75 $0.017)"><span class="pb-track"><i class="pb-bar w" style="width:11.12%"></i><i class="pb-iqr" style="left:11.05%;width:0.30%"></i></span><span class="pb-v">$0.017</span></div>
+    <div class="pb-row" data-tip="Sonnet 5.5 · Look up · without: P50 $0.025 (P25 $0.024, P75 $0.026)"><span class="pb-track"><i class="pb-bar o" style="width:16.46%"></i><i class="pb-iqr" style="left:15.94%;width:1.50%"></i></span><span class="pb-v">$0.025</span></div>
+  </div>
+  <div class="pb-ratio">0.68×</div>
+</div></div><div class="facet"><div class="facet-h"><b>Opus 5.5</b><span>scale 0–$0.500</span></div><div class="pb-group">
+  <div class="pb-lab">Build on web logs</div>
+  <div class="pb-bars">
+    <div class="pb-row" data-tip="Opus 5.5 · Build on web logs · with the server: P50 $0.100 (P25 $0.098, P75 $0.102)"><span class="pb-track"><i class="pb-bar w" style="width:20.06%"></i><i class="pb-iqr" style="left:19.67%;width:0.81%"></i></span><span class="pb-v">$0.100</span></div>
+    <div class="pb-row" data-tip="Opus 5.5 · Build on web logs · without: P50 $0.397 (P25 $0.360, P75 $0.461)"><span class="pb-track"><i class="pb-bar o" style="width:79.39%"></i><i class="pb-iqr" style="left:71.92%;width:20.34%"></i></span><span class="pb-v">$0.397</span></div>
+  </div>
+  <div class="pb-ratio">0.25×</div>
+</div><div class="pb-group">
+  <div class="pb-lab">Build on flights</div>
+  <div class="pb-bars">
+    <div class="pb-row" data-tip="Opus 5.5 · Build on flights · with the server: P50 $0.090 (P25 $0.090, P75 $0.091)"><span class="pb-track"><i class="pb-bar w" style="width:18.09%"></i><i class="pb-iqr" style="left:17.93%;width:0.35%"></i></span><span class="pb-v">$0.090</span></div>
+    <div class="pb-row" data-tip="Opus 5.5 · Build on flights · without: P50 $0.355 (P25 $0.263, P75 $0.376)"><span class="pb-track"><i class="pb-bar o" style="width:70.93%"></i><i class="pb-iqr" style="left:52.60%;width:22.67%"></i></span><span class="pb-v">$0.355</span></div>
+  </div>
+  <div class="pb-ratio">0.25×</div>
+</div><div class="pb-group">
+  <div class="pb-lab">Change existing</div>
+  <div class="pb-bars">
+    <div class="pb-row" data-tip="Opus 5.5 · Change existing · with the server: P50 $0.057 (P25 $0.056, P75 $0.057)"><span class="pb-track"><i class="pb-bar w" style="width:11.34%"></i><i class="pb-iqr" style="left:11.29%;width:0.30%"></i></span><span class="pb-v">$0.057</span></div>
+    <div class="pb-row" data-tip="Opus 5.5 · Change existing · without: P50 $0.108 (P25 $0.105, P75 $0.111)"><span class="pb-track"><i class="pb-bar o" style="width:21.61%"></i><i class="pb-iqr" style="left:21.02%;width:1.12%"></i></span><span class="pb-v">$0.108</span></div>
+  </div>
+  <div class="pb-ratio">0.52×</div>
+</div><div class="pb-group">
+  <div class="pb-lab">Look up</div>
+  <div class="pb-bars">
+    <div class="pb-row" data-tip="Opus 5.5 · Look up · with the server: P50 $0.035 (P25 $0.035, P75 $0.036)"><span class="pb-track"><i class="pb-bar w" style="width:7.06%"></i><i class="pb-iqr" style="left:7.03%;width:0.30%"></i></span><span class="pb-v">$0.035</span></div>
+    <div class="pb-row" data-tip="Opus 5.5 · Look up · without: P50 $0.048 (P25 $0.045, P75 $0.052)"><span class="pb-track"><i class="pb-bar o" style="width:9.63%"></i><i class="pb-iqr" style="left:9.07%;width:1.30%"></i></span><span class="pb-v">$0.048</span></div>
+  </div>
+  <div class="pb-ratio">0.73×</div>
+</div></div></div></figure>
+<p class="fig-note">All 12 model-and-task pairs are cheaper with the server, from 0.19× (Haiku, build on web logs) to 0.73× (Opus, look up). In all 12 pairs the with-server P75 sits below the without P25, so the middle halves of the runs do not overlap.</p><p class="src"><span class="src-k">↻ Redrawn from Honeycomb</span> <a href="https://ui.eu1.honeycomb.io/pedro-angel/environments/test/datasets/mcp-for-kibana-study4/result/rQ-XCLthePHQ">Open in Honeycomb</a> · board panel <a href="https://ui.eu1.honeycomb.io/pedro-angel/environments/test/board/5q-7tCefHafG">“Fig 1 · Cost per run by model, task and setup”</a> on mcp-for-kibana server: cost and time saved</p>
+</div>
+  <div class="figblock bh-m">
+<div class="fc"><span class="fc-num">Figure 2</span><h3 class="fc-title">Time per run by model, task and setup</h3><p class="fc-sub">Median (P50) wall-clock seconds of a run, with a line from P25 to P75. Each model has its own scale.</p></div>
+<figure id="fig-2" class="fig-slot" aria-label="Figure 2: Time per run by model, task and setup"><div class="fig-top"><div class="legend"><span><i class="k-with"></i>With the server</span><span><i class="k-without"></i>Without</span><span><i class="k-iqr"></i>P25 to P75</span></div><span class="rh">bar: P50 · right: with ÷ without</span></div><div class="facets"><div class="facet"><div class="facet-h"><b>Haiku 5.5</b><span>scale 0–120.0 s</span></div><div class="pb-group">
+  <div class="pb-lab">Build on web logs</div>
+  <div class="pb-bars">
+    <div class="pb-row" data-tip="Haiku 5.5 · Build on web logs · with the server: P50 22.9 s (P25 21.5 s, P75 23.9 s)"><span class="pb-track"><i class="pb-bar w" style="width:19.08%"></i><i class="pb-iqr" style="left:17.92%;width:2.00%"></i></span><span class="pb-v">22.9 s</span></div>
+    <div class="pb-row" data-tip="Haiku 5.5 · Build on web logs · without: P50 82.6 s (P25 76.1 s, P75 111.8 s)"><span class="pb-track"><i class="pb-bar o" style="width:68.83%"></i><i class="pb-iqr" style="left:63.42%;width:29.75%"></i></span><span class="pb-v">82.6 s</span></div>
+  </div>
+  <div class="pb-ratio">0.28×</div>
+</div><div class="pb-group">
+  <div class="pb-lab">Build on flights</div>
+  <div class="pb-bars">
+    <div class="pb-row" data-tip="Haiku 5.5 · Build on flights · with the server: P50 19.4 s (P25 18.3 s, P75 20.5 s)"><span class="pb-track"><i class="pb-bar w" style="width:16.17%"></i><i class="pb-iqr" style="left:15.25%;width:1.83%"></i></span><span class="pb-v">19.4 s</span></div>
+    <div class="pb-row" data-tip="Haiku 5.5 · Build on flights · without: P50 64.5 s (P25 53.6 s, P75 72.4 s)"><span class="pb-track"><i class="pb-bar o" style="width:53.75%"></i><i class="pb-iqr" style="left:44.67%;width:15.67%"></i></span><span class="pb-v">64.5 s</span></div>
+  </div>
+  <div class="pb-ratio">0.30×</div>
+</div><div class="pb-group">
+  <div class="pb-lab">Change existing</div>
+  <div class="pb-bars">
+    <div class="pb-row" data-tip="Haiku 5.5 · Change existing · with the server: P50 14.0 s (P25 13.2 s, P75 15.1 s)"><span class="pb-track"><i class="pb-bar w" style="width:11.67%"></i><i class="pb-iqr" style="left:11.00%;width:1.58%"></i></span><span class="pb-v">14.0 s</span></div>
+    <div class="pb-row" data-tip="Haiku 5.5 · Change existing · without: P50 29.9 s (P25 26.7 s, P75 35.0 s)"><span class="pb-track"><i class="pb-bar o" style="width:24.92%"></i><i class="pb-iqr" style="left:22.25%;width:6.92%"></i></span><span class="pb-v">29.9 s</span></div>
+  </div>
+  <div class="pb-ratio">0.47×</div>
+</div><div class="pb-group">
+  <div class="pb-lab">Look up</div>
+  <div class="pb-bars">
+    <div class="pb-row" data-tip="Haiku 5.5 · Look up · with the server: P50 8.8 s (P25 7.8 s, P75 10.9 s)"><span class="pb-track"><i class="pb-bar w" style="width:7.33%"></i><i class="pb-iqr" style="left:6.50%;width:2.58%"></i></span><span class="pb-v">8.8 s</span></div>
+    <div class="pb-row" data-tip="Haiku 5.5 · Look up · without: P50 13.6 s (P25 11.7 s, P75 16.7 s)"><span class="pb-track"><i class="pb-bar o" style="width:11.33%"></i><i class="pb-iqr" style="left:9.75%;width:4.17%"></i></span><span class="pb-v">13.6 s</span></div>
+  </div>
+  <div class="pb-ratio">0.65×</div>
+</div></div><div class="facet"><div class="facet-h"><b>Sonnet 5.5</b><span>scale 0–50.0 s</span></div><div class="pb-group">
+  <div class="pb-lab">Build on web logs</div>
+  <div class="pb-bars">
+    <div class="pb-row" data-tip="Sonnet 5.5 · Build on web logs · with the server: P50 23.4 s (P25 22.5 s, P75 25.6 s)"><span class="pb-track"><i class="pb-bar w" style="width:46.80%"></i><i class="pb-iqr" style="left:45.00%;width:6.20%"></i></span><span class="pb-v">23.4 s</span></div>
+    <div class="pb-row" data-tip="Sonnet 5.5 · Build on web logs · without: P50 40.0 s (P25 38.1 s, P75 43.5 s)"><span class="pb-track"><i class="pb-bar o" style="width:80.00%"></i><i class="pb-iqr" style="left:76.20%;width:10.80%"></i></span><span class="pb-v">40.0 s</span></div>
+  </div>
+  <div class="pb-ratio">0.58×</div>
+</div><div class="pb-group">
+  <div class="pb-lab">Build on flights</div>
+  <div class="pb-bars">
+    <div class="pb-row" data-tip="Sonnet 5.5 · Build on flights · with the server: P50 20.8 s (P25 20.5 s, P75 22.1 s)"><span class="pb-track"><i class="pb-bar w" style="width:41.60%"></i><i class="pb-iqr" style="left:41.00%;width:3.20%"></i></span><span class="pb-v">20.8 s</span></div>
+    <div class="pb-row" data-tip="Sonnet 5.5 · Build on flights · without: P50 40.3 s (P25 35.8 s, P75 45.3 s)"><span class="pb-track"><i class="pb-bar o" style="width:80.60%"></i><i class="pb-iqr" style="left:71.60%;width:19.00%"></i></span><span class="pb-v">40.3 s</span></div>
+  </div>
+  <div class="pb-ratio">0.52×</div>
+</div><div class="pb-group">
+  <div class="pb-lab">Change existing</div>
+  <div class="pb-bars">
+    <div class="pb-row" data-tip="Sonnet 5.5 · Change existing · with the server: P50 15.1 s (P25 14.6 s, P75 15.3 s)"><span class="pb-track"><i class="pb-bar w" style="width:30.20%"></i><i class="pb-iqr" style="left:29.20%;width:1.40%"></i></span><span class="pb-v">15.1 s</span></div>
+    <div class="pb-row" data-tip="Sonnet 5.5 · Change existing · without: P50 22.0 s (P25 21.6 s, P75 23.2 s)"><span class="pb-track"><i class="pb-bar o" style="width:44.00%"></i><i class="pb-iqr" style="left:43.20%;width:3.20%"></i></span><span class="pb-v">22.0 s</span></div>
+  </div>
+  <div class="pb-ratio">0.69×</div>
+</div><div class="pb-group">
+  <div class="pb-lab">Look up</div>
+  <div class="pb-bars">
+    <div class="pb-row" data-tip="Sonnet 5.5 · Look up · with the server: P50 11.0 s (P25 10.8 s, P75 11.4 s)"><span class="pb-track"><i class="pb-bar w" style="width:22.00%"></i><i class="pb-iqr" style="left:21.60%;width:1.20%"></i></span><span class="pb-v">11.0 s</span></div>
+    <div class="pb-row" data-tip="Sonnet 5.5 · Look up · without: P50 12.2 s (P25 11.6 s, P75 13.6 s)"><span class="pb-track"><i class="pb-bar o" style="width:24.40%"></i><i class="pb-iqr" style="left:23.20%;width:4.00%"></i></span><span class="pb-v">12.2 s</span></div>
+  </div>
+  <div class="pb-ratio">0.90×</div>
+</div></div><div class="facet"><div class="facet-h"><b>Opus 5.5</b><span>scale 0–80.0 s</span></div><div class="pb-group">
+  <div class="pb-lab">Build on web logs</div>
+  <div class="pb-bars">
+    <div class="pb-row" data-tip="Opus 5.5 · Build on web logs · with the server: P50 28.4 s (P25 27.4 s, P75 29.7 s)"><span class="pb-track"><i class="pb-bar w" style="width:35.50%"></i><i class="pb-iqr" style="left:34.25%;width:2.88%"></i></span><span class="pb-v">28.4 s</span></div>
+    <div class="pb-row" data-tip="Opus 5.5 · Build on web logs · without: P50 61.0 s (P25 59.5 s, P75 66.3 s)"><span class="pb-track"><i class="pb-bar o" style="width:76.25%"></i><i class="pb-iqr" style="left:74.37%;width:8.50%"></i></span><span class="pb-v">61.0 s</span></div>
+  </div>
+  <div class="pb-ratio">0.47×</div>
+</div><div class="pb-group">
+  <div class="pb-lab">Build on flights</div>
+  <div class="pb-bars">
+    <div class="pb-row" data-tip="Opus 5.5 · Build on flights · with the server: P50 25.6 s (P25 24.9 s, P75 26.4 s)"><span class="pb-track"><i class="pb-bar w" style="width:32.00%"></i><i class="pb-iqr" style="left:31.12%;width:1.88%"></i></span><span class="pb-v">25.6 s</span></div>
+    <div class="pb-row" data-tip="Opus 5.5 · Build on flights · without: P50 53.8 s (P25 52.2 s, P75 57.6 s)"><span class="pb-track"><i class="pb-bar o" style="width:67.25%"></i><i class="pb-iqr" style="left:65.25%;width:6.75%"></i></span><span class="pb-v">53.8 s</span></div>
+  </div>
+  <div class="pb-ratio">0.48×</div>
+</div><div class="pb-group">
+  <div class="pb-lab">Change existing</div>
+  <div class="pb-bars">
+    <div class="pb-row" data-tip="Opus 5.5 · Change existing · with the server: P50 18.1 s (P25 17.6 s, P75 18.4 s)"><span class="pb-track"><i class="pb-bar w" style="width:22.62%"></i><i class="pb-iqr" style="left:22.00%;width:1.00%"></i></span><span class="pb-v">18.1 s</span></div>
+    <div class="pb-row" data-tip="Opus 5.5 · Change existing · without: P50 27.8 s (P25 26.5 s, P75 28.3 s)"><span class="pb-track"><i class="pb-bar o" style="width:34.75%"></i><i class="pb-iqr" style="left:33.12%;width:2.25%"></i></span><span class="pb-v">27.8 s</span></div>
+  </div>
+  <div class="pb-ratio">0.65×</div>
+</div><div class="pb-group">
+  <div class="pb-lab">Look up</div>
+  <div class="pb-bars">
+    <div class="pb-row" data-tip="Opus 5.5 · Look up · with the server: P50 12.2 s (P25 12.1 s, P75 12.4 s)"><span class="pb-track"><i class="pb-bar w" style="width:15.25%"></i><i class="pb-iqr" style="left:15.12%;width:0.38%"></i></span><span class="pb-v">12.2 s</span></div>
+    <div class="pb-row" data-tip="Opus 5.5 · Look up · without: P50 13.1 s (P25 12.4 s, P75 14.4 s)"><span class="pb-track"><i class="pb-bar o" style="width:16.38%"></i><i class="pb-iqr" style="left:15.50%;width:2.50%"></i></span><span class="pb-v">13.1 s</span></div>
+  </div>
+  <div class="pb-ratio">0.93×</div>
+</div></div></div></figure>
+<p class="fig-note">Building saves the most time. In 11 of 12 pairs the middle halves of the runs do not overlap. The exception is Opus looking up, where the server saves under a second (P50 12.2 s against 13.1 s) and the ranges touch (with-server P75 12.4 s, without P25 12.4 s).</p><p class="src"><span class="src-k">↻ Redrawn from Honeycomb</span> <a href="https://ui.eu1.honeycomb.io/pedro-angel/environments/test/datasets/mcp-for-kibana-study4/result/jr-K1QutEy5g">Open in Honeycomb</a> · board panel <a href="https://ui.eu1.honeycomb.io/pedro-angel/environments/test/board/5q-7tCefHafG">“Fig 2 · Time per run by model, task and setup”</a> on mcp-for-kibana server: cost and time saved</p>
+</div>
+  <div class="figblock ">
+<div class="fc"><span class="fc-num">Figure 3</span><h3 class="fc-title">Total spend by setup</h3><p class="fc-sub">Sum of every run's list-price cost over the three-hour window, for each setup.</p></div>
+<figure id="fig-3" class="fig-slot" aria-label="Figure 3: Total spend by setup"><div class="spend">
+  <div class="spend-n"><span class="spend-lab"><i class="k-with"></i>Total spend with the server</span><span class="spend-val">$5.04</span><span class="spend-sub">143 runs</span></div>
+  <div class="spend-n"><span class="spend-lab"><i class="k-without"></i>Total spend without the server</span><span class="spend-val">$14.49</span><span class="spend-sub">144 runs</span></div>
+  <p class="spend-ratio">With ÷ without: 0.35× · 65% less with the server</p>
+</div></figure>
+<p class="fig-note">The same work cost about a third as much with the server.</p><p class="src"><span class="src-k">↻ Redrawn from Honeycomb</span> <a href="https://ui.eu1.honeycomb.io/pedro-angel/environments/test/datasets/mcp-for-kibana-study4/result/g8-EBBx54eiz">Open in Honeycomb</a> · board panel <a href="https://ui.eu1.honeycomb.io/pedro-angel/environments/test/board/5q-7tCefHafG">“Fig 3 · Total spend by setup”</a> on mcp-for-kibana server: cost and time saved</p>
+</div>
+</section>
+
+<section>
+  <div class="sec-head">
+    <span class="eyebrow">Question 3 · where the savings come from: one run</span>
+    <h2>The same build, with and without the server</h2>
+    <p class="note">Two traces from the first round, Opus building the web-logs dashboard and alert rule. One run cost four times the other; the traces show what the agent did with that money.</p>
+  </div>
+  <div class="figblock wide">
+<div class="fc"><span class="fc-num">Figure 4</span><h3 class="fc-title">One build, two traces</h3><p class="fc-sub">Opus building the web-logs dashboard and alert rule in the first round, with and without the server, on one time scale. Each row is a span from Honeycomb's trace view: grey bars are model calls, coloured bars are tool calls.</p></div>
+<figure id="fig-4" class="fig-slot" aria-label="Figure 4: One build, two traces"><div class="wf-pair">
+  <div class="wf"><div class="wf-h"><b><i class="k-with"></i>With the server</b><span>$0.098 · 27.4 s · 6 model calls · 7 tool calls</span></div><div class="wf-row ind0" data-tip="Whole run, with scoring and reset · starts 0.0 s · 29.5 s"><span class="wf-lab">Whole run, with scoring and reset</span><span class="wf-track"><i class="wf-bar root" style="left:0.000%;width:46.023%"></i></span><span class="wf-d">29.5 s</span></div><div class="wf-row ind1" data-tip="Model call 1 · starts 2.5 s · 2.0 s"><span class="wf-lab">Model call 1</span><span class="wf-track"><i class="wf-bar llm" style="left:3.840%;width:3.173%"></i></span><span class="wf-d">2.0 s</span></div><div class="wf-row ind1" data-tip="Tool: describe_data_view · starts 4.4 s · 110 ms"><span class="wf-lab">Tool: describe_data_view</span><span class="wf-track"><i class="wf-bar tool-w" style="left:6.942%;width:0.350%"></i></span><span class="wf-d">110 ms</span></div><div class="wf-row ind2" data-tip="server: describe_data_view · starts 4.5 s · 64 ms"><span class="wf-lab">server: describe_data_view</span><span class="wf-track"><i class="wf-bar srv" style="left:7.005%;width:0.350%"></i></span><span class="wf-d">64 ms</span></div><div class="wf-row ind1" data-tip="Model call 2 · starts 4.6 s · 6.5 s"><span class="wf-lab">Model call 2</span><span class="wf-track"><i class="wf-bar llm" style="left:7.245%;width:10.192%"></i></span><span class="wf-d">6.5 s</span></div><div class="wf-row ind1" data-tip="Tool: create_dashboard · starts 9.2 s · 285 ms"><span class="wf-lab">Tool: create_dashboard</span><span class="wf-track"><i class="wf-bar tool-w" style="left:14.298%;width:0.445%"></i></span><span class="wf-d">285 ms</span></div><div class="wf-row ind2" data-tip="server: create_dashboard · starts 9.2 s · 274 ms"><span class="wf-lab">server: create_dashboard</span><span class="wf-track"><i class="wf-bar srv" style="left:14.311%;width:0.428%"></i></span><span class="wf-d">274 ms</span></div><div class="wf-row ind1" data-tip="Tool: create_alert_rule · starts 11.1 s · 1.7 s"><span class="wf-lab">Tool: create_alert_rule</span><span class="wf-track"><i class="wf-bar tool-w" style="left:17.408%;width:2.645%"></i></span><span class="wf-d">1.7 s</span></div><div class="wf-row ind2" data-tip="server: create_alert_rule · starts 11.1 s · 1.7 s"><span class="wf-lab">server: create_alert_rule</span><span class="wf-track"><i class="wf-bar srv" style="left:17.418%;width:2.628%"></i></span><span class="wf-d">1.7 s</span></div><div class="wf-row ind1" data-tip="Model call 3 · starts 12.9 s · 1.6 s"><span class="wf-lab">Model call 3</span><span class="wf-track"><i class="wf-bar llm" style="left:20.151%;width:2.470%"></i></span><span class="wf-d">1.6 s</span></div><div class="wf-row ind1" data-tip="Tool: get_dashboard · starts 14.5 s · 41 ms"><span class="wf-lab">Tool: get_dashboard</span><span class="wf-track"><i class="wf-bar tool-w" style="left:22.579%;width:0.350%"></i></span><span class="wf-d">41 ms</span></div><div class="wf-row ind2" data-tip="server: get_dashboard · starts 14.5 s · 32 ms"><span class="wf-lab">server: get_dashboard</span><span class="wf-track"><i class="wf-bar srv" style="left:22.590%;width:0.350%"></i></span><span class="wf-d">32 ms</span></div><div class="wf-row ind1" data-tip="Model call 4 · starts 14.6 s · 3.1 s"><span class="wf-lab">Model call 4</span><span class="wf-track"><i class="wf-bar llm" style="left:22.747%;width:4.848%"></i></span><span class="wf-d">3.1 s</span></div><div class="wf-row ind1" data-tip="Tool: update_panel · starts 17.3 s · 195 ms"><span class="wf-lab">Tool: update_panel</span><span class="wf-track"><i class="wf-bar tool-w" style="left:26.964%;width:0.350%"></i></span><span class="wf-d">195 ms</span></div><div class="wf-row ind2" data-tip="server: update_panel · starts 17.3 s · 184 ms"><span class="wf-lab">server: update_panel</span><span class="wf-track"><i class="wf-bar srv" style="left:26.977%;width:0.350%"></i></span><span class="wf-d">184 ms</span></div><div class="wf-row ind1" data-tip="Tool: get_alert_rule · starts 17.6 s · 51 ms"><span class="wf-lab">Tool: get_alert_rule</span><span class="wf-track"><i class="wf-bar tool-w" style="left:27.565%;width:0.350%"></i></span><span class="wf-d">51 ms</span></div><div class="wf-row ind2" data-tip="server: get_alert_rule · starts 17.6 s · 42 ms"><span class="wf-lab">server: get_alert_rule</span><span class="wf-track"><i class="wf-bar srv" style="left:27.577%;width:0.350%"></i></span><span class="wf-d">42 ms</span></div><div class="wf-row ind1" data-tip="Model call 5 · starts 17.8 s · 1.9 s"><span class="wf-lab">Model call 5</span><span class="wf-track"><i class="wf-bar llm" style="left:27.748%;width:2.942%"></i></span><span class="wf-d">1.9 s</span></div><div class="wf-row ind1" data-tip="Tool: get_dashboard · starts 19.6 s · 38 ms"><span class="wf-lab">Tool: get_dashboard</span><span class="wf-track"><i class="wf-bar tool-w" style="left:30.653%;width:0.350%"></i></span><span class="wf-d">38 ms</span></div><div class="wf-row ind2" data-tip="server: get_dashboard · starts 19.6 s · 29 ms"><span class="wf-lab">server: get_dashboard</span><span class="wf-track"><i class="wf-bar srv" style="left:30.665%;width:0.350%"></i></span><span class="wf-d">29 ms</span></div><div class="wf-row ind1" data-tip="Model call 6 · starts 19.7 s · 5.1 s"><span class="wf-lab">Model call 6</span><span class="wf-track"><i class="wf-bar llm" style="left:30.829%;width:7.991%"></i></span><span class="wf-d">5.1 s</span></div><div class="wf-row ind1" data-tip="Side call (Claude Code&#x27;s own check) · starts 24.9 s · 1.6 s"><span class="wf-lab">Side call (Claude Code&#x27;s own check)</span><span class="wf-track"><i class="wf-bar llm side" style="left:38.833%;width:2.572%"></i></span><span class="wf-d">1.6 s</span></div><div class="wf-row ind1" data-tip="Check: read Kibana back · starts 27.4 s · 364 ms"><span class="wf-lab">Check: read Kibana back</span><span class="wf-track"><i class="wf-bar aux" style="left:42.762%;width:0.569%"></i></span><span class="wf-d">364 ms</span></div><div class="wf-row ind1" data-tip="Reset Kibana · starts 27.7 s · 1.7 s"><span class="wf-lab">Reset Kibana</span><span class="wf-track"><i class="wf-bar aux" style="left:43.332%;width:2.692%"></i></span><span class="wf-d">1.7 s</span></div>
+    <div class="wf-axis"><span></span><div class="ticks"><span style="left:0.00%">0 s</span><span style="left:31.25%">20 s</span><span style="left:62.50%">40 s</span><span style="left:93.75%">60 s</span></div><span></span></div></div>
+  <div class="wf"><div class="wf-h"><b><i class="k-without"></i>Without</b><span>$0.422 · 61.0 s · 11 model calls · 10 tool calls</span></div><div class="wf-row ind0" data-tip="Whole run, with scoring and reset · starts 0.0 s · 62.5 s"><span class="wf-lab">Whole run, with scoring and reset</span><span class="wf-track"><i class="wf-bar root" style="left:0.000%;width:97.617%"></i></span><span class="wf-d">62.5 s</span></div><div class="wf-row ind1" data-tip="Model call 1 · starts 0.9 s · 2.0 s"><span class="wf-lab">Model call 1</span><span class="wf-track"><i class="wf-bar llm" style="left:1.374%;width:3.200%"></i></span><span class="wf-d">2.0 s</span></div><div class="wf-row ind1" data-tip="Shell: List API files, fetch data views · starts 2.9 s · 149 ms"><span class="wf-lab">Shell: List API files, fetch data views</span><span class="wf-track"><i class="wf-bar tool-o" style="left:4.533%;width:0.350%"></i></span><span class="wf-d">149 ms</span></div><div class="wf-row ind1" data-tip="Model call 2 · starts 3.1 s · 3.0 s"><span class="wf-lab">Model call 2</span><span class="wf-track"><i class="wf-bar llm" style="left:4.871%;width:4.620%"></i></span><span class="wf-d">3.0 s</span></div><div class="wf-row ind1" data-tip="Shell: Read data view fields, grep the API · starts 6.0 s · 108 ms"><span class="wf-lab">Shell: Read data view fields, grep the API</span><span class="wf-track"><i class="wf-bar tool-o" style="left:9.433%;width:0.350%"></i></span><span class="wf-d">108 ms</span></div><div class="wf-row ind1" data-tip="Model call 3 · starts 6.2 s · 3.0 s"><span class="wf-lab">Model call 3</span><span class="wf-track"><i class="wf-bar llm" style="left:9.708%;width:4.766%"></i></span><span class="wf-d">3.0 s</span></div><div class="wf-row ind1" data-tip="Shell: Read 475 lines of API reference · starts 9.2 s · 49 ms"><span class="wf-lab">Shell: Read 475 lines of API reference</span><span class="wf-track"><i class="wf-bar tool-o" style="left:14.446%;width:0.350%"></i></span><span class="wf-d">49 ms</span></div><div class="wf-row ind1" data-tip="Model call 4 · starts 9.4 s · 2.7 s"><span class="wf-lab">Model call 4</span><span class="wf-track"><i class="wf-bar llm" style="left:14.630%;width:4.233%"></i></span><span class="wf-d">2.7 s</span></div><div class="wf-row ind1" data-tip="Shell: Grep reference, read 200 lines · starts 12.1 s · 65 ms"><span class="wf-lab">Shell: Grep reference, read 200 lines</span><span class="wf-track"><i class="wf-bar tool-o" style="left:18.832%;width:0.350%"></i></span><span class="wf-d">65 ms</span></div><div class="wf-row ind1" data-tip="Model call 5 · starts 12.2 s · 1.8 s"><span class="wf-lab">Model call 5</span><span class="wf-track"><i class="wf-bar llm" style="left:19.063%;width:2.825%"></i></span><span class="wf-d">1.8 s</span></div><div class="wf-row ind1" data-tip="Shell: Read two more reference slices · starts 14.0 s · 79 ms"><span class="wf-lab">Shell: Read two more reference slices</span><span class="wf-track"><i class="wf-bar tool-o" style="left:21.864%;width:0.350%"></i></span><span class="wf-d">79 ms</span></div><div class="wf-row ind1" data-tip="Model call 6 · starts 14.1 s · 6.1 s"><span class="wf-lab">Model call 6</span><span class="wf-track"><i class="wf-bar llm" style="left:22.097%;width:9.564%"></i></span><span class="wf-d">6.1 s</span></div><div class="wf-row ind1" data-tip="Shell: POST the dashboard JSON · starts 20.2 s · 143 ms"><span class="wf-lab">Shell: POST the dashboard JSON</span><span class="wf-track"><i class="wf-bar tool-o" style="left:31.625%;width:0.350%"></i></span><span class="wf-d">143 ms</span></div><div class="wf-row ind1" data-tip="Model call 7 · starts 20.5 s · 6.1 s"><span class="wf-lab">Model call 7</span><span class="wf-track"><i class="wf-bar llm" style="left:31.977%;width:9.506%"></i></span><span class="wf-d">6.1 s</span></div><div class="wf-row ind1" data-tip="Shell: Look up codes, rule types · starts 26.5 s · 304 ms · failed"><span class="wf-lab"><b class="err" title="failed">✕ failed</b> Shell: Look up codes, rule types</span><span class="wf-track"><i class="wf-bar tool-o" style="left:41.441%;width:0.475%"></i></span><span class="wf-d">304 ms</span></div><div class="wf-row ind1" data-tip="Model call 8 · starts 26.9 s · 7.4 s"><span class="wf-lab">Model call 8</span><span class="wf-track"><i class="wf-bar llm" style="left:42.038%;width:11.597%"></i></span><span class="wf-d">7.4 s</span></div><div class="wf-row ind1" data-tip="Shell: POST the rule JSON · starts 34.3 s · 1.5 s"><span class="wf-lab">Shell: POST the rule JSON</span><span class="wf-track"><i class="wf-bar tool-o" style="left:53.597%;width:2.353%"></i></span><span class="wf-d">1.5 s</span></div><div class="wf-row ind1" data-tip="Model call 9 · starts 35.9 s · 6.0 s"><span class="wf-lab">Model call 9</span><span class="wf-track"><i class="wf-bar llm" style="left:56.074%;width:9.364%"></i></span><span class="wf-d">6.0 s</span></div><div class="wf-row ind1" data-tip="Shell: Rewrite the rule, PUT it back · starts 41.9 s · 952 ms"><span class="wf-lab">Shell: Rewrite the rule, PUT it back</span><span class="wf-track"><i class="wf-bar tool-o" style="left:65.416%;width:1.487%"></i></span><span class="wf-d">952 ms</span></div><div class="wf-row ind1" data-tip="Model call 10 · starts 42.9 s · 6.7 s"><span class="wf-lab">Model call 10</span><span class="wf-track"><i class="wf-bar llm" style="left:67.019%;width:10.416%"></i></span><span class="wf-d">6.7 s</span></div><div class="wf-row ind1" data-tip="Shell: Rename panel, read both back · starts 49.5 s · 1.0 s"><span class="wf-lab">Shell: Rename panel, read both back</span><span class="wf-track"><i class="wf-bar tool-o" style="left:77.407%;width:1.581%"></i></span><span class="wf-d">1.0 s</span></div><div class="wf-row ind1" data-tip="Model call 11 · starts 50.6 s · 7.3 s"><span class="wf-lab">Model call 11</span><span class="wf-track"><i class="wf-bar llm" style="left:79.110%;width:11.463%"></i></span><span class="wf-d">7.3 s</span></div><div class="wf-row ind1" data-tip="Side call (Claude Code&#x27;s own check) · starts 58.0 s · 2.3 s"><span class="wf-lab">Side call (Claude Code&#x27;s own check)</span><span class="wf-track"><i class="wf-bar llm side" style="left:90.586%;width:3.631%"></i></span><span class="wf-d">2.3 s</span></div><div class="wf-row ind1" data-tip="Check: read Kibana back · starts 61.0 s · 346 ms"><span class="wf-lab">Check: read Kibana back</span><span class="wf-track"><i class="wf-bar aux" style="left:95.294%;width:0.541%"></i></span><span class="wf-d">346 ms</span></div><div class="wf-row ind1" data-tip="Reset Kibana · starts 61.3 s · 1.1 s"><span class="wf-lab">Reset Kibana</span><span class="wf-track"><i class="wf-bar aux" style="left:95.836%;width:1.781%"></i></span><span class="wf-d">1.1 s</span></div>
+    <div class="wf-axis"><span></span><div class="ticks"><span style="left:0.00%">0 s</span><span style="left:31.25%">20 s</span><span style="left:62.50%">40 s</span><span style="left:93.75%">60 s</span></div><span></span></div></div>
+</div></figure>
+<p class="fig-note">Both runs passed all 10 checks. With the server, Opus made 7 short tool calls. Without it, Opus spent its first 20 seconds reading the API reference before it created anything, and one shell call failed. Each trace also holds one short side call that Claude Code makes on its own. The runs took 8 and 11 turns.</p><p class="src"><span class="src-k">↻ Redrawn from Honeycomb</span> Open in Honeycomb: <a href="https://ui.eu1.honeycomb.io/pedro-angel/environments/test/result/zK-SboX4hbVv/trace?trace_id=7fa57d25dbf2c6162d7aa063bf6d1263">trace with the server</a> · <a href="https://ui.eu1.honeycomb.io/pedro-angel/environments/test/result/JE-FA7MgXLB2/trace?trace_id=1354027cee52babf25aa9d333e3a5613">trace without</a>. Run summaries: <a href="https://ui.eu1.honeycomb.io/pedro-angel/environments/test/datasets/mcp-for-kibana-study4/result/jp-YjDUjFVgu">query</a>; shell-step labels from the spans: <a href="https://ui.eu1.honeycomb.io/pedro-angel/environments/test/datasets/mcp-for-kibana-study4/result/gX-3uoFdZNdg">query</a>.</p>
+</div>
+</section>
+
+<section>
+  <div class="sec-head">
+    <span class="eyebrow">Question 3 · where the savings come from: all runs</span>
+    <h2>Less text through the model, less time waiting on it</h2>
+    <p class="note">Figures 5 to 9 are averages per run over all four tasks, per model and setup. For Sonnet and Opus the number of steps changes little; what changes is how much text each step carries.</p>
+  </div>
+  <div class="figblock bh-l">
+<div class="fc"><span class="fc-num">Figure 5</span><h3 class="fc-title">Tool output read back per run (average)</h3><p class="fc-sub">Average bytes of tool output fed back into the model per run, over all four tasks.</p></div>
+<figure id="fig-5" class="fig-slot" aria-label="Figure 5: Tool output read back per run (average)"><div class="fig-top"><div class="legend"><span><i class="k-with"></i>With the server</span><span><i class="k-without"></i>Without</span></div><span class="rh">right: without ÷ with</span></div><div class="single"><div class="rows"><div class="pb-group">
+  <div class="pb-lab">Haiku 5.5</div>
+  <div class="pb-bars">
+    <div class="pb-row" data-tip="Haiku 5.5 · with the server: 1.9 kB"><span class="pb-track"><i class="pb-bar w" style="width:4.78%"></i></span><span class="pb-v">1.9 kB</span></div>
+    <div class="pb-row" data-tip="Haiku 5.5 · without: 33.1 kB"><span class="pb-track"><i class="pb-bar o" style="width:82.63%"></i></span><span class="pb-v">33.1 kB</span></div>
+  </div>
+  <div class="pb-ratio">17.3×</div>
+</div><div class="pb-group">
+  <div class="pb-lab">Sonnet 5.5</div>
+  <div class="pb-bars">
+    <div class="pb-row" data-tip="Sonnet 5.5 · with the server: 1.7 kB"><span class="pb-track"><i class="pb-bar w" style="width:4.32%"></i></span><span class="pb-v">1.7 kB</span></div>
+    <div class="pb-row" data-tip="Sonnet 5.5 · without: 18.1 kB"><span class="pb-track"><i class="pb-bar o" style="width:45.31%"></i></span><span class="pb-v">18.1 kB</span></div>
+  </div>
+  <div class="pb-ratio">10.5×</div>
+</div><div class="pb-group">
+  <div class="pb-lab">Opus 5.5</div>
+  <div class="pb-bars">
+    <div class="pb-row" data-tip="Opus 5.5 · with the server: 1.7 kB"><span class="pb-track"><i class="pb-bar w" style="width:4.18%"></i></span><span class="pb-v">1.7 kB</span></div>
+    <div class="pb-row" data-tip="Opus 5.5 · without: 32.2 kB"><span class="pb-track"><i class="pb-bar o" style="width:80.45%"></i></span><span class="pb-v">32.2 kB</span></div>
+  </div>
+  <div class="pb-ratio">19.3×</div>
+</div></div><div class="pb-axis"><div></div><div class="ticks"><span style="left:0.00%">0 kB</span><span style="left:25.00%">10 kB</span><span style="left:50.00%">20 kB</span><span style="left:75.00%">30 kB</span><span style="left:100.00%">40 kB</span></div><div></div></div></div></figure>
+<p class="fig-note">Without the server the agent reads raw API JSON and slices of Kibana's API reference; with it, each tool returns a short answer.</p><p class="src"><span class="src-k">↻ Redrawn from Honeycomb</span> <a href="https://ui.eu1.honeycomb.io/pedro-angel/environments/test/datasets/mcp-for-kibana-study4/result/52-VMv7CZGJc">Open in Honeycomb</a> · board panel <a href="https://ui.eu1.honeycomb.io/pedro-angel/environments/test/board/25-8QuCXHevA">“Fig 5 · Tool output read back per run (average)”</a> on mcp-for-kibana server: where the savings come from</p>
+</div>
+  <div class="figblock bh-l">
+<div class="fc"><span class="fc-num">Figure 6</span><h3 class="fc-title">Output tokens per run (average)</h3><p class="fc-sub">Average tokens the model wrote per run: its replies, commands and request bodies.</p></div>
+<figure id="fig-6" class="fig-slot" aria-label="Figure 6: Output tokens per run (average)"><div class="fig-top"><div class="legend"><span><i class="k-with"></i>With the server</span><span><i class="k-without"></i>Without</span></div><span class="rh">right: without ÷ with</span></div><div class="single"><div class="rows"><div class="pb-group">
+  <div class="pb-lab">Haiku 5.5</div>
+  <div class="pb-bars">
+    <div class="pb-row" data-tip="Haiku 5.5 · with the server: 1,720"><span class="pb-track"><i class="pb-bar w" style="width:17.20%"></i></span><span class="pb-v">1,720</span></div>
+    <div class="pb-row" data-tip="Haiku 5.5 · without: 8,802"><span class="pb-track"><i class="pb-bar o" style="width:88.02%"></i></span><span class="pb-v">8,802</span></div>
+  </div>
+  <div class="pb-ratio">5.1×</div>
+</div><div class="pb-group">
+  <div class="pb-lab">Sonnet 5.5</div>
+  <div class="pb-bars">
+    <div class="pb-row" data-tip="Sonnet 5.5 · with the server: 1,087"><span class="pb-track"><i class="pb-bar w" style="width:10.87%"></i></span><span class="pb-v">1,087</span></div>
+    <div class="pb-row" data-tip="Sonnet 5.5 · without: 2,334"><span class="pb-track"><i class="pb-bar o" style="width:23.34%"></i></span><span class="pb-v">2,334</span></div>
+  </div>
+  <div class="pb-ratio">2.1×</div>
+</div><div class="pb-group">
+  <div class="pb-lab">Opus 5.5</div>
+  <div class="pb-bars">
+    <div class="pb-row" data-tip="Opus 5.5 · with the server: 1,251"><span class="pb-track"><i class="pb-bar w" style="width:12.51%"></i></span><span class="pb-v">1,251</span></div>
+    <div class="pb-row" data-tip="Opus 5.5 · without: 3,237"><span class="pb-track"><i class="pb-bar o" style="width:32.37%"></i></span><span class="pb-v">3,237</span></div>
+  </div>
+  <div class="pb-ratio">2.6×</div>
+</div></div><div class="pb-axis"><div></div><div class="ticks"><span style="left:0.00%">0</span><span style="left:25.00%">2,500</span><span style="left:50.00%">5,000</span><span style="left:75.00%">7,500</span><span style="left:100.00%">10,000</span></div><div></div></div></div></figure>
+<p class="fig-note">Writing curl commands and JSON bodies by hand costs output tokens; calling a tool with a few arguments does not.</p><p class="src"><span class="src-k">↻ Redrawn from Honeycomb</span> <a href="https://ui.eu1.honeycomb.io/pedro-angel/environments/test/datasets/mcp-for-kibana-study4/result/6r-cVxmt8Mwn">Open in Honeycomb</a> · board panel <a href="https://ui.eu1.honeycomb.io/pedro-angel/environments/test/board/25-8QuCXHevA">“Fig 6 · Output tokens per run (average)”</a> on mcp-for-kibana server: where the savings come from</p>
+</div>
+  <div class="figblock bh-l">
+<div class="fc"><span class="fc-num">Figure 7</span><h3 class="fc-title">New context written to cache per run (average)</h3><p class="fc-sub">Average tokens written to the prompt cache per run. What the model reads back becomes new context, and cache writes are billed above normal input.</p></div>
+<figure id="fig-7" class="fig-slot" aria-label="Figure 7: New context written to cache per run (average)"><div class="fig-top"><div class="legend"><span><i class="k-with"></i>With the server</span><span><i class="k-without"></i>Without</span></div><span class="rh">right: without ÷ with</span></div><div class="single"><div class="rows"><div class="pb-group">
+  <div class="pb-lab">Haiku 5.5</div>
+  <div class="pb-bars">
+    <div class="pb-row" data-tip="Haiku 5.5 · with the server: 3.8k"><span class="pb-track"><i class="pb-bar w" style="width:12.69%"></i></span><span class="pb-v">3.8k</span></div>
+    <div class="pb-row" data-tip="Haiku 5.5 · without: 22.2k"><span class="pb-track"><i class="pb-bar o" style="width:73.85%"></i></span><span class="pb-v">22.2k</span></div>
+  </div>
+  <div class="pb-ratio">5.8×</div>
+</div><div class="pb-group">
+  <div class="pb-lab">Sonnet 5.5</div>
+  <div class="pb-bars">
+    <div class="pb-row" data-tip="Sonnet 5.5 · with the server: 3.3k"><span class="pb-track"><i class="pb-bar w" style="width:10.91%"></i></span><span class="pb-v">3.3k</span></div>
+    <div class="pb-row" data-tip="Sonnet 5.5 · without: 10.0k"><span class="pb-track"><i class="pb-bar o" style="width:33.17%"></i></span><span class="pb-v">10.0k</span></div>
+  </div>
+  <div class="pb-ratio">3.0×</div>
+</div><div class="pb-group">
+  <div class="pb-lab">Opus 5.5</div>
+  <div class="pb-bars">
+    <div class="pb-row" data-tip="Opus 5.5 · with the server: 3.3k"><span class="pb-track"><i class="pb-bar w" style="width:11.00%"></i></span><span class="pb-v">3.3k</span></div>
+    <div class="pb-row" data-tip="Opus 5.5 · without: 15.4k"><span class="pb-track"><i class="pb-bar o" style="width:51.32%"></i></span><span class="pb-v">15.4k</span></div>
+  </div>
+  <div class="pb-ratio">4.7×</div>
+</div></div><div class="pb-axis"><div></div><div class="ticks"><span style="left:0.00%">0k</span><span style="left:33.33%">10k</span><span style="left:66.67%">20k</span><span style="left:100.00%">30k</span></div><div></div></div></div></figure>
+<p class="fig-note">This moves with the cost gap in Figure 1.</p><p class="src"><span class="src-k">↻ Redrawn from Honeycomb</span> <a href="https://ui.eu1.honeycomb.io/pedro-angel/environments/test/datasets/mcp-for-kibana-study4/result/wa-w7TiDZeXD">Open in Honeycomb</a> · board panel <a href="https://ui.eu1.honeycomb.io/pedro-angel/environments/test/board/25-8QuCXHevA">“Fig 7 · New context written to cache per run (average)”</a> on mcp-for-kibana server: where the savings come from</p>
+</div>
+  <div class="figblock bh-l">
+<div class="fc"><span class="fc-num">Figure 8</span><h3 class="fc-title">Model turns per run (average)</h3><p class="fc-sub">Average number of model turns per run.</p></div>
+<figure id="fig-8" class="fig-slot" aria-label="Figure 8: Model turns per run (average)"><div class="fig-top"><div class="legend"><span><i class="k-with"></i>With the server</span><span><i class="k-without"></i>Without</span></div><span class="rh">right: without ÷ with</span></div><div class="single"><div class="rows"><div class="pb-group">
+  <div class="pb-lab">Haiku 5.5</div>
+  <div class="pb-bars">
+    <div class="pb-row" data-tip="Haiku 5.5 · with the server: 7.8"><span class="pb-track"><i class="pb-bar w" style="width:38.96%"></i></span><span class="pb-v">7.8</span></div>
+    <div class="pb-row" data-tip="Haiku 5.5 · without: 17.5"><span class="pb-track"><i class="pb-bar o" style="width:87.50%"></i></span><span class="pb-v">17.5</span></div>
+  </div>
+  <div class="pb-ratio">2.2×</div>
+</div><div class="pb-group">
+  <div class="pb-lab">Sonnet 5.5</div>
+  <div class="pb-bars">
+    <div class="pb-row" data-tip="Sonnet 5.5 · with the server: 7.0"><span class="pb-track"><i class="pb-bar w" style="width:35.10%"></i></span><span class="pb-v">7.0</span></div>
+    <div class="pb-row" data-tip="Sonnet 5.5 · without: 8.3"><span class="pb-track"><i class="pb-bar o" style="width:41.56%"></i></span><span class="pb-v">8.3</span></div>
+  </div>
+  <div class="pb-ratio">1.2×</div>
+</div><div class="pb-group">
+  <div class="pb-lab">Opus 5.5</div>
+  <div class="pb-bars">
+    <div class="pb-row" data-tip="Opus 5.5 · with the server: 7.1"><span class="pb-track"><i class="pb-bar w" style="width:35.64%"></i></span><span class="pb-v">7.1</span></div>
+    <div class="pb-row" data-tip="Opus 5.5 · without: 8.7"><span class="pb-track"><i class="pb-bar o" style="width:43.33%"></i></span><span class="pb-v">8.7</span></div>
+  </div>
+  <div class="pb-ratio">1.2×</div>
+</div></div><div class="pb-axis"><div></div><div class="ticks"><span style="left:0.00%">0</span><span style="left:25.00%">5</span><span style="left:50.00%">10</span><span style="left:75.00%">15</span><span style="left:100.00%">20</span></div><div></div></div></div></figure>
+<p class="fig-note">Only Haiku needs far more turns without the server. Sonnet and Opus take about as many steps either way; each step carries more text.</p><p class="src"><span class="src-k">↻ Redrawn from Honeycomb</span> <a href="https://ui.eu1.honeycomb.io/pedro-angel/environments/test/datasets/mcp-for-kibana-study4/result/84-hBWXwHUxZ">Open in Honeycomb</a> · board panel <a href="https://ui.eu1.honeycomb.io/pedro-angel/environments/test/board/25-8QuCXHevA">“Fig 8 · Model turns per run (average)”</a> on mcp-for-kibana server: where the savings come from</p>
+</div>
+  <div class="figblock ">
+<div class="fc"><span class="fc-num">Figure 9</span><h3 class="fc-title">Model time and other time per run (average)</h3><p class="fc-sub">Average seconds per run spent waiting on the model, plus everything else (start-up and running the tools).</p></div>
+<figure id="fig-9" class="fig-slot" aria-label="Figure 9: Model time and other time per run (average)"><div class="legend"><span><i class="k-with"></i>Model time, with the server</span><span><i class="k-without"></i>Model time, without</span><span><i class="k-rest"></i>Everything else</span></div><div class="ts"><div class="ts-model">Haiku 5.5</div><div class="ts-row" data-tip="Haiku 5.5 · With the server: model 9.3 s + other 7.0 s"><span class="ts-lab">With the server</span><span class="ts-track"><i class="ts-api w" style="width:15.44%"></i><i class="ts-rest" style="width:11.74%"></i></span><span class="ts-val">9.3 + 7.0 s</span></div><div class="ts-row" data-tip="Haiku 5.5 · Without: model 41.0 s + other 9.6 s"><span class="ts-lab">Without</span><span class="ts-track"><i class="ts-api o" style="width:68.38%"></i><i class="ts-rest" style="width:16.08%"></i></span><span class="ts-val">41.0 + 9.6 s</span></div><div class="ts-model">Sonnet 5.5</div><div class="ts-row" data-tip="Sonnet 5.5 · With the server: model 11.7 s + other 6.5 s"><span class="ts-lab">With the server</span><span class="ts-track"><i class="ts-api w" style="width:19.44%"></i><i class="ts-rest" style="width:10.81%"></i></span><span class="ts-val">11.7 + 6.5 s</span></div><div class="ts-row" data-tip="Sonnet 5.5 · Without: model 23.8 s + other 10.4 s"><span class="ts-lab">Without</span><span class="ts-track"><i class="ts-api o" style="width:39.63%"></i><i class="ts-rest" style="width:17.31%"></i></span><span class="ts-val">23.8 + 10.4 s</span></div><div class="ts-model">Opus 5.5</div><div class="ts-row" data-tip="Opus 5.5 · With the server: model 14.8 s + other 6.3 s"><span class="ts-lab">With the server</span><span class="ts-track"><i class="ts-api w" style="width:24.75%"></i><i class="ts-rest" style="width:10.43%"></i></span><span class="ts-val">14.8 + 6.3 s</span></div><div class="ts-row" data-tip="Opus 5.5 · Without: model 33.7 s + other 5.7 s"><span class="ts-lab">Without</span><span class="ts-track"><i class="ts-api o" style="width:56.10%"></i><i class="ts-rest" style="width:9.42%"></i></span><span class="ts-val">33.7 + 5.7 s</span></div><div class="ts-axis"><span></span><div class="ticks"><span style="left:0.00%">0 s</span><span style="left:33.33%">20 s</span><span style="left:66.67%">40 s</span><span style="left:100.00%">60 s</span></div><span></span></div></div></figure>
+<p class="fig-note">The time saved is model time. Everything else averages 5.7 to 10.4 s in both setups.</p><p class="src"><span class="src-k">↻ Redrawn from Honeycomb</span> <a href="https://ui.eu1.honeycomb.io/pedro-angel/environments/test/datasets/mcp-for-kibana-study4/result/9u-toPPjoMyU">Open in Honeycomb</a> · board panel <a href="https://ui.eu1.honeycomb.io/pedro-angel/environments/test/board/25-8QuCXHevA">“Fig 9 · Model time and other time per run (average)”</a> on mcp-for-kibana server: where the savings come from</p>
+</div>
+  <div class="figblock ">
+<div class="fc"><span class="fc-num">Figure 10</span><h3 class="fc-title">Kibana tool calls served by the MCP server</h3><p class="fc-sub">The server's own spans, one per Kibana tool call, from the 143 runs with the server: how often each tool was called, and its median time inside the server.</p></div>
+<figure id="fig-10" class="fig-slot" aria-label="Figure 10: Kibana tool calls served by the MCP server"><div class="sv"><div class="sv-row sv-head"><span>Tool</span><span></span><span class="r">Calls</span><span class="r">Median</span></div><div class="sv-row" data-tip="tools/call get_dashboard: 206 calls, median 27 ms"><span class="sv-lab mono">get_dashboard</span><span class="sv-track"><i style="width:82.40%"></i></span><span class="sv-n">206</span><span class="sv-ms">27 ms</span></div><div class="sv-row" data-tip="tools/call get_alert_rule: 111 calls, median 28 ms"><span class="sv-lab mono">get_alert_rule</span><span class="sv-track"><i style="width:44.40%"></i></span><span class="sv-n">111</span><span class="sv-ms">28 ms</span></div><div class="sv-row" data-tip="tools/call describe_data_view: 108 calls, median 54 ms"><span class="sv-lab mono">describe_data_view</span><span class="sv-track"><i style="width:43.20%"></i></span><span class="sv-n">108</span><span class="sv-ms">54 ms</span></div><div class="sv-row" data-tip="tools/call enable_alert_rule: 82 calls, median 1538 ms"><span class="sv-lab mono">enable_alert_rule</span><span class="sv-track"><i style="width:32.80%"></i></span><span class="sv-n">82</span><span class="sv-ms">1,538 ms</span></div><div class="sv-row" data-tip="tools/call list_alert_rules: 77 calls, median 37 ms"><span class="sv-lab mono">list_alert_rules</span><span class="sv-track"><i style="width:30.80%"></i></span><span class="sv-n">77</span><span class="sv-ms">37 ms</span></div><div class="sv-row" data-tip="tools/call create_alert_rule: 72 calls, median 826 ms"><span class="sv-lab mono">create_alert_rule</span><span class="sv-track"><i style="width:28.80%"></i></span><span class="sv-n">72</span><span class="sv-ms">826 ms</span></div><div class="sv-row" data-tip="tools/call create_dashboard: 72 calls, median 671 ms"><span class="sv-lab mono">create_dashboard</span><span class="sv-track"><i style="width:28.80%"></i></span><span class="sv-n">72</span><span class="sv-ms">671 ms</span></div><div class="sv-row" data-tip="tools/call search_dashboards: 72 calls, median 28 ms"><span class="sv-lab mono">search_dashboards</span><span class="sv-track"><i style="width:28.80%"></i></span><span class="sv-n">72</span><span class="sv-ms">28 ms</span></div><div class="sv-row" data-tip="tools/call update_panel: 72 calls, median 663 ms"><span class="sv-lab mono">update_panel</span><span class="sv-track"><i style="width:28.80%"></i></span><span class="sv-n">72</span><span class="sv-ms">663 ms</span></div><div class="sv-row" data-tip="tools/call add_panel: 36 calls, median 684 ms"><span class="sv-lab mono">add_panel</span><span class="sv-track"><i style="width:14.40%"></i></span><span class="sv-n">36</span><span class="sv-ms">684 ms</span></div><div class="sv-row" data-tip="tools/call list_rule_types: 2 calls, median 50 ms"><span class="sv-lab mono">list_rule_types</span><span class="sv-track"><i style="width:0.80%"></i></span><span class="sv-n">2</span><span class="sv-ms">50 ms</span></div></div></figure>
+<p class="fig-note">Reads take 27 to 54 ms inside the server; writes take 0.7 to 1.5 s.</p><p class="src"><span class="src-k">↻ Redrawn from Honeycomb</span> <a href="https://ui.eu1.honeycomb.io/pedro-angel/environments/test/datasets/mcp-for-kibana-study4/result/pH-JB1yihmCd">Open in Honeycomb</a> · board panel <a href="https://ui.eu1.honeycomb.io/pedro-angel/environments/test/board/25-8QuCXHevA">“Fig 10 · Kibana tool calls served by the MCP server”</a> on mcp-for-kibana server: where the savings come from</p>
+</div>
+</section>
+
+<section>
+  <div class="sec-head">
+    <span class="eyebrow">Question 4 · does it hold across models and tasks?</span>
+    <h2>The costliest and slowest runs were all without the server</h2>
+    <p class="note">The heatmaps plot all 287 runs. BubbleUp then compares a selected region with all other runs, attribute by attribute, and ranks what is over-represented in the selection. It finds what the selected runs have in common; it does not show what caused them.</p>
+  </div>
+  <div class="figblock ">
+<div class="fc"><span class="fc-num">Figure 11</span><h3 class="fc-title">Cost of every run (heatmap)</h3><p class="fc-sub">Each cell counts runs at that cost (vertical, US dollars) and start time (horizontal). Colour is the number of runs in the cell, darker for more. 24 runs sit between $0.23 and $0.52, and no run falls between $0.15 and $0.23 (<a href="https://ui.eu1.honeycomb.io/pedro-angel/environments/test/datasets/mcp-for-kibana-study4/result/EJ-KfWL9NUNG">query</a>).</p></div>
+<figure id="fig-11" class="fig-slot" aria-label="Figure 11: Cost of every run (heatmap)"><div class="hc-frame"><a href="https://ui.eu1.honeycomb.io/img/GX1li2iCpfgW8eNTKWrhten8S1ePNUag2wyDOngeFBTC" class="hc-link" aria-label="Open the full-size Honeycomb chart"><img src="data:image/png;base64,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" alt="Honeycomb heatmap of run cost from 17:10 to 20:10 UTC: most runs below $0.15, and a separate band of 24 runs between $0.23 and $0.52." width="800" height="344"></a></div></figure>
+<p class="src"><span class="src-k">▣ Honeycomb chart</span> <a href="https://ui.eu1.honeycomb.io/pedro-angel/environments/test/datasets/mcp-for-kibana-study4/result/pW-124hpWVWU">Open in Honeycomb</a> · board panel <a href="https://ui.eu1.honeycomb.io/pedro-angel/environments/test/board/5q-7tCefHafG">“Fig 11 · Cost of every run (heatmap)”</a> on mcp-for-kibana server: cost and time saved</p>
+</div>
+  <div class="tbl-wrap bu-wrap"><table class="bu"><caption>BubbleUp on the 24 runs above $0.15, against the 263 others. Rows tagged “setup” are the model, setup and task each run was given.</caption><thead><tr><th>What the selected runs have in common</th><th class="r">Other runs</th><th class="r">Selected</th></tr></thead><tbody><tr class="design"><th scope="row">Model is Opus <span class=tag>setup</span></th><td class="n">27.0%</td><td class="n"><b>100%</b></td></tr><tr class="design"><th scope="row">Setup is without the server <span class=tag>setup</span></th><td class="n">45.6%</td><td class="n"><b>100%</b></td></tr><tr class="design"><th scope="row">Task is a build (web logs or flights) <span class=tag>setup</span></th><td class="n">45.6%</td><td class="n"><b>100%</b></td></tr></tbody></table></div>
+  <p class="note">The expensive band is all 12 Opus web-logs builds and all 12 Opus flights builds without the server, and no other run (<a href="https://ui.eu1.honeycomb.io/pedro-angel/environments/test/datasets/mcp-for-kibana-study4/result/Be-3ftX86jNK">count query</a>). Figure 1 shows those cells as the costliest. BubbleUp's other high-ranked attributes, such as “no Kibana tool calls”, restate the setup. <a href="https://ui.eu1.honeycomb.io/pedro-angel/environments/test/datasets/mcp-for-kibana-study4/result/pW-124hpWVWU?tab=bubbleup&bubbleup_result=hu-SnVUb5w6E">Open this BubbleUp in Honeycomb</a>.</p>
+  <div class="figblock ">
+<div class="fc"><span class="fc-num">Figure 12</span><h3 class="fc-title">Time of every run (heatmap)</h3><p class="fc-sub">Each cell counts runs at that wall-clock time (vertical, seconds) and start time (horizontal). Colour is the number of runs in the cell, darker for more. Most runs finish within 40 s; 31 run past 60 s, up to 174 s.</p></div>
+<figure id="fig-12" class="fig-slot" aria-label="Figure 12: Time of every run (heatmap)"><div class="hc-frame"><a href="https://ui.eu1.honeycomb.io/img/hO57EtuT9va5WWp76MYqjBBUCIW0EwM2uBTt6noCZCK" class="hc-link" aria-label="Open the full-size Honeycomb chart"><img src="data:image/png;base64,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" alt="Honeycomb heatmap of run time: most runs between 8 and 40 seconds, and a tail of 31 runs above 60 seconds, up to 174 seconds." width="800" height="344"></a></div></figure>
+<p class="src"><span class="src-k">▣ Honeycomb chart</span> <a href="https://ui.eu1.honeycomb.io/pedro-angel/environments/test/datasets/mcp-for-kibana-study4/result/ux-3jHLdSd4p">Open in Honeycomb</a> · board panel <a href="https://ui.eu1.honeycomb.io/pedro-angel/environments/test/board/5q-7tCefHafG">“Fig 12 · Time of every run (heatmap)”</a> on mcp-for-kibana server: cost and time saved</p>
+</div>
+  <div class="tbl-wrap bu-wrap"><table class="bu"><caption>BubbleUp on the 31 runs over 60 s, against the 256 others.</caption><thead><tr><th>What the selected runs have in common</th><th class="r">Other runs</th><th class="r">Selected</th></tr></thead><tbody><tr class="design"><th scope="row">Setup is without the server <span class=tag>setup</span></th><td class="n">44.1%</td><td class="n"><b>100%</b></td></tr><tr class="design"><th scope="row">Task is a build <span class=tag>setup</span></th><td class="n">44.1%</td><td class="n"><b>100%</b></td></tr><tr class="design"><th scope="row">Model is Haiku <span class=tag>setup</span></th><td class="n">29.7%</td><td class="n"><b>64.5%</b></td></tr><tr class=""><th scope="row">At least one failed tool call</th><td class="n">18.4%</td><td class="n"><b>83.9%</b></td></tr><tr class=""><th scope="row">At least one HTTP 4xx error from Kibana</th><td class="n">17.6%</td><td class="n"><b>71.0%</b></td></tr><tr class=""><th scope="row">A failed call the agent never retried</th><td class="n">4.7%</td><td class="n"><b>67.7%</b></td></tr></tbody></table></div>
+  <p class="note">Slow runs were much more likely to contain a failed tool call, mostly an HTTP 4xx error from Kibana's API. Every slow run was a build without the server, so the fair comparison stays within those builds: 26 of the 31 slow runs (84%) had a failed call, against 4 of the other 41 (10%) (<a href="https://ui.eu1.honeycomb.io/pedro-angel/environments/test/datasets/mcp-for-kibana-study4/result/DU-1WXWjPGEk">query</a>). The 60-second cut was chosen by eye; run times are continuous around it. Figure 4 shows the pattern in one run: without the server the agent learns the API by trial and error, and each error costs another model turn. <a href="https://ui.eu1.honeycomb.io/pedro-angel/environments/test/datasets/mcp-for-kibana-study4/result/ux-3jHLdSd4p?tab=bubbleup&bubbleup_result=pR-LVwRS9LyQ">Open this BubbleUp in Honeycomb</a>.</p>
+  <div class="figblock ">
+<div class="fc"><span class="fc-num">Figure 13</span><h3 class="fc-title">Checks passed by setup</h3><p class="fc-sub">Share of checks passed, summed over runs. Each check compares Kibana's real state after the run with the expected result.</p></div>
+<figure id="fig-13" class="fig-slot" aria-label="Figure 13: Checks passed by setup"><div class="meters"><div class="meter"><span class="m-lab"><i class="k-with"></i>With the server</span><span class="m-track"><i class="w" style="width:100%"></i></span><span class="m-val"><b>100%</b> · 1,040 of 1,040</span></div><div class="meter"><span class="m-lab"><i class="k-without"></i>Without</span><span class="m-track"><i class="o" style="width:100%"></i></span><span class="m-val"><b>100%</b> · 1,044 of 1,044</span></div></div></figure>
+<p class="fig-note">All 2,084 checks passed in both setups: the server's savings came with no loss of correctness.</p><p class="src"><span class="src-k">↻ Redrawn from Honeycomb</span> <a href="https://ui.eu1.honeycomb.io/pedro-angel/environments/test/datasets/mcp-for-kibana-study4/result/rN-8QrRgr7pR">Open in Honeycomb</a> · board panel <a href="https://ui.eu1.honeycomb.io/pedro-angel/environments/test/board/5q-7tCefHafG">“Fig 13 · Checks passed by setup”</a> on mcp-for-kibana server: cost and time saved</p>
+</div>
+  <div class="figblock bh-s">
+<div class="fc"><span class="fc-num">Figure 14</span><h3 class="fc-title">Runs per task and setup</h3><p class="fc-sub">Count of runs per task and setup. The design is 36 per cell: 3 models × 12 rounds. The dashed line marks 36.</p></div>
+<figure id="fig-14" class="fig-slot" aria-label="Figure 14: Runs per task and setup"><div class="legend"><span><i class="k-with"></i>With the server</span><span><i class="k-without"></i>Without</span></div><div class="single compact"><div class="rows target"><div class="pb-group">
+  <div class="pb-lab">Build on web logs</div>
+  <div class="pb-bars">
+    <div class="pb-row" data-tip="Build on web logs · with the server: 36"><span class="pb-track"><i class="pb-bar w" style="width:90.00%"></i></span><span class="pb-v">36</span></div>
+    <div class="pb-row" data-tip="Build on web logs · without: 36"><span class="pb-track"><i class="pb-bar o" style="width:90.00%"></i></span><span class="pb-v">36</span></div>
+  </div>
+  <div class="pb-ratio"></div>
+</div><div class="pb-group">
+  <div class="pb-lab">Build on flights</div>
+  <div class="pb-bars">
+    <div class="pb-row" data-tip="Build on flights · with the server: 36"><span class="pb-track"><i class="pb-bar w" style="width:90.00%"></i></span><span class="pb-v">36</span></div>
+    <div class="pb-row" data-tip="Build on flights · without: 36"><span class="pb-track"><i class="pb-bar o" style="width:90.00%"></i></span><span class="pb-v">36</span></div>
+  </div>
+  <div class="pb-ratio"></div>
+</div><div class="pb-group">
+  <div class="pb-lab">Change existing</div>
+  <div class="pb-bars">
+    <div class="pb-row" data-tip="Change existing · with the server: 35"><span class="pb-track"><i class="pb-bar w" style="width:87.50%"></i></span><span class="pb-v">35</span></div>
+    <div class="pb-row" data-tip="Change existing · without: 36"><span class="pb-track"><i class="pb-bar o" style="width:90.00%"></i></span><span class="pb-v">36</span></div>
+  </div>
+  <div class="pb-ratio"></div>
+</div><div class="pb-group">
+  <div class="pb-lab">Look up</div>
+  <div class="pb-bars">
+    <div class="pb-row" data-tip="Look up · with the server: 36"><span class="pb-track"><i class="pb-bar w" style="width:90.00%"></i></span><span class="pb-v">36</span></div>
+    <div class="pb-row" data-tip="Look up · without: 36"><span class="pb-track"><i class="pb-bar o" style="width:90.00%"></i></span><span class="pb-v">36</span></div>
+  </div>
+  <div class="pb-ratio"></div>
+</div></div></div></figure>
+<p class="fig-note">Change existing, with the server: 35 of 36. One Opus run did not reach Honeycomb (<a href="https://ui.eu1.honeycomb.io/pedro-angel/environments/test/datasets/mcp-for-kibana-study4/result/kf-BkAYjcxRk">query</a>).</p><p class="src"><span class="src-k">↻ Redrawn from Honeycomb</span> <a href="https://ui.eu1.honeycomb.io/pedro-angel/environments/test/datasets/mcp-for-kibana-study4/result/Jo-6V7ALFxvJ">Open in Honeycomb</a> · board panel <a href="https://ui.eu1.honeycomb.io/pedro-angel/environments/test/board/5q-7tCefHafG">“Fig 14 · Runs per task and setup”</a> on mcp-for-kibana server: cost and time saved</p>
+</div>
+</section>
+
+<section id="how">
+  <div class="sec-head">
+    <span class="eyebrow">Method</span>
+    <h2>How the numbers were calculated</h2>
+  </div>
+  <details class="more"><summary>Honeycomb queries, the per-model figures and attribute names</summary><div class="inner">
+    <div class="prose small">
+      <p>Every number on this page is a Honeycomb result: a query (COUNT, SUM, AVG, P25, P50, P75, HEATMAP or a formula), a BubbleUp or a trace view. All queries run over 2026-10-12 17:10–20:10 UTC on the summary spans named <code>efficiency.run</code>, one per run; the server's spans (<code>tools/call …</code>) and Claude Code's spans sit under them in the same trace. 287 of the 288 runs reached Honeycomb; the missing one is an Opus run with the server on the change task (<a href="https://ui.eu1.honeycomb.io/pedro-angel/environments/test/datasets/mcp-for-kibana-study4/result/kf-BkAYjcxRk">query</a>).</p>
+      <p><b>Cost and time per run.</b> For each model, task and setup, Honeycomb's P50 of the run's list-price cost (<code>study.total_cost_usd</code>) and wall-clock seconds (<code>study.wall_s</code>), over 12 runs. With 12 runs, P50 reports one of the two middle runs. P25 and P75 from the same query give the spread.</p>
+      <p><b>Per-model figures.</b> For each task, the with-server P50 divided by the without P50. Per model, the geometric mean of the four task ratios, so each task weighs the same; “% less” is one minus that. The table shows every step.</p>
+    </div>
+    <div class="tbl-wrap"><table class="ratio"><caption>With the server ÷ without, from Honeycomb P50s (<a href="https://ui.eu1.honeycomb.io/pedro-angel/environments/test/datasets/mcp-for-kibana-study4/result/rQ-XCLthePHQ">cost query</a>, <a href="https://ui.eu1.honeycomb.io/pedro-angel/environments/test/datasets/mcp-for-kibana-study4/result/jr-K1QutEy5g">time query</a>). Per model: geometric mean of the four task ratios.</caption><thead><tr><th>Measure · model</th><th class="r">Build on web logs</th><th class="r">Build on flights</th><th class="r">Change existing</th><th class="r">Look up</th><th class="r">Per model</th><th class="r">Saving</th></tr></thead><tbody><tr><th scope="row">Cost · Haiku 5.5</th><td class="n">0.19</td><td class="n">0.21</td><td class="n">0.38</td><td class="n">0.45</td><td class="n"><b>0.29</b></td><td class="n">71% less</td></tr><tr><th scope="row">Cost · Sonnet 5.5</th><td class="n">0.41</td><td class="n">0.39</td><td class="n">0.55</td><td class="n">0.68</td><td class="n"><b>0.49</b></td><td class="n">51% less</td></tr><tr><th scope="row">Cost · Opus 5.5</th><td class="n">0.25</td><td class="n">0.25</td><td class="n">0.52</td><td class="n">0.73</td><td class="n"><b>0.40</b></td><td class="n">60% less</td></tr><tr><th scope="row">Time · Haiku 5.5</th><td class="n">0.28</td><td class="n">0.30</td><td class="n">0.47</td><td class="n">0.65</td><td class="n"><b>0.40</b></td><td class="n">60% less</td></tr><tr><th scope="row">Time · Sonnet 5.5</th><td class="n">0.58</td><td class="n">0.52</td><td class="n">0.69</td><td class="n">0.90</td><td class="n"><b>0.66</b></td><td class="n">34% less</td></tr><tr><th scope="row">Time · Opus 5.5</th><td class="n">0.47</td><td class="n">0.48</td><td class="n">0.65</td><td class="n">0.93</td><td class="n"><b>0.61</b></td><td class="n">39% less</td></tr></tbody></table></div>
+    <div class="prose small">
+      <p><b>Where the savings come from.</b> AVG per model and setup over all four tasks, because P50 pooled across tasks jumps between the build and look-up runs. Model time is a calculated field, <code>study.duration_api_ms</code> ÷ 1000; other time is <code>study.wall_s</code> minus it.</p>
+      <p><b>Totals and counts.</b> two SUMs of cost, one per setup; checks as the formula SUM(<code>study.checks_passed</code>) ÷ SUM(<code>study.checks_total</code>); COUNT of runs. Figures 11 and 12 are Honeycomb's own HEATMAP charts; the BubbleUp tables list Honeycomb's percentages for a selected region against the rest.</p>
+      <p><b>The two traces.</b> Figure 4 is redrawn from the spans of two trace views. Cost, time, turns and checks come from each run's summary span (<a href="https://ui.eu1.honeycomb.io/pedro-angel/environments/test/datasets/mcp-for-kibana-study4/result/jp-YjDUjFVgu">query</a>); the shell-step labels summarise each command from its span (<a href="https://ui.eu1.honeycomb.io/pedro-angel/environments/test/datasets/mcp-for-kibana-study4/result/gX-3uoFdZNdg">query</a>).</p>
+    </div>
+    <div class="tbl-wrap"><table class="wide">
+      <caption>Which query answers which question. “Setup” is the attribute <code>study.arm</code> (with-mcp / no-mcp).</caption>
+      <thead><tr><th>Question</th><th>Honeycomb query on the run summaries</th><th>Figure</th></tr></thead>
+      <tbody>
+        <tr><td>How much cost does the server save per run?</td><td class="mono small">P25, P50, P75(study.total_cost_usd) by model, task, setup; SUM(study.total_cost_usd) where study.arm = with-mcp, and where = no-mcp</td><td class="small"><a href="#fig-1">1</a>, <a href="#fig-3">3</a></td></tr>
+        <tr><td>How much time does it save?</td><td class="mono small">P25, P50, P75(study.wall_s) by model, task, setup</td><td class="small"><a href="#fig-2">2</a></td></tr>
+        <tr><td>What did one run do?</td><td class="mono small">Trace view of the run's trace id</td><td class="small"><a href="#fig-4">4</a></td></tr>
+        <tr><td>Where do the savings come from?</td><td class="mono small">AVG of agent.usage.tool_result_bytes, study.output_tokens, study.cache_creation_input_tokens, study.num_turns, model time and other time by model, setup</td><td class="small"><a href="#fig-5">5–9</a></td></tr>
+        <tr><td>What does the server do?</td><td class="mono small">COUNT, P50(duration_ms) of the server's tools/call spans by name</td><td class="small"><a href="#fig-10">10</a></td></tr>
+        <tr><td>Which runs are outliers, and what do they share?</td><td class="mono small">HEATMAP(study.total_cost_usd) or HEATMAP(study.wall_s), then BubbleUp on a region</td><td class="small"><a href="#fig-11">11</a>, <a href="#fig-12">12</a></td></tr>
+        <tr><td>Did every run work? Is every run there?</td><td class="mono small">SUM(study.checks_passed) ÷ SUM(study.checks_total) by setup; COUNT by task, setup</td><td class="small"><a href="#fig-13">13</a>, <a href="#fig-14">14</a></td></tr>
+      </tbody>
+    </table></div>
+    <div class="tbl-wrap"><table class="wide">
+      <caption>Honeycomb attribute names behind the BubbleUp rows.</caption>
+      <tbody>
+        <tr><td>Model, setup, task</td><td class="mono small">study.model, study.arm (with-mcp / no-mcp), study.task; a build task has study.checks_total = 10</td></tr>
+        <tr><td>No Kibana tool calls</td><td class="mono small">agent.tool.calls_mcp = 0</td></tr>
+        <tr><td>Failed tool call</td><td class="mono small">agent.tool.failures ≥ 1</td></tr>
+        <tr><td>HTTP 4xx error</td><td class="mono small">agent.tool.failures_http_4xx ≥ 1</td></tr>
+        <tr><td>Never retried</td><td class="mono small">agent.tool.failures_unrecovered ≥ 1</td></tr>
+      </tbody>
+    </table></div>
+    <p class="small dim">Boards: <a href="https://ui.eu1.honeycomb.io/pedro-angel/environments/test/board/5q-7tCefHafG">mcp-for-kibana server: cost and time saved</a> (Figures 1–3, 11–14) and <a href="https://ui.eu1.honeycomb.io/pedro-angel/environments/test/board/25-8QuCXHevA">mcp-for-kibana server: where the savings come from</a> (Figures 5–10). Each board panel has the same query and time range as its figure, and each board has filters for model, setup and task.</p>
+  </div></details>
+</section>
+
+<footer>The mcp-for-kibana server: cost and time of Claude Code's Kibana work with and without it, measured with Honeycomb.</footer>
+</div>
+<div id="tip" role="tooltip"></div>
+<script>
+(function () {
+  var tip = document.getElementById('tip');
+  function show(el, x, y) {
+    tip.textContent = el.getAttribute('data-tip');
+    tip.classList.add('on');
+    var r = tip.getBoundingClientRect();
+    var nx = Math.min(x + 12, window.innerWidth - r.width - 8);
+    var ny = y - r.height - 10; if (ny < 8) ny = y + 16;
+    tip.style.left = Math.max(8, nx) + 'px'; tip.style.top = ny + 'px';
+  }
+  function hide() { tip.classList.remove('on'); }
+  document.querySelectorAll('[data-tip]').forEach(function (el) {
+    el.addEventListener('mousemove', function (e) { show(el, e.clientX, e.clientY); });
+    el.addEventListener('mouseleave', hide);
+  });
+  window.addEventListener('scroll', hide, { passive: true });
+})();
+</script>

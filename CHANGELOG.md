@@ -12,6 +12,10 @@ version section.
 
 ### Added
 
+- **Server savings report source.** `docs/reports/server-savings/` holds the
+  build script, templates, Honeycomb query results and built page of the report
+  on what the mcp-for-kibana server saves an AI agent doing Kibana work, so a
+  session on another machine can keep working on it.
 - **Study 5 runs four models and sends one to stage 2.**
   `local_study.json` adds `nvidia/nemotron-3-nano-omni`; `local_run.py
   stage2` runs the single best stage-1 model at the pass mark (most passes,

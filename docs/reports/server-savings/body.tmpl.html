@@ -1,0 +1,163 @@
+<div class="page">
+
+<header>
+  <span class="eyebrow">mcp-for-kibana · Claude Code on Kibana · runs of 12 Oct 2026</span>
+  <h1>Does the mcp-for-kibana server make an AI agent's Kibana work cheaper and faster?</h1>
+  <p class="lede">mcp-for-kibana is an MCP server: it gives an AI agent ready-made Kibana tools in place of Kibana's raw REST API. To measure what it saves, Claude Code did four Kibana tasks with and without the server, 288 runs in all, measured with Honeycomb. With the server, a run cost {{COST_LO}} to {{COST_HI}}% less and took {{TIME_LO}} to {{TIME_HI}}% less time, depending on the model, and every run passed its checks. The savings come from what the server keeps out of the model: without it, the agent read back {{AVGB_LO}} to {{AVGB_HI}} times more tool output per run.</p>
+  <div class="tiles">
+    <div class="tile"><span class="lab">Cost per run, with the server</span><span class="val">{{COST_LO}}–{{COST_HI}}<small>% less</small></span><span class="note">Per model, from Honeycomb's medians: {{COST_BY_MODEL}}. Figure 1.</span></div>
+    <div class="tile"><span class="lab">Time per run, with the server</span><span class="val">{{TIME_LO}}–{{TIME_HI}}<small>% less</small></span><span class="note">Per model, from Honeycomb's medians: {{TIME_BY_MODEL}}. Figure 2.</span></div>
+    <div class="tile"><span class="lab">Tool output read back, without the server</span><span class="val">{{AVGB_LO}}–{{AVGB_HI}}<small>× more</small></span><span class="note">Average per run, per model. Figure 5.</span></div>
+  </div>
+  <div class="easy">
+    <div class="card"><span class="what">Question 1 · Figures 1, 3</span><h3>How much cost does the server save per run?</h3><p>{{COST_LO}} to {{COST_HI}}% per run, and it is cheaper in all 12 model-and-task pairs. All runs together cost ${{SPEND_W}} with it and ${{SPEND_O}} without.</p><a class="go" href="#fig-1">See the cost</a></div>
+    <div class="card"><span class="what">Question 2 · Figure 2</span><h3>How much time does it save?</h3><p>{{TIME_LO}} to {{TIME_HI}}% per run. Building a dashboard and alert rule saves the most.</p><a class="go" href="#fig-2">See the time</a></div>
+    <div class="card"><span class="what">Question 3 · Figures 4 to 10</span><h3>Where do the savings come from?</h3><p>Less text through the model and less time waiting on it: 7 short tool calls against 10 shell commands and 20 seconds of reading API docs.</p><a class="go" href="#fig-4">See where they come from</a></div>
+    <div class="card"><span class="what">Question 4 · Figures 11 to 14</span><h3>Does it hold across models and tasks?</h3><p>Yes, for all three models and four tasks. The costliest and slowest runs were all without the server, and every check passed in both setups.</p><a class="go" href="#fig-11">See every run</a></div>
+  </div>
+  <p class="gloss">Terms used below. A <b>trace</b> is the timeline of one run; a <b>span</b> is one step in it, and each run's summary (cost, time, result) is one span. <b>P50</b> is Honeycomb's median; <b>P25</b> and <b>P75</b> mark the middle half of the runs. A <b>heatmap</b> plots every run at once. <b>BubbleUp</b> lists what a selected group of runs has in common, compared with the rest.</p>
+</header>
+
+<section>
+  <div class="sec-head">
+    <span class="eyebrow">The setup</span>
+    <h2>Same agent, same tasks, two ways to reach Kibana</h2>
+    <p class="note">Claude Code ran four Kibana tasks with no person involved: build a dashboard and alert rule on web-log data, the same on flight data, change an existing dashboard and rule, and look up facts about them. Each task ran with Haiku, Sonnet and Opus 5.5, in both setups, 12 times: 288 runs. Each run sent one trace to Honeycomb; 287 arrived, and every number below covers those 287.</p>
+  </div>
+  <div class="diagram card" role="img" aria-label="Diagram of the two setups. With the server: Claude Code calls the mcp-for-kibana server's tools, and the server calls Kibana. Without: Claude Code uses a shell and curl, with Kibana's API reference as files, against Kibana's REST API. After each run a checker reads Kibana back, Kibana is reset, and the run's trace goes to Honeycomb.">
+    <div class="lane">
+      <span class="lane-lab"><i class="k-with"></i>With the server</span>
+      <span class="node">Claude Code<small>Haiku, Sonnet or Opus 5.5</small></span>
+      <span class="arrow" aria-hidden="true"></span>
+      <span class="node node-with">mcp-for-kibana server<small>Kibana tools such as describe_data_view, create_dashboard, create_alert_rule, update_panel</small></span>
+      <span class="arrow" aria-hidden="true"></span>
+      <span class="node">Kibana</span>
+    </div>
+    <div class="lane">
+      <span class="lane-lab"><i class="k-without"></i>Without</span>
+      <span class="node">Claude Code<small>Haiku, Sonnet or Opus 5.5</small></span>
+      <span class="arrow" aria-hidden="true"></span>
+      <span class="node node-without">Shell and curl<small>with Kibana's API reference as files to read</small></span>
+      <span class="arrow" aria-hidden="true"></span>
+      <span class="node">Kibana REST API</span>
+    </div>
+    <p class="after">After every run: a checker reads Kibana back and scores the result, Kibana is reset, and the run's trace goes to Honeycomb. The trace holds Claude Code's model and tool calls, the server's own spans and one summary span with the run's model, setup, task, cost, time and checks.</p>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head">
+    <span class="eyebrow">Questions 1 and 2 · cost and time per run</span>
+    <h2>Cheaper and faster on every task</h2>
+    <p class="note">Each bar is one model, task and setup: the median of its 12 runs, with a line across the middle half (P25 to P75) so the spread is visible.</p>
+  </div>
+  {{FIG1}}
+  {{FIG2}}
+  {{FIG3}}
+</section>
+
+<section>
+  <div class="sec-head">
+    <span class="eyebrow">Question 3 · where the savings come from: one run</span>
+    <h2>The same build, with and without the server</h2>
+    <p class="note">Two traces from the first round, Opus building the web-logs dashboard and alert rule. One run cost four times the other; the traces show what the agent did with that money.</p>
+  </div>
+  {{FIG4}}
+</section>
+
+<section>
+  <div class="sec-head">
+    <span class="eyebrow">Question 3 · where the savings come from: all runs</span>
+    <h2>Less text through the model, less time waiting on it</h2>
+    <p class="note">Figures 5 to 9 are averages per run over all four tasks, per model and setup. For Sonnet and Opus the number of steps changes little; what changes is how much text each step carries.</p>
+  </div>
+  {{FIG5}}
+  {{FIG6}}
+  {{FIG7}}
+  {{FIG8}}
+  {{FIG9}}
+  {{FIG10}}
+</section>
+
+<section>
+  <div class="sec-head">
+    <span class="eyebrow">Question 4 · does it hold across models and tasks?</span>
+    <h2>The costliest and slowest runs were all without the server</h2>
+    <p class="note">The heatmaps plot all 287 runs. BubbleUp then compares a selected region with all other runs, attribute by attribute, and ranks what is over-represented in the selection. It finds what the selected runs have in common; it does not show what caused them.</p>
+  </div>
+  {{FIG11}}
+  {{BU1}}
+  <p class="note">The expensive band is all 12 Opus web-logs builds and all 12 Opus flights builds without the server, and no other run (<a href="{{Q_COUNT}}">count query</a>). Figure 1 shows those cells as the costliest. BubbleUp's other high-ranked attributes, such as “no Kibana tool calls”, restate the setup. <a href="{{BU_COST}}">Open this BubbleUp in Honeycomb</a>.</p>
+  {{FIG12}}
+  {{BU2}}
+  <p class="note">Slow runs were much more likely to contain a failed tool call, mostly an HTTP 4xx error from Kibana's API. Every slow run was a build without the server, so the fair comparison stays within those builds: {{FAIL_N_SLOW}} of the {{N_SLOW}} slow runs ({{FAIL_SLOW}}%) had a failed call, against {{FAIL_N_REST}} of the other {{N_REST}} ({{FAIL_REST}}%) (<a href="{{Q_FAIL}}">query</a>). The 60-second cut was chosen by eye; run times are continuous around it. Figure 4 shows the pattern in one run: without the server the agent learns the API by trial and error, and each error costs another model turn. <a href="{{BU_TIME}}">Open this BubbleUp in Honeycomb</a>.</p>
+  {{FIG13}}
+  {{FIG14}}
+</section>
+
+<section id="how">
+  <div class="sec-head">
+    <span class="eyebrow">Method</span>
+    <h2>How the numbers were calculated</h2>
+  </div>
+  <details class="more"><summary>Honeycomb queries, the per-model figures and attribute names</summary><div class="inner">
+    <div class="prose small">
+      <p>Every number on this page is a Honeycomb result: a query (COUNT, SUM, AVG, P25, P50, P75, HEATMAP or a formula), a BubbleUp or a trace view. All queries run over 2026-10-12 17:10–20:10 UTC on the summary spans named <code>efficiency.run</code>, one per run; the server's spans (<code>tools/call …</code>) and Claude Code's spans sit under them in the same trace. 287 of the 288 runs reached Honeycomb; the missing one is an Opus run with the server on the change task (<a href="{{Q_MISSING}}">query</a>).</p>
+      <p><b>Cost and time per run.</b> For each model, task and setup, Honeycomb's P50 of the run's list-price cost (<code>study.total_cost_usd</code>) and wall-clock seconds (<code>study.wall_s</code>), over 12 runs. With 12 runs, P50 reports one of the two middle runs. P25 and P75 from the same query give the spread.</p>
+      <p><b>Per-model figures.</b> For each task, the with-server P50 divided by the without P50. Per model, the geometric mean of the four task ratios, so each task weighs the same; “% less” is one minus that. The table shows every step.</p>
+    </div>
+    {{RATIO_TABLE}}
+    <div class="prose small">
+      <p><b>Where the savings come from.</b> AVG per model and setup over all four tasks, because P50 pooled across tasks jumps between the build and look-up runs. Model time is a calculated field, <code>study.duration_api_ms</code> ÷ 1000; other time is <code>study.wall_s</code> minus it.</p>
+      <p><b>Totals and counts.</b> two SUMs of cost, one per setup; checks as the formula SUM(<code>study.checks_passed</code>) ÷ SUM(<code>study.checks_total</code>); COUNT of runs. Figures 11 and 12 are Honeycomb's own HEATMAP charts; the BubbleUp tables list Honeycomb's percentages for a selected region against the rest.</p>
+      <p><b>The two traces.</b> Figure 4 is redrawn from the spans of two trace views. Cost, time, turns and checks come from each run's summary span (<a href="{{Q_ROOTS}}">query</a>); the shell-step labels summarise each command from its span (<a href="{{Q_SPANS}}">query</a>).</p>
+    </div>
+    <div class="tbl-wrap"><table class="wide">
+      <caption>Which query answers which question. “Setup” is the attribute <code>study.arm</code> (with-mcp / no-mcp).</caption>
+      <thead><tr><th>Question</th><th>Honeycomb query on the run summaries</th><th>Figure</th></tr></thead>
+      <tbody>
+        <tr><td>How much cost does the server save per run?</td><td class="mono small">P25, P50, P75(study.total_cost_usd) by model, task, setup; SUM(study.total_cost_usd) where study.arm = with-mcp, and where = no-mcp</td><td class="small"><a href="#fig-1">1</a>, <a href="#fig-3">3</a></td></tr>
+        <tr><td>How much time does it save?</td><td class="mono small">P25, P50, P75(study.wall_s) by model, task, setup</td><td class="small"><a href="#fig-2">2</a></td></tr>
+        <tr><td>What did one run do?</td><td class="mono small">Trace view of the run's trace id</td><td class="small"><a href="#fig-4">4</a></td></tr>
+        <tr><td>Where do the savings come from?</td><td class="mono small">AVG of agent.usage.tool_result_bytes, study.output_tokens, study.cache_creation_input_tokens, study.num_turns, model time and other time by model, setup</td><td class="small"><a href="#fig-5">5–9</a></td></tr>
+        <tr><td>What does the server do?</td><td class="mono small">COUNT, P50(duration_ms) of the server's tools/call spans by name</td><td class="small"><a href="#fig-10">10</a></td></tr>
+        <tr><td>Which runs are outliers, and what do they share?</td><td class="mono small">HEATMAP(study.total_cost_usd) or HEATMAP(study.wall_s), then BubbleUp on a region</td><td class="small"><a href="#fig-11">11</a>, <a href="#fig-12">12</a></td></tr>
+        <tr><td>Did every run work? Is every run there?</td><td class="mono small">SUM(study.checks_passed) ÷ SUM(study.checks_total) by setup; COUNT by task, setup</td><td class="small"><a href="#fig-13">13</a>, <a href="#fig-14">14</a></td></tr>
+      </tbody>
+    </table></div>
+    <div class="tbl-wrap"><table class="wide">
+      <caption>Honeycomb attribute names behind the BubbleUp rows.</caption>
+      <tbody>
+        <tr><td>Model, setup, task</td><td class="mono small">study.model, study.arm (with-mcp / no-mcp), study.task; a build task has study.checks_total = 10</td></tr>
+        <tr><td>No Kibana tool calls</td><td class="mono small">agent.tool.calls_mcp = 0</td></tr>
+        <tr><td>Failed tool call</td><td class="mono small">agent.tool.failures ≥ 1</td></tr>
+        <tr><td>HTTP 4xx error</td><td class="mono small">agent.tool.failures_http_4xx ≥ 1</td></tr>
+        <tr><td>Never retried</td><td class="mono small">agent.tool.failures_unrecovered ≥ 1</td></tr>
+      </tbody>
+    </table></div>
+    <p class="small dim">Boards: <a href="{{BOARD1}}">{{B1}}</a> (Figures 1–3, 11–14) and <a href="{{BOARD2}}">{{B2}}</a> (Figures 5–10). Each board panel has the same query and time range as its figure, and each board has filters for model, setup and task.</p>
+  </div></details>
+</section>
+
+<footer>The mcp-for-kibana server: cost and time of Claude Code's Kibana work with and without it, measured with Honeycomb.</footer>
+</div>
+<div id="tip" role="tooltip"></div>
+<script>
+(function () {
+  var tip = document.getElementById('tip');
+  function show(el, x, y) {
+    tip.textContent = el.getAttribute('data-tip');
+    tip.classList.add('on');
+    var r = tip.getBoundingClientRect();
+    var nx = Math.min(x + 12, window.innerWidth - r.width - 8);
+    var ny = y - r.height - 10; if (ny < 8) ny = y + 16;
+    tip.style.left = Math.max(8, nx) + 'px'; tip.style.top = ny + 'px';
+  }
+  function hide() { tip.classList.remove('on'); }
+  document.querySelectorAll('[data-tip]').forEach(function (el) {
+    el.addEventListener('mousemove', function (e) { show(el, e.clientX, e.clientY); });
+    el.addEventListener('mouseleave', hide);
+  });
+  window.addEventListener('scroll', hide, { passive: true });
+})();
+</script>

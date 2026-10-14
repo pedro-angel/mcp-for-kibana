@@ -1,0 +1,509 @@
+<meta charset="utf-8">
+<title>AI Agent Cost and Time</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..100,500..800&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap">
+<style>
+/* Layout: client question first, the worked example's answer, the trace, the mechanism, outliers, then how to repeat it; bookkeeping collapsed. */
+/* Layout: one reading column (~44rem) for prose; figures widen to ~64rem, each a self-contained 16:9 block. Finding first, then how Honeycomb got there, then why, then how to repeat it. */
+:root {
+  --bg: #f4f6f9;
+  --surface: #ffffff;
+  --ink: #121821;
+  --ink-2: #4a5464;
+  --muted: #6f7a8a;
+  --rule: #dfe4ea;
+  --rule-strong: #b7c0cc;
+  --with: #2a78d6;
+  --with-wash: rgba(42, 120, 214, 0.08);
+  --without: #eb6834;
+  --rest: #8f99a7;
+  --llm: #7d8796;
+  --code-bg: #f0f3f7;
+  --tip-bg: #121821;
+  --tip-fg: #f4f6f9;
+  --img-bg: #ffffff;
+  --font-display: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e1116; --surface: #161a21; --ink: #edf1f6; --ink-2: #b8c1cd; --muted: #8a94a3;
+    --rule: #262c35; --rule-strong: #4a5361; --with: #3987e5; --with-wash: rgba(57, 135, 229, 0.14);
+    --without: #d95926; --rest: #6b7584; --llm: #9aa3b0; --code-bg: #10141a; --tip-bg: #edf1f6; --tip-fg: #0e1116; --img-bg: #ffffff; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e1116; --surface: #161a21; --ink: #edf1f6; --ink-2: #b8c1cd; --muted: #8a94a3;
+  --rule: #262c35; --rule-strong: #4a5361; --with: #3987e5; --with-wash: rgba(57, 135, 229, 0.14);
+  --without: #d95926; --rest: #6b7584; --llm: #9aa3b0; --code-bg: #10141a; --tip-bg: #edf1f6; --tip-fg: #0e1116; --img-bg: #ffffff; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 16px; line-height: 1.55; }
+.page { max-width: 64rem; margin: 0 auto; padding-inline: 20px; padding-block: 40px 56px; display: flex; flex-direction: column; gap: 64px; }
+@media (max-width: 480px) { .page { padding-inline: 16px; padding-block: 24px 40px; gap: 48px; } }
+.prose { max-width: 44rem; display: flex; flex-direction: column; gap: 14px; }
+h1, h2, h3 { font-family: var(--font-display); font-stretch: 85%; text-wrap: balance; margin: 0; letter-spacing: -0.01em; }
+h1 { font-size: clamp(1.9rem, 4.4vw, 3rem); line-height: 1.08; font-weight: 750; }
+h2 { font-size: clamp(1.5rem, 3.4vw, 2rem); line-height: 1.12; font-weight: 700; }
+h3 { font-size: 1.1rem; font-weight: 700; font-stretch: 90%; }
+p { margin: 0; }
+a { color: var(--with); text-underline-offset: 2px; overflow-wrap: anywhere; }
+a:focus-visible, [tabindex]:focus-visible { outline: 2px solid var(--with); outline-offset: 2px; border-radius: 4px; }
+.eyebrow { font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.lede { font-size: 1.2rem; color: var(--ink-2); max-width: 44rem; text-wrap: pretty; }
+section { display: flex; flex-direction: column; gap: 22px; }
+.sec-head { display: flex; flex-direction: column; gap: 8px; max-width: 44rem; }
+.dim { color: var(--muted); }
+.small { font-size: 13.5px; }
+b, strong { font-weight: 600; }
+.mono, code { font-family: var(--font-mono); font-size: 0.86em; }
+ul.plain { margin: 0; padding-left: 1.1rem; display: flex; flex-direction: column; gap: 6px; }
+.k-with, .k-without, .k-rest, .k-llm { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: 0; }
+.k-with { background: var(--with); } .k-without { background: var(--without); } .k-rest { background: var(--rest); border-radius: 2px; } .k-llm { background: var(--llm); border-radius: 2px; }
+.card { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; }
+
+/* hero */
+header { display: flex; flex-direction: column; gap: 22px; }
+.tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; background: var(--rule); border: 1px solid var(--rule); border-radius: 10px; overflow: hidden; }
+.tile { background: var(--surface); padding: 18px 20px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.tile .lab { font-size: 13px; color: var(--ink-2); font-weight: 600; }
+.tile .val { font-family: var(--font-display); font-stretch: 80%; font-weight: 750; font-size: clamp(2.1rem, 4.6vw, 2.8rem); line-height: 1.05; letter-spacing: -0.02em; }
+.tile .val small { font-size: 0.42em; font-weight: 600; color: var(--ink-2); letter-spacing: 0; }
+.tile .note { font-size: 12.5px; color: var(--muted); margin-top: 4px; }
+@media (max-width: 720px) { .tiles { grid-template-columns: 1fr; } }
+.easy { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+@media (max-width: 900px) { .easy { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 520px) { .easy { grid-template-columns: minmax(0, 1fr); } }
+.easy .card { padding: 16px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.easy .what { font-family: var(--font-mono); font-size: 11.5px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.easy h3 { font-size: 1.05rem; }
+.easy p { font-size: 14px; color: var(--ink-2); }
+.easy a.go { font-size: 13px; margin-top: auto; }
+
+/* telemetry tree */
+.tree { padding: 16px 18px; display: flex; flex-direction: column; gap: 6px; font-size: 14px; min-width: 0; }
+.tree .n { display: grid; grid-template-columns: minmax(0, 15rem) minmax(0, 1fr); gap: 12px; align-items: baseline; padding: 6px 0; border-top: 1px solid var(--rule); }
+.tree .n:first-child { border-top: 0; }
+.tree .n .s { font-family: var(--font-mono); font-size: 12.5px; color: var(--ink); }
+.tree .n .d { color: var(--ink-2); font-size: 13.5px; }
+.tree .i1 .s { padding-left: 1.2rem; } .tree .i2 .s { padding-left: 2.4rem; }
+.tree .s::before { content: ""; }
+.tree .i1 .s::before, .tree .i2 .s::before { content: "└ "; color: var(--muted); }
+@media (max-width: 600px) { .tree .n { grid-template-columns: minmax(0, 1fr); gap: 2px; } }
+
+/* figures */
+figure { margin: 0; }
+.fig { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; padding: 20px 20px 14px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.fc { display: flex; flex-direction: column; gap: 3px; }
+.fc-num { font-family: var(--font-mono); font-size: 11.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.fc-title { font-family: var(--font-display); font-stretch: 85%; font-weight: 700; font-size: 1.25rem; line-height: 1.2; }
+.fc-sub { font-size: 13.5px; color: var(--ink-2); max-width: 48rem; }
+.fig-body { display: flex; flex-direction: column; justify-content: center; gap: 12px; min-width: 0; }
+@media (min-width: 760px) { .fig-body { aspect-ratio: 16 / 9; } .fig.wide .fig-body { aspect-ratio: auto; } }
+.fig-note { font-size: 13px; color: var(--ink-2); }
+/* figures fill their 16:9 body: the chart part grows, its rows spread out */
+.fig-body > .facets, .fig-body > .single, .fig-body > .ts, .fig-body > .sv, .fig-body > .meters { flex: 1 1 auto; }
+.facet { justify-content: space-between; }
+.ts, .sv { display: flex; flex-direction: column; justify-content: space-evenly; }
+.single { display: flex; flex-direction: column; }
+.single > .rows { flex: 1 1 auto; display: flex; flex-direction: column; justify-content: space-evenly; }
+.meters { justify-content: center; gap: 28px; }
+.fig { --bh: 16px; }
+.fig.bh-s { --bh: 20px; } .fig.bh-m { --bh: 19px; } .fig.bh-l { --bh: 30px; } .fig.bh-xl { --bh: 48px; }
+@media (max-width: 759px) { .fig.bh-l { --bh: 22px; } .fig.bh-xl { --bh: 30px; } .fig.bh-m, .fig.bh-s { --bh: 16px; } }
+.src { font-size: 12.5px; color: var(--muted); border-top: 1px solid var(--rule); padding-top: 10px; }
+.src-k { display: inline-block; font-family: var(--font-mono); font-size: 10.5px; letter-spacing: 0.06em; text-transform: uppercase; border-radius: 4px; padding: 1px 6px; margin-right: 6px; border: 1px solid var(--rule-strong); color: var(--ink-2); }
+.src-k.k-real { border-color: var(--with); color: var(--with); }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 13px; color: var(--ink-2); align-items: center; }
+.legend i { flex: none; }
+
+/* paired bars */
+.facets { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 22px; }
+@media (max-width: 900px) { .facets { grid-template-columns: minmax(0, 1fr); gap: 16px; } }
+.facet { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.facet-h { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; border-bottom: 1px solid var(--rule); padding-bottom: 4px; }
+.facet-h b { font-family: var(--font-display); font-stretch: 85%; font-size: 1.05rem; }
+.facet-h span { font-family: var(--font-mono); font-size: 11px; color: var(--muted); white-space: nowrap; }
+.pb-group { display: grid; grid-template-columns: minmax(0, 1fr) 3.4rem; grid-template-areas: "lab lab" "bars ratio"; gap: 2px 8px; align-items: center; }
+.single .pb-group { grid-template-columns: 8rem minmax(0, 1fr) 5.6rem; grid-template-areas: "lab bars ratio"; gap: 8px 12px; padding-block: 6px; }
+.single.compact .pb-group { padding-block: 3px; }
+.pb-lab { grid-area: lab; font-size: 13px; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pb-bars { grid-area: bars; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.pb-row { display: grid; grid-template-columns: minmax(0, 1fr) 4.6rem; gap: 6px; align-items: center; height: var(--bh); border-radius: 3px; }
+.pb-track { position: relative; height: calc(var(--bh) - 4px); }
+.pb-bar { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 0 3px 3px 0; display: block; }
+.pb-bar.w { background: var(--with); } .pb-bar.o { background: var(--without); }
+.pb-v { font-family: var(--font-mono); font-size: 11.5px; color: var(--ink-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pb-ratio { grid-area: ratio; font-family: var(--font-mono); font-size: 12.5px; color: var(--ink); text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pb-axis { display: grid; grid-template-columns: 8rem minmax(0, 1fr) 5.6rem; gap: 12px; }
+.pb-axis .ticks { margin-right: calc(4.6rem + 6px); }
+.ticks { position: relative; height: 16px; border-top: 1px solid var(--rule); }
+.ticks span { position: absolute; top: 2px; transform: translateX(-50%); font-family: var(--font-mono); font-size: 11px; color: var(--muted); white-space: nowrap; }
+.ticks span:first-child { transform: none; }
+.ticks span:last-child { transform: translateX(-100%); }
+.wf-axis .ticks span:last-child { transform: translateX(-50%); }
+@media (max-width: 520px) {
+  .single .pb-group { grid-template-columns: minmax(0, 1fr) 4.8rem; grid-template-areas: "lab lab" "bars ratio"; gap: 2px 8px; }
+  .pb-axis { grid-template-columns: minmax(0, 1fr) 4.8rem; gap: 8px; }
+  .pb-axis > div:first-child { display: none; }
+  .pb-axis .ticks span:not(:first-child):not(:last-child) { display: none; }
+}
+
+/* meters (fig 6) */
+.meters { display: flex; flex-direction: column; gap: 14px; }
+.meter { display: grid; grid-template-columns: 9rem minmax(0, 1fr) 11rem; gap: 12px; align-items: center; }
+.m-lab { font-size: 14px; color: var(--ink-2); }
+.m-track { height: 64px; background: var(--code-bg); border-radius: 4px; overflow: hidden; }
+.m-track i { display: block; height: 100%; }
+.m-track i.w { background: var(--with); } .m-track i.o { background: var(--without); }
+.m-val { font-family: var(--font-mono); font-size: 12.5px; color: var(--ink-2); text-align: right; }
+.m-val b { color: var(--ink); font-size: 14px; }
+@media (max-width: 759px) { .m-track { height: 28px; } }
+@media (max-width: 520px) { .meter { grid-template-columns: minmax(0, 1fr); gap: 4px; } .m-val { text-align: left; } }
+
+/* real honeycomb image */
+.hc-img { background: var(--img-bg); border: 1px solid var(--rule); border-radius: 8px; padding: 8px; display: flex; justify-content: center; }
+.hc-img img { width: 100%; height: auto; display: block; }
+
+/* time split */
+.ts { display: flex; flex-direction: column; gap: 2px; }
+.ts-model { font-family: var(--font-display); font-stretch: 85%; font-weight: 700; font-size: 1rem; margin-top: 6px; }
+.ts-model:first-child { margin-top: 0; }
+.ts-row, .ts-axis { display: grid; grid-template-columns: 8rem minmax(0, 1fr) 7.4rem; gap: 12px; align-items: center; }
+.ts-row { height: 30px; border-radius: 3px; }
+.ts-lab { font-size: 13px; color: var(--ink-2); white-space: nowrap; }
+.ts-track { display: flex; gap: 2px; height: 20px; }
+.ts-track i { display: block; height: 100%; }
+.ts-api { border-radius: 2px 0 0 2px; } .ts-api.w { background: var(--with); } .ts-api.o { background: var(--without); }
+.ts-rest { background: var(--rest); border-radius: 0 3px 3px 0; }
+.ts-val { font-family: var(--font-mono); font-size: 12px; color: var(--ink-2); text-align: right; white-space: nowrap; }
+@media (max-width: 520px) {
+  .ts-row, .ts-axis { grid-template-columns: 6.6rem minmax(0, 1fr); }
+  .ts-row { height: auto; padding-block: 3px; }
+  .ts-val { grid-column: 2; text-align: left; font-size: 11.5px; }
+}
+
+/* server spans */
+.sv { display: flex; flex-direction: column; }
+.sv-row { display: grid; grid-template-columns: 11rem minmax(0, 1fr) 3rem 5rem; gap: 12px; align-items: center; height: 30px; border-radius: 3px; }
+.sv-head { font-size: 12px; color: var(--muted); height: 22px; border-bottom: 1px solid var(--rule); margin-bottom: 4px; }
+.sv-head span:nth-child(2) { visibility: hidden; }
+.sv-head .r { text-align: right; }
+.sv-lab { font-size: 12.5px; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sv-track { height: 16px; position: relative; }
+.sv-track i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--with); border-radius: 0 3px 3px 0; }
+.sv-n, .sv-ms { font-family: var(--font-mono); font-size: 12px; text-align: right; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+@media (max-width: 520px) { .sv-row { grid-template-columns: 8.4rem minmax(0, 1fr) 2.4rem 4.2rem; gap: 6px; } .sv-lab { font-size: 11.5px; } }
+
+/* waterfall */
+.wf-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px; }
+@media (max-width: 900px) { .wf-pair { grid-template-columns: minmax(0, 1fr); } }
+.wf { display: flex; flex-direction: column; min-width: 0; }
+.wf-h { display: flex; flex-direction: column; gap: 2px; padding-bottom: 8px; border-bottom: 1px solid var(--rule); margin-bottom: 4px; }
+.wf-h b { font-family: var(--font-display); font-stretch: 85%; font-size: 1.05rem; }
+.wf-h span { font-family: var(--font-mono); font-size: 12px; color: var(--ink-2); }
+.wf-row, .wf-axis { display: grid; grid-template-columns: minmax(0, 13.5rem) minmax(0, 1fr) 3.4rem; gap: 8px; align-items: center; }
+.wf-row { height: 21px; border-radius: 3px; }
+.wf-row:hover { background: var(--with-wash); }
+.wf-lab { font-size: 11.5px; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wf-row.ind0 .wf-lab { color: var(--ink); font-weight: 600; }
+.wf-row.ind2 .wf-lab { padding-left: 14px; color: var(--muted); }
+.wf-row.ind1 .wf-lab { padding-left: 6px; }
+.wf-lab .err { color: var(--without); font-weight: 600; }
+.wf-track { position: relative; height: 11px; background: linear-gradient(90deg, var(--rule) 1px, transparent 1px) 0 0 / calc(100% * 20 / 64) 100%; }
+.wf-bar { position: absolute; top: 0; bottom: 0; border-radius: 2px; display: block; }
+.wf-bar.root { background: var(--ink-2); opacity: 0.5; }
+.wf-bar.llm { background: var(--llm); }
+.wf-bar.tool-w, .wf-bar.srv { background: var(--with); }
+.wf-bar.srv { opacity: 0.6; }
+.wf-bar.tool-o { background: var(--without); }
+.wf-bar.aux { background: var(--rest); }
+.wf-d { font-family: var(--font-mono); font-size: 11px; color: var(--muted); text-align: right; white-space: nowrap; }
+.wf-axis { margin-top: 4px; }
+@media (max-width: 520px) { .wf-axis .ticks span:nth-child(2), .wf-axis .ticks span:nth-child(3) { display: none; } .wf-row, .wf-axis { grid-template-columns: minmax(0, 9.5rem) minmax(0, 1fr) 3rem; gap: 6px; } .wf-lab { font-size: 11px; } }
+
+/* tables */
+.tbl-wrap { overflow-x: auto; border: 1px solid var(--rule); border-radius: 10px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th, td { padding: 9px 14px; text-align: left; border-bottom: 1px solid var(--rule); vertical-align: top; }
+thead th { font-size: 12px; font-weight: 600; color: var(--ink-2); vertical-align: bottom; white-space: nowrap; }
+tbody tr:last-child th, tbody tr:last-child td { border-bottom: 0; }
+tbody th { font-weight: 500; }
+td.n { text-align: right; font-variant-numeric: tabular-nums; font-family: var(--font-mono); font-size: 13px; white-space: nowrap; }
+th.r { text-align: right; }
+.th-group { text-align: center; }
+caption { caption-side: top; text-align: left; padding: 12px 14px 4px; font-size: 13px; color: var(--muted); }
+table.bu th[scope=row] { min-width: 13rem; }
+table.wide td, table.wide th { white-space: normal; }
+table.wide { min-width: 40rem; }
+.note { font-size: 14px; color: var(--ink-2); max-width: 44rem; }
+.callout { padding: 14px 16px; font-size: 14px; color: var(--ink-2); max-width: 48rem; }
+.callout b { color: var(--ink); }
+pre.code { margin: 0; overflow-x: auto; background: var(--code-bg); border: 1px solid var(--rule); border-radius: 8px; padding: 12px 14px; font-family: var(--font-mono); font-size: 12px; line-height: 1.6; color: var(--ink); white-space: pre; }
+.cols2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+@media (max-width: 760px) { .cols2 { grid-template-columns: minmax(0, 1fr); } }
+.box { padding: 16px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.box h3 { font-size: 1rem; }
+.attrs { margin: 0; display: flex; flex-direction: column; border: 1px solid var(--rule); border-radius: 8px; }
+.attrs > div { padding: 8px 12px; border-top: 1px solid var(--rule); display: flex; flex-direction: column; gap: 2px; }
+.attrs > div:first-child { border-top: 0; }
+.attrs dt { font-size: 12px; color: var(--ink); overflow-wrap: anywhere; }
+.attrs dd { margin: 0; font-size: 13px; color: var(--ink-2); }
+.links { display: flex; flex-wrap: wrap; gap: 8px 18px; font-size: 14px; }
+
+/* tooltip */
+#tip { position: fixed; z-index: 10; pointer-events: none; background: var(--tip-bg); color: var(--tip-fg); font-size: 12.5px; line-height: 1.35; padding: 6px 9px; border-radius: 6px; max-width: 18rem; opacity: 0; transition: opacity .1s; }
+#tip.on { opacity: 1; }
+[data-tip] { cursor: default; }
+@media (prefers-reduced-motion: reduce) { #tip { transition: none; } }
+footer { font-size: 13px; color: var(--muted); border-top: 1px solid var(--rule); padding-top: 16px; }
+
+/* v2: figure blocks. The <figure> itself is the swap slot (16:9 from 760 px up); caption, takeaway and source sit outside it. */
+.figblock { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; padding: 20px 20px 14px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.figblock .fc h3.fc-title { margin: 0; }
+.fig-slot { margin: 0; display: flex; flex-direction: column; justify-content: center; gap: 12px; min-width: 0; }
+@media (min-width: 760px) { .fig-slot { aspect-ratio: 16 / 9; } }
+.fig-slot > img { width: 100%; height: 100%; object-fit: contain; }
+.fig-slot > .facets, .fig-slot > .single, .fig-slot > .ts, .fig-slot > .sv, .fig-slot > .meters, .fig-slot > .wf-pair { flex: 1 1 auto; }
+.figblock { --bh: 16px; }
+.figblock.bh-s { --bh: 20px; } .figblock.bh-m { --bh: 19px; } .figblock.bh-l { --bh: 30px; } .figblock.bh-xl { --bh: 48px; }
+@media (max-width: 759px) { .figblock.bh-l { --bh: 22px; } .figblock.bh-xl { --bh: 30px; } .figblock.bh-m, .figblock.bh-s { --bh: 16px; } }
+.fig-top { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 6px 16px; }
+.rh { font-family: var(--font-mono); font-size: 11px; color: var(--muted); }
+.src-k { border-color: var(--rule-strong); color: var(--ink-2); }
+.rows.target .pb-track::after { content: ""; position: absolute; top: -3px; bottom: -3px; left: 90%; border-left: 2px dashed var(--ink-2); opacity: .6; }
+
+/* real Honeycomb images: white frame in both themes, natural size, scroll on phones */
+.hc-frame { background: var(--img-bg); border: 1px solid var(--rule); border-radius: 8px; padding: 10px; overflow-x: auto; display: flex; justify-content: center; align-items: center; flex: 1 1 auto; }
+.hc-frame img { width: 100%; max-width: 800px; height: auto; display: block; }
+.hc-link { display: block; width: 100%; max-width: 800px; }
+@media (max-width: 759px) { .hc-frame { justify-content: flex-start; } .hc-frame img, .hc-link { min-width: 640px; } }
+
+/* waterfall fits the 16:9 slot on wide screens */
+@media (min-width: 760px) { .wf-row { height: 16px; } .wf-lab { font-size: 11px; } .wf-track { height: 9px; } .wf-h { padding-bottom: 6px; } }
+.wf-bar.llm.side { background: var(--rest); }
+.wf-lab .err { color: var(--ink); font-weight: 700; }
+@media (max-width: 520px) { .wf-row { height: auto; min-height: 20px; padding-block: 2px; } .wf-lab { white-space: normal; overflow: visible; line-height: 1.25; } }
+
+/* BubbleUp tables: three columns that fit a phone */
+.bu-wrap table.bu { min-width: 0; }
+table.bu th[scope=row] { min-width: 0; font-weight: 500; }
+table.bu thead th { white-space: normal; }
+table.bu td.n, table.bu thead th.r { width: 5.5rem; }
+table.bu tr.design th, table.bu tr.design td { color: var(--ink-2); }
+.tag { display: inline-block; font-family: var(--font-mono); font-size: 10px; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); border: 1px solid var(--rule-strong); border-radius: 4px; padding: 0 5px; margin-left: 6px; vertical-align: 1px; }
+@media (max-width: 520px) { table.bu th, table.bu td { padding: 8px 10px; } }
+
+/* boxes */
+.sent { padding: 16px 18px; display: flex; flex-direction: column; gap: 10px; max-width: 52rem; }
+.sent h3 { font-size: 1.05rem; }
+.sent ul { margin: 0; padding-left: 1.1rem; display: flex; flex-direction: column; gap: 6px; font-size: 14px; color: var(--ink-2); }
+.sent b { color: var(--ink); }
+.callout-row { display: flex; gap: 12px; align-items: baseline; font-size: 14px; color: var(--ink-2); padding: 12px 16px; max-width: 52rem; }
+.callout-row b { color: var(--ink); }
+.vs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+@media (max-width: 760px) { .vs { grid-template-columns: minmax(0, 1fr); } }
+.vs .box ul { margin: 0; padding-left: 1.1rem; display: flex; flex-direction: column; gap: 6px; font-size: 14px; color: var(--ink-2); }
+.scope td, .scope th { white-space: normal; }
+.scope { min-width: 40rem; }
+.pill { display: inline-block; font-size: 11.5px; font-weight: 600; border-radius: 999px; padding: 1px 8px; border: 1px solid var(--rule-strong); color: var(--ink-2); white-space: nowrap; }
+.pill.free { border-color: var(--with); color: var(--with); }
+details.more { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; }
+details.more > summary { cursor: pointer; padding: 12px 16px; font-weight: 600; font-size: 15px; list-style: none; display: flex; gap: 10px; align-items: center; }
+details.more > summary::-webkit-details-marker { display: none; }
+details.more > summary::before { content: ""; width: 8px; height: 8px; border-right: 2px solid var(--ink-2); border-bottom: 2px solid var(--ink-2); transform: rotate(-45deg); transition: transform .15s; flex: none; }
+details.more[open] > summary::before { transform: rotate(45deg); }
+details.more > summary:focus-visible { outline: 2px solid var(--with); outline-offset: 2px; }
+details.more > .inner { padding: 4px 16px 18px; display: flex; flex-direction: column; gap: 18px; }
+details.more summary .dim { font-weight: 400; font-size: 13.5px; }
+.gloss { font-size: 14px; color: var(--ink-2); max-width: 46rem; border-left: 2px solid var(--rule-strong); padding-left: 12px; }
+@media (prefers-reduced-motion: reduce) { details.more > summary::before { transition: none; } }
+</style>
+<div class="page">
+
+<header>
+  <span class="eyebrow">A worked example · Claude Code on Kibana · runs of 12 Oct 2026</span>
+  <h1>What does an AI agent cost, how long does it take, and why? A worked example in Honeycomb</h1>
+  <p class="lede">A team running AI agents wants to know four things: what each run costs, how long it takes, where the cost and time go, and whether a change would help. Here is a worked example that answers all four: Claude Code doing Kibana work, with and without a purpose-built MCP server, a tool server the agent calls instead of Kibana's raw REST API. With the server, runs cost {{COST_LO}} to {{COST_HI}}% less and took {{TIME_LO}} to {{TIME_HI}}% less time, and every run passed its checks. Honeycomb showed where the cost and time go: without the server, the agent reads back {{AVGB_LO}} to {{AVGB_HI}} times more tool output on average ({{MEDB_LO}} to {{MEDB_HI}} times by median).</p>
+  <div class="tiles">
+    <div class="tile"><span class="lab">Cost per run, with the server</span><span class="val">{{COST_LO}}–{{COST_HI}}<small>% less</small></span><span class="note">Medians per model (Haiku, Sonnet, Opus). Figure 1.</span></div>
+    <div class="tile"><span class="lab">Time per run, with the server</span><span class="val">{{TIME_LO}}–{{TIME_HI}}<small>% less</small></span><span class="note">Medians per model. Figure 2.</span></div>
+    <div class="tile"><span class="lab">Tool output read back, without</span><span class="val">{{AVGB_LO}}–{{AVGB_HI}}<small>× more</small></span><span class="note">Average per run in Honeycomb; {{MEDB_LO}}–{{MEDB_HI}}× by median. Figure 4.</span></div>
+  </div>
+  <div class="easy">
+    <div class="card"><span class="what">Question 1 · Figure 1</span><h3>What does a run cost?</h3><p>With the server, {{COST_LO}} to {{COST_HI}}% less per run, and cheaper on all 12 model-and-task pairs.</p><a class="go" href="#fig-1">See the cost</a></div>
+    <div class="card"><span class="what">Question 2 · Figure 2</span><h3>How long does it take?</h3><p>With the server, {{TIME_LO}} to {{TIME_HI}}% less time per run; building gains the most.</p><a class="go" href="#fig-2">See the time</a></div>
+    <div class="card"><span class="what">Question 3 · Figures 3 to 8</span><h3>Where do the cost and time go?</h3><p>Into text read back by the model and the model time it takes: 7 short tool calls against 10 shell commands and 20 seconds of reading API docs.</p><a class="go" href="#fig-3">See where they go</a></div>
+    <div class="card"><span class="what">Question 4 · Figures 9 to 11</span><h3>Would a change help?</h3><p>Here the change is the MCP server. Without it, {{FAIL_SLOW}}% of slow builds had a failed API call, against {{FAIL_REST}}% of the rest.</p><a class="go" href="#fig-9">See the outliers</a></div>
+  </div>
+  <p class="gloss">Terms used below. A <b>trace</b> is the timeline of one run; a <b>span</b> is one step in it, and each run's summary (cost, time, result) is one span. A <b>heatmap</b> plots every run at once. <b>BubbleUp</b> lists what a selected group of runs has in common, compared with the rest. <b>Median</b> is what Honeycomb calls P50.</p>
+</header>
+
+<section>
+  <div class="sec-head">
+    <span class="eyebrow">Questions 1 and 2 · cost and time per run</span>
+    <h2>Cheaper and faster on every task</h2>
+    <p class="note">Claude Code ran four Kibana tasks with no person involved: build a dashboard and alert rule on web-log data, the same on flight data, change an existing dashboard and rule, and look up facts about them. Each ran with Haiku, Sonnet and Opus 5.5, in both setups, 12 times: 288 runs, judged by a script that read Kibana back.</p>
+  </div>
+  {{FIG1}}
+  {{FIG2}}
+  <p class="note">Honeycomb recomputed these medians from the runs' telemetry, which the test runner sent alongside its own records. That makes it an independent computation from the same data, not an independent measurement; it shows the telemetry arrived complete and faithful. The per-model ratios agree with the analysis script's within 3% (<a href="#agree">details</a>).</p>
+</section>
+
+<section>
+  <div class="sec-head">
+    <span class="eyebrow">Question 3 · where the cost and time go: one run</span>
+    <h2>The same build, with and without the server</h2>
+    <p class="note">Two traces from the first round, Opus building the web-logs dashboard and alert rule. A summary table can say one run cost four times the other; the trace shows what the agent did with that money.</p>
+  </div>
+  {{FIG3}}
+</section>
+
+<section>
+  <div class="sec-head">
+    <span class="eyebrow">Question 3 · where the cost and time go: all runs</span>
+    <h2>Less text through the model, less time waiting on it</h2>
+    <p class="note">Figures 4 to 8 are averages per run over all four tasks. Medians pooled across tasks jump between the build and look-up clusters, so averages read more steadily here; medians point the same way (Figure 4 gives them). For Sonnet and Opus the number of steps changes little; what changes is how much text each step carries.</p>
+  </div>
+  {{FIG4}}
+  {{FIG5}}
+  {{FIG6}}
+  {{FIG7}}
+  {{FIG8}}
+</section>
+
+<section>
+  <div class="sec-head">
+    <span class="eyebrow">Question 4 · would a change help?</span>
+    <h2>Heatmaps show every run; BubbleUp shows what the odd ones share</h2>
+    <p class="note">BubbleUp compares a selected region with all other runs, attribute by attribute, and ranks what is over-represented in the selection. It finds what the selected runs have in common; it does not show what caused them.</p>
+  </div>
+  {{FIG9}}
+  {{BU1}}
+  <p class="note">The expensive band is the experiment's design: all 12 Opus web-logs builds and all 12 Opus flights builds without the server, and no other run (<a href="{{Q_COUNT}}">count query</a>). Figure 1 already shows those cells as the costliest. BubbleUp's other high-ranked attributes, such as “no Kibana tool calls”, restate the setup. <a href="{{BU_COST}}">Open this BubbleUp in Honeycomb</a>.</p>
+  {{FIG10}}
+  {{BU2}}
+  <p class="note">Here BubbleUp found something the medians did not show. Slow runs were much more likely to contain a failed tool call, mostly an HTTP 4xx error from Kibana's API. With-server runs had no failed calls, so the fair comparison stays within builds without the server: {{FAIL_SLOW}}% of the {{N_SLOW}} slow runs had a failed call, against {{FAIL_REST}}% of the other {{N_REST}} (from the run records). The 60-second cut was chosen by eye; run times are continuous around it. Our reading, supported by Figure 3: without the server the agent learns the API by trial and error, and each error costs another model turn. <a href="{{BU_TIME}}">Open this BubbleUp in Honeycomb</a>.</p>
+  <details class="more"><summary>Honeycomb attribute names behind the BubbleUp rows</summary><div class="inner">
+    <div class="tbl-wrap"><table class="wide"><tbody>
+      <tr><td>Model, setup, task</td><td class="mono small">study.model, study.arm (with-mcp / no-mcp), study.task; a build task has study.checks_total = 10</td></tr>
+      <tr><td>No Kibana tool calls</td><td class="mono small">agent.tool.calls_mcp = 0, study.n_mcp_calls = 0</td></tr>
+      <tr><td>Failed tool call</td><td class="mono small">agent.tool.failures ≥ 1</td></tr>
+      <tr><td>HTTP 4xx error</td><td class="mono small">agent.tool.failures_http_4xx ≥ 1</td></tr>
+      <tr><td>Never retried</td><td class="mono small">agent.tool.failures_unrecovered ≥ 1</td></tr>
+    </tbody></table></div>
+  </div></details>
+</section>
+
+<section>
+  <div class="sec-head">
+    <span class="eyebrow">Why Honeycomb</span>
+    <h2>What Honeycomb made fast, against a spreadsheet of run summaries</h2>
+  </div>
+  {{FIG11}}
+  <div class="vs">
+    <div class="card box"><h3>What a spreadsheet of run summaries also gives</h3>
+      <ul><li>Figures 1, 2, 4 to 8 and 12 to 14 group one row per run by model, task and setup. The analysis script produced the same tables first.</li></ul>
+    </div>
+    <div class="card box"><h3>What Honeycomb added</h3>
+      <ul>
+        <li><b>Any attribute, no re-export.</b> Each run summary carries 161 attributes; any one can be grouped or filtered in the next query.</li>
+        <li><b>Every run on one picture.</b> The heatmaps (Figures 9, 10) showed the separate cost band and the slow tail.</li>
+        <li><b>The ranking done for you.</b> BubbleUp ranked 122 attributes for a selection in one step, and surfaced the failed-call pattern.</li>
+        <li><b>Agent and tool server in one trace.</b> Claude Code's spans and the MCP server's spans join on the run's trace (Figures 3, 11), so the server's own time per tool sits beside the model's.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head">
+    <span class="eyebrow">For a client</span>
+    <h2>How to reproduce this for a client</h2>
+    <p class="note">Two ways to use it. As a benchmark, the way this experiment did: run a design choice both ways, with an outcome check, before shipping it. In production: put the same summary span on live runs, with whatever success signal the team has (task completed, user accepted), and watch cost per run and failure rate.</p>
+  </div>
+  <div class="tbl-wrap"><table class="scope">
+    <caption>What each part needs. “Built in” means it came with Claude Code or the server; “custom” means it was written for this experiment.</caption>
+    <thead><tr><th>Part</th><th>Where it came from here</th><th>Kind</th></tr></thead>
+    <tbody>
+      <tr><td>Model calls and tool calls, with tokens, names and timings</td><td>Claude Code's own OpenTelemetry export (<code>CLAUDE_CODE_ENABLE_TELEMETRY=1</code> plus the beta flag <code>CLAUDE_CODE_ENHANCED_TELEMETRY_BETA=1</code> for spans). Its spans carry OpenTelemetry GenAI attributes: <code>gen_ai.request.model</code>, <code>gen_ai.usage.*</code> tokens, <code>gen_ai.response.finish_reasons</code>, <code>gen_ai.tool.name</code>, <code>gen_ai.tool.call.id</code>.</td><td><span class="pill free">built in</span></td></tr>
+      <tr><td>Tool-server spans in the same trace</td><td>mcp-for-kibana's OpenTelemetry switch (<code>KIBANA_MCP_OTEL_ENABLED</code>), reading the run's <code>TRACEPARENT</code> (<code>KIBANA_MCP_OTEL_TRACEPARENT_FROM_ENV</code>).</td><td><span class="pill free">built in</span></td></tr>
+      <tr><td>One trace per run</td><td>The runner starts a trace and hands its <code>TRACEPARENT</code> to Claude Code and the server.</td><td><span class="pill">custom, small</span></td></tr>
+      <tr><td>Run summary span</td><td>The runner writes the outcome on the root span: model, setup, task, cost, wall time, tokens, turns (<code>study.*</code>). Cost is Claude Code's own list-price figure; other agents need price × tokens.</td><td><span class="pill">custom</span></td></tr>
+      <tr><td>GenAI conversation fields</td><td>The relay adds <code>gen_ai.operation.name</code>, <code>gen_ai.agent.name</code> and <code>gen_ai.provider.name</code>, and the runner sets <code>gen_ai.conversation.id</code> to the run id. With these, each run appears in Honeycomb's AI conversation list.</td><td><span class="pill">custom, small</span></td></tr>
+      <tr><td>Tool-result bytes, failures, retries</td><td>A Claude Code hook classifies each tool call; the runner rolls the counts up onto the summary span (<code>agent.*</code>).</td><td><span class="pill">custom</span></td></tr>
+      <tr><td>Did it work?</td><td>A checker per task reads Kibana back and compares it with the expected result (<code>study.check.*</code>). Usually the biggest piece of work.</td><td><span class="pill">custom</span></td></tr>
+      <tr><td>Relay</td><td>Holds the Honeycomb key away from the agent, scrubs secrets and identity, keeps a local copy.</td><td><span class="pill">custom, small</span></td></tr>
+    </tbody>
+  </table></div>
+  <div class="card callout-row"><span><b>What each run sent:</b> timings, token counts and names for every model call and tool call, the server's spans and the run summary, and optionally prompt and tool content; content logging is a setting chosen per project, and it was on here. <b>Volume per run:</b> a median of {{EV_MED}} events in Honeycomb ({{EV_MIN}} to {{EV_MAX}}; {{EV_SUM}} in all, <a href="{{Q_EVENTS}}">query</a>), sent in a median of {{REQ_MED}} requests ({{REQ_MIN}} to {{REQ_MAX}}) and about {{KB_MED}} kB of OTLP JSON ({{KB_MIN}} kB to {{MB_MAX}} MB; {{MB_SUM}} MB for all 288 runs, from the relay's copies). {{REQ_FAILED}} of {{REQ_SUM}} requests failed to forward, which cost one run summary.</span></div>
+  <details class="more"><summary>Which query answers which question <span class="dim">· board panels</span></summary><div class="inner">
+  <div class="tbl-wrap"><table class="wide">
+    <thead><tr><th>Question</th><th>Query on the run summaries</th><th>Figure</th></tr></thead>
+    <tbody>
+      <tr><td>What does a run cost, per option?</td><td class="mono small">P50(study.total_cost_usd) by model, task, setup</td><td class="small"><a href="#fig-1">1</a></td></tr>
+      <tr><td>How long does it take?</td><td class="mono small">P50(study.wall_s) by model, task, setup</td><td class="small"><a href="#fig-2">2</a></td></tr>
+      <tr><td>What did one run do?</td><td class="mono small">Trace view of the run's trace id</td><td class="small"><a href="#fig-3">3</a></td></tr>
+      <tr><td>Where do the cost and time go?</td><td class="mono small">AVG of tool_result_bytes, output_tokens, cache_creation_input_tokens, num_turns by model, setup</td><td class="small"><a href="#fig-4">4–7</a></td></tr>
+      <tr><td>Where does the time go?</td><td class="mono small">AVG of duration_api_ms / 1000 and of wall_s minus that, by model, setup</td><td class="small"><a href="#fig-8">8</a></td></tr>
+      <tr><td>Would a change help? Which runs are outliers, and what do they share?</td><td class="mono small">HEATMAP(study.total_cost_usd) or HEATMAP(study.wall_s), then BubbleUp on a region</td><td class="small"><a href="#fig-9">9</a>, <a href="#fig-10">10</a></td></tr>
+      <tr><td>What do the tools do?</td><td class="mono small">COUNT, P50(duration_ms) of the server's tools/call spans by name</td><td class="small"><a href="#fig-11">11</a></td></tr>
+      <tr><td>What is the bill? Did it work? Is the sample complete?</td><td class="mono small">SUM(cost) by setup; SUM(checks_passed) / SUM(checks_total); COUNT by task, setup</td><td class="small"><a href="#fig-12">12–14</a></td></tr>
+    </tbody>
+  </table></div>
+  <p class="small dim">“Setup” is the attribute <code>study.arm</code> (with-mcp / no-mcp). Each board has filters for model, setup and task.</p>
+  </div></details>
+  <div class="links"><a href="{{BOARD1}}">Board: {{B1}}</a><a href="{{BOARD2}}">Board: {{B2}}</a></div>
+  <p class="small dim">Links open in Honeycomb.</p>
+</section>
+
+<section id="agree">
+  <div class="sec-head">
+    <span class="eyebrow">Bookkeeping</span>
+    <h2>Does Honeycomb agree with the analysis script?</h2>
+  </div>
+  <details class="more"><summary>Ratios, totals, checks and run counts <span class="dim">· Figures 12 to 14</span></summary><div class="inner">
+  {{AGREE}}
+  <p class="note">The small differences come from how the median is picked. With 12 runs per cell there are two middle runs: Honeycomb's P50 reports one of them, the analysis script averages the two. For Opus building on flights without the server, the two middle runs cost $0.2908 and $0.3546; the script reports ${{EX_S}}, Honeycomb ${{EX_H}}. This explains every cell that differs by more than 1%.</p>
+  {{FIG12}}
+  {{FIG13}}
+  {{FIG14}}
+  </div></details>
+</section>
+
+<section>
+  <div class="sec-head">
+    <span class="eyebrow">Sources</span>
+    <h2>Where every number comes from</h2>
+  </div>
+  <div class="prose small">
+    <p>Figures 1, 2 and 4 to 14 are Honeycomb query results over 2026-10-12 17:10–20:10 UTC. Each figure links its query and names its panel on the board <a href="{{BOARD1}}">{{B1}}</a> or <a href="{{BOARD2}}">{{B2}}</a>; each panel shows the same query and time range as its figure. Figures 9 and 10 are Honeycomb's own chart images; the others are redrawn from the result rows. Figure 3 is redrawn from two traces.</p>
+    <p>287 of the 288 run summaries reached Honeycomb; the missing one is an Opus run with the server on the change task. Honeycomb's sums and averages equal the committed run records without that run.</p>
+    <p>The headline percentages, the script's ratios and intervals, the 288-run totals ($5.09 and $14.49) and the median byte ratios come from the committed analysis and run records in the mcp-for-kibana repository; so do the within-build failure rates, the telemetry request counts and byte sizes.</p>
+  </div>
+</section>
+
+<footer>Worked example: Claude Code doing Kibana work with and without the mcp-for-kibana server, read through Honeycomb.</footer>
+</div>
+<div id="tip" role="tooltip"></div>
+<script>
+(function () {
+  var tip = document.getElementById('tip');
+  function show(el, x, y) {
+    tip.textContent = el.getAttribute('data-tip');
+    tip.classList.add('on');
+    var r = tip.getBoundingClientRect();
+    var nx = Math.min(x + 12, window.innerWidth - r.width - 8);
+    var ny = y - r.height - 10; if (ny < 8) ny = y + 16;
+    tip.style.left = Math.max(8, nx) + 'px'; tip.style.top = ny + 'px';
+  }
+  function hide() { tip.classList.remove('on'); }
+  document.querySelectorAll('[data-tip]').forEach(function (el) {
+    el.addEventListener('mousemove', function (e) { show(el, e.clientX, e.clientY); });
+    el.addEventListener('mouseleave', hide);
+  });
+  window.addEventListener('scroll', hide, { passive: true });
+})();
+</script>
