@@ -12,6 +12,10 @@ version section.
 
 ### Changed
 
+- **Server savings report: Honeycomb screenshots after each redrawn figure.**
+  Figures 1–10, 13 and 14 are each followed by a screenshot of the matching
+  Honeycomb board panel (Figure 4: the two trace views), linked to the query
+  in Honeycomb. The images are in `docs/reports/server-savings/data/hc/`.
 - **Server savings report: Figure 3 links its two Honeycomb panels.** Total
   spend with and without the server now comes from two single-SUM queries,
   each a stat panel on the cost-and-time board, and the figure links both.

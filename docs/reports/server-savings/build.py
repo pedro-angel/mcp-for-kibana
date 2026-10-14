@@ -633,6 +633,52 @@ fig14 = figure(
 )
 
 
+# ------------------------------------------------------------------ Honeycomb screenshots after each redrawn figure
+def png_size(path):
+    b = path.read_bytes()[16:24]
+    return int.from_bytes(b[:4], "big"), int.from_bytes(b[4:], "big")
+
+
+# figure number -> [(screenshot in data/hc/, what it shows, link)]
+SHOTS = {
+    1: [("fig1", "Board panel “Fig 1 · Cost per run by model, task and setup”", qlink("rQ-XCLthePHQ"))],
+    2: [("fig2", "Board panel “Fig 2 · Time per run by model, task and setup”", qlink("jr-K1QutEy5g"))],
+    3: [
+        ("fig3_with", "Board panel “Fig 3 · Total spend, with the server”", qlink("4K-e8XBSJh5x")),
+        ("fig3_without", "Board panel “Fig 3 · Total spend, without the server”", qlink("jW-hcFJn2Hg2")),
+    ],
+    4: [
+        ("fig4_with", "Trace view, with the server", TR_WITH),
+        ("fig4_without", "Trace view, without the server", TR_WITHOUT),
+    ],
+    5: [("fig5", "Board panel “Fig 5 · Tool output read back per run (average)”", qlink("52-VMv7CZGJc"))],
+    6: [("fig6", "Board panel “Fig 6 · Output tokens per run (average)”", qlink("6r-cVxmt8Mwn"))],
+    7: [("fig7", "Board panel “Fig 7 · New context written to cache per run (average)”", qlink("wa-w7TiDZeXD"))],
+    8: [("fig8", "Board panel “Fig 8 · Model turns per run (average)”", qlink("84-hBWXwHUxZ"))],
+    9: [("fig9", "Board panel “Fig 9 · Model time and other time per run (average)”", qlink("9u-toPPjoMyU"))],
+    10: [("fig10", "Board panel “Fig 10 · Kibana tool calls served by the MCP server”", qlink("pH-JB1yihmCd"))],
+    13: [("fig13", "Board panel “Fig 13 · Checks passed by setup”", qlink("rN-8QrRgr7pR"))],
+    14: [("fig14", "Board panel “Fig 14 · Runs per task and setup”", qlink("Jo-6V7ALFxvJ"))],
+}
+
+
+def shot(n):
+    items = []
+    for name, what, link in SHOTS[n]:
+        f = D / "hc" / f"{name}.png"
+        w, h = (v // 2 for v in png_size(f))  # captured at device pixel ratio 2
+        data = "data:image/png;base64," + base64.b64encode(f.read_bytes()).decode()
+        items.append(
+            f'<figure class="shot"><a href="{link}" aria-label="Open in Honeycomb: {esc(what)}">'
+            f'<img src="{data}" alt="Honeycomb screenshot: {esc(what)}" width="{w}" height="{h}" loading="lazy"></a>'
+            f"<figcaption>{esc(what)}</figcaption></figure>"
+        )
+    return f"""<div class="figblock hc-shot">
+<div class="fc"><span class="fc-num">Figure {n} in Honeycomb</span><p class="fc-sub">The same data as Figure {n}, as Honeycomb shows it. Select an image to open it in Honeycomb.</p></div>
+<div class="shots">{"".join(items)}</div>
+</div>"""
+
+
 # ------------------------------------------------------------------ tables
 def bu_table(rows_, caption):
     tr = "".join(
@@ -792,6 +838,8 @@ subs = {
     "N_SLOW": str(N_SLOW),
     "N_REST": str(N_REST),
 }
+for n in SHOTS:
+    subs[f"FIG{n}"] += "\n" + shot(n)
 for kk, v in subs.items():
     tmpl = tmpl.replace("{{" + kk + "}}", v)
 assert "{{" not in tmpl, re.findall(r"\{\{\w+\}\}", tmpl)
