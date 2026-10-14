@@ -27,6 +27,8 @@ Instructions for this report (from the owner):
   (https://ui.eu1.honeycomb.io/pedro-angel/environments/test/board/25-8QuCXHevA).
   Panels are named "Fig N · title", matching the report.
 
-Open on 2026-10-14: the first board's panels are not in figure order, and its
-Fig 3 is now two stat panels (total spend with and without the server) that
-nobody has checked in the Honeycomb UI.
+Open on 2026-10-14: the first board's panels were removed and re-added in
+figure order through the API, but the API does not report layout, so the order
+is unconfirmed in the Honeycomb UI. Fig 3 is two stat panels (total spend with
+and without the server), which the report now links; nobody has checked them
+in the Honeycomb UI yet.

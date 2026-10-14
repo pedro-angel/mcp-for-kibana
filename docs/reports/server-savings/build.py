@@ -318,8 +318,10 @@ fig2 = figure(
     "jr-K1QutEy5g",
     cls="bh-m",
 )
-_SP = rows("v2_fig3_spend")[0]  # g8-EBBx54eiz
-SPEND = {"with-mcp": _SP["spend_with_server"], "no-mcp": _SP["spend_without_server"]}
+SPEND = {
+    "with-mcp": rows("fig3_spend_with")[0]["SUM(study.total_cost_usd)"],  # run 4K-e8XBSJh5x
+    "no-mcp": rows("fig3_spend_without")[0]["SUM(study.total_cost_usd)"],  # run jW-hcFJn2Hg2
+}
 _r = SPEND["with-mcp"] / SPEND["no-mcp"]
 fig3 = figure(
     3,
@@ -331,9 +333,11 @@ fig3 = figure(
   <p class="spend-ratio">With ÷ without: {_r:.2f}× · {100 * (1 - _r):.0f}% less with the server</p>
 </div>""",
     "The same work cost about a third as much with the server.",
-    BOARD1,
-    B1,
-    "g8-EBBx54eiz",
+    src_override=(
+        f'<a href="{qlink("4K-e8XBSJh5x")}">Open “with the server” in Honeycomb</a> · '
+        f'<a href="{qlink("jW-hcFJn2Hg2")}">Open “without the server” in Honeycomb</a> · board panels '
+        f'<a href="{BOARD1}">“Fig 3 · Total spend, with the server” and “Fig 3 · Total spend, without the server”</a> on {esc(B1)}'
+    ),
 )
 
 

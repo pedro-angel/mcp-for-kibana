@@ -10,6 +10,13 @@ version section.
 
 ## [Unreleased]
 
+### Changed
+
+- **Server savings report: Figure 3 links its two Honeycomb panels.** Total
+  spend with and without the server now comes from two single-SUM queries,
+  each a stat panel on the cost-and-time board, and the figure links both.
+  The numbers are unchanged ($5.04 and $14.49).
+
 ### Added
 
 - **Server savings report source.** `docs/reports/server-savings/` holds the
