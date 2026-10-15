@@ -784,7 +784,7 @@ table.ratio { min-width: 38rem; }
 @media (max-width: 520px) { .spend { grid-template-columns: minmax(0, 1fr); padding-inline: 0; gap: 18px; } }
 """
 
-head = f"""<title>mcp-for-kibana Server Savings</title>
+head = f"""<title>mcp-observability-study</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
