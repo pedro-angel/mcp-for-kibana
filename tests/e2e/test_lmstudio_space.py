@@ -5,8 +5,9 @@ view inside it, and a dashboard with a valid chart — through mcp-for-kibana.
 The prompt, the pass criterion, and the progress ladder this gate implements
 were frozen before any run (the pre-registration document is archived in git
 history). The LM Studio server entry must expose
-KIBANA_MCP_TOOLBOXES=dashboards,data-management,platform-admin (24 tools at
-tier=write) — probe P4b / the plan's dry run.
+KIBANA_MCP_TOOLBOXES=dashboards,data-management,platform-admin (29 tools at
+tier=write; 24 when the task was frozen — probe P4b / the plan's dry run — and
+the in-place edit and library-visualization tools of D36–D37 joined since).
 
 Every run appends one JSONL record (ladder, tool calls, timings, versions) to
 KIBANA_MCP_EXPERIMENT_LOG or scripts/experiment/runs/. Tables in the final

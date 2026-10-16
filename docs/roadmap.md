@@ -60,7 +60,7 @@ Basic-buildable **toolboxes** that had never been filed. Now filed, in build ord
   [D34](spec/decisions.md)): published = listed ∩ tier, the list alone
   decides which toolboxes register, start time only, applied by disable only.
   A persona that crosses ownership boundaries (a dashboard in a fresh space:
-  dashboards + data-management + platform-admin, 24 tools at write) can now be
+  dashboards + data-management + platform-admin, 29 tools at write) can now be
   trimmed toward the ~20-tool heuristic. **Still open, ordered after the
   day-to-day tool work above:** named custom toolboxes — a profile file that
   names a tool set — with coherence warnings for lists that split working

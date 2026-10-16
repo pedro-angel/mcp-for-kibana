@@ -29,7 +29,7 @@ What happened instead? Include the tool error / traceback if there was one.
 
 - `mcp-for-kibana` version (or image tag):
 - Run mode: stdio / streamable-HTTP
-- Toolboxes enabled (`KIBANA_MCP_TOOLBOXES`) and tier cap (`KIBANA_MCP_TIER`):
+- Toolboxes enabled (`KIBANA_MCP_TOOLBOXES`) or tool list (`KIBANA_MCP_TOOLS`), and tier cap (`KIBANA_MCP_TIER`):
 - MCP client + model (e.g. Claude Desktop, Claude Code, LM Studio + model id):
 - Python version:
 - Kibana version:

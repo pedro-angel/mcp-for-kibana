@@ -19,7 +19,7 @@ implementation is **evidence, not authority** — read it last, if at all.
 7. [configuration.md](../configuration.md) and
    [deployment.md](../deployment.md) — the environment-variable surface
    (`KIBANA_URL`, `KIBANA_API_KEY`, `KIBANA_MCP_TIER`,
-   `KIBANA_MCP_TOOLBOXES`, and the rest): this is wire compatibility with
+   `KIBANA_MCP_TOOLBOXES`, `KIBANA_MCP_TOOLS`, and the rest): this is wire compatibility with
    every deployed `mcp.json`, as contractual as any tool schema.
 8. `src/kibana_mcp/ports/gateway.py` — the one code file elevated to spec
    status: the seam everything regenerates behind.

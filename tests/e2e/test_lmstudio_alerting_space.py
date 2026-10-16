@@ -5,12 +5,12 @@ enabled .es-query alert rule inside it — through mcp-for-kibana.
 The alerting twin of the Study L space gate (test_lmstudio_space.py). The
 prompt, the pass criterion, and the progress ladder this gate implements
 were frozen before any run. The LM Studio server entry `mcp-for-kibana-alerting`
-(its own entry — the dashboards gate's `mcp-for-kibana` keeps its frozen
-24-tool surface; one shared entry cannot satisfy both designs) must expose
-KIBANA_MCP_TOOLBOXES=alerting,platform-admin (17 tools at tier=write, counted
-from the toolbox registrations — create_space lives in platform-admin, the
-rule tools in alerting; this gate was authored in a session that could not run
-the stack, so the first local run is the count's live confirmation).
+(its own entry — the dashboards gate's `mcp-for-kibana` keeps its own
+toolbox set, 29 tools at tier=write; one shared entry cannot satisfy both
+designs) must expose KIBANA_MCP_TOOLBOXES=alerting,platform-admin (20 tools at
+tier=write, counted from the toolbox registrations — create_space lives in
+platform-admin, the rule tools in alerting; 17 when the task was frozen, before
+D35's get_connector and in-place rule and connector edits joined alerting).
 
 Every run appends one JSONL record (ladder, tool calls, timings, versions) to
 KIBANA_MCP_EXPERIMENT_LOG or scripts/experiment/runs/. Tables in any report

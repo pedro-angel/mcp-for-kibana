@@ -74,6 +74,19 @@ version section.
 
 ### Fixed
 
+- **The replay tier no longer inherits an exported tool selection.** The
+  harness passed the whole environment to the replayed server, so an exported
+  `KIBANA_MCP_TOOLS` (or `KIBANA_MCP_TOOLBOXES`) silently replaced the surface
+  each transcript was recorded against and failed every replay. It now drops
+  `KIBANA_MCP_TOOLS`, `KIBANA_MCP_TOOLBOXES` and `KIBANA_MCP_TIER` from the
+  inherited environment before applying the transcript's own settings.
+- **Docs describe tool selection as it ships.** The architecture page, the
+  tool reference, the regeneration guide and the bug-report template now name
+  `KIBANA_MCP_TOOLS` beside `KIBANA_MCP_TOOLBOXES`; the tool reference's
+  "auto-filled `time_field`" heading and the sentences around it, garbled in
+  an earlier edit, are restored, so links to that section work again; the
+  live space gates' docstrings and the roadmap state the current tool counts
+  of their toolbox sets (29 and 20 at `write`).
 - **The local-study results page no longer states a tool count the runs did
   not record.** It printed `local_study.json`'s current `expected_tools` (now
   33) as the count the committed runs used (they ran with 25 and did not

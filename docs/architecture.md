@@ -97,11 +97,15 @@ Toolbox]`) — ten toolboxes today (`dashboards`, `data-management`,
 all). Deployment
 config (`KIBANA_MCP_TOOLBOXES`, see
 [Configuration](configuration.md#toolbox-selection)) picks which entries to
-register; an unknown name fails startup loudly rather than silently
+register; or, when set, the per-tool allow list `KIBANA_MCP_TOOLS` (see
+[Tool selection](configuration.md#tool-selection)) registers the toolboxes
+that own the listed tools and hides every other tool they register. An
+unknown toolbox or tool name fails startup loudly rather than silently
 omitting tools. This is the mechanism behind the **composable toolboxes**
 pillar: a small local model can be handed a narrower tool surface (fewer
-toolboxes, or a capped [tier](configuration.md#tier-semantics)) than a
-larger model, purely through configuration — no code branches on model
+toolboxes, a hand-picked tool list, or a capped
+[tier](configuration.md#tier-semantics)) than a larger model, purely through
+configuration — no code branches on model
 identity anywhere in the server.
 
 Within a toolbox, tools are further split by **tier** (`read` / `write` /
@@ -277,8 +281,9 @@ built:
    framework leaks inward. It keeps the Lens translation unit-testable without a
    stack, and makes the MCP layer replaceable.
 2. **Toolboxes compose; the server assembles.** Each toolbox registers its own
-   tools and owns nothing global, so `KIBANA_MCP_TOOLBOXES` selects a surface at
-   deploy time without conditional logic threaded through the server.
+   tools and owns nothing global, so `KIBANA_MCP_TOOLBOXES` (or, per tool,
+   `KIBANA_MCP_TOOLS`) selects a surface at deploy time without conditional
+   logic threaded through the server.
 3. **Write safety is a registration-time tier, not a runtime check.** A tool
    above `KIBANA_MCP_TIER` is never advertised, so a model cannot call what it
    cannot see. Refusing at call time would leave destructive tools in the model's

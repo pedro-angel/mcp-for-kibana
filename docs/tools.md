@@ -1,7 +1,8 @@
 # Tool reference
 
 Toolboxes are selected via
-[`KIBANA_MCP_TOOLBOXES`](configuration.md): **dashboards**,
+[`KIBANA_MCP_TOOLBOXES`](configuration.md#toolbox-selection), or single tools
+via [`KIBANA_MCP_TOOLS`](configuration.md#tool-selection): **dashboards**,
 **[data-management](#data-management-toolbox)**,
 **[alerting](#alerting-toolbox)**, **[cases](#cases-toolbox)**,
 **[platform-health](#platform-health-toolbox)**,
@@ -170,7 +171,9 @@ Notes:
   even though column existence is not.
 - ES|QL is a **separate set of tools on purpose** — deliberately kept out of
   VizSpec so the field-based `create_dashboard`/`add_panel` schema (and small
-  local models' reli### The auto-filled `time_field`
+  local models' reliability on it) is unchanged.
+
+### The auto-filled `time_field`
 
 Omit `time_field`: the toolbox code (`_prepare_config` in `toolbox.py`)
 looks up the named `data_view` and, when `time_field` is `null` and the
@@ -182,9 +185,8 @@ Lens data source, and the two need not be the same field.
 Set `time_field` only when the data view has **no** default time field and
 a `group_by` entry is a `date_histogram`; the pre-flight then rejects the
 spec with a message naming the fix (see [error behavior](#error-behavior)).
-An explicit `time_field` must match the data view's own when it has one.
-
-ed as the
+An explicit `time_field` must match the data view's own when it has one;
+call `describe_data_view` first to learn it (it's returned as the
 `time_field` key).
 
 ## Returns
