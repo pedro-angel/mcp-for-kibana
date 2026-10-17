@@ -78,6 +78,7 @@ run() {
 # all-skipped run reads NO-GO. contract/e2e only reach here past the .env.seed
 # guard, so a skip there means a claimed stack never exercised the suite. (No
 # kibana-py analog — its suites hide behind `make test` and check exit code only.)
+suite_note=  # optional detail on a suite's GO line; set only around one run_suite
 run_suite() {
   name="$1"; shift
   out="$logdir/$name.log"
@@ -89,7 +90,7 @@ run_suite() {
   skipped=$(printf '%s\n' "$summary" | grep -oE '[0-9]+ skipped' | grep -oE '^[0-9]+')
   : "${passed:=0}" "${skipped:=0}"
   if [ "$passed" -ge 1 ] && [ "$skipped" -eq 0 ]; then
-    echo "  GO    $name"
+    echo "  GO    $name${suite_note:+  ($suite_note)}"
   else
     echo "  NO-GO $name  (passed=$passed skipped=$skipped: empty or all-skipped suite reads NO-GO; log: $out)"
     nogo=1
@@ -181,8 +182,15 @@ if req e2e_green; then
     # Env loading lives in tests/_stack_env.py (fixture-time). A fresh records
     # dir per gate run, so its runs.jsonl holds only this run's records.
     rm -rf "$logdir/e2e_green-runs"
+    # The model and runs per task come from CLAUDE_E2E_MODEL / CLAUDE_E2E_RUNS
+    # when set, so the GO line names them: a GO from an overridden model or a
+    # single run per task is visible, not silent. Resolved by the harness's own
+    # defaults (tests/_claude_cli.py), never restated here.
+    suite_note=$(uv run python -c 'from tests import _claude_cli as c; print(f"model {c.claude_model()}, {c.runs_per_task()} runs per task")' 2>/dev/null) \
+      || suite_note="model and runs per task unresolved"
     run_suite e2e_green env CLAUDE_E2E_OUT="$logdir/e2e_green-runs" \
       uv run pytest -m e2e_claude -q
+    suite_note=
   fi
 fi
 

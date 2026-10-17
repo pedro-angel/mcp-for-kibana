@@ -28,10 +28,24 @@ disabled alert rule with a wrong threshold and the model must fix it in place.
 Tasks, pass criteria and N are pre-registered in
 `scripts/experiment/CLAUDE_E2E.md`.
 
+One-time setup — the fixes the gate's `e2e_green` NO-GO lines point to:
+
 ```bash
-claude -p "say ok" --model haiku   # once: confirms the CLI is signed in
+npm install -g @anthropic-ai/claude-code   # installs the `claude` CLI (Claude Code)
+claude auth login                          # signs the CLI in to your Claude account (no API key)
+claude auth status                         # the gate requires "loggedIn": true here
+claude -p "say ok" --model haiku           # optional: confirms a headless run works
+```
+
+Then:
+
+```bash
 make test-e2e                      # starts + seeds the stack, then pytest -m e2e_claude
 ```
+
+In `make dod`, the `e2e_green` GO line names the model and runs per task it
+ran with (`CLAUDE_E2E_MODEL` / `CLAUDE_E2E_RUNS`), so a GO from an override —
+say a single run per task — is visible in the verdict.
 
 The model gets this server's tools and nothing else: `--tools ""` removes
 every built-in tool (no shell, files or web), `--strict-mcp-config` loads only

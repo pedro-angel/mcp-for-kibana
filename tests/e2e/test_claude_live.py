@@ -87,7 +87,10 @@ def root_gateway(creds):
 @pytest.fixture(scope="session")
 def session_info(root_gateway):
     def run(*args):
-        return subprocess.run(args, capture_output=True, text=True, check=False).stdout.strip()
+        try:
+            return subprocess.run(args, capture_output=True, text=True, check=False).stdout.strip()
+        except OSError as e:  # e.g. no `claude` on PATH: the run reports it as a harness error
+            return f"unavailable ({type(e).__name__})"
 
     try:
         kibana_version = root_gateway.get_kibana_status().version
@@ -271,16 +274,29 @@ def test_claude_completes_task(task, run_index, creds, root_gateway, session_inf
         (run_dir / "record.json").write_text(json.dumps(record, indent=2, sort_keys=True) + "\n")
         append_jsonl(out_dir / "runs.jsonl", record)
 
-    assert record.get("key_in_transcript") is False, (
+    # The harness error first: when seeding or launching the CLI raised, no
+    # transcript exists, so the key check below would misreport a leak.
+    assert not record.get("harness_error"), (
+        f"harness error before the run could be scored: {record['harness_error']} — "
+        "check that `claude` is on PATH and signed in (`claude auth status`) and that "
+        "the stack is up and seeded (`scripts/stack.sh up && scripts/stack.sh seed`)"
+    )
+    assert record.get("key_in_transcript") is not True, (
         "the Kibana API key appeared in the run's output (redacted on disk); "
         "find how it reached the model before trusting any result"
     )
-    assert not record.get("harness_error"), f"harness error: {record['harness_error']}"
     assert not record.get("non_server_tools"), (
         f"the model was offered tools besides this server's: {record['non_server_tools']}"
     )
     assert record.get("permission_denials") == 0, (
         f"{record.get('permission_denials')} permission denial(s): see {run_dir}/transcript.jsonl"
+    )
+    # A pass requires a valid run (scripts/experiment/CLAUDE_E2E.md): the CLI
+    # must end with a result event or time out.
+    assert record["valid"], (
+        f"invalid run — the CLI ended without a result event: see {run_dir}/stderr.txt "
+        "and transcript.jsonl; check the sign-in with `claude auth status` "
+        "(`claude auth login` to fix) and that `claude -p` runs in this shell"
     )
     assert record.get("passed"), (
         f"{task} failed at rung {record.get('first_missing')}; tool calls: "

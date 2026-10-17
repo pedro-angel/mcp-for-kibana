@@ -133,7 +133,10 @@ version section.
   log directory; it no longer runs the LM Studio tests, which stay on demand
   with `make test-e2e-local`. A missing `claude` CLI or sign-in reads NO-GO
   and names the fix (install Claude Code; `claude auth login`). `make dod`
-  therefore needs a signed-in `claude` CLI and about 5–6 more minutes. Every
+  therefore needs a signed-in `claude` CLI and about 5–6 more minutes. The
+  criterion's GO line names the model and runs per task it ran with
+  (`CLAUDE_E2E_MODEL` / `CLAUDE_E2E_RUNS`), so a GO from an override is
+  visible. Every
   `.github/dod` config keeps `e2e_green = n/a`: CI has no Claude sign-in, and
   no CI job or secret is added. Why: the old rule's LM Studio run never ran on
   this branch in practice, while the Claude run needs only a sign-in and
@@ -164,6 +167,13 @@ version section.
 
 ### Fixed
 
+- **A Claude-tier run that never started reports why.** When seeding the task
+  or launching `claude` raised (no CLI on PATH, Kibana down), the test's first
+  assertion read the missing leak flag as a leak and said the API key appeared
+  in the output. The harness error is now asserted first and names the fix
+  (`claude auth status`; `scripts/stack.sh up && scripts/stack.sh seed`), and
+  the test also asserts the run is valid — the CLI ended with a result event
+  or timed out — as `scripts/experiment/CLAUDE_E2E.md` requires for a pass.
 - **The server's MCP instructions follow the published tools.** They always
   described the dashboards flow (`list_data_views` → `describe_data_view` →
   `create_dashboard`), even on a surface without those tools — the `alerting`
