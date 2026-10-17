@@ -127,6 +127,16 @@ cannot publish a tool the tier hid. Like toolboxes and tiers, it is curation,
 **not a security boundary**: the Kibana API key's RBAC is the real limit on
 what the server can do.
 
+## Server instructions
+
+At connection the server sends MCP *instructions*, a short text a client may
+show the model before any tool call. They follow what is published after the
+toolbox, tier and tool selection: the dashboards walk-through
+(`list_data_views` → `describe_data_view` → `create_dashboard`) is sent only
+when all three of those tools are published, as in the default selection;
+any other surface gets a generic text that names no tool, so the model is
+never pointed at a tool it cannot call.
+
 ## Space targeting
 
 Every tool in the `dashboards`, `data-management`, `alerting`, `cases`, and

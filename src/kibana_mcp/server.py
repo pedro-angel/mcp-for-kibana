@@ -4,8 +4,10 @@ import asyncio
 import difflib
 import logging
 import tempfile
+from collections.abc import Callable, Coroutine
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from typing import Any
 
 from fastmcp import FastMCP
 
@@ -49,6 +51,15 @@ _INSTRUCTIONS = """Tools for working with Kibana dashboards and visualizations.
 Typical flow: list_data_views -> describe_data_view (learn field names) ->
 create_dashboard with one or more visualization specs. Field names are
 case-sensitive; always verify them with describe_data_view first."""
+# _INSTRUCTIONS walks this flow, so it is given only when all three are
+# published; any other surface gets the generic text, which names no tool.
+_DASHBOARDS_FLOW = frozenset({"list_data_views", "describe_data_view", "create_dashboard"})
+_GENERIC_INSTRUCTIONS = """Tools for working with Kibana. Each tool's description says
+what it takes; when a call fails, its error text names the fix."""
+
+
+def _instructions(published: set[str]) -> str:
+    return _INSTRUCTIONS if _DASHBOARDS_FLOW <= published else _GENERIC_INSTRUCTIONS
 
 
 def build_server(
@@ -76,9 +87,7 @@ def build_server(
     # same tool name, the first one in KIBANA_MCP_TOOLBOXES wins, deterministically
     # and silently — rather than the default "warn" (last wins + a log warning).
     # (Each tool is owned by exactly one toolbox today; this keeps overlap safe.)
-    mcp = FastMCP(
-        "mcp-for-kibana", instructions=_INSTRUCTIONS, on_duplicate="ignore", mask_error_details=True
-    )
+    mcp = FastMCP("mcp-for-kibana", on_duplicate="ignore", mask_error_details=True)
     for name in toolboxes:
         TOOLBOXES[name].register(mcp, deps)
     for tier_tag in _TIER_TAGS - settings.tier.allowed:
@@ -87,15 +96,29 @@ def build_server(
     # overrides an earlier disable, so it could re-publish a tool the tier hid.
     if unlisted:
         mcp.disable(names=unlisted, components={"tool"})
+    # The instructions describe what is published, after every disable above.
+    mcp.instructions = _instructions(_published_tools(mcp))
     _register_docs_resources(mcp)
     return mcp
 
 
+def _run_async[T](make: Callable[[], Coroutine[Any, Any, T]]) -> T:
+    """Run a coroutine to completion on its own event loop in a worker thread:
+    FastMCP lists tools only through an async API, and this works whether or not
+    the caller is already inside a running loop (the async unit tests are)."""
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        return pool.submit(lambda: asyncio.run(make())).result()
+
+
+def _published_tools(mcp: FastMCP) -> set[str]:
+    """The names the server will advertise: FastMCP's own listing, with the
+    tier's and the allow list's visibility applied."""
+    return {t.name for t in _run_async(lambda: mcp.list_tools(run_middleware=False))}
+
+
 def _tool_catalog(deps: ToolboxDeps) -> dict[str, tuple[str, frozenset[str]]]:
     """Every tool name -> (owning toolbox, its tags), from a throwaway server per
-    toolbox. Registration does no I/O; FastMCP lists tools only through an async
-    API, so the listing runs on its own event loop in a worker thread — which
-    works whether or not the caller is already inside a running loop."""
+    toolbox. Registration does no I/O; the listing runs through _run_async."""
     scratch = {name: FastMCP(f"catalog-{name}") for name in TOOLBOXES}
     for name, box in TOOLBOXES.items():
         box.register(scratch[name], deps)
@@ -106,8 +129,7 @@ def _tool_catalog(deps: ToolboxDeps) -> dict[str, tuple[str, frozenset[str]]]:
             for name, server in scratch.items()
         }
 
-    with ThreadPoolExecutor(max_workers=1) as pool:
-        listed = pool.submit(lambda: asyncio.run(_list())).result()
+    listed = _run_async(_list)
     catalog: dict[str, tuple[str, frozenset[str]]] = {}
     for box_name, tools in listed.items():
         for tool_name, tags in tools:

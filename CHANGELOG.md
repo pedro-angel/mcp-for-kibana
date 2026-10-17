@@ -117,6 +117,14 @@ version section.
 
 ### Fixed
 
+- **The server's MCP instructions follow the published tools.** They always
+  described the dashboards flow (`list_data_views` → `describe_data_view` →
+  `create_dashboard`), even on a surface without those tools — the `alerting`
+  toolbox alone, the `read` tier, or a `KIBANA_MCP_TOOLS` list without them.
+  That text is now sent only when all three tools are published; any other
+  surface gets a generic text that names no tool. The default selection keeps
+  the exact text it had. See
+  [Server instructions](docs/configuration.md#server-instructions).
 - **The replay tier no longer inherits an exported tool selection.** The
   harness passed the whole environment to the replayed server, so an exported
   `KIBANA_MCP_TOOLS` (or `KIBANA_MCP_TOOLBOXES`) silently replaced the surface
