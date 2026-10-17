@@ -94,6 +94,14 @@ The counted block ran on 2026-10-17 at commit `d26a172` with no change to
 this file's tasks, criteria or N. Its summary, generated from the records, is
 `runs/claude-e2e/counted-2026-10-17/SUMMARY.md`.
 
+A second block, `runs/claude-e2e/counted-2026-10-17-d40/`, ran the same day
+at commit `a1138b3`, after `get_alert_rule` began returning a rule's `params`
+and `actions` (decision D40) — a change to a tool's output and description,
+which the on-demand rule (D31, D38) says to re-run the tier for. The tasks,
+prompts, seed, criteria and N are unchanged; only the server differs. Its
+summary, generated from its records, is
+`runs/claude-e2e/counted-2026-10-17-d40/SUMMARY.md`.
+
 ## Before registration
 
 Four uncounted dry runs (one per task, same harness, same prompts) shook the

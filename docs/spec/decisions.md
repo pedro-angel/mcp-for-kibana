@@ -213,9 +213,11 @@ this ledger stands without them.
   params (`scripts/experiment/runs/claude-e2e/counted-2026-10-17/`
   transcripts). Not done here, left open: returning the detail from
   `update_alert_rule` as well (as `update_connector` returns `get_connector`'s
-  shape); the change keeps to the read tool, and the next counted block shows
-  whether models read the rule back after the edit. Contract:
-  [alerting](toolboxes/alerting.md).
+  shape); the change keeps to the read tool. Evidence after the change: the
+  counted block `scripts/experiment/runs/claude-e2e/counted-2026-10-17-d40/`
+  (same pre-registered tasks, `SUMMARY.md` generated from its `runs.jsonl`);
+  every `fix_rule_threshold` transcript in it calls `get_alert_rule` before and
+  after `update_alert_rule`. Contract: [alerting](toolboxes/alerting.md).
 
 ## Reliability and models (measured)
 

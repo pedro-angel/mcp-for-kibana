@@ -88,7 +88,11 @@ version section.
   descriptions point to `get_alert_rule`. Decision D40. Why: in the first
   counted Claude block every `fix_rule_threshold` final answer said the
   model could not see the rule's params
-  (`scripts/experiment/runs/claude-e2e/counted-2026-10-17/`).
+  (`scripts/experiment/runs/claude-e2e/counted-2026-10-17/`). A second
+  counted block with the same pre-registered tasks, run after the change, is
+  committed with its generated summary in
+  `scripts/experiment/runs/claude-e2e/counted-2026-10-17-d40/`; in it every
+  `fix_rule_threshold` run reads the rule back after the edit.
 - **`make test-e2e` is now the live-model tier driven by Claude; the LM Studio
   tests moved to `make test-e2e-local`, unchanged.** `make test-e2e` runs
   headless Claude Code (`claude -p`) with this server's tools and nothing
