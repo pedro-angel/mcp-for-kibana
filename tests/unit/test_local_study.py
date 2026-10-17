@@ -69,6 +69,9 @@ def env(tmp_path, monkeypatch):
         path.write_text(json.dumps(c or cfg))
         return lr.load_config(path)
 
+    # run_matrix counts the entry's tools once per invocation; preflight keeps
+    # listing the real server over stdio (its test below).
+    monkeypatch.setattr(lr, "list_server_tools", lambda entry: [f"t{i}" for i in range(31)])
     monkeypatch.setenv("LMSTUDIO_API_TOKEN", LM_TOKEN)
     monkeypatch.setenv("HONEYCOMB_API_KEY", HC_KEY)
     ns = type("Env", (), {})()
@@ -104,6 +107,8 @@ def test_pilot_records_scores_resets_and_traces(env):
     assert lr.run_matrix(cfg, "pilot") == 0
     recs = _records(env.out, "pilot")
     assert len(recs) == 8  # 2 models x 4 levels x 1
+    # the tool count each run had, as observed (the fake lists 31; the config says 33)
+    assert {r["server_tools"] for r in recs} == {31}
 
     passing = {r["level"]: r for r in recs if r["model"] == "fake/pass"}
     failing = {r["level"]: r for r in recs if r["model"] == "fake/fail"}
@@ -346,7 +351,7 @@ def test_preflight_passes_on_a_ready_setup(env, capsys):
     rc = lr.cmd_preflight(cfg, load=True)  # lists the real server's tools over stdio
     out = capsys.readouterr().out
     assert rc == 0, out
-    assert "PASS  server_tools: the entry starts and lists 25 tools" in out
+    assert "PASS  server_tools: the entry starts and lists 33 tools" in out
     assert "PASS  load fake/pass" in out
     assert KIBANA_KEY not in out and LM_TOKEN not in out
     assert env.mcp_json.read_bytes() == mcp_before
@@ -371,7 +376,7 @@ def test_preflight_names_the_fix_for_each_failure(env, capsys, monkeypatch):
         "FAIL  sample_data",
         "local_run.py install-sample",
         "FAIL  mcp_json_entry: KIBANA_MCP_TOOLBOXES is 'dashboards'",
-        "FAIL  server_tools: 1 tools (want 25)",
+        "FAIL  server_tools: 1 tools (want 33)",
         "FAIL  honeycomb_key",
     ):
         assert needle in out, needle
@@ -393,6 +398,41 @@ def test_run_refuses_without_the_honeycomb_key_when_required(env, monkeypatch):
     cfg = env.write()
     with pytest.raises(SystemExit, match="HONEYCOMB_API_KEY is not set"):
         lr.run_matrix(cfg, "pilot")
+
+
+def test_run_refuses_when_the_entry_cannot_be_counted(env, monkeypatch):
+    cfg = env.write()
+    env.mcp_json.write_text(json.dumps({"mcpServers": {}}))
+    with pytest.raises(SystemExit, match=f"no '{ENTRY}' server in .*LOCAL_STUDY.md step 3"):
+        lr.run_matrix(cfg, "pilot")
+
+    def broken(entry):
+        raise RuntimeError("boom")
+
+    env.mcp_json.write_text(json.dumps({"mcpServers": {ENTRY: {"command": "x"}}}))
+    monkeypatch.setattr(lr, "list_server_tools", broken)
+    with pytest.raises(SystemExit, match=r"did not start \(RuntimeError\).*preflight"):
+        lr.run_matrix(cfg, "pilot")
+    assert not list(env.out.glob("pilot/*/*/record.json"))  # refused before any run
+
+
+def test_report_states_the_tool_count_the_records_carry():
+    rep = importlib.import_module("local_report")
+    assert rep.tools_phrase([{"server_tools": 25}] * 3) == "25 tools"
+    assert rep.tools_phrase([{"server_tools": 25}, {"server_tools": 33}]) == "25 or 33 tools"
+    # records written before the harness counted tools: wording, never a number
+    assert rep.tools_phrase([{}, {"server_tools": None}]) == (
+        "the tools (these run records do not record how many the server listed)"
+    )
+    assert rep.tools_phrase([{}, {"server_tools": 33}]) == (
+        "33 tools (1 of 2 run records do not record the count)"
+    )
+
+
+def test_analysis_rows_carry_the_server_tool_count(env):
+    cfg = env.write()
+    lr.run_matrix(cfg, "pilot", limit=1)
+    assert [r["server_tools"] for r in la.analyze(cfg, "pilot")["runs"]] == [31]
 
 
 # ---------------------------------------------------------------- plan, status, analysis

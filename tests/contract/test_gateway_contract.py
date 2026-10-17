@@ -6,8 +6,10 @@ import contextlib
 import os
 import uuid
 
+import kibana
 import pytest
 from fastmcp import Client, FastMCP
+from fastmcp.exceptions import ToolError
 
 from kibana_mcp.adapters.kibana.gateway import KibanaPyGateway
 from kibana_mcp.core.dashboards.compose import build_dashboard_data, layout_panels
@@ -23,6 +25,7 @@ from kibana_mcp.core.visualizations.translate import (
     esql_xy_config,
     to_lens_config,
 )
+from kibana_mcp.toolboxes.alerting.toolbox import AlertingToolbox
 from kibana_mcp.toolboxes.base import ToolboxDeps
 from kibana_mcp.toolboxes.dashboards.toolbox import DashboardsToolbox
 from kibana_mcp.toolboxes.data_management.toolbox import DataManagementToolbox
@@ -267,6 +270,71 @@ def test_create_and_delete_data_view_live(gateway):
     assert not any(v.id == created.id for v in gateway.list_data_views())  # gone
 
 
+def _dv_pattern():
+    # Unique (no two runs share a title) yet carries the flights fields: the
+    # second, never-matching member keeps it unique.
+    return f"{FLIGHTS},mcp-for-kibana-ct-{uuid.uuid4().hex[:8]}-*"
+
+
+def test_update_data_view_partial_and_time_field_guard_live(gateway):
+    # Kibana's data-view POST merges what it is sent but checks nothing: it
+    # stores a missing or non-date time field (probed on 9.5.4). The adapter
+    # guards that, before the write or, when the pattern changes, by writing
+    # the pattern back.
+    pattern = _dv_pattern()
+    created = gateway.create_data_view(pattern, "ct-update-dv", "timestamp")
+    try:
+        renamed = gateway.update_data_view(created.id, "ct-update-dv renamed", None, None)
+        assert (renamed.name, renamed.index_pattern, renamed.time_field) == (
+            "ct-update-dv renamed", pattern, "timestamp"
+        )
+        assert renamed.fields["AvgTicketPrice"] == "number"
+        with pytest.raises(KibanaRejected) as exc:
+            gateway.update_data_view(created.id, None, None, "Carrier")
+        assert exc.value.message.startswith(
+            f"time field 'Carrier' is a string field, not a date field, of '{pattern}' — "
+            "pass time_field as one of its date fields: timestamp"
+        )
+        other = _dv_pattern()
+        with pytest.raises(KibanaRejected, match=r"\(nothing was changed\)$"):
+            gateway.update_data_view(created.id, None, other, "Carrier")
+        with _raw_kibana() as raw:
+            kept = raw.data_views.get(view_id=created.id).body["data_view"]
+        assert (kept["title"], kept["timeFieldName"], kept["name"]) == (
+            pattern, "timestamp", "ct-update-dv renamed"
+        )
+        # A pattern that matches no index yet is accepted; its fields are empty.
+        future = f"mcp-for-kibana-ct-{uuid.uuid4().hex[:8]}-*"
+        moved = gateway.update_data_view(created.id, None, future, None)
+        assert (moved.index_pattern, moved.time_field, moved.fields) == (future, "timestamp", {})
+        back = gateway.update_data_view(created.id, None, pattern, "timestamp")
+        assert back.index_pattern == pattern and back.fields["timestamp"] == "date"
+        with pytest.raises(KibanaNotFound, match=r"call list_data_views to find it"):
+            gateway.update_data_view("ct-update-dv renamed", "x", None, None)
+    finally:
+        gateway.delete_data_view(created.id)
+
+
+def test_data_view_edit_leaves_built_panels_alone_live(gateway):
+    # Panels this server builds embed the pattern and time field inline
+    # (data_view_spec), not the data view's id, so an edit does not reach them.
+    pattern = _dv_pattern()
+    created = gateway.create_data_view(pattern, "ct-panel-dv", "timestamp")
+    data = build_dashboard_data(
+        f"mcp-for-kibana ct dv edit {uuid.uuid4().hex[:8]}", "created by a contract test",
+        layout_panels([to_lens_config(flights_spec(data_view=pattern))]), None,
+    )
+    dash_id = gateway.create_dashboard(data)
+    try:
+        before, _ = gateway.get_dashboard_data(dash_id)
+        gateway.update_data_view(created.id, "ct-panel-dv renamed", _dv_pattern(), None)
+        after, warnings = gateway.get_dashboard_data(dash_id)
+        assert after == before and warnings == []
+    finally:
+        gateway.delete_dashboard(dash_id)
+        gateway.delete_data_view(created.id)
+
+
 def test_short_url_lifecycle_live(gateway):
     created = gateway.create_short_url("LEGACY_SHORT_URL_LOCATOR", {"url": "/app/dashboards"})
     try:
@@ -332,6 +400,132 @@ def test_connector_execute_lifecycle_live(gateway):
         result = gateway.execute_connector(conn.id, {"message": "mcp-for-kibana contract test", "level": "info"})
         assert result["status"] == "ok"
         assert any(c.id == conn.id for c in gateway.list_connectors())
+    finally:
+        gateway.delete_connector(conn.id)
+
+
+@contextlib.contextmanager
+def _raw_kibana(space=None):
+    """A raw kibana-py client for reading Kibana's stored state (a rule's full
+    body) apart from the mapping under test: the assertion side only, never the
+    code path."""
+    client = kibana.Kibana(os.environ["KIBANA_URL"], api_key=os.environ["KIBANA_TEST_API_KEY"])
+    try:
+        yield client.space(space) if space else client
+    finally:
+        client.close()
+
+
+def test_update_alert_rule_preserves_what_it_was_not_given_live(gateway):
+    # PUT /api/alerting/rule/{id} wipes omitted actions/tags and rejects omitted
+    # params (probed on 9.5.4); the RMW must keep all three, keep `enabled`,
+    # and merge params key-by-key.
+    conn = gateway.create_connector(f"contract-log-{uuid.uuid4().hex[:8]}", ".server-log", None, None)
+    rule = gateway.create_alert_rule(
+        f"contract-esq-upd-{uuid.uuid4().hex[:8]}", ".es-query", "stackAlerts", "1m",
+        _ESQ_PARAMS, ["contract"], False,
+    )
+    action = {
+        "id": conn.id, "group": "query matched", "params": {"message": "ct {{rule.name}}"},
+        "frequency": {"summary": False, "notify_when": "onActionGroupChange", "throttle": None},
+    }
+    try:
+        gateway.update_alert_rule(rule.id, None, None, None, None, [action])
+        with _raw_kibana() as raw:
+            before = raw.alerting.rule.get(id=rule.id).body
+        assert [a["id"] for a in before["actions"]] == [conn.id]
+        gateway.enable_alert_rule(rule.id)
+
+        updated = gateway.update_alert_rule(rule.id, None, None, None, {"threshold": [5]}, None)
+        with _raw_kibana() as raw:
+            after = raw.alerting.rule.get(id=rule.id).body
+        assert after["params"]["threshold"] == [5]
+        assert after["params"]["size"] == 100 and after["params"]["index"] == [FLIGHTS]  # merged
+        assert [a["uuid"] for a in after["actions"]] == [a["uuid"] for a in before["actions"]]
+        assert after["tags"] == ["contract"] and after["name"] == rule.name
+        assert updated.enabled is True and after["enabled"] is True  # never toggled
+
+        renamed = gateway.update_alert_rule(rule.id, "contract renamed", ["x", "y"], "5m", None, None)
+        assert (renamed.name, renamed.tags, renamed.schedule_interval) == (
+            "contract renamed", ("x", "y"), "5m"
+        )
+        cleared = gateway.update_alert_rule(rule.id, None, [], None, None, [])
+        assert cleared.tags == ()
+        with _raw_kibana() as raw:
+            assert raw.alerting.rule.get(id=rule.id).body["actions"] == []
+    finally:
+        gateway.delete_alert_rule(rule.id)
+        gateway.delete_connector(conn.id)
+
+
+def test_update_alert_rule_per_action_frequency_replaces_rule_level_timing_live(gateway):
+    # Kibana refuses per-action frequency while the rule carries a rule-level
+    # notify_when ("Cannot specify per-action frequency params when notify_when
+    # or throttle are defined at the rule level", probed on 9.5.4): actions
+    # that bring a frequency must move the rule to per-action timing.
+    conn = gateway.create_connector(f"contract-log-{uuid.uuid4().hex[:8]}", ".server-log", None, None)
+    with _raw_kibana() as raw:  # the adapter never writes rule-level timing itself
+        rule_id = raw.alerting.rule.create(
+            name=f"contract-esq-legacy-{uuid.uuid4().hex[:8]}", consumer="stackAlerts",
+            rule_type_id=".es-query", schedule={"interval": "1m"}, params=_ESQ_PARAMS,
+            tags=["contract"], enabled=False, notify_when="onActiveAlert", throttle=None,
+            actions=[{"id": conn.id, "group": "query matched", "params": {"message": "a"}}],
+        ).body["id"]
+    try:
+        gateway.update_alert_rule(rule_id, "contract kept timing", None, None, None, None)
+        with _raw_kibana() as raw:
+            assert raw.alerting.rule.get(id=rule_id).body["notify_when"] == "onActiveAlert"
+        freq = {"summary": False, "notify_when": "onActionGroupChange", "throttle": None}
+        gateway.update_alert_rule(rule_id, None, None, None, None, [{
+            "id": conn.id, "group": "query matched", "params": {"message": "b"}, "frequency": freq,
+        }])
+        with _raw_kibana() as raw:
+            after = raw.alerting.rule.get(id=rule_id).body
+        assert after["notify_when"] is None and after["throttle"] is None
+        assert after["actions"][0]["frequency"] == freq
+    finally:
+        gateway.delete_alert_rule(rule_id)
+        gateway.delete_connector(conn.id)
+
+
+def test_update_alert_rule_rejections_name_the_fix_live(gateway):
+    with pytest.raises(KibanaNotFound, match=r"call list_alert_rules to find it"):
+        gateway.update_alert_rule("no-such-rule-id-xyz", "x", None, None, None, None)
+    rule = gateway.create_alert_rule(
+        f"contract-esq-rej-{uuid.uuid4().hex[:8]}", ".es-query", "stackAlerts", "1m",
+        _ESQ_PARAMS, ["contract"], False,
+    )
+    try:
+        with pytest.raises(KibanaRejected) as exc:
+            gateway.update_alert_rule(rule.id, None, None, "banana", None, None)
+        assert exc.value.message == "Kibana rejected the payload"
+        assert "not a valid duration" in (exc.value.detail or "")
+    finally:
+        gateway.delete_alert_rule(rule.id)
+
+
+def test_connector_get_and_update_live(gateway):
+    # .index: the Basic type with REQUIRED config — a PUT without config 400s,
+    # so a rename that keeps the connector valid proves the config RMW.
+    index = f"contract-idx-{uuid.uuid4().hex[:8]}"
+    conn = gateway.create_connector(
+        f"contract-idx-{uuid.uuid4().hex[:8]}", ".index", {"index": index, "refresh": False}, None
+    )
+    try:
+        got = gateway.get_connector(conn.id)
+        assert got.connector_type_id == ".index" and got.config["index"] == index
+        assert got.is_preconfigured is False and got.is_missing_secrets is False
+        renamed = gateway.update_connector(conn.id, "contract renamed idx", None, None)
+        assert renamed.name == "contract renamed idx" and renamed.config["index"] == index
+        merged = gateway.update_connector(conn.id, None, {"refresh": True}, None)
+        assert merged.config["refresh"] is True and merged.config["index"] == index
+        assert merged.name == "contract renamed idx"
+        assert gateway.get_connector(conn.id).config == merged.config
+        with pytest.raises(KibanaRejected) as exc:  # .index has no secrets schema
+            gateway.update_connector(conn.id, None, None, {"token": "x"})
+        assert exc.value.message == "Kibana rejected the payload"
+        with pytest.raises(KibanaNotFound, match=r"call list_connectors to find it"):
+            gateway.get_connector("no-such-connector-xyz")
     finally:
         gateway.delete_connector(conn.id)
 
@@ -1359,6 +1553,180 @@ def test_visualization_and_short_url_scoped_live(gateway):
             gw.delete_visualization(viz_id)
 
 
+def _delete_viz_if_exists(gateway, viz_id):
+    if viz_id is None:
+        return
+    with contextlib.suppress(KibanaNotFound):
+        gateway.delete_visualization(viz_id)
+
+
+def test_library_visualization_read_update_delete_live(gateway):
+    # The gateway half of D37: search finds by title word, get reads the stored
+    # config back in VizSpec terms, update replaces in place and refuses an id
+    # that matches nothing (Kibana's PUT would have created it), delete names
+    # the fix for a miss.
+    marker = uuid.uuid4().hex[:8]
+    viz_id = None
+    try:
+        viz_id = gateway.create_visualization(
+            to_lens_config(flights_spec(title=f"ct library {marker}"))
+        )
+        assert [v.id for v in gateway.search_visualizations(marker)] == [viz_id]
+        found = gateway.search_visualizations(marker)[0]
+        assert (found.title, found.chart_type) == (f"ct library {marker}", "bar")
+        got = gateway.get_visualization(viz_id)
+        assert (got.chart_type, got.data_view, got.time_field) == ("bar", FLIGHTS, "timestamp")
+        assert got.metrics == ({"agg": "average", "field": "AvgTicketPrice"},)
+        assert got.group_by == ({"field": "Carrier", "kind": "terms", "limit": 10},)
+        line = flights_spec(
+            title=f"ct library {marker} v2", chart_type=ChartType.LINE,
+            metrics=[MetricSpec(agg=MetricAgg.COUNT)],
+            group_by=[GroupBySpec(field="timestamp", kind="date_histogram")],
+        )
+        gateway.update_visualization(viz_id, to_lens_config(line))
+        after = gateway.get_visualization(viz_id)
+        assert (after.id, after.title, after.chart_type) == (viz_id, f"ct library {marker} v2", "line")
+        stray = f"ct-no-such-viz-{marker}"
+        with pytest.raises(KibanaNotFound, match="call search_visualizations to find it"):
+            gateway.update_visualization(stray, to_lens_config(line))
+        with pytest.raises(KibanaNotFound):
+            gateway.get_visualization(stray)  # the refused update created nothing
+        gateway.delete_visualization(viz_id)
+        with pytest.raises(KibanaNotFound, match="call search_visualizations to find it"):
+            gateway.delete_visualization(viz_id)
+        viz_id = None
+    finally:
+        _delete_viz_if_exists(gateway, viz_id)
+
+
+async def test_library_panel_keeps_the_dashboard_editable_live(gateway):
+    # D37 on the live stack, through the MCP tools: a by-reference panel
+    # round-trips with zero warnings, the other dashboards tools keep working
+    # around it, update_panel refuses it naming update_visualization, an edit to
+    # the library item reaches the panel, and deleting the item (which Kibana
+    # allows) leaves a dangling panel the tools can still edit around and remove.
+    marker = uuid.uuid4().hex[:8]
+    title = f"ct library panel {marker}"
+    dash_id = derive_dashboard_id(title)
+    viz_id = None
+    _delete_if_exists(gateway, dash_id)
+    try:
+        async with Client(_tool_server()) as client:
+            viz_id = (await client.call_tool("create_visualization", {
+                "spec": dict(_PANEL, title=f"ct library viz {marker}"),
+            })).data["id"]
+            found = (await client.call_tool("search_visualizations", {"query": marker})).data
+            assert [v["id"] for v in found] == [viz_id]
+            await client.call_tool("create_dashboard", {"title": title, "panels": [_PANEL]})
+            placed = (await client.call_tool(
+                "add_library_panel", {"dashboard_id": dash_id, "visualization_id": viz_id}
+            )).data
+            assert placed["panel_index"] == 1
+            data, warnings = gateway.get_dashboard_data(dash_id)
+            assert warnings == []  # a by-reference panel round-trips losslessly
+            assert data["panels"][1]["config"] == {"ref_id": viz_id}
+
+            await client.call_tool("add_panel", {"dashboard_id": dash_id, "panel": _PANEL})
+            data, warnings = gateway.get_dashboard_data(dash_id)
+            assert warnings == [] and len(data["panels"]) == 3
+            assert data["panels"][1]["config"] == {"ref_id": viz_id}  # kept through the RMW
+
+            with pytest.raises(ToolError, match="change it with update_visualization"):
+                await client.call_tool("update_panel", {
+                    "dashboard_id": dash_id, "panel_index": 1, "panel": _PANEL,
+                })
+            assert gateway.get_dashboard_data(dash_id)[0]["panels"][1]["config"] == {
+                "ref_id": viz_id
+            }
+
+            await client.call_tool("update_visualization", {
+                "visualization_id": viz_id, "spec": dict(_PANEL, title=f"ct renamed {marker}"),
+            })
+            panels = (await client.call_tool("get_dashboard", {"dashboard_id": dash_id})).data[
+                "panels"
+            ]
+            assert panels[1] == {
+                "index": 1, "type": "vis", "title": f"ct renamed {marker}",
+                "visualization_id": viz_id,
+            }
+            assert "visualization_id" not in panels[0]
+
+            await client.call_tool("delete_visualization", {"visualization_id": viz_id})
+            deleted_id, viz_id = viz_id, None
+            data, warnings = gateway.get_dashboard_data(dash_id)
+            assert warnings == []
+            assert data["panels"][1]["config"] == {"ref_id": deleted_id}  # dangling, kept
+            panels = (await client.call_tool("get_dashboard", {"dashboard_id": dash_id})).data[
+                "panels"
+            ]
+            assert panels[1]["title"] == "" and panels[1]["visualization_id"] == deleted_id
+            await client.call_tool("add_panel", {"dashboard_id": dash_id, "panel": _PANEL})
+            await client.call_tool("delete_panel", {"dashboard_id": dash_id, "panel_index": 1})
+            data, warnings = gateway.get_dashboard_data(dash_id)
+            assert warnings == [] and len(data["panels"]) == 3
+            assert all("ref_id" not in (p.get("config") or {}) for p in data["panels"])
+
+            with pytest.raises(ToolError, match=r"visualization '.+' not found"):
+                await client.call_tool(  # a ref Kibana would store is refused first
+                    "add_library_panel",
+                    {"dashboard_id": dash_id, "visualization_id": deleted_id},
+                )
+    finally:
+        _delete_viz_if_exists(gateway, viz_id)
+        _delete_if_exists(gateway, dash_id)
+
+
+async def test_library_tools_scoped_live(gateway):
+    # The five tools in a space: results echo it, the dashboard URL carries
+    # /s/<id>, the library item is invisible from the default space, and a miss
+    # carries the scoped suffix once.
+    marker = uuid.uuid4().hex[:8]
+    title = f"ct scoped library {marker}"
+    dash_id = derive_dashboard_id(title)
+    with _temp_space(gateway, "mcp-for-kibana-ct-lib") as space_id:
+        with _live_gateway(space_id) as gw:
+            gw.create_data_view(FLIGHTS, f"ct-flights-{marker}", "timestamp")
+        async with Client(_tool_server()) as client:
+            viz_id = (await client.call_tool("create_visualization", {
+                "spec": dict(_PANEL, title=f"ct scoped viz {marker}"), "space": space_id,
+            })).data["id"]
+            found = (await client.call_tool(
+                "search_visualizations", {"query": marker, "space": space_id}
+            )).data
+            assert [v["id"] for v in found] == [viz_id] and "space" not in found[0]
+            assert (await client.call_tool("search_visualizations", {"query": marker})).data == []
+            got = (await client.call_tool(
+                "get_visualization", {"visualization_id": viz_id, "space": space_id}
+            )).data
+            assert got["space"] == space_id and got["chart_type"] == "bar"
+            with pytest.raises(ToolError, match=r"call search_visualizations to find it$"):
+                await client.call_tool("get_visualization", {"visualization_id": viz_id})
+            await client.call_tool(
+                "create_dashboard", {"title": title, "panels": [_PANEL], "space": space_id}
+            )
+            placed = (await client.call_tool("add_library_panel", {
+                "dashboard_id": dash_id, "visualization_id": viz_id, "space": space_id,
+            })).data
+            assert placed["space"] == space_id
+            assert f"/s/{space_id}/app/dashboards#/view/{dash_id}" in placed["url"]
+            updated = (await client.call_tool("update_visualization", {
+                "visualization_id": viz_id, "spec": dict(_PANEL, title=f"ct v2 {marker}"),
+                "space": space_id,
+            })).data
+            assert updated == {"id": viz_id, "title": f"ct v2 {marker}", "space": space_id}
+            with pytest.raises(ToolError) as miss:
+                await client.call_tool(
+                    "delete_visualization",
+                    {"visualization_id": f"ct-no-such-{marker}", "space": space_id},
+                )
+            assert str(miss.value).endswith(f" (in space '{space_id}')")
+            assert str(miss.value).count("(in space") == 1
+            deleted = (await client.call_tool(
+                "delete_visualization", {"visualization_id": viz_id, "space": space_id}
+            )).data
+            assert deleted == {"id": viz_id, "deleted": True, "space": space_id}
+
+
 def test_cross_space_import_clones(gateway, tmp_path):
     # export from space a -> import into space b WITHOUT overwrite = a clone:
     # every id is regenerated and space a keeps its originals.
@@ -1478,6 +1846,123 @@ def test_alerting_connector_scoped_execute_live(gateway):
             assert not any(c.id == conn.id for c in gateway.list_connectors())
 
 
+def _alerting_tool_server():
+    server = FastMCP("contract-alerting")
+    AlertingToolbox().register(
+        server,
+        ToolboxDeps(
+            gateway_factory=lambda space=None: KibanaPyGateway.connect(
+                os.environ["KIBANA_URL"], os.environ["KIBANA_TEST_API_KEY"], space
+            ),
+            public_kibana_url="http://kb:5601",
+        ),
+    )
+    return server
+
+
+async def test_alerting_maintenance_tools_scoped_live(gateway):
+    # Through the MCP surface in a space: edits land in that space only, dict
+    # results echo it, a miss carries the suffix once, and no secrets field
+    # ever appears.
+    with _temp_space(gateway, "mcp-for-kibana-ct-alrt-upd") as space_id:
+        async with Client(_alerting_tool_server()) as client:
+            conn = (await client.call_tool("create_connector", {
+                "name": "contract scoped log", "connector_type_id": ".server-log",
+                "space": space_id,
+            })).data
+            rule = (await client.call_tool("create_alert_rule", {
+                "name": "contract scoped rule", "rule_type_id": ".es-query",
+                "consumer": "stackAlerts", "params": _ESQ_PARAMS, "space": space_id,
+            })).data
+            upd_rule = (await client.call_tool("update_alert_rule", {
+                "rule_id": rule["id"], "name": "contract scoped renamed",
+                "params": {"threshold": [3]}, "space": space_id,
+            })).data
+            got = (await client.call_tool(
+                "get_connector", {"connector_id": conn["id"], "space": space_id}
+            )).data
+            upd_conn = (await client.call_tool("update_connector", {
+                "connector_id": conn["id"], "name": "contract scoped renamed log",
+                "space": space_id,
+            })).data
+            with pytest.raises(ToolError) as miss:
+                await client.call_tool(
+                    "get_connector", {"connector_id": "no-such-connector-xyz", "space": space_id}
+                )
+        assert upd_rule["name"] == "contract scoped renamed" and upd_rule["space"] == space_id
+        assert upd_rule["enabled"] is False
+        assert got["space"] == space_id and got["connector_type_id"] == ".server-log"
+        assert upd_conn["name"] == "contract scoped renamed log" and upd_conn["space"] == space_id
+        assert "secrets" not in got and "secrets" not in upd_conn
+        assert str(miss.value).endswith(f" (in space '{space_id}')")
+        assert str(miss.value).count("(in space") == 1
+        with pytest.raises(KibanaNotFound):  # invisible from the root space
+            gateway.get_connector(conn["id"])
+        with pytest.raises(KibanaNotFound):
+            gateway.update_alert_rule(rule["id"], "x", None, None, None, None)
+
+
+async def test_get_alert_rule_reads_params_before_and_after_a_threshold_fix_live(gateway):
+    # The read-modify-write pair through the MCP surface: get_alert_rule shows
+    # the stored params (Kibana's defaults included) and actions, update merges
+    # a threshold into them, and get_alert_rule shows the change. The result is
+    # built from named keys: no secret and no bookkeeping key (probed on 9.5.4,
+    # GET returns api_key_owner, never the rule's API key).
+    conn = gateway.create_connector(f"contract-log-{uuid.uuid4().hex[:8]}", ".server-log", None, None)
+    action = {
+        "id": conn.id, "group": "query matched", "params": {"message": "ct {{rule.name}}"},
+        "frequency": {"summary": False, "notify_when": "onActionGroupChange", "throttle": None},
+    }
+    rid = None
+    try:
+        async with Client(_alerting_tool_server()) as client:
+            rid = (await client.call_tool("create_alert_rule", {
+                "name": f"contract-esq-get-{uuid.uuid4().hex[:8]}", "rule_type_id": ".es-query",
+                "consumer": "stackAlerts", "params": {**_ESQ_PARAMS, "threshold": [10000]},
+                "tags": ["contract"],
+            })).data["id"]
+            await client.call_tool("update_alert_rule", {"rule_id": rid, "actions": [action]})
+            await client.call_tool("enable_alert_rule", {"rule_id": rid})
+            before = (await client.call_tool("get_alert_rule", {"rule_id": rid})).data
+            await client.call_tool(
+                "update_alert_rule", {"rule_id": rid, "params": {"threshold": [100]}}
+            )
+            after_call = await client.call_tool("get_alert_rule", {"rule_id": rid})
+            after = after_call.data
+            with _raw_kibana() as raw:
+                stored = raw.alerting.rule.get(id=rid).body
+            # D40 amendment (probed on 9.5.4): the read uuid, passed back, keeps
+            # the action's identity; an action sent without one gets a new uuid.
+            await client.call_tool(
+                "update_alert_rule", {"rule_id": rid, "actions": after["actions"]}
+            )
+            with _raw_kibana() as raw:
+                kept = [a["uuid"] for a in raw.alerting.rule.get(id=rid).body["actions"]]
+            await client.call_tool("update_alert_rule", {"rule_id": rid, "actions": [action]})
+            with _raw_kibana() as raw:
+                minted = [a["uuid"] for a in raw.alerting.rule.get(id=rid).body["actions"]]
+        assert before["params"]["threshold"] == [10000]
+        assert before["params"]["aggType"] == "count"  # Kibana's default, read back
+        assert [a["uuid"] for a in after["actions"]] == [a["uuid"] for a in stored["actions"]]
+        assert [{k: v for k, v in a.items() if k != "uuid"} for a in before["actions"]] == [action]
+        assert before["actions"] == after["actions"]  # a params-only edit keeps the uuid
+        assert kept == [a["uuid"] for a in after["actions"]]
+        assert minted != kept  # the premise for returning uuid
+        assert after["params"] == {**before["params"], "threshold": [100]}
+        assert after["params"] == stored["params"]
+        assert after["enabled"] is True and after["tags"] == ["contract"]
+        assert set(after) == {
+            "id", "name", "rule_type_id", "consumer", "enabled", "schedule_interval",
+            "status", "tags", "params", "actions",
+        }
+        assert stored.get("api_key_owner")  # an enabled rule has a key; it never comes back
+        assert os.environ["KIBANA_TEST_API_KEY"] not in str(after_call.content)
+    finally:
+        if rid is not None:
+            gateway.delete_alert_rule(rid)
+        gateway.delete_connector(conn.id)
+
+
 def test_case_scoped_lifecycle_live(gateway):
     marker = f"mcp-for-kibana scoped case {uuid.uuid4().hex[:8]}"
     with _temp_space(gateway) as space_id:
@@ -1530,3 +2015,34 @@ def test_search_detection_alerts_uninitialized_space_live(gateway):
     with _temp_space(gateway) as space_id:
         with _live_gateway(space_id) as gw:
             assert gw.search_detection_alerts(1) == []
+
+
+async def test_update_data_view_tool_scoped_live(gateway, tmp_path):
+    # Through the MCP surface in a space: the edit lands there only, the result
+    # echoes the space, and a miss carries the scoped suffix once.
+    with _temp_space(gateway, "mcp-for-kibana-ct-dv-upd") as space_id:
+        async with Client(_dm_tool_server(tmp_path)) as client:
+            created = (await client.call_tool("create_data_view", {
+                "index_pattern": FLIGHTS, "name": "ct scoped dv", "space": space_id,
+            })).data
+            updated = (await client.call_tool("update_data_view", {
+                "view_id": created["id"], "name": "ct scoped dv renamed",
+                "time_field": "timestamp", "space": space_id,
+            })).data
+            with pytest.raises(ToolError) as miss:
+                await client.call_tool(
+                    "update_data_view",
+                    {"view_id": "no-such-dv-xyz", "name": "x", "space": space_id},
+                )
+            with pytest.raises(ToolError, match=r"call list_data_views to find it$"):
+                await client.call_tool(  # the root space cannot see it
+                    "update_data_view", {"view_id": created["id"], "name": "x"}
+                )
+        assert updated == {
+            "id": created["id"], "name": "ct scoped dv renamed", "index_pattern": FLIGHTS,
+            "time_field": "timestamp", "field_count": updated["field_count"], "space": space_id,
+        }
+        assert updated["field_count"] > 0
+        assert "call list_data_views to find it" in str(miss.value)
+        assert str(miss.value).endswith(f" (in space '{space_id}')")
+        assert str(miss.value).count("(in space") == 1

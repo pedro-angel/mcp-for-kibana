@@ -1,6 +1,6 @@
 [project]
 name = "mcp-for-kibana"
-version = "0.3.0"
+version = "0.4.0"
 description = "MCP server for Kibana: composable toolboxes over a hexagonal core"
 readme = "README.md"
 license = "Apache-2.0"
@@ -108,10 +108,11 @@ packages = ["src/kibana_mcp"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
-addopts = "-m 'not contract and not e2e and not e2e_replay and not ephemeral and not fleet_ephemeral'"
+addopts = "-m 'not contract and not e2e and not e2e_claude and not e2e_replay and not ephemeral and not fleet_ephemeral'"
 markers = [
     "contract: needs the docker Kibana stack (scripts/stack.sh up)",
-    "e2e: needs LM Studio running with the mcp-for-kibana entry in mcp.json",
+    "e2e: needs LM Studio running with the mcp-for-kibana entry in mcp.json (make test-e2e-local)",
+    "e2e_claude: needs the docker Kibana stack and a signed-in `claude` CLI; drives Claude via claude -p (make test-e2e)",
     "e2e_replay: needs the docker Kibana stack only — replays a RECORDED model turn through a real MCP client (no LLM, so it runs in CI)",
     "ephemeral: needs an isolated ephemeral stack (scripts/ephemeral_stack.sh); excluded from default + contract",
     "fleet_ephemeral: needs the isolated fleet 2-agent ephemeral stack (scripts/fleet_ephemeral.sh); excluded from default + contract",
@@ -190,13 +191,13 @@ layers = [
     "kibana_mcp.toolboxes",
     "kibana_mcp.adapters",
     "kibana_mcp.ports",
-    "kibana_mcp.core | kibana_mcp.config",
+    "kibana_mcp.core | kibana_mcp.config | kibana_mcp.tool_lists",
 ]
 
 [[tool.importlinter.contracts]]
 name = "core and ports are pure of frameworks"
 type = "forbidden"
-source_modules = ["kibana_mcp.core", "kibana_mcp.ports", "kibana_mcp.config"]
+source_modules = ["kibana_mcp.core", "kibana_mcp.ports", "kibana_mcp.config", "kibana_mcp.tool_lists"]
 forbidden_modules = ["fastmcp", "mcp", "kibana"]
 
 [[tool.importlinter.contracts]]

@@ -19,8 +19,11 @@ implementation is **evidence, not authority** — read it last, if at all.
 7. [configuration.md](../configuration.md) and
    [deployment.md](../deployment.md) — the environment-variable surface
    (`KIBANA_URL`, `KIBANA_API_KEY`, `KIBANA_MCP_TIER`,
-   `KIBANA_MCP_TOOLBOXES`, and the rest): this is wire compatibility with
-   every deployed `mcp.json`, as contractual as any tool schema.
+   `KIBANA_MCP_TOOLBOXES`, `KIBANA_MCP_TOOLS` with its `@name` list
+   references, `KIBANA_MCP_TOOL_LISTS_FILE`, and the rest): this is wire
+   compatibility with every deployed `mcp.json`, as contractual as any tool
+   schema — and so are the built-in list names and the version-1 tool-list
+   file format (D41), which operators' files depend on.
 8. `src/kibana_mcp/ports/gateway.py` — the one code file elevated to spec
    status: the seam everything regenerates behind.
 
@@ -57,10 +60,13 @@ trust the observation, and **reconcile the contract in the same change**
   stack start — the API key dies with the stack.
 - Fast gates: `make check`. Full certification: `KIBANA_MCP_DOD_CYCLE_STACK=1
   make dod` → must print `VERDICT: GO`. Criteria in `dod.config`; the gate,
-  not the author, certifies completion.
-- Live-model tier: LM Studio setup in [e2e-setup.md](../e2e-setup.md);
-  `LMSTUDIO_MODEL` is required and no model is privileged
-  ([decisions.md](decisions.md) D33).
+  not the author, certifies completion. It includes the Claude live-model
+  tier (`e2e_green`, D42), so it needs a signed-in `claude` CLI.
+- Live-model tiers ([e2e-setup.md](../e2e-setup.md)): `make test-e2e` drives
+  Claude via `claude -p` with only this server's tools through the
+  pre-registered tasks, model `CLAUDE_E2E_MODEL` (default `haiku`, D38);
+  `make test-e2e-local` drives LM Studio, where `LMSTUDIO_MODEL` is required
+  and no model is privileged (D33).
 
 ## Rules of engagement
 

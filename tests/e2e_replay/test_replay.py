@@ -107,6 +107,13 @@ pytestmark = pytest.mark.e2e_replay
 _TRANSCRIPT_DIR = Path(__file__).parent / "transcripts"
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 
+# The settings that pick the published tool surface (config.Settings:
+# toolboxes, tools, tier). An exported one must not reach the replayed server:
+# it would silently replace the surface the transcript was recorded against
+# (KIBANA_MCP_TOOLS alone decides the surface, D34). Matched case-insensitively,
+# as pydantic-settings reads environment names.
+_SELECTION_VARS = frozenset({"KIBANA_MCP_TOOLBOXES", "KIBANA_MCP_TOOLS", "KIBANA_MCP_TIER"})
+
 # (transcript file, extra server env that transcript needs). The space
 # transcript's server must expose `create_space`, which lives in the
 # platform-admin toolbox — off in the default set, so without this env the
@@ -184,7 +191,10 @@ def mcp_client(transcript):
 
     Launched exactly the way an operator's mcp.json launches it (see
     docs/examples/mcp.json): `uv run mcp-for-kibana`, credentials via
-    KIBANA_MCP_ENV_FILE. The transcript's `extra_env` is merged in ahead of the
+    KIBANA_MCP_ENV_FILE. The inherited environment loses every tool-selection
+    variable (`_SELECTION_VARS`) first, so an operator's exported
+    KIBANA_MCP_TOOLS or KIBANA_MCP_TOOLBOXES cannot change the surface under a
+    transcript. The transcript's `extra_env` is merged in ahead of the
     two pinned keys, so a transcript can select toolboxes but can never move
     the tier: it stays `write`, and leaving `destructive` off means a replay can
     never delete anything even if a transcript is later edited carelessly.
@@ -201,12 +211,13 @@ def mcp_client(transcript):
     else:
         command, args = "uv", ["--directory", str(_REPO_ROOT), "run", "mcp-for-kibana"]
         cwd = None
+    inherited = {k: v for k, v in os.environ.items() if k.upper() not in _SELECTION_VARS}
     return Client(
         StdioTransport(
             command=command,
             args=args,
             env={
-                **os.environ,
+                **inherited,
                 **transcript["extra_env"],
                 "KIBANA_MCP_ENV_FILE": str(_REPO_ROOT / "elastic-start-local" / ".env.seed"),
                 "KIBANA_MCP_TIER": "write",

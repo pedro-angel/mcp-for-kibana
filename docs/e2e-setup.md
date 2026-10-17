@@ -1,11 +1,79 @@
-# E2E harness setup (one-time)
+# E2E harness setup
 
-The E2E test (`tests/e2e/test_lmstudio.py`) drives a REAL local model in LM
-Studio that uses mcp-for-kibana over MCP against the docker Kibana stack (Task
-13). This is the MVP success gate: a plain-English request, through a real
-model, through our server, into a real Kibana dashboard.
+Two live-model tiers drive a REAL model that uses mcp-for-kibana over MCP
+against the docker Kibana stack: a plain-English request, through a real
+model, through our server, into real Kibana objects. Both send the same task
+prompts and score Kibana's state afterwards, never the model's text
+(`tests/_live_tasks.py`).
 
-## One-time setup
+| Target | Model | Needs |
+|---|---|---|
+| `make test-e2e` | Claude via headless Claude Code (`claude -p`); `CLAUDE_E2E_MODEL`, default `haiku` | a Claude sign-in for the `claude` CLI (no API key) |
+| `make test-e2e-local` | a small local model in LM Studio; `LMSTUDIO_MODEL`, required | LM Studio with the one-time setup below |
+
+`make dod` runs the Claude tier: `e2e_green` is `required` in `dod.config`
+(D42) and runs the same `pytest -m e2e_claude` against the seeded stack, with
+its records in the gate's log directory (`/tmp/dod-<repo>/e2e_green-runs/`). A
+missing `claude` CLI or sign-in makes the criterion NO-GO with the fix named.
+CI's `.github/dod` configs keep `e2e_green` `n/a` (no Claude sign-in there).
+The LM Studio tier is outside every gate. Run `make test-e2e` on its own when
+a change touches tool names, descriptions or schemas (D38).
+
+## The Claude tier (`make test-e2e`)
+
+`tests/e2e/test_claude_live.py` runs four tasks, five runs each by default:
+the three LM Studio tasks below (flights dashboard, dashboard in a new space,
+alert rule in a new space) and `fix_rule_threshold`, where the harness seeds a
+disabled alert rule with a wrong threshold and the model must fix it in place.
+Tasks, pass criteria and N are pre-registered in
+`scripts/experiment/CLAUDE_E2E.md`.
+
+One-time setup — the fixes the gate's `e2e_green` NO-GO lines point to:
+
+```bash
+npm install -g @anthropic-ai/claude-code   # installs the `claude` CLI (Claude Code)
+claude auth login                          # signs the CLI in to your Claude account (no API key)
+claude auth status                         # the gate requires "loggedIn": true here
+claude -p "say ok" --model haiku           # optional: confirms a headless run works
+```
+
+Then:
+
+```bash
+make test-e2e                      # starts + seeds the stack, then pytest -m e2e_claude
+```
+
+In `make dod`, the `e2e_green` GO line names the model and runs per task it
+ran with (`CLAUDE_E2E_MODEL` / `CLAUDE_E2E_RUNS`), so a GO from an override —
+say a single run per task — is visible in the verdict.
+
+The model gets this server's tools and nothing else: `--tools ""` removes
+every built-in tool (no shell, files or web), `--strict-mcp-config` loads only
+the harness's MCP config, and `--permission-mode dontAsk` with
+`--allowedTools mcp__mcp-for-kibana` runs those tools without a prompt and
+denies anything else. A run offered any other tool fails. The Kibana API key
+goes only into the MCP server's `env` block, in a mode-0600 config file in a
+temporary directory; the model's environment drops every `KIBANA*` variable,
+the prompt never names the key, and each transcript is searched for it — a hit
+is redacted on disk and fails the run, without printing the key.
+
+| Var | Default | Meaning |
+|---|---|---|
+| `CLAUDE_E2E_MODEL` | `haiku` | model or alias passed to `--model`; each record names the model the CLI reports |
+| `CLAUDE_E2E_RUNS` | `5` | runs per task |
+| `CLAUDE_E2E_BUDGET_USD` | `5` | the session starts no run once its cumulative cost reaches this; each run is also capped at $0.75 |
+| `CLAUDE_E2E_OUT` | `scripts/experiment/runs/claude-e2e/adhoc` | run-record directory |
+
+Each run writes `prompt.txt`, `transcript.jsonl` (stream-json),
+`record.json` and, when non-empty, `stderr.txt` to its own directory, and
+appends its record to `runs.jsonl`. Summarise a directory with
+`uv run python scripts/experiment/claude_e2e_report.py <dir>`.
+
+## The LM Studio tier (`make test-e2e-local`): one-time setup
+
+`tests/e2e/test_lmstudio*.py` drive a local model in LM Studio, for testing
+small local models. The first of them (`test_lmstudio.py`) was the MVP success
+gate.
 
 1. Start and seed the stack:
 
@@ -31,12 +99,10 @@ model, through our server, into a real Kibana dashboard.
    the flights flow but corrupts its tool-call markers roughly one run in
    three (`tool_format_generation_error` 500 from LM Studio).
 
-   These tests are not part of `make dod`: `e2e_green` is `n/a` in
-   `dod.config` (D31). Run them on demand with `make test-e2e` when a change
-   touches tool names, descriptions or schemas. It runs all three — the
-   flights dashboard (`test_lmstudio.py`) and the dashboards and alerting
-   space chains — needs both server entries from step 5, and takes about four
-   minutes with `google/gemma-4-12b-qat`.
+   `make test-e2e-local` runs all three — the flights dashboard
+   (`test_lmstudio.py`) and the dashboards and alerting space chains — needs
+   both server entries from step 5, and takes about four minutes with
+   `google/gemma-4-12b-qat`.
 
    **The context you load with is the context the test gets.** The harness
    deliberately sends no `context_length`, so it reuses whatever you loaded
@@ -45,8 +111,8 @@ model, through our server, into a real Kibana dashboard.
    is what you want here — the endpoint docs note that *"higher values [are]
    recommended for MCP usage"*. (How many tools that means depends on your
    config: the default `KIBANA_MCP_TOOLBOXES` of `dashboards,data-management`
-   with `KIBANA_MCP_TIER=write` advertises 16 — verified by listing them over
-   stdio — not the 133 the full ten-toolbox set would.) If you
+   with `KIBANA_MCP_TIER=write` advertises 21 — verified by listing them over
+   stdio — not the 143 the full ten-toolbox set would.) If you
    load with a small context, a reasoning-heavy model can burn its whole budget
    thinking and get truncated before it emits a tool call; the test then fails
    on `assert tool_calls` (MEASURED with `nvidia/nemotron-3-nano-omni` at 8000).
@@ -137,8 +203,9 @@ model, through our server, into a real Kibana dashboard.
    The alerting-space gate (`test_lmstudio_alerting_space.py`) needs a
    **second** entry named `mcp-for-kibana-alerting` — same command and env,
    but `KIBANA_MCP_TOOLBOXES: "alerting,platform-admin"`. Each gate keeps its
-   own frozen tool surface (24 tools for the dashboards gate, 17 for
-   alerting); one shared entry cannot satisfy both experiment designs.
+   own toolbox set (designed on 24 tools for the dashboards gate and 17 for
+   alerting; data-management and alerting have grown since); one shared
+   entry cannot satisfy both experiment designs.
 
    > Need a fresh API key? Delete `elastic-start-local/.env.seed` (or its `KIBANA_TEST_API_KEY`
    > line) and re-run `scripts/stack.sh seed` — your `.env.local` is a
@@ -153,13 +220,13 @@ model, through our server, into a real Kibana dashboard.
 6. Run:
 
    ```bash
-   make test-e2e       # starts + seeds the stack; tests load elastic-start-local/.env.seed + .env.local themselves
+   make test-e2e-local   # starts + seeds the stack; tests load elastic-start-local/.env.seed + .env.local themselves
    ```
 
    (Raw form: `uv run pytest -m e2e -v` — the conftest loads `elastic-start-local/.env.seed`
    and `.env.local` for you.)
 
-## Env vars the harness reads
+## Env vars the LM Studio harness reads
 
 `KIBANA_URL` and `KIBANA_TEST_API_KEY` come from `elastic-start-local/.env.seed` (machine-written
 by `scripts/stack.sh seed`); the `LMSTUDIO_*` vars belong in `.env.local`
@@ -169,7 +236,7 @@ by `scripts/stack.sh seed`); the `LMSTUDIO_*` vars belong in `.env.local`
 |---|---|---|
 | `LMSTUDIO_URL` | `http://localhost:1234` | no |
 | `LMSTUDIO_API_TOKEN` | (none) | no — sent as `Bearer` only if set |
-| `LMSTUDIO_MODEL` | (none) | yes — for `make test-e2e` (step 2) |
+| `LMSTUDIO_MODEL` | (none) | yes — for `make test-e2e-local` (step 2) |
 | `KIBANA_URL` | (none) | yes — from `elastic-start-local/.env.seed` |
 | `KIBANA_TEST_API_KEY` | (none) | yes — from `elastic-start-local/.env.seed` |
 
@@ -255,4 +322,4 @@ survive, and that the corrected call still builds the dashboard — asserted wit
 the same helper the live test uses.
 
 It does **not** certify that a model can choose those calls. That claim needs a
-real model and belongs to this page's `e2e_green` alone.
+real model and belongs to this page's live-model tiers alone.

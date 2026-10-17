@@ -27,6 +27,7 @@ from kibana.exceptions import (
 
 from kibana_mcp.core.errors import (
     KibanaAuthError,
+    KibanaMcpError,
     KibanaNotFound,
     KibanaRejected,
     KibanaSpaceNotFound,
@@ -36,6 +37,7 @@ from kibana_mcp.core.models import (
     AlertingHealth,
     RuleType,
     AlertRule,
+    AlertRuleDetail,
     ApiDeprecation,
     ApmAgentConfig,
     ApmAnnotation,
@@ -43,6 +45,7 @@ from kibana_mcp.core.models import (
     ApmSourcemap,
     Case,
     Connector,
+    ConnectorDetail,
     DashboardDetail,
     DashboardSummary,
     DataViewDetail,
@@ -90,7 +93,10 @@ from kibana_mcp.core.models import (
     UptimeSettings,
     ValueList,
     ValueListItem,
+    VisualizationDetail,
+    VisualizationSummary,
 )
+from kibana_mcp.core.visualizations.translate import describe_lens_config, lens_chart_type
 from kibana_mcp.ports.gateway import KibanaGateway
 
 
@@ -148,7 +154,29 @@ def _translated(e: BaseException, space: str | None) -> BaseException:
 _ID_SOURCES = {
     "dashboard": ("dashboard_id", "create_dashboard or search_dashboards", "title"),
     "alert rule": ("rule_id", "create_alert_rule or list_alert_rules", "name"),
+    "connector": ("connector_id", "create_connector or list_connectors", "name"),
+    "data view": ("view_id", "create_data_view or list_data_views", "name or index pattern"),
+    "visualization": (
+        "visualization_id", "create_visualization or search_visualizations", "title"
+    ),
 }
+
+# How many date fields a time-field rejection lists before eliding the rest.
+_DATE_FIELDS_SHOWN = 20
+
+# Rule fields a PUT /api/alerting/rule/{id} drops or resets when omitted, beyond
+# the ones update_alert_rule exposes: re-sent from the current rule whenever it
+# carries them (probed on 9.5.4: an omitted notify_when resets to null).
+_RULE_PRESERVED_KEYS = ("notify_when", "throttle", "alert_delay", "flapping", "artifacts")
+# The rule-level timing pair that per-action `frequency` replaces: never re-sent
+# alongside caller actions that carry a frequency (Kibana 400s the mix).
+_RULE_LEVEL_FREQUENCY_KEYS = frozenset({"notify_when", "throttle"})
+
+# Connector types whose secrets schema is empty: Kibana rejects ANY secrets key on
+# them ("Unrecognized key", probed on 9.5.4), so an update that omits `secrets`
+# cannot lose one. They are also the only types the Basic licence enables. Every
+# other type may hold secrets that a PUT without `secrets` resets to {}.
+_SECRETLESS_CONNECTOR_TYPES = frozenset({".index", ".server-log"})
 
 
 @contextlib.contextmanager
@@ -222,6 +250,66 @@ def _normalize_fields(raw: dict[str, Any] | list[dict[str, Any]]) -> dict[str, s
     return {f["name"]: f.get("type", "unknown") for f in raw}
 
 
+def _to_data_view_detail(raw: dict[str, Any]) -> DataViewDetail:
+    return DataViewDetail(
+        id=raw["id"],
+        name=raw.get("name") or raw["title"],
+        index_pattern=raw["title"],
+        time_field=raw.get("timeFieldName"),
+        fields=_normalize_fields(raw.get("fields", {})),
+    )
+
+
+def _time_field_problem(time_field: str, fields: dict[str, str], pattern: str) -> str | None:
+    """Why `time_field` cannot be the time field of a view over `pattern`, or
+    None when it can. Kibana stores any string here (probed on 9.5.4: a missing
+    field and a keyword field were both accepted), so this is the only check.
+    A pattern that matches no index has no fields yet: nothing to check against."""
+    if not fields or fields.get(time_field) == "date":
+        return None
+    if time_field in fields:
+        what = f"is a {fields[time_field]} field, not a date field, of '{pattern}'"
+    else:
+        what = f"is not a field of '{pattern}'"
+    dates = sorted(n for n, t in fields.items() if t == "date")
+    if not dates:
+        return (
+            f"time field '{time_field}' {what} — '{pattern}' has no date fields, so a data "
+            "view over it cannot have a time field; use create_data_view without time_field"
+        )
+    shown = ", ".join(dates[:_DATE_FIELDS_SHOWN]) + (", …" if len(dates) > _DATE_FIELDS_SHOWN else "")
+    return f"time field '{time_field}' {what} — pass time_field as one of its date fields: {shown}"
+
+
+def _domain_error(e: BaseException, space: str | None) -> KibanaMcpError | None:
+    """`e` as the domain error the tools would show, or None when unmapped."""
+    translated = e if isinstance(e, KibanaMcpError) else _translated(e, space)
+    return translated if isinstance(translated, KibanaMcpError) else None
+
+
+def _cause_text(e: BaseException, space: str | None) -> str:
+    """The text a tool would show for `e` (safe for the LLM: no raw repr)."""
+    d = _domain_error(e, space)
+    if d is None:
+        return "an unexpected error"
+    detail = d.detail if isinstance(d, KibanaRejected) else ""
+    return f"{d.message}: {detail}" if detail else d.message
+
+
+def _with_state(e: BaseException, space: str | None, state: str) -> BaseException:
+    """The domain error for a write that failed after an earlier write of the
+    same call landed: the original cause, then what the object now holds and
+    the call that finishes or undoes it. Unmapped errors pass through."""
+    d = _domain_error(e, space)
+    if d is None:
+        return e
+    if isinstance(d, KibanaRejected):
+        if d.detail:
+            return KibanaRejected(d.message, detail=f"{d.detail} — {state}")
+        return KibanaRejected(f"{d.message} — {state}")
+    return type(d)(f"{d.message} — {state}")
+
+
 def _to_short_url(body: dict[str, Any]) -> ShortUrl:
     return ShortUrl(
         id=body["id"],
@@ -258,6 +346,40 @@ def _to_alert_rule(body: dict[str, Any]) -> AlertRule:
     )
 
 
+def _to_rule_action(raw: dict[str, Any]) -> dict[str, object]:
+    # The keys update_alert_rule's `actions` take, so a read action can be
+    # edited and passed back. GET's connector_type_id is left out (the PUT
+    # schema rejects it), as is any other key. `uuid` is kept: the PUT accepts
+    # it and Kibana then keeps the action's identity, where an action sent
+    # without one gets a new uuid (probed on 9.5.4, D40). A system action has
+    # no group, and an action without per-action timing no frequency: those
+    # keys (and uuid) appear only when Kibana sent them, so a round trip adds
+    # nothing.
+    action: dict[str, object] = {"id": raw.get("id", "")}
+    if raw.get("uuid") is not None:
+        action["uuid"] = raw["uuid"]
+    if "group" in raw:
+        action["group"] = raw["group"]
+    action["params"] = dict(raw.get("params") or {})
+    if raw.get("frequency") is not None:
+        action["frequency"] = dict(raw["frequency"])
+    return action
+
+
+def _to_alert_rule_detail(body: dict[str, Any]) -> AlertRuleDetail:
+    # Built from named keys only. The GET-rule body carries no secret (probed
+    # on 9.5.4: the rule's API key is never returned, only api_key_owner);
+    # none of its bookkeeping keys reach the caller either.
+    s = _to_alert_rule(body)
+    return AlertRuleDetail(
+        id=s.id, name=s.name, rule_type_id=s.rule_type_id, consumer=s.consumer,
+        enabled=s.enabled, schedule_interval=s.schedule_interval, status=s.status,
+        tags=s.tags,
+        params=dict(body.get("params") or {}),
+        actions=tuple(_to_rule_action(a) for a in body.get("actions") or []),
+    )
+
+
 def _to_connector(body: dict[str, Any]) -> Connector:
     return Connector(
         id=body["id"],
@@ -265,6 +387,22 @@ def _to_connector(body: dict[str, Any]) -> Connector:
         connector_type_id=body.get("connector_type_id", ""),
         is_missing_secrets=bool(body.get("is_missing_secrets", False)),
         is_preconfigured=bool(body.get("is_preconfigured", False)),
+    )
+
+
+def _to_connector_detail(body: dict[str, Any]) -> ConnectorDetail:
+    # Built from named keys only: a secrets key in a response could never
+    # reach the caller through this mapping.
+    return ConnectorDetail(
+        id=body["id"],
+        name=body.get("name", ""),
+        connector_type_id=body.get("connector_type_id", ""),
+        config=dict(body.get("config") or {}),
+        is_preconfigured=bool(body.get("is_preconfigured", False)),
+        is_system_action=bool(body.get("is_system_action", False)),
+        is_deprecated=bool(body.get("is_deprecated", False)),
+        is_missing_secrets=bool(body.get("is_missing_secrets", False)),
+        is_connector_type_deprecated=bool(body.get("is_connector_type_deprecated", False)),
     )
 
 
@@ -922,13 +1060,7 @@ class KibanaPyGateway:
                 f"data view '{name_or_id}' not found — call list_data_views to see what exists"
             )
         raw = self._client.data_views.get(view_id=match.id).body["data_view"]
-        return DataViewDetail(
-            id=raw["id"],
-            name=raw.get("name") or raw["title"],
-            index_pattern=raw["title"],
-            time_field=raw.get("timeFieldName"),
-            fields=_normalize_fields(raw.get("fields", {})),
-        )
+        return _to_data_view_detail(raw)
 
     @_translate_errors
     def create_data_view(
@@ -943,6 +1075,78 @@ class KibanaPyGateway:
         return DataViewSummary(
             id=raw["id"], name=raw.get("name") or raw["title"], index_pattern=raw["title"]
         )
+
+    def _post_data_view(
+        self, view_id: str, changes: dict[str, Any], refresh_fields: bool = False
+    ) -> dict[str, Any]:
+        kwargs: dict[str, Any] = {"view_id": view_id, "data_view": changes}
+        if refresh_fields:
+            kwargs["refresh_fields"] = True
+        with _known_id("data view", view_id):
+            return dict(self._client.data_views.update(**kwargs).body["data_view"])
+
+    @_translate_errors
+    def update_data_view(
+        self, view_id: str, name: str | None, index_pattern: str | None, time_field: str | None
+    ) -> DataViewDetail:
+        # POST /api/data_views/data_view/{id} merges: only the keys sent change
+        # (probed on 9.5.4), so omitted fields need no re-send. The read is for
+        # what Kibana does not check: it stores a time field that is missing or
+        # not a date. A pattern change is written first and checked against the
+        # NEW pattern's fields (Kibana recomputes them on write); on a mismatch
+        # the old pattern is written back, so a refused call changes nothing.
+        with _known_id("data view", view_id):
+            cur = dict(self._client.data_views.get(view_id=view_id).body["data_view"])
+        old_pattern = cur["title"]
+        new_pattern = index_pattern if index_pattern not in (None, old_pattern) else None
+        rest = {k: v for k, v in (("name", name), ("timeFieldName", time_field)) if v is not None}
+        # The time field to check: the one passed, else the kept one when the
+        # pattern under it changes. A view with no time field keeps none.
+        check = time_field if time_field is not None else (
+            (cur.get("timeFieldName") or None) if new_pattern is not None else None
+        )
+        if new_pattern is None:
+            if check is not None:
+                problem = _time_field_problem(
+                    check, _normalize_fields(cur.get("fields", {})), old_pattern
+                )
+                if problem:
+                    raise KibanaRejected(problem)
+            return _to_data_view_detail(self._post_data_view(view_id, rest) if rest else cur)
+        if check is None:
+            return _to_data_view_detail(
+                self._post_data_view(view_id, {**rest, "title": new_pattern}, refresh_fields=True)
+            )
+        raw = self._post_data_view(view_id, {"title": new_pattern}, refresh_fields=True)
+        problem = _time_field_problem(check, _normalize_fields(raw.get("fields", {})), new_pattern)
+        undo = f"to undo, call update_data_view with index_pattern='{old_pattern}'"
+        if problem:
+            try:
+                self._post_data_view(view_id, {"title": old_pattern}, refresh_fields=True)
+            except Exception as e:
+                # The restore failed: say so, and what the view now holds.
+                raise KibanaRejected(
+                    f"{problem}. Restoring the old index pattern then failed "
+                    f"({_cause_text(e, self._space)}), so the index pattern is now "
+                    f"'{new_pattern}' — {undo}"
+                ) from e
+            raise KibanaRejected(f"{problem} (nothing was changed)")
+        if not rest:
+            return _to_data_view_detail(raw)
+        try:
+            return _to_data_view_detail(self._post_data_view(view_id, rest))
+        except Exception as e:
+            # The pattern change already landed; the second write did not.
+            retry = ", ".join(
+                f"{arg}='{rest[key]}'"
+                for arg, key in (("name", "name"), ("time_field", "timeFieldName"))
+                if key in rest
+            )
+            raise _with_state(
+                e, self._space,
+                f"the index pattern was changed to '{new_pattern}' but {retry} was not "
+                f"saved; call update_data_view again with {retry} to finish, or {undo}",
+            ) from e
 
     @_translate_errors
     def delete_data_view(self, view_id: str) -> None:
@@ -982,9 +1186,9 @@ class KibanaPyGateway:
         return rules
 
     @_translate_errors
-    def get_alert_rule(self, rule_id: str) -> AlertRule:
+    def get_alert_rule(self, rule_id: str) -> AlertRuleDetail:
         with _known_id("alert rule", rule_id):
-            return _to_alert_rule(self._client.alerting.rule.get(id=rule_id).body)
+            return _to_alert_rule_detail(self._client.alerting.rule.get(id=rule_id).body)
 
     @_translate_errors
     def list_rule_types(self) -> list[RuleType]:
@@ -1025,6 +1229,49 @@ class KibanaPyGateway:
         return _to_alert_rule(body)
 
     @_translate_errors
+    def update_alert_rule(
+        self, rule_id: str, name: str | None, tags: list[str] | None,
+        schedule_interval: str | None, params: dict[str, Any] | None,
+        actions: list[dict[str, Any]] | None,
+    ) -> AlertRule:
+        # Read-modify-write. PUT /api/alerting/rule/{id} is a full replace
+        # (probed on 9.5.4): omitted `actions` and `tags` are wiped to [], and
+        # omitted `params` fail validation. So fetch the rule, re-send every
+        # writable field, and overlay only what the caller passed. `enabled`,
+        # `rule_type_id` and `consumer` are not writable here (Kibana 400s
+        # `enabled` in the body); enable/disable_alert_rule own `enabled`.
+        with _known_id("alert rule", rule_id):
+            cur = self._client.alerting.rule.get(id=rule_id).body
+        current_params = dict(cur.get("params") or {})
+        body: dict[str, Any] = {
+            "name": name if name is not None else cur.get("name", ""),
+            "schedule": ({"interval": schedule_interval} if schedule_interval is not None
+                         else cur.get("schedule") or {}),
+            # params merge key-by-key: the caller passes only what changes.
+            "params": {**current_params, **params} if params is not None else current_params,
+            "tags": list(tags) if tags is not None else list(cur.get("tags") or []),
+            # GET echoes each action's connector_type_id, which the PUT schema
+            # rejects ("Additional properties are not allowed"); uuid is accepted
+            # and keeps the action's identity.
+            "actions": (list(actions) if actions is not None else [
+                {k: v for k, v in a.items() if k != "connector_type_id"}
+                for a in cur.get("actions") or []
+            ]),
+        }
+        # Kibana refuses per-action `frequency` while the rule carries a
+        # rule-level notify_when/throttle (probed on 9.5.4), and a PUT that
+        # omits them clears them. So actions that bring their own frequency
+        # move the rule to per-action timing instead of failing.
+        per_action = actions is not None and any("frequency" in a for a in actions)
+        for key in _RULE_PRESERVED_KEYS:
+            if per_action and key in _RULE_LEVEL_FREQUENCY_KEYS:
+                continue
+            if cur.get(key) is not None:
+                body[key] = cur[key]
+        with _known_id("alert rule", rule_id):
+            return _to_alert_rule(self._client.alerting.rule.update(id=rule_id, **body).body)
+
+    @_translate_errors
     def enable_alert_rule(self, rule_id: str) -> None:
         with _known_id("alert rule", rule_id):
             self._client.alerting.rule.enable(id=rule_id)
@@ -1054,6 +1301,48 @@ class KibanaPyGateway:
         if secrets is not None:
             kwargs["secrets"] = secrets
         return _to_connector(self._client.connectors.create(**kwargs).body)
+
+    @_translate_errors
+    def get_connector(self, connector_id: str) -> ConnectorDetail:
+        with _known_id("connector", connector_id):
+            return _to_connector_detail(self._client.connectors.get(id=connector_id).body)
+
+    @_translate_errors
+    def update_connector(
+        self, connector_id: str, name: str | None, config: dict[str, Any] | None,
+        secrets: dict[str, Any] | None,
+    ) -> ConnectorDetail:
+        # PUT /api/actions/connector/{id} is a full replace: `name` is required,
+        # an omitted `config` is reset to {} (a .index connector then fails
+        # validation, probed on 9.5.4) and an omitted `secrets` is reset to {}.
+        # Config is read-modify-write; secrets cannot be — Kibana never returns
+        # them — so a type that may hold secrets needs them passed explicitly.
+        with _known_id("connector", connector_id):
+            cur = self._client.connectors.get(id=connector_id).body
+        if cur.get("is_preconfigured"):
+            raise KibanaRejected(
+                f"connector '{connector_id}' is preconfigured (defined in kibana.yml) and "
+                "cannot be edited through the API — change it in kibana.yml, or create a "
+                "new one with create_connector and point your rules' actions at it"
+            )
+        type_id = cur.get("connector_type_id", "")
+        if secrets is None and type_id not in _SECRETLESS_CONNECTOR_TYPES:
+            raise KibanaRejected(
+                f"connector '{connector_id}' is a {type_id} connector, whose secrets Kibana "
+                "never returns and resets to empty on any update that omits them — pass "
+                "`secrets` with its full secret values (secrets={} only if it has none)"
+            )
+        current_config = dict(cur.get("config") or {})
+        kwargs: dict[str, Any] = {
+            "id": connector_id,
+            "name": name if name is not None else cur.get("name", ""),
+            # config merges key-by-key: the caller passes only what changes.
+            "config": {**current_config, **config} if config is not None else current_config,
+        }
+        if secrets is not None:
+            kwargs["secrets"] = secrets
+        with _known_id("connector", connector_id):
+            return _to_connector_detail(self._client.connectors.update(**kwargs).body)
 
     @_translate_errors
     def delete_connector(self, connector_id: str) -> None:
@@ -1156,18 +1445,37 @@ class KibanaPyGateway:
             page += 1
         return found
 
+    def _library_title(self, visualization_id: str) -> str:
+        # A by-reference panel stores only {"ref_id": ...} (plus an optional
+        # title override); its title lives on the library item. Kibana keeps the
+        # ref after the item is deleted (probed on 9.5.4), so a miss reads "".
+        try:
+            body = self._client.visualizations.get(id=visualization_id).body
+        except NotFoundError:
+            return ""
+        return str((body.get("data") or {}).get("title", ""))
+
+    def _panel_summary(self, index: int, panel: dict[str, Any]) -> PanelSummary:
+        config = panel.get("config") or {}
+        ref = config.get("ref_id")
+        if not ref:
+            return PanelSummary(
+                index=index, type=panel.get("type", "unknown"), title=config.get("title", "")
+            )
+        return PanelSummary(
+            index=index,
+            type=panel.get("type", "unknown"),
+            title=config.get("title") or self._library_title(ref),
+            visualization_id=ref,
+        )
+
     @_translate_errors
     def get_dashboard(self, dashboard_id: str) -> DashboardDetail:
         with _known_id("dashboard", dashboard_id):
             body = self._client.dashboards.get(id=dashboard_id).body
         data = body["data"]
         panels = tuple(
-            PanelSummary(
-                index=i,
-                type=p.get("type", "unknown"),
-                title=(p.get("config") or {}).get("title", ""),
-            )
-            for i, p in enumerate(data.get("panels", []))
+            self._panel_summary(i, p) for i, p in enumerate(data.get("panels", []))
         )
         return DashboardDetail(
             id=body["id"],
@@ -1216,13 +1524,71 @@ class KibanaPyGateway:
         return visualization_id
 
     @_translate_errors
+    def search_visualizations(self, query: str | None) -> list[VisualizationSummary]:
+        # Same walk as search_dashboards. `query` matches title words
+        # case-insensitively (probed on 9.5.4). kibana-py's `fields` and
+        # `search_fields` parameters 500 on live Kibana, so whole items come back.
+        base: dict[str, Any] = {"per_page": 100}
+        if query:
+            base["query"] = query
+        found: list[VisualizationSummary] = []
+        page = 1
+        while True:
+            body = self._client.visualizations.get_all(**base, page=page).body
+            batch = body.get("data", [])
+            found.extend(
+                VisualizationSummary(
+                    id=item["id"],
+                    title=item["data"].get("title", ""),
+                    description=item["data"].get("description", ""),
+                    chart_type=lens_chart_type(item["data"]),
+                )
+                for item in batch
+            )
+            total = (body.get("meta") or {}).get("total")
+            if not batch or (isinstance(total, int) and len(found) >= total):
+                break
+            page += 1
+        return found
+
+    @_translate_errors
+    def get_visualization(self, visualization_id: str) -> VisualizationDetail:
+        with _known_id("visualization", visualization_id):
+            body = self._client.visualizations.get(id=visualization_id).body
+        data = body["data"]
+        described = describe_lens_config(data)
+        return VisualizationDetail(
+            id=body["id"],
+            title=data.get("title", ""),
+            description=data.get("description", ""),
+            chart_type=described["chart_type"],
+            data_view=described["data_view"],
+            time_field=described["time_field"],
+            metrics=tuple(described["metrics"]),
+            group_by=tuple(described["group_by"]),
+            query=described["query"],
+        )
+
+    @_translate_errors
+    def update_visualization(self, visualization_id: str, config: dict[str, Any]) -> None:
+        # PUT /api/visualizations/{id} is an upsert: an unknown id would CREATE
+        # a visualization under it (kibana-py documents the 201). Reading first
+        # turns a wrong id into guidance instead of a stray library item.
+        with _known_id("visualization", visualization_id):
+            self._client.visualizations.get(id=visualization_id)
+            self._client.visualizations.update(id=visualization_id, data=config)
+
+    @_translate_errors
     def delete_dashboard(self, dashboard_id: str) -> None:
         with _known_id("dashboard", dashboard_id):
             self._client.dashboards.delete(id=dashboard_id)
 
     @_translate_errors
     def delete_visualization(self, visualization_id: str) -> None:
-        self._client.visualizations.delete(id=visualization_id)
+        # Kibana deletes a visualization that dashboards still reference (204,
+        # probed on 9.5.4); their panels keep a dangling ref_id.
+        with _known_id("visualization", visualization_id):
+            self._client.visualizations.delete(id=visualization_id)
 
     @_translate_errors
     def get_kibana_status(self) -> KibanaStatus:

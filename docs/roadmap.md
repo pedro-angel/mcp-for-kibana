@@ -6,7 +6,7 @@ tracked on this page, under *Open work*, not as GitHub issues.
 
 ## Where the project stands
 
-The server ships **10 toolboxes / 134 tools** (dashboards, data-management,
+The server ships **10 toolboxes / 143 tools** (dashboards, data-management,
 alerting, cases, security-detections, fleet, streams, observability,
 platform-admin, platform-health) — see the [Tool reference](tools.md) for every
 one. Every tool is classified read / write / destructive and contract-tested
@@ -21,10 +21,12 @@ under *Open work*; everything else still open is gated on infrastructure this
 project does not run, or on a decision that has not been taken. Subscription-gated
 work is not open work at all — it is out of scope (below).
 
-Six test tiers back that claim: unit (fakes), contract (live stack), e2e-replay
-(a recorded model turn through a real MCP client), e2e (a real local model),
+Seven test tiers back that claim: unit (fakes), contract (live stack), e2e-replay
+(a recorded model turn through a real MCP client), two live-model tiers — e2e
+(Claude via `claude -p`, D38) and e2e-local (a local model in LM Studio) —
 plus two ephemeral tiers that stand up throwaway stacks for the destructive
-paths. Everything except the live-model tier runs in CI.
+paths. Everything except the live-model tiers runs in CI; the local gate runs
+the Claude tier too (D42).
 
 The command that certifies completion is the Definition-of-Done gate — `make dod`,
 criteria declared in `dod.config`. Nothing is "done" because its author says so.
@@ -43,6 +45,13 @@ release claim, `make help` for the rest.
 
 As of this page:
 
+- feat: `update_alert_rule` returns the rule's detail — **open (left open by
+  D40)**. Its result is still the summary, so a model confirms an edit with a
+  second call to `get_alert_rule`; returning `get_alert_rule`'s shape instead
+  (as `update_connector` returns `get_connector`'s) would save that call.
+  Additive to the result, but it changes what models see, so it re-runs
+  `make test-e2e` (D31/D38).
+
 **Buildable now (Basic license).** The *write-tier* campaign on the
 existing read toolboxes is done, but a 2026-07-16 catalog audit found unbuilt
 Basic-buildable **toolboxes** that had never been filed. Now filed, in build order:
@@ -50,23 +59,39 @@ Basic-buildable **toolboxes** that had never been filed. Now filed, in build ord
 - feat: `fleet` toolbox — **DONE**. Read-first v1 (20 tools) + **write/destructive tier shipped 2026-07-18**: 15 tools (agent/package-policy + output CRUD, single+bulk agent actions), `fleet-admin` profile now `destructive`, a `fleet_ephemeral` 2-agent battle-test harness + DoD criterion. Enrollment-key mint/revoke deferred (unsafe under api-key auth — inline leaks to context, on-disk breaks HTTP transport).
 - feat: `streams` write follow-ups — **shipped 2026-07-18**. 3 tools (9→12): `set_stream_processing` (RMW the processing.steps facet), `deactivate_fork` (write), `activate_fork` (**destructive + confirm** — activation diverts live docs; already-routed docs stay in the child, per env-research). ILM-mode retention (no ILM policy on-stack) and raw full-config `update_ingest` (footgun) + `space_id` deferred.
 - feat: `security-detections` write follow-ups — **shipped 2026-07-18**. 6 tools (19→25): value-list item CRUD, full-replace `replace_detection_rule` (RMW — omitting a field wipes it; also translates the `from_`↔`from` kwarg/body-key mismatch), and enable/disable. **Env-research corrected the "enable/disable is privilege-gated" premise**: `bulk_action`/`patch` do 403/500 under api-key auth, but `update_rule(enabled=…)` works (the path kibana-py's docstring recommends) — so it's buildable, and shipped.
-- feat: `alerting` rule-lifecycle follow-ups — **next up (ordered 2026-08-19)**. The kibana-py `alerting.rule` surface is 7/16 wrapped: missing `update` (rule edit), mute/unmute (per-alert and rule-wide), snooze/unsnooze, and `update_api_key`. The `rule_types` read shipped 2026-10-12 as `list_rule_types`. All Basic; same toolbox, additive tools.
+- feat: `alerting` rule-lifecycle follow-ups — **next up (ordered 2026-08-19)**. The kibana-py `alerting.rule` surface is 8/16 wrapped: missing mute/unmute (per-alert and rule-wide), snooze/unsnooze, and `update_api_key`. The `rule_types` read shipped 2026-10-12 as `list_rule_types`; in-place rule edit (`update`) shipped 2026-10-12 as `update_alert_rule`, with connector `get`/`update` as `get_connector`/`update_connector` (D35). **Done 2026-10-17:** the Claude tier showed no alerting tool returned a rule's `params`, so after `update_alert_rule` a model could not read the new threshold back (`scripts/experiment/runs/claude-e2e/counted-2026-10-17/`); `get_alert_rule` now returns `params` and `actions`, each action with its `uuid` so a read → update round trip keeps it (D40 and its amendment). All Basic; same toolbox, additive tools.
 - feat: `synthetics` write tier — **second (ordered 2026-08-19)**. The observability toolbox reads monitors/params/private-locations (4/19 methods); the write tier adds monitor + param + private-location CRUD and `test_monitor`. The API is Basic (reads contract-tested); env-research must confirm the execution paths — private locations need a synthetics-capable Fleet agent, so run-side value may be infra-bounded like osquery below.
 - **Deprioritized, with the reason on record (2026-08-19):** `cases` depth (comments management, files, configuration, tags/reporters, alert linkage — 6/22 methods wrapped). Core case CRUD is Basic and shipped; the depth that makes cases compelling is license-locked — external push needs Gold+ connector types, assignees need Platinum — so the remaining Basic-buildable slice is thin workflow plumbing. Not revisited: the depth that would make it compelling is subscription-locked, which is out of scope.
 - **Parked as infra-gated (re-confirmed 2026-08-19):** `osquery` — the one whole Basic namespace with zero coverage (0/14 methods; live probe: saved-queries/packs answer 200 on Basic). Already classified under `security-response` below: useful only with the osquery_manager integration on an agent policy and hosts worth querying — the dockerized lab agents would return container-level trivia. Revisit when real endpoints enroll.
-- feat: per-tool surface configuration — **filed 2026-08-20 (owner request,
-  unordered)**. Today's selection axes are toolbox + tier only; a persona
-  whose job crosses ownership boundaries must enable whole toolboxes
-  (building a dashboard in a fresh space takes three: dashboards +
-  data-management + platform-admin, 24 tools at write). An additive,
-  default-off allow/deny of individual tool names (composing with the
-  existing registration-time disable mechanism) would let operators trim
-  the surface toward the ~20-tool reliability heuristic. Design tension to
-  resolve in the spec: name-level selection can split coherent pairs
-  (read-modify-write partners, fork lifecycles) — same
-  curation-not-security posture as tiers, but the docs must say which
-  splits are foot-guns.
-- **Unordered Basic backlog from the 2026-08-19 audit** (file individually when picked up): `spaces.copy_saved_objects` + `update_objects_spaces` (natural extension of space targeting), `timeline` depth (1/19 wrapped), data-view runtime fields + default get/set, exception-list update/duplicate/export/import, granular `saved_objects` reads (find/get — raw CRUD stays out: Kibana marks it deprecated), `apm` writes (agent-config upsert, annotations), fleet advanced ops (package install/uninstall, diagnostics, tags, k8s manifest), streams queries/attachments/content (significant-events likely needs an AI connector — verify before filing).
+- feat: per-tool surface configuration — **filed 2026-08-20 (owner request);
+  the allow list shipped 2026-10-12** as `KIBANA_MCP_TOOLS`
+  ([Tool selection](configuration.md#tool-selection), decision
+  [D34](spec/decisions.md)): published = listed ∩ tier, the list alone
+  decides which toolboxes register, start time only, applied by disable only.
+  A persona that crosses ownership boundaries (a dashboard in a fresh space:
+  dashboards + data-management + platform-admin, 29 tools at write) can now be
+  trimmed toward the ~20-tool heuristic. **Named tool lists with coherence
+  warnings shipped 2026-10-17** ([Named lists](configuration.md#named-lists),
+  decision [D41](spec/decisions.md)): `@name` entries in `KIBANA_MCP_TOOLS`
+  name a built-in list (`read-only-explorer`, `dashboards-analyst`) or one
+  from the operator's TOML file (`KIBANA_MCP_TOOL_LISTS_FILE`), and a list
+  that leaves out a tool a published tool relies on gets one stderr line.
+  The profiles keep naming toolboxes and a tier; a unit test pins each
+  built-in list to its profile's surface. **Still open:** fork lifecycles are not in the dependency map — no streams
+  tool names a partner for an input it takes, so there is no edge to record
+  yet.
+- feat: dashboards library loop — **shipped 2026-10-12** (D37):
+  `search_visualizations`, `get_visualization`, `update_visualization`,
+  `add_library_panel` (by reference) and `delete_visualization` make the id
+  `create_visualization` returns usable. **Still open:** telling
+  `delete_visualization`'s caller which dashboards still show the item
+  (Kibana answers only through the deprecated saved-objects `has_reference`
+  search; a scan of every dashboard per delete was not built), and a
+  two-`group_by` `mosaic`, which VizSpec accepts but Kibana 9.5.4 rejects
+  ("Only a single non-collapsed dimension is allowed for group_by", observed
+  while probing D37) — either tighten the VizSpec rule to one or send the
+  second as a collapsed dimension, after a probe on both lines.
+- **Unordered Basic backlog from the 2026-08-19 audit** (file individually when picked up): `spaces.copy_saved_objects` + `update_objects_spaces` (natural extension of space targeting), `timeline` depth (1/19 wrapped), data-view runtime fields + default get/set (in-place data-view edit shipped 2026-10-12 as `update_data_view`, D36), exception-list update/duplicate/export/import, granular `saved_objects` reads (find/get — raw CRUD stays out: Kibana marks it deprecated), `apm` writes (agent-config upsert, annotations), fleet advanced ops (package install/uninstall, diagnostics, tags, k8s manifest), streams queries/attachments/content (significant-events likely needs an AI connector — verify before filing).
 
 `security-entity-analytics` is **out of scope** (subscription-gated). `security-response`
 remains **classified (2026-07-18) and deferred** (infra-gated:
@@ -206,3 +231,4 @@ A session on a fresh machine recreates all of this from the docs:
 - `~/.lmstudio/mcp.json` — the mcp-for-kibana stdio entry
   ([example](examples/mcp.json)).
 - The running docker test stack and loaded LM Studio model.
+- The `claude` CLI's sign-in, for `make test-e2e` (no API key is needed).

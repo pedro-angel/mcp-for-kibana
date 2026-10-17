@@ -5,8 +5,8 @@ from dataclasses import replace
 
 from kibana_mcp.core.errors import KibanaNotFound, KibanaRejected
 from kibana_mcp.core.models import (
-    AlertingHealth, AlertRule, RuleType, ApiDeprecation, ApmAgentConfig, ApmAnnotation, ApmEnvironment,
-    ApmSourcemap, Case, Connector, DashboardDetail, DashboardSummary, DataViewDetail,
+    AlertingHealth, AlertRule, AlertRuleDetail, RuleType, ApiDeprecation, ApmAgentConfig, ApmAnnotation, ApmEnvironment,
+    ApmSourcemap, Case, Connector, ConnectorDetail, DashboardDetail, DashboardSummary, DataViewDetail,
     DataViewSummary, DetectionAlert, DetectionRule, EmailDefaults, ExceptionItem, ExceptionList,
     FleetAgent, FleetAgentPolicy, FleetAgentStatus, FleetEnrollmentKey, FleetOutput, FleetOutputHealth,
     FleetPackage, FleetPackageCategory, FleetPackagePolicy, FleetPermissions, FleetServerHost,
@@ -15,7 +15,9 @@ from kibana_mcp.core.models import (
     RoleIndexPrivilege, RoleKibanaPrivilege, SavedObjectImportResult, ShortUrl, Space, Stream,
     StreamIngest, StreamSummary, StreamWriteResult, SyntheticMonitor, SyntheticParam, SyntheticPrivateLocation,
     TaskManagerHealth, Timeline, UpgradeReadiness, UptimeSettings, ValueList, ValueListItem,
+    VisualizationDetail, VisualizationSummary,
 )
+from kibana_mcp.core.visualizations.translate import describe_lens_config, lens_chart_type
 
 # Mirrors kibana_mcp.adapters.kibana.gateway._UPDATABLE_KEYS. Copied rather than
 # imported so this fake doesn't pull in the adapters.kibana layer (would violate
@@ -43,11 +45,21 @@ FLIGHTS_DV = DataViewDetail(
 class FakeGateway:
     def __init__(self):
         self.data_views = {FLIGHTS_DV.id: FLIGHTS_DV}
+        self.data_view_updates: list[dict] = []  # update_data_view calls, as passed
         self.dashboards: dict[str, dict] = {}
         self.visualizations: dict[str, dict] = {}
         self.short_urls: dict[str, ShortUrl] = {}
         self.alert_rules: dict[str, AlertRule] = {}
         self.connectors: dict[str, Connector] = {}
+        # Per-connector config and the secrets last written (write-only in
+        # Kibana: no fake read path returns them).
+        self.connector_configs: dict[str, dict] = {}
+        self.connector_secrets: dict[str, dict] = {}
+        self.rule_updates: list[dict] = []  # update_alert_rule calls, as passed
+        # A rule's params and actions, beside its summary in alert_rules (a
+        # summary stored directly has none: get_alert_rule then reads {} / []).
+        self.rule_params: dict[str, dict] = {}
+        self.rule_actions: dict[str, list] = {}
         self.cases: dict[str, Case] = {}
         self.alerting_health = AlertingHealth(
             status="ok", has_permanent_encryption_key=True, is_sufficiently_secure=True
@@ -276,6 +288,30 @@ class FakeGateway:
         )
         return DataViewSummary(id=new_id, name=name or index_pattern, index_pattern=index_pattern)
 
+    def update_data_view(self, view_id, name, index_pattern, time_field):
+        # Mirrors the adapter's contract, not Kibana: a partial merge, and a time
+        # field that must be a date field whenever the view's fields are known.
+        if view_id not in self.data_views:
+            raise KibanaNotFound(
+                f"data view '{view_id}' not found — view_id is the id that create_data_view "
+                "or list_data_views returns, not the view's name or index pattern; "
+                "call list_data_views to find it"
+            )
+        cur = self.data_views[view_id]
+        self.data_view_updates.append({
+            "view_id": view_id, "name": name, "index_pattern": index_pattern,
+            "time_field": time_field,
+        })
+        if time_field is not None and cur.fields and cur.fields.get(time_field) != "date":
+            raise KibanaRejected(f"time field '{time_field}' is not a date field of '{cur.index_pattern}'")
+        self.data_views[view_id] = replace(
+            cur,
+            name=name if name is not None else cur.name,
+            index_pattern=index_pattern if index_pattern is not None else cur.index_pattern,
+            time_field=time_field if time_field is not None else cur.time_field,
+        )
+        return self.data_views[view_id]
+
     def delete_data_view(self, view_id):
         if view_id not in self.data_views:
             raise KibanaNotFound(f"data view '{view_id}' not found")
@@ -304,10 +340,19 @@ class FakeGateway:
             rules = [r for r in rules if search.lower() in r.name.lower()]
         return rules
 
-    def get_alert_rule(self, rule_id):
+    def _rule(self, rule_id):
         if rule_id not in self.alert_rules:
             raise KibanaNotFound(f"rule '{rule_id}' not found")
         return self.alert_rules[rule_id]
+
+    def get_alert_rule(self, rule_id):
+        r = self._rule(rule_id)
+        return AlertRuleDetail(
+            id=r.id, name=r.name, rule_type_id=r.rule_type_id, consumer=r.consumer,
+            enabled=r.enabled, schedule_interval=r.schedule_interval, status=r.status,
+            tags=r.tags, params=dict(self.rule_params.get(rule_id, {})),
+            actions=tuple(dict(a) for a in self.rule_actions.get(rule_id, [])),
+        )
 
     def get_alerting_health(self):
         return self.alerting_health
@@ -320,17 +365,39 @@ class FakeGateway:
             tags=tuple(tags or []),
         )
         self.alert_rules[new_id] = rule
+        self.rule_params[new_id] = dict(params)
         return rule
 
+    def update_alert_rule(self, rule_id, name, tags, schedule_interval, params, actions):
+        cur = self._rule(rule_id)
+        if params is not None:  # merged key by key, as the adapter does
+            self.rule_params[rule_id] = {**self.rule_params.get(rule_id, {}), **params}
+        if actions is not None:
+            self.rule_actions[rule_id] = [dict(a) for a in actions]
+        self.rule_updates.append({
+            "rule_id": rule_id, "name": name, "tags": tags,
+            "schedule_interval": schedule_interval, "params": params, "actions": actions,
+        })
+        self.alert_rules[rule_id] = replace(
+            cur,
+            name=name if name is not None else cur.name,
+            tags=tuple(tags) if tags is not None else cur.tags,
+            schedule_interval=(schedule_interval if schedule_interval is not None
+                               else cur.schedule_interval),
+        )
+        return self.alert_rules[rule_id]
+
     def enable_alert_rule(self, rule_id):
-        self.alert_rules[rule_id] = replace(self.get_alert_rule(rule_id), enabled=True)
+        self.alert_rules[rule_id] = replace(self._rule(rule_id), enabled=True)
 
     def disable_alert_rule(self, rule_id):
-        self.alert_rules[rule_id] = replace(self.get_alert_rule(rule_id), enabled=False)
+        self.alert_rules[rule_id] = replace(self._rule(rule_id), enabled=False)
 
     def delete_alert_rule(self, rule_id):
-        self.get_alert_rule(rule_id)
+        self._rule(rule_id)
         del self.alert_rules[rule_id]
+        self.rule_params.pop(rule_id, None)
+        self.rule_actions.pop(rule_id, None)
 
     def list_rule_types(self):
         return [
@@ -352,7 +419,31 @@ class FakeGateway:
             is_missing_secrets=False, is_preconfigured=False,
         )
         self.connectors[new_id] = conn
+        self.connector_configs[new_id] = dict(config or {})
+        if secrets is not None:
+            self.connector_secrets[new_id] = dict(secrets)
         return conn
+
+    def get_connector(self, connector_id):
+        if connector_id not in self.connectors:
+            raise KibanaNotFound(f"connector '{connector_id}' not found")
+        c = self.connectors[connector_id]
+        return ConnectorDetail(
+            id=c.id, name=c.name, connector_type_id=c.connector_type_id,
+            config=dict(self.connector_configs.get(connector_id, {})),
+            is_preconfigured=c.is_preconfigured, is_system_action=False, is_deprecated=False,
+            is_missing_secrets=c.is_missing_secrets, is_connector_type_deprecated=False,
+        )
+
+    def update_connector(self, connector_id, name, config, secrets):
+        cur = self.get_connector(connector_id)
+        if name is not None:
+            self.connectors[connector_id] = replace(self.connectors[connector_id], name=name)
+        if config is not None:
+            self.connector_configs[connector_id] = {**cur.config, **config}
+        if secrets is not None:
+            self.connector_secrets[connector_id] = dict(secrets)
+        return self.get_connector(connector_id)
 
     def delete_connector(self, connector_id):
         if connector_id not in self.connectors:
@@ -415,10 +506,7 @@ class FakeGateway:
 
     def get_dashboard(self, dashboard_id):
         d = self._get(dashboard_id)
-        panels = tuple(
-            PanelSummary(index=i, type=p["type"], title=(p.get("config") or {}).get("title", ""))
-            for i, p in enumerate(d.get("panels", []))
-        )
+        panels = tuple(self._panel_summary(i, p) for i, p in enumerate(d.get("panels", [])))
         return DashboardDetail(
             id=dashboard_id, title=d["title"], description=d.get("description", ""), panels=panels
         )
@@ -448,18 +536,61 @@ class FakeGateway:
         self.dashboards[dashboard_id] = data  # create-if-absent (no _get)
         return dashboard_id
 
+    def _panel_summary(self, index, panel):
+        # Mirrors the adapter: a by-reference panel reports its library item's
+        # id and title ("" once that item is deleted).
+        config = panel.get("config") or {}
+        ref = config.get("ref_id")
+        if not ref:
+            return PanelSummary(index=index, type=panel["type"], title=config.get("title", ""))
+        title = config.get("title") or self.visualizations.get(ref, {}).get("title", "")
+        return PanelSummary(index=index, type=panel["type"], title=title, visualization_id=ref)
+
     def create_visualization(self, config):
         new_id = f"viz-{next(self._ids)}"
         self.visualizations[new_id] = config
         return new_id
+
+    def _viz(self, visualization_id):
+        if not visualization_id.strip():
+            raise KibanaRejected(
+                "visualization_id is empty — pass the id that create_visualization or "
+                "search_visualizations returns"
+            )
+        if visualization_id not in self.visualizations:
+            raise KibanaNotFound(f"visualization '{visualization_id}' not found")
+        return self.visualizations[visualization_id]
+
+    def search_visualizations(self, query):
+        return [
+            VisualizationSummary(
+                id=k, title=c.get("title", ""), description=c.get("description", ""),
+                chart_type=lens_chart_type(c),
+            )
+            for k, c in self.visualizations.items()
+            if not query or query.lower() in c.get("title", "").lower()
+        ]
+
+    def get_visualization(self, visualization_id):
+        config = self._viz(visualization_id)
+        d = describe_lens_config(config)
+        return VisualizationDetail(
+            id=visualization_id, title=config.get("title", ""),
+            description=config.get("description", ""), chart_type=d["chart_type"],
+            data_view=d["data_view"], time_field=d["time_field"], metrics=tuple(d["metrics"]),
+            group_by=tuple(d["group_by"]), query=d["query"],
+        )
+
+    def update_visualization(self, visualization_id, config):
+        self._viz(visualization_id)  # never creates: the port refuses an unknown id
+        self.visualizations[visualization_id] = config
 
     def delete_dashboard(self, dashboard_id):
         self._get(dashboard_id)
         del self.dashboards[dashboard_id]
 
     def delete_visualization(self, visualization_id):
-        if visualization_id not in self.visualizations:
-            raise KibanaNotFound(f"visualization '{visualization_id}' not found")
+        self._viz(visualization_id)
         del self.visualizations[visualization_id]
 
     def get_kibana_status(self):

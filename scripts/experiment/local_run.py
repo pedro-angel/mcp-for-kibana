@@ -1144,6 +1144,7 @@ class Ctx:
         # signal catalogue), then the other credentials the harness holds.
         self.known = [s for s in (self.kibana_key, self.token, hc_key) if s]
         self.git_sha = git_sha()
+        self.server_tools: int | None = None  # set by run_matrix: the entry's tool count
 
 
 def ensure_loaded(cfg: dict, lms: LMStudio, model: str) -> dict | None:
@@ -1220,6 +1221,7 @@ def run_once(ctx: Ctx, cell: dict, attempt: int, harness_load: dict | None = Non
         "toolboxes": cfg["server"]["toolboxes"],
         "tier": cfg["server"]["tier"],
         "server_entry": entry,
+        "server_tools": ctx.server_tools,
         "stream": cfg["lmstudio"]["stream"],
         "git_sha": ctx.git_sha,
         "config_sha": hashlib.sha256(Path(cfg["_path"]).read_bytes()).hexdigest()[:12],
@@ -1458,6 +1460,34 @@ def cell_done(cell: dict, recs: list[dict], cfg: dict) -> bool:
     return any(r.get("valid") for r in mine) or len(mine) >= cfg["runs"]["max_attempts"]
 
 
+def server_tool_count(cfg: dict, list_tools=None) -> int:
+    """How many tools the study's mcp.json entry lists, observed once per
+    invocation and stamped on every run record (the report reads it there,
+    never from the config). mcp.json is read, never written."""
+    list_tools = list_tools or list_server_tools
+    path = Path(os.path.expanduser(cfg["lmstudio"]["mcp_json"]))
+    try:
+        entry = json.loads(path.read_text()).get("mcpServers", {}).get(cfg["server"]["entry"])
+    except (OSError, ValueError) as e:
+        raise SystemExit(
+            f"FAIL: cannot read {path} ({e.__class__.__name__}); run "
+            "`uv run python scripts/experiment/local_run.py preflight` for the fix"
+        ) from None
+    if entry is None:
+        raise SystemExit(
+            f"FAIL: no '{cfg['server']['entry']}' server in {path}; add it by hand "
+            "(LOCAL_STUDY.md step 3)"
+        )
+    try:
+        return len(list_tools(entry))
+    except Exception as e:
+        raise SystemExit(
+            f"FAIL: the '{cfg['server']['entry']}' entry did not start "
+            f"({e.__class__.__name__}); run `uv run python scripts/experiment/local_run.py "
+            "preflight` for the fix"
+        ) from None
+
+
 def run_matrix(cfg: dict, phase: str, limit: int | None = None) -> int:
     problems = config_problems(cfg)
     if problems:
@@ -1473,6 +1503,7 @@ def run_matrix(cfg: dict, phase: str, limit: int | None = None) -> int:
             "FAIL: the web-logs sample data is not installed; run "
             "`uv run python scripts/experiment/local_run.py install-sample`"
         )
+    ctx.server_tools = server_tool_count(cfg)
     cells = plan(cfg, phase)
     with run_lock(ctx.out):
         for d in recover_interrupted(ctx, phase):

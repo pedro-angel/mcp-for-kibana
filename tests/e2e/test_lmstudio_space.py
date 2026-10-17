@@ -5,8 +5,9 @@ view inside it, and a dashboard with a valid chart — through mcp-for-kibana.
 The prompt, the pass criterion, and the progress ladder this gate implements
 were frozen before any run (the pre-registration document is archived in git
 history). The LM Studio server entry must expose
-KIBANA_MCP_TOOLBOXES=dashboards,data-management,platform-admin (24 tools at
-tier=write) — probe P4b / the plan's dry run.
+KIBANA_MCP_TOOLBOXES=dashboards,data-management,platform-admin (29 tools at
+tier=write; 24 when the task was frozen — probe P4b / the plan's dry run — and
+the in-place edit and library-visualization tools of D36–D37 joined since).
 
 Every run appends one JSONL record (ladder, tool calls, timings, versions) to
 KIBANA_MCP_EXPERIMENT_LOG or scripts/experiment/runs/. Tables in the final
@@ -27,8 +28,8 @@ import pytest
 
 from kibana_mcp.adapters.kibana.gateway import KibanaPyGateway
 from kibana_mcp.core.errors import KibanaNotFound
+from tests._live_tasks import space_dashboard_prompt
 from tests._space_ladder import (
-    FLIGHTS_INDEX,
     append_jsonl,
     default_space_data_view_ids,
     score_space_run,
@@ -78,16 +79,9 @@ def _git_sha() -> str:
 def test_model_builds_dashboard_in_its_own_space(lmstudio, root_gateway):
     marker = f"E2E {uuid.uuid4().hex[:8]}"
     space_id = f"e2e-{_model_slug(lmstudio['model'])}-{uuid.uuid4().hex[:8]}"
-    # The pre-registered prompt (frozen before any run) with the local arm's
-    # "Using the kibana tools" opener. The chain and the index pattern are
-    # stated deliberately: the study measures execution, not derivation.
-    prompt = (
-        f"Using the kibana tools, create a new Kibana space with id '{space_id}'. "
-        f"Inside that space, create a data view for the index pattern "
-        f"'{FLIGHTS_INDEX}', then create a dashboard titled '{marker} flight "
-        f"prices' with a bar chart of the average ticket price by carrier over "
-        f"the last 7 days, using that data view."
-    )
+    # The pre-registered prompt (frozen before any run), shared with the
+    # Claude tier through tests/_live_tasks.py.
+    prompt = space_dashboard_prompt(space_id, marker)
     started = time.monotonic()
     dv_before = default_space_data_view_ids(root_gateway)
     ts_start = datetime.now(UTC).isoformat()

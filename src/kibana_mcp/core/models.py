@@ -1,6 +1,7 @@
 """DTOs crossing the gateway port. Deliberately thin and Kibana-agnostic."""
 
 from dataclasses import dataclass
+from typing import Any
 
 
 @dataclass(frozen=True, slots=True)
@@ -32,6 +33,9 @@ class PanelSummary:
     index: int
     type: str
     title: str
+    # Set only on a panel that shows a library visualization by reference
+    # (add_library_panel); None on an inline panel, whose result shape is unchanged.
+    visualization_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -47,6 +51,31 @@ class DashboardDetail:
     title: str
     description: str
     panels: tuple[PanelSummary, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class VisualizationSummary:
+    id: str
+    title: str
+    description: str
+    chart_type: str
+
+
+@dataclass(frozen=True, slots=True)
+class VisualizationDetail:
+    """A library visualization in VizSpec terms: `metrics` entries carry
+    agg/field/label, `group_by` entries field/kind/limit; `query` is the KQL
+    its filters became."""
+
+    id: str
+    title: str
+    description: str
+    chart_type: str
+    data_view: str
+    time_field: str | None
+    metrics: tuple[dict[str, Any], ...]
+    group_by: tuple[dict[str, Any], ...]
+    query: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -93,12 +122,46 @@ class AlertRule:
 
 
 @dataclass(frozen=True, slots=True)
+class AlertRuleDetail:
+    # One rule as get_alert_rule returns it: the summary fields plus what
+    # update_alert_rule edits, so a merge can be read before and checked after.
+    # A rule holds no secrets (they live on connectors); an action names its
+    # connector by id only.
+    id: str
+    name: str
+    rule_type_id: str
+    consumer: str
+    enabled: bool
+    schedule_interval: str
+    status: str
+    tags: tuple[str, ...]
+    params: dict[str, object]              # as Kibana stores them, defaults included
+    actions: tuple[dict[str, object], ...]  # id, group, params, frequency: update_alert_rule's shape
+
+
+@dataclass(frozen=True, slots=True)
 class Connector:
     id: str
     name: str
     connector_type_id: str
     is_missing_secrets: bool     # created 200 but non-functional if required secrets absent
     is_preconfigured: bool       # preconfigured connectors can't be deleted via the API
+
+
+@dataclass(frozen=True, slots=True)
+class ConnectorDetail:
+    # One connector as get_connector/update_connector return it. There is no
+    # secrets field: Kibana never returns a connector's secrets, and nothing
+    # here may carry them back to the caller.
+    id: str
+    name: str
+    connector_type_id: str
+    config: dict[str, object]    # the type's non-secret configuration
+    is_preconfigured: bool       # defined in kibana.yml: instance-global, not editable via the API
+    is_system_action: bool
+    is_deprecated: bool
+    is_missing_secrets: bool
+    is_connector_type_deprecated: bool
 
 
 @dataclass(frozen=True, slots=True)

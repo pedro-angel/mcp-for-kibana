@@ -13,6 +13,8 @@ prefixed, matching how Kibana's own tooling names them):
 | `KIBANA_API_KEY` | (none) | stdio mode: the API key used for every request. HTTP mode: ignored unless `KIBANA_MCP_ALLOW_ENV_KEY_HTTP=true` — each caller sends their own key. |
 | `KIBANA_MCP_TOOLBOXES` | `dashboards,data-management` | Comma-separated list of toolboxes to register (of the 10 available). |
 | `KIBANA_MCP_TIER` | `write` | Max tool tier to register: `read`, `write`, or `destructive`. |
+| `KIBANA_MCP_TOOLS` | (none — off) | Comma-separated allow list of tool names. When set, the server publishes exactly the listed tools the tier allows and nothing else, and `KIBANA_MCP_TOOLBOXES` is ignored. An `@name` entry stands for a named list's tools (`@dashboards-analyst`). See [Tool selection](#tool-selection). |
+| `KIBANA_MCP_TOOL_LISTS_FILE` | (none — off) | Path to a TOML file of your own named tool lists, used as `@name` in `KIBANA_MCP_TOOLS`. Read at startup only when `KIBANA_MCP_TOOLS` is set; a file that cannot be read or does not validate fails startup. See [Your own lists](#your-own-lists-the-list-file). |
 | `KIBANA_MCP_EXPORT_DIR` | (none — a fresh, unguessable 0700 temp dir per run) | Directory where saved-objects export/import NDJSON files are written. An explicit path is created 0700, a symlink there is refused, and a pre-existing directory is tightened to 0700. |
 | `KIBANA_MCP_TRANSPORT` | `stdio` | `stdio` or `http`. |
 | `KIBANA_MCP_HOST` | `127.0.0.1` | Bind host (HTTP transport only). |
@@ -36,14 +38,14 @@ edit one, edit both.
 it" (`read` ⊂ `write` ⊂ `destructive`):
 
 Every tool in every toolbox is tagged with its tier (across all 10 toolboxes:
-64 read, 40 write, 29 destructive):
+68 read, 45 write, 30 destructive):
 
-- `read` — read-only tools (64 of 133), e.g. `list_data_views`,
+- `read` — read-only tools (68 of 143), e.g. `list_data_views`,
   `describe_data_view`, `search_dashboards`, `get_dashboard`.
-- `write` (**default**) — read tools plus creates/updates (40), e.g.
+- `write` (**default**) — read tools plus creates/updates (45), e.g.
   `create_dashboard`, `create_visualization`, `add_panel`, `update_panel`.
   Destructive tools do not exist as far as the model can tell.
-- `destructive` — everything (29 more), including `delete_dashboard`,
+- `destructive` — everything (30 more), including `delete_dashboard`,
   `delete_panel`, and the other irreversible actions.
 
 At server assembly, tools above the configured tier are not merely
@@ -81,6 +83,174 @@ This is the seam the [composable toolboxes](architecture.md#toolboxes)
 pillar is built on: a small local model can be handed a narrower tool
 surface (fewer toolboxes, or a lower tier) than a larger, more capable one,
 without any code change — only configuration.
+
+## Tool selection
+
+`KIBANA_MCP_TOOLS` (default: unset, feature off) is a comma-separated allow
+list of tool names. **The server publishes the listed tools that the tier
+allows, and nothing else.** For example, a dashboard-building surface for a
+small local model:
+
+```bash
+KIBANA_MCP_TIER=write
+KIBANA_MCP_TOOLS=list_data_views,describe_data_view,search_dashboards,get_dashboard,create_dashboard,add_panel,update_panel,create_data_view
+```
+
+publishes exactly those 8 tools; the same list with `KIBANA_MCP_TIER=read`
+publishes only its 4 read tools.
+
+- **The list alone decides.** The server registers whichever toolboxes own the
+  listed tools, so `KIBANA_MCP_TOOLBOXES` is not needed. If it is set as well,
+  it is ignored and one startup line on stderr says so.
+- **A listed tool above the tier is not published.** The tier still caps the
+  surface; one startup line on stderr names each such tool and the tier that
+  would publish it. Startup does not fail, so one list can be reused at a
+  lower tier.
+- **A name that is not a tool fails startup** with a `ValueError` naming every
+  unknown name, with a "did you mean" suggestion where one is close. The
+  [Tool reference](tools.md) lists every tool name.
+- **Unset or empty** (`KIBANA_MCP_TOOLS=`, or only commas and spaces) is the
+  feature off: the server assembles exactly as without the setting. Repeated
+  names are counted once.
+- **Start time only.** The list is read when the server starts; changing it
+  means restarting the server.
+- **An entry starting with `@` names a list of tools** — a built-in one or
+  one of your own — and can be mixed with plain names, e.g.
+  `KIBANA_MCP_TOOLS=@dashboards-analyst,create_alert_rule`. See
+  [Named lists](#named-lists).
+- **Tools the list leaves out but needs are named on stderr.** See
+  [Coherence warnings](#coherence-warnings).
+
+The list only hides tools — it is applied with the same visibility mechanism
+as the tier (`mcp.disable(...)` in `server.py`), never by enabling, so it
+cannot publish a tool the tier hid. Like toolboxes and tiers, it is curation,
+**not a security boundary**: the Kibana API key's RBAC is the real limit on
+what the server can do.
+
+### Named lists
+
+An `@name` entry in `KIBANA_MCP_TOOLS` stands for the tools of the list
+called `name`, in the list's order. The server expands every such entry
+before it checks names, so the rules above apply to the expanded list
+unchanged: the published set is still the listed tools the tier allows, a
+repeated tool counts once, and a list tool above the tier is named on stderr
+like any listed tool. A list name that does not exist fails startup with a
+`ValueError` naming every unknown `@name` (with a "did you mean" where one is
+close) and the lists that do exist. A list is a set of tool names only: it
+carries no tier, so `@dashboards-analyst` at `KIBANA_MCP_TIER=read` publishes
+its read tools. Without any `@` entry the published tools are the same as
+before named lists existed; the only differences are on stderr (the
+[coherence warnings](#coherence-warnings)) and that a list file you name is
+still read and validated whenever `KIBANA_MCP_TOOLS` is set. With
+`KIBANA_MCP_TOOLS` unset, none of this applies and no list file is read.
+
+#### Built-in lists
+
+The server ships two [profiles](https://github.com/pedro-angel/mcp-for-kibana/tree/main/profiles)
+as lists, so their tools can be mixed with tools from other toolboxes. Each
+list holds exactly the tools its profile publishes with toolboxes and a tier:
+`read-only-explorer` is `dashboards`, `platform-health` and `data-management`
+at `read`; `dashboards-analyst` is `dashboards` and `data-management` at
+`write`, the default selection. The lists live as data in
+`src/kibana_mcp/tool_lists.py` (`BUILTIN_LISTS`); unit tests check this table
+against them and each list against its profile.
+
+| List | Tools | Meant for tier |
+|---|---|---|
+| `read-only-explorer` | `list_data_views`, `describe_data_view`, `resolve_short_url`, `export_saved_objects`, `search_dashboards`, `get_dashboard`, `search_visualizations`, `get_visualization`, `get_kibana_status`, `get_kibana_stats`, `get_task_manager_health` | `read` (11 tools) |
+| `dashboards-analyst` | `list_data_views`, `describe_data_view`, `create_data_view`, `update_data_view`, `resolve_short_url`, `create_short_url`, `export_saved_objects`, `import_saved_objects`, `search_dashboards`, `get_dashboard`, `create_dashboard`, `add_panel`, `update_panel`, `add_esql_metric_panel`, `add_esql_table_panel`, `add_esql_xy_panel`, `search_visualizations`, `get_visualization`, `create_visualization`, `update_visualization`, `add_library_panel` | `write` (21 tools — the default selection) |
+
+The `fleet-admin` persona has no list: it is the whole `fleet` toolbox at
+`destructive`, which `KIBANA_MCP_TOOLBOXES=fleet` already says exactly.
+
+#### Your own lists: the list file
+
+`KIBANA_MCP_TOOL_LISTS_FILE` names a [TOML](https://toml.io) file of your
+own lists; `@name` then finds them beside the built-in ones. The file is read
+when the server starts, and only when `KIBANA_MCP_TOOLS` is set (otherwise it
+is ignored, with one line on stderr saying so). Give an absolute path: a
+leading `~` is expanded, but a relative path resolves against the directory
+the MCP client starts the server in, which is often not your shell's.
+
+```toml
+version = 1
+
+[lists.alert-triage]
+tools = ["list_alert_rules", "get_alert_rule", "update_alert_rule",
+         "enable_alert_rule", "disable_alert_rule"]
+
+[lists.space-builder]
+tools = ["list_spaces", "create_space"]
+```
+
+```bash
+KIBANA_MCP_TOOL_LISTS_FILE=/etc/mcp-for-kibana/lists.toml
+KIBANA_MCP_TOOLS=@dashboards-analyst,@space-builder
+```
+
+**The format is a compatibility contract**, versioned like the environment
+variables themselves: a version-1 file keeps working, unchanged, on every
+later release that reads version 1, and a change that would break one gets a
+new `version` number. Version 1 is exactly:
+
+- `version` — required, the integer `1`.
+- `lists` — required, at least one table `[lists.<name>]`. A name is
+  lowercase letters, digits, `-` and `_`, starting with a letter or digit
+  (it must survive the comma-separated variable after `@`).
+- each list holds one key, `tools`: a non-empty array of tool names.
+  Surrounding spaces are trimmed and a repeated name counts once. A list
+  cannot name another list (`@...`); write out its tools.
+
+Validation is strict, and every problem fails startup with an error that
+starts `KIBANA_MCP_TOOL_LISTS_FILE='<path>':` and names the fix: a file that
+cannot be read (missing, unreadable, not UTF-8) or is not valid TOML, a
+missing or different `version`, any key not listed above, a list with no
+tools or with a tool entry that is not a string, a name outside the grammar,
+and **a list with the name of a built-in list** — refused rather than
+allowed to replace it, so `@dashboards-analyst` means the same surface on
+every deployment. Tool names are checked when a list is used: an unknown
+one fails startup like any unknown name, with `from list '@<name>'` after it
+and the `[lists.<name>]` table and file to edit.
+
+### Coherence warnings
+
+Some tools need another tool to be useful: `update_panel` takes a panel
+index that only `get_dashboard` shows, `create_dashboard` takes field names
+that only `describe_data_view` shows, and `update_alert_rule` merges into
+params that only `get_alert_rule` shows. When `KIBANA_MCP_TOOLS` is set, the
+server checks the published tools against these relationships (followed
+transitively) and, if any are missing, logs **one** line on stderr naming
+each missing tool and the tools that rely on it. For example,
+`KIBANA_MCP_TOOLS=list_data_views,describe_data_view,update_panel` logs:
+
+```text
+KIBANA_MCP_TOOLS leaves out 2 tool(s) that published tools rely on: get_dashboard (relied on by update_panel), search_dashboards (relied on by get_dashboard); add them to KIBANA_MCP_TOOLS, or ignore this if the model gets those inputs another way
+```
+
+The server still starts — same posture as a listed tool above the tier —
+because a model can sometimes get the input elsewhere (an id the user
+pastes, a dashboard it created in the same session). Tools hidden by the
+tier are not checked, and selections made with `KIBANA_MCP_TOOLBOXES` alone
+are not checked. Every built-in list passes the check.
+
+The relationships are data with one owner, `DEPENDENCIES` in
+`src/kibana_mcp/tool_lists.py`: an edge from tool A to tool B means A takes
+an input that only B shows the model — an index or field name, the current
+state an in-place edit merges into, an export handle, or an existing
+object's id that A's not-found error tells the model to look up with B. An
+edge always points at a tool of the same or a lower tier, so the warning's
+fix is always "list it". A unit test checks that every name in the map is a
+real tool.
+
+## Server instructions
+
+At connection the server sends MCP *instructions*, a short text a client may
+show the model before any tool call. They follow what is published after the
+toolbox, tier and tool selection: the dashboards walk-through
+(`list_data_views` → `describe_data_view` → `create_dashboard`) is sent only
+when all three of those tools are published, as in the default selection;
+any other surface gets a generic text that names no tool, so the model is
+never pointed at a tool it cannot call.
 
 ## Space targeting
 

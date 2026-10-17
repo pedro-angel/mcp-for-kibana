@@ -6,11 +6,11 @@
 # Criteria marked `required` must pass; `n/a` are skipped (declare, don't delete, so
 # the omission is a visible decision). Full logs land in /tmp/dod-<repo>/<criterion>.log
 # (per-repo so sibling gates don't clobber each other's diagnostics).
-# contract/e2e need local infrastructure: scripts/stack.sh up && seed, plus LM Studio
-# for e2e (docs/e2e-setup.md). CI runs the fast criteria on every PR (checks.yml) and
-# the live tiers minus e2e through this same gate over per-tier configs in .github/dod/
-# (integration.yml); this gate over dod.config remains the full superset a human runs
-# where all the infrastructure lives.
+# contract/e2e need local infrastructure: scripts/stack.sh up && seed, plus a signed-in
+# `claude` CLI for e2e_green (D42, docs/e2e-setup.md). CI runs the fast criteria on every
+# PR (checks.yml) and the live tiers minus e2e_green through this same gate over per-tier
+# configs in .github/dod/ (integration.yml); this gate over dod.config remains the full
+# superset a human or a cloud session runs where all the infrastructure lives.
 #
 # One-shot GO on a machine with the dev stack up:
 #   scripts/stack.sh up && scripts/stack.sh seed
@@ -78,6 +78,7 @@ run() {
 # all-skipped run reads NO-GO. contract/e2e only reach here past the .env.seed
 # guard, so a skip there means a claimed stack never exercised the suite. (No
 # kibana-py analog — its suites hide behind `make test` and check exit code only.)
+suite_note=  # optional detail on a suite's GO line; set only around one run_suite
 run_suite() {
   name="$1"; shift
   out="$logdir/$name.log"
@@ -89,7 +90,7 @@ run_suite() {
   skipped=$(printf '%s\n' "$summary" | grep -oE '[0-9]+ skipped' | grep -oE '^[0-9]+')
   : "${passed:=0}" "${skipped:=0}"
   if [ "$passed" -ge 1 ] && [ "$skipped" -eq 0 ]; then
-    echo "  GO    $name"
+    echo "  GO    $name${suite_note:+  ($suite_note)}"
   else
     echo "  NO-GO $name  (passed=$passed skipped=$skipped: empty or all-skipped suite reads NO-GO; log: $out)"
     nogo=1
@@ -157,21 +158,39 @@ if req wheel_replay_green; then
 fi
 
 if req e2e_green; then
-  if [ -f elastic-start-local/.env.seed ]; then
-    # Env loading lives in tests/_stack_env.py (fixture-time) — the gate
-    # only pre-checks that a stack is claimed at all.
-    # All three live-model gates, one per capability D18 names: the flights
-    # dashboard (tool-call discipline, params authoring) and the dashboards and
-    # alerting space chains (threading `space` through a chain of calls). n/a
-    # in dod.config (D31); this runs only where a config declares it required.
-    # Its per-run records go to this gate's log dir, never into the tracked
-    # scripts/experiment/runs/.
-    run_suite e2e_green env KIBANA_MCP_EXPERIMENT_LOG="$logdir/e2e_green-runs.jsonl" \
-      uv run pytest tests/e2e/test_lmstudio.py tests/e2e/test_lmstudio_space.py \
-      tests/e2e/test_lmstudio_alerting_space.py -m e2e -q
-  else
-    echo "  NO-GO e2e_green  (no elastic-start-local/.env.seed — see docs/e2e-setup.md)"
+  # The live-model criterion (D42): headless Claude Code (`claude -p`) with only
+  # this server's tools runs the pre-registered tasks (scripts/experiment/
+  # CLAUDE_E2E.md; four tasks, CLAUDE_E2E_RUNS each, default 5) and Kibana's
+  # state is scored afterwards. The model is CLAUDE_E2E_MODEL (default the
+  # `haiku` alias, D38). This is `make test-e2e`'s pytest selection, mirrored
+  # rather than nested (like image_smoke) and without its stack up+seed: the
+  # .env.seed precondition below claims a seeded stack, as for contract_green.
+  # A missing CLI or sign-in is NO-GO naming the fix — never a skip or a pass.
+  # Run records go to this gate's log dir, never into the tracked
+  # scripts/experiment/runs/ (committed blocks are written on purpose, with
+  # `make test-e2e` and an explicit CLAUDE_E2E_OUT).
+  if ! command -v claude >/dev/null 2>&1; then
+    echo "  NO-GO e2e_green  (no \`claude\` CLI on PATH — install Claude Code (npm install -g @anthropic-ai/claude-code), then sign in: claude auth login; docs/e2e-setup.md)"
     nogo=1
+  elif ! claude auth status 2>/dev/null | grep -qE '"loggedIn"[[:space:]]*:[[:space:]]*true'; then
+    echo "  NO-GO e2e_green  (the \`claude\` CLI is not signed in — run: claude auth login, then check with: claude auth status; docs/e2e-setup.md)"
+    nogo=1
+  elif [ ! -f elastic-start-local/.env.seed ]; then
+    echo "  NO-GO e2e_green  (no elastic-start-local/.env.seed — run: scripts/stack.sh up && scripts/stack.sh seed)"
+    nogo=1
+  else
+    # Env loading lives in tests/_stack_env.py (fixture-time). A fresh records
+    # dir per gate run, so its runs.jsonl holds only this run's records.
+    rm -rf "$logdir/e2e_green-runs"
+    # The model and runs per task come from CLAUDE_E2E_MODEL / CLAUDE_E2E_RUNS
+    # when set, so the GO line names them: a GO from an overridden model or a
+    # single run per task is visible, not silent. Resolved by the harness's own
+    # defaults (tests/_claude_cli.py), never restated here.
+    suite_note=$(uv run python -c 'from tests import _claude_cli as c; print(f"model {c.claude_model()}, {c.runs_per_task()} runs per task")' 2>/dev/null) \
+      || suite_note="model and runs per task unresolved"
+    run_suite e2e_green env CLAUDE_E2E_OUT="$logdir/e2e_green-runs" \
+      uv run pytest -m e2e_claude -q
+    suite_note=
   fi
 fi
 

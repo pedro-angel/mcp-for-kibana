@@ -179,3 +179,207 @@ def test_export_both_selectors_at_client_maps_to_rejected():
 
     with pytest.raises(KibanaRejected):
         _gw(saved_objects=SimpleNamespace(export=export)).export_saved_objects(["dashboard"], None, True)
+
+
+# --- update_data_view: partial POST, guarded time field (probed on 9.5.4) ---
+
+from kibana_mcp.toolboxes.base import gateway_errors  # noqa: E402
+from fastmcp.exceptions import ToolError  # noqa: E402
+
+_FLIGHT_FIELDS = {
+    "timestamp": {"name": "timestamp", "type": "date"},
+    "Carrier": {"name": "Carrier", "type": "string"},
+}
+_LOG_FIELDS = {
+    "@timestamp": {"name": "@timestamp", "type": "date"},
+    "bytes": {"name": "bytes", "type": "number"},
+}
+
+
+class _DataViews:
+    """A data-view client stub that merges POSTed keys like Kibana does and
+    recomputes `fields` from the pattern (Kibana re-reads field caps)."""
+
+    def __init__(self, fields_by_pattern, view=None):
+        self.fields_by_pattern = fields_by_pattern
+        self.view = view or {
+            "id": "dv1", "name": "flights", "title": "flights", "timeFieldName": "timestamp",
+        }
+        self.posts = []
+
+    def _body(self):
+        return {"data_view": {**self.view, "fields": self.fields_by_pattern.get(self.view["title"], {})}}
+
+    def get(self, view_id):
+        return FakeResponse(self._body())
+
+    def update(self, **kw):
+        self.posts.append(kw)
+        self.view = {**self.view, **kw["data_view"]}
+        return FakeResponse(self._body())
+
+
+def _dv(**kw):
+    stub = _DataViews({"flights": _FLIGHT_FIELDS, "logs-*": _LOG_FIELDS}, **kw)
+    return stub, _gw(data_views=stub)
+
+
+def test_update_data_view_posts_only_the_given_keys():
+    stub, gw = _dv()
+    view = gw.update_data_view("dv1", "Flights", None, None)
+    assert stub.posts == [{"view_id": "dv1", "data_view": {"name": "Flights"}}]
+    assert (view.name, view.index_pattern, view.time_field) == ("Flights", "flights", "timestamp")
+    assert view.fields == {"timestamp": "date", "Carrier": "string"}
+
+
+def test_update_data_view_same_pattern_writes_nothing():
+    stub, gw = _dv()
+    assert gw.update_data_view("dv1", None, "flights", None).index_pattern == "flights"
+    assert stub.posts == []
+
+
+@pytest.mark.parametrize(("field", "why"), [
+    ("Carrier", "is a string field, not a date field, of 'flights'"),
+    ("nope", "is not a field of 'flights'"),
+])
+def test_update_data_view_refuses_a_time_field_that_is_not_a_date(field, why):
+    stub, gw = _dv()
+    with pytest.raises(KibanaRejected) as exc:
+        gw.update_data_view("dv1", None, None, field)
+    assert exc.value.message == (
+        f"time field '{field}' {why} — pass time_field as one of its date fields: timestamp"
+    )
+    assert stub.posts == []  # checked before any write
+
+
+def test_update_data_view_pattern_change_without_a_time_field_is_one_post():
+    stub, gw = _dv(view={"id": "dv1", "name": "n", "title": "flights"})
+    view = gw.update_data_view("dv1", "logs", "logs-*", None)
+    assert stub.posts == [{
+        "view_id": "dv1", "data_view": {"name": "logs", "title": "logs-*"}, "refresh_fields": True,
+    }]
+    assert view.time_field is None and view.index_pattern == "logs-*"
+
+
+def test_update_data_view_pattern_and_time_field_check_the_new_fields():
+    stub, gw = _dv()
+    view = gw.update_data_view("dv1", None, "logs-*", "@timestamp")
+    assert stub.posts == [
+        {"view_id": "dv1", "data_view": {"title": "logs-*"}, "refresh_fields": True},
+        {"view_id": "dv1", "data_view": {"timeFieldName": "@timestamp"}},
+    ]
+    assert (view.index_pattern, view.time_field) == ("logs-*", "@timestamp")
+
+
+def test_update_data_view_pattern_change_restores_when_the_kept_time_field_is_missing():
+    stub, gw = _dv()
+    with pytest.raises(KibanaRejected) as exc:
+        gw.update_data_view("dv1", "renamed", "logs-*", None)
+    assert exc.value.message == (
+        "time field 'timestamp' is not a field of 'logs-*' — pass time_field as one of its "
+        "date fields: @timestamp (nothing was changed)"
+    )
+    assert [p["data_view"] for p in stub.posts] == [{"title": "logs-*"}, {"title": "flights"}]
+    assert stub.view["title"] == "flights" and stub.view["name"] == "flights"
+
+
+def test_update_data_view_pattern_with_no_date_fields_names_create_data_view():
+    stub = _DataViews({"flights": _FLIGHT_FIELDS, "kw": {"k": {"name": "k", "type": "string"}}})
+    with pytest.raises(KibanaRejected, match=r"'kw' has no date fields, .*use create_data_view"):
+        _gw(data_views=stub).update_data_view("dv1", None, "kw", None)
+    assert stub.view["title"] == "flights"
+
+
+def test_update_data_view_accepts_a_pattern_that_matches_no_index_yet():
+    stub, gw = _dv()
+    view = gw.update_data_view("dv1", None, "future-*", None)
+    assert (view.index_pattern, view.time_field, view.fields) == ("future-*", "timestamp", {})
+    assert len(stub.posts) == 1  # nothing to check against, nothing to restore
+
+
+def test_update_data_view_lists_at_most_twenty_date_fields():
+    many = {f"d{i:02}": {"name": f"d{i:02}", "type": "date"} for i in range(25)}
+    stub = _DataViews({"flights": many})
+    with pytest.raises(KibanaRejected) as exc:
+        _gw(data_views=stub).update_data_view("dv1", None, None, "nope")
+    assert exc.value.message.endswith("d18, d19, …")
+
+
+def test_update_data_view_kibana_400_keeps_the_rejected_payload_prefix():
+    stub, _ = _dv()
+
+    def update(**kw):
+        raise BadRequestError(
+            "[request body.data_view.name]: expected value of type [string]",
+            meta=SimpleNamespace(status=400), body=None,
+        )
+
+    stub.update = update
+    with pytest.raises(ToolError, match=r"^Kibana rejected the payload: \[request body"):
+        with gateway_errors():
+            _gw(data_views=stub).update_data_view("dv1", "x", None, None)
+
+
+# --- update_data_view: a write that fails after an earlier one landed says so ---
+
+
+def _fail_on_post(stub, n, exc):
+    """Make the stub's n-th POST (1-based) raise `exc` instead of writing."""
+    real = stub.update
+
+    def update(**kw):
+        if len(stub.posts) + 1 == n:
+            stub.posts.append(kw)
+            raise exc
+        return real(**kw)
+
+    stub.update = update
+
+
+def _bad_request(msg):
+    return BadRequestError(msg, meta=SimpleNamespace(status=400), body=None)
+
+
+def test_update_data_view_failed_restore_states_the_new_pattern_and_the_undo():
+    stub, gw = _dv()
+    _fail_on_post(stub, 2, _bad_request("restore refused"))
+    with pytest.raises(KibanaRejected) as exc:
+        gw.update_data_view("dv1", None, "logs-*", None)
+    assert exc.value.message == (
+        "time field 'timestamp' is not a field of 'logs-*' — pass time_field as one of its "
+        "date fields: @timestamp. Restoring the old index pattern then failed (Kibana "
+        "rejected the payload: restore refused), so the index pattern is now 'logs-*' — "
+        "to undo, call update_data_view with index_pattern='flights'"
+    )
+    assert isinstance(exc.value.__cause__, BadRequestError)  # the original cause is kept
+    assert stub.view["title"] == "logs-*"  # the state the message reports
+
+
+def test_update_data_view_failed_second_write_states_what_landed():
+    stub, gw = _dv()
+    _fail_on_post(stub, 2, _bad_request("name refused"))
+    with pytest.raises(ToolError) as exc:
+        with gateway_errors():
+            gw.update_data_view("dv1", "Logs", "logs-*", "@timestamp")
+    assert str(exc.value) == (
+        "Kibana rejected the payload: name refused — the index pattern was changed to "
+        "'logs-*' but name='Logs', time_field='@timestamp' was not saved; call "
+        "update_data_view again with name='Logs', time_field='@timestamp' to finish, or "
+        "to undo, call update_data_view with index_pattern='flights'"
+    )
+    assert (stub.view["title"], stub.view["name"]) == ("logs-*", "flights")
+
+
+def test_update_data_view_failed_second_write_keeps_the_error_kind():
+    from kibana.exceptions import ConnectionError as KibanaConnectionError
+
+    from kibana_mcp.core.errors import KibanaUnavailable
+
+    stub, gw = _dv()
+    _fail_on_post(stub, 2, KibanaConnectionError("down"))
+    with pytest.raises(KibanaUnavailable) as exc:
+        gw.update_data_view("dv1", None, "logs-*", "@timestamp")
+    assert exc.value.message.startswith("cannot reach Kibana")
+    assert "was changed to 'logs-*' but time_field='@timestamp' was not saved" in (
+        exc.value.message
+    )

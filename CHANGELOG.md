@@ -10,6 +10,221 @@ version section.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-17
+
+### Added
+
+- **Named tool lists in `KIBANA_MCP_TOOLS`** (default off). An entry starting
+  with `@` stands for a list of tools and mixes with plain names:
+  `KIBANA_MCP_TOOLS=@dashboards-analyst,create_alert_rule`. Two lists are
+  built in — `read-only-explorer` (11 tools) and `dashboards-analyst` (21, the
+  default selection at `write`) — and `KIBANA_MCP_TOOL_LISTS_FILE` names a
+  TOML file of your own (`version = 1`, `[lists.<name>] tools = [...]`; the
+  format is a documented compatibility contract, validated strictly; a list
+  named like a built-in is refused). Lists expand before names are checked,
+  so the published set is still the listed tools the tier allows; an unknown
+  `@name` fails startup naming the lists that exist. With `KIBANA_MCP_TOOLS`
+  unset nothing changes and the file is never read. With a plain list (no `@`
+  entry) the published tools are unchanged; what is new is the coherence
+  warning below on stderr, and a named list file is still read and validated,
+  so a broken one fails startup. A leading `~` in the file path is expanded;
+  a relative path resolves against the directory the MCP client starts the
+  server in, which an unreadable-file error names. The profiles keep naming
+  toolboxes and a tier, and a unit test keeps each built-in list equal to its
+  profile, so a new tool in those toolboxes cannot drift out of the list
+  unnoticed; `profiles/README.md` points to the list table instead of
+  repeating tool names.
+- **Coherence warnings for `KIBANA_MCP_TOOLS`.** When a published tool relies
+  on a tool the list left out — `update_panel` on `get_dashboard` for panel
+  indexes, `create_dashboard` on `describe_data_view` for field names,
+  `update_alert_rule` on `get_alert_rule` for the params it merges into, and
+  31 more relationships kept as data in one map — one stderr line names each
+  missing tool and what relies on it. The server still starts. Decision D41.
+- **`KIBANA_MCP_TOOLS`** (default off): a comma-separated allow list of tool
+  names. When set, the server publishes the listed tools the tier allows and
+  nothing else, registering whichever toolboxes own them;
+  `KIBANA_MCP_TOOLBOXES` is then ignored (one stderr line if it was set). A
+  listed tool above `KIBANA_MCP_TIER` stays hidden and is named on stderr with
+  the tier that would publish it; a name that is not a tool fails startup with
+  a "did you mean" suggestion. Read at start time only. The list only hides
+  tools, so it can never publish one the tier hid; it is curation, not a
+  security boundary — the API key's RBAC is. Decision D34.
+- **`update_alert_rule`, `update_connector` (alerting, write) and
+  `get_connector` (alerting, read).** An agent at the default `write` tier can
+  now fix a rule or connector in place instead of deleting (destructive) and
+  recreating it. Both updates read the object and re-send what the caller did
+  not pass, because Kibana's updates are full replaces that would otherwise
+  empty a rule's actions and tags or a connector's config; a rule's `params`
+  and a connector's `config` merge key by key. `update_alert_rule` never
+  changes `enabled`; actions passed with a per-action `frequency` replace a
+  rule-level `notify_when`/`throttle`, which Kibana refuses beside them.
+  `get_connector` returns the non-secret config and flags,
+  never secrets. `update_connector` refuses preconfigured connectors, and
+  refuses a call without `secrets` on any type except `.index` and
+  `.server-log`, since Kibana resets omitted secrets and cannot return them.
+  All three take `space`. Decision D35. The three tools join the local
+  study's server entry (dashboards, data-management, alerting at `write`);
+  `local_study.json`'s `expected_tools` and its runbook follow (33 tools once
+  this release's additions are counted, below).
+- **`update_data_view` (data-management, write).** An agent at the default
+  `write` tier can now fix a data view's `name`, `index_pattern` or
+  `time_field` in place, by id, instead of deleting it (destructive) and
+  recreating it. Only the fields passed change. Kibana stores any time field,
+  even one that does not exist or is not a date, and every chart built on the
+  view then inherits it, so the tool refuses a time field that is not
+  a date field of the view and lists the ones that are. When the index
+  pattern changes, the time field is checked against the new pattern's
+  fields, and a mismatch writes the old pattern back, so a refused call
+  changes nothing; if a write after the pattern's fails, the error says the
+  pattern changed and names the call that undoes it. A pattern that matches no index yet is accepted with
+  `field_count` 0. A wrong id names `list_data_views`. Takes `space`.
+  Decision D36. The tool joins the `dashboards-analyst` profile and the local
+  study's server entry; `local_study.json` and its runbook follow (final
+  counts below).
+- **Library visualizations: `search_visualizations`, `get_visualization`
+  (read), `update_visualization`, `add_library_panel` (write) and
+  `delete_visualization` (destructive), in the dashboards toolbox.** The id
+  `create_visualization` returns can now be used: find a library chart by
+  title, read it back as a VizSpec (chart type, data view, metrics,
+  group_by, filter query), replace it in place with a new spec (validated
+  against the real data view first, like every chart tool; a wrong id is
+  refused and never creates one), delete it, and show it on an existing
+  dashboard. `add_library_panel` links the chart by reference rather than
+  copying it, so `update_visualization` changes it on every dashboard that
+  shows it. A dashboard holding such a panel stays editable by every other
+  dashboards tool; `get_dashboard` reports the panel with a
+  `visualization_id` (inline panels are unchanged); `update_panel` on it
+  refuses and names `update_visualization`, or `delete_panel` when the chart
+  it shows was deleted. Kibana lets a chart be deleted
+  while dashboards show it, leaving a broken panel there;
+  `delete_visualization`'s description says so and names `delete_panel`.
+  All five take `space`. Decision D37. The `dashboards-analyst` profile now
+  lists 21 tools, `read-only-explorer` 11, and the local study's server
+  entry 33; `local_study.json` and its runbook follow.
+
+### Changed
+
+- **`get_alert_rule` now returns the rule's `params` and `actions`** beside
+  its summary fields, so an agent can read a rule before `update_alert_rule`
+  merges into its params and read it again to confirm the edit. `params` are
+  what Kibana stores, defaults included; each action is `id` (the connector
+  id), its `uuid`, `group`, `params` and `frequency` when set — the shape
+  `update_alert_rule` takes, so an action can be read, edited and passed back
+  (Kibana's `connector_type_id`, which the update rejects, is left out). The
+  `uuid` comes back so a read → update round trip keeps each action's
+  identity: Kibana keeps a uuid the update sends and mints a new one for an
+  action sent without it (probed on 9.5.4; amendment to D40, after an
+  independent review found the first version dropped it). Nothing secret
+  comes back: a rule holds none (secrets live on connectors), and the GET
+  response carries no API key, only `api_key_owner`, which is not returned
+  either (probed on 9.5.4).
+  `list_alert_rules` and `update_alert_rule` still return the summary; the two
+  descriptions point to `get_alert_rule`. Decision D40. Why: in the first
+  counted Claude block every `fix_rule_threshold` final answer said the
+  model could not see the rule's params
+  (`scripts/experiment/runs/claude-e2e/counted-2026-10-17/`). A second
+  counted block with the same pre-registered tasks, run after the change, is
+  committed with its generated summary in
+  `scripts/experiment/runs/claude-e2e/counted-2026-10-17-d40/`; in it every
+  `fix_rule_threshold` run reads the rule back after the edit.
+- **The local Definition-of-Done gate requires the Claude live-model run**
+  (D42, the owner's answer to Q16; supersedes D31 in part). `e2e_green` is
+  `required` in `dod.config`, and the gate now runs the Claude tier for it —
+  `make test-e2e`'s `pytest -m e2e_claude`, model `CLAUDE_E2E_MODEL`, default
+  `haiku` — against the seeded stack, writing its run records to the gate's
+  log directory; it no longer runs the LM Studio tests, which stay on demand
+  with `make test-e2e-local`. A missing `claude` CLI or sign-in reads NO-GO
+  and names the fix (install Claude Code; `claude auth login`). `make dod`
+  therefore needs a signed-in `claude` CLI and about 5–6 more minutes. The
+  criterion's GO line names the model and runs per task it ran with
+  (`CLAUDE_E2E_MODEL` / `CLAUDE_E2E_RUNS`), so a GO from an override is
+  visible. Every
+  `.github/dod` config keeps `e2e_green = n/a`: CI has no Claude sign-in, and
+  no CI job or secret is added. Why: the old rule's LM Studio run never ran on
+  this branch in practice, while the Claude run needs only a sign-in and
+  passed 40 of 40 across the two committed blocks
+  (`scripts/experiment/runs/claude-e2e/counted-2026-10-17*/SUMMARY.md`).
+- **`make test-e2e` is now the live-model tier driven by Claude; the LM Studio
+  tests moved to `make test-e2e-local`, unchanged.** `make test-e2e` runs
+  headless Claude Code (`claude -p`) with this server's tools and nothing
+  else — no shell, files or web; `--strict-mcp-config`; `--permission-mode
+  dontAsk` with only `mcp__mcp-for-kibana` allowed — through four tasks, five
+  runs each: the three LM Studio tasks, whose prompts and scoring now live in
+  one shared module, and `fix_rule_threshold`, where a seeded alert rule has a
+  wrong threshold and the model must fix it in place. Scoring reads Kibana's
+  state, never the model's text. The model is `CLAUDE_E2E_MODEL`, default
+  `haiku`; `CLAUDE_E2E_RUNS`, `CLAUDE_E2E_BUDGET_USD` (default $5 per session)
+  and `CLAUDE_E2E_OUT` set the rest. The Kibana API key reaches only the MCP
+  server's environment, and every transcript is searched for it: a hit is
+  redacted on disk and fails the run. Each run writes its prompt, transcript
+  and record; `scripts/experiment/claude_e2e_report.py` summarises a block.
+  Tasks, criteria and N are pre-registered in
+  `scripts/experiment/CLAUDE_E2E.md`. Needs a Claude sign-in, no API key; off
+  by default and outside CI's gates; the local DoD gate requires it (D42).
+  Decisions D38 (supersedes D31's on-demand rule in part) and D39 (the
+  default `write` surface of 21 tools, past the ~20-tool heuristic, is
+  accepted). The first
+  counted block (Haiku, Kibana 9.5.4) is committed with its generated summary
+  in `scripts/experiment/runs/claude-e2e/counted-2026-10-17/`.
+
+### Fixed
+
+- **A Claude-tier run that never started reports why.** When seeding the task
+  or launching `claude` raised (no CLI on PATH, Kibana down), the test's first
+  assertion read the missing leak flag as a leak and said the API key appeared
+  in the output. The harness error is now asserted first and names the fix
+  (`claude auth status`; `scripts/stack.sh up && scripts/stack.sh seed`), and
+  the test also asserts the run is valid — the CLI ended with a result event
+  or timed out — as `scripts/experiment/CLAUDE_E2E.md` requires for a pass.
+- **Docs match the shipped tiers and tools.** `CONTRIBUTING.md` names Claude
+  for `make test-e2e` and lists `make test-e2e-local`; the README lists
+  `e2e_green` among the criteria that need the dev stack up and says the
+  LM Studio tier runs three of the four tasks (not `fix_rule_threshold`);
+  `docs/e2e-setup.md` covers installing Claude Code, `claude auth login` and
+  `claude auth status`, which the gate's NO-GO text points to; the tool
+  reference lists the three `add_esql_*_panel` write tools in the dashboards
+  and annotations tables; D33 carries the scope note D38 narrowed it with; and
+  the roadmap files `update_alert_rule` returning the rule's detail as open
+  work, with the addressed `params` item marked done.
+
+- **The server's MCP instructions follow the published tools.** They always
+  described the dashboards flow (`list_data_views` → `describe_data_view` →
+  `create_dashboard`), even on a surface without those tools — the `alerting`
+  toolbox alone, the `read` tier, or a `KIBANA_MCP_TOOLS` list without them.
+  That text is now sent only when all three tools are published; any other
+  surface gets a generic text that names no tool. The default selection keeps
+  the exact text it had. See
+  [Server instructions](docs/configuration.md#server-instructions).
+- **The streams ephemeral certification waits for Kibana's own Streams
+  startup.** `scripts/ephemeral_stack.sh` started the test as soon as
+  `/api/status` answered 200, about 2 s before Kibana's Streams plugin
+  finished creating the wired roots under its lock, so the first call could
+  fail with a 409 ("Could not acquire lock for applying changes") or
+  `no_shard_available_action_exception`. It now waits up to 120 s for Kibana
+  to log `Streams preconfigured successfully`, and fails naming that line if
+  it never appears.
+- **The replay tier no longer inherits an exported tool selection.** The
+  harness passed the whole environment to the replayed server, so an exported
+  `KIBANA_MCP_TOOLS` (or `KIBANA_MCP_TOOLBOXES`) silently replaced the surface
+  each transcript was recorded against and failed every replay. It now drops
+  `KIBANA_MCP_TOOLS`, `KIBANA_MCP_TOOLBOXES` and `KIBANA_MCP_TIER` from the
+  inherited environment before applying the transcript's own settings.
+- **Docs describe tool selection as it ships.** The architecture page, the
+  tool reference, the regeneration guide and the bug-report template now name
+  `KIBANA_MCP_TOOLS` beside `KIBANA_MCP_TOOLBOXES`; the tool reference's
+  "auto-filled `time_field`" heading and the sentences around it, garbled in
+  an earlier edit, are restored, so links to that section work again; the
+  live space gates' docstrings and the roadmap state the current tool counts
+  of their toolbox sets (29 and 20 at `write`).
+- **The local-study results page no longer states a tool count the runs did
+  not record.** It printed `local_study.json`'s current `expected_tools` (now
+  33) as the count the committed runs used (they ran with 25 and did not
+  record it). `local_run.py` now lists the server entry's tools once per
+  `pilot`/`full` invocation and stamps the count on every run record as
+  `server_tools`; `local_analyze.py` carries it into `analysis.json`; and
+  `local_report.py` states the count(s) from the records, or says in words
+  that the records do not carry one.
+
 ## [0.3.0] - 2026-10-12
 
 ### Added
@@ -489,7 +704,8 @@ version section.
   `lms unload <identifier>`. It fails rather than skips, so the skip-green hole
   guarded in `tests/_stack_env.py` is not reopened here.
 
-[Unreleased]: https://github.com/pedro-angel/mcp-for-kibana/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/pedro-angel/mcp-for-kibana/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/pedro-angel/mcp-for-kibana/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/pedro-angel/mcp-for-kibana/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/pedro-angel/mcp-for-kibana/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/pedro-angel/mcp-for-kibana/releases/tag/v0.1.0

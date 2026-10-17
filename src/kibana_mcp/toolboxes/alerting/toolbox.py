@@ -11,6 +11,7 @@ from dataclasses import asdict
 from typing import Annotated, Any
 
 from fastmcp import FastMCP
+from fastmcp.exceptions import ToolError
 from mcp.types import ToolAnnotations
 from pydantic import Field
 
@@ -46,7 +47,8 @@ class AlertingToolbox:
         ) -> list[dict[str, Any]]:
             """List alerting rules (optionally filtered by a name search). Returns
             concise summaries (id, name, rule_type_id, consumer, enabled, schedule,
-            status, tags) — not the full rule params.
+            status, tags) — not the rule's params or actions (get_alert_rule
+            returns those).
 
             `space` targets a Kibana space by id (default: the default space)."""
             with gateway_errors(), deps.gateway_factory(space) as gw:
@@ -57,7 +59,14 @@ class AlertingToolbox:
             rule_id: Annotated[str, Field(min_length=1)],
             space: Annotated[str, Field(pattern=SPACE_ID_PATTERN)] | None = None,
         ) -> dict[str, Any]:
-            """Get one alerting rule's summary by id.
+            """Get one alerting rule by id: the summary fields list_alert_rules
+            returns plus the rule's full `params` (as Kibana stores them,
+            defaults included) and its `actions`, each {"id": <connector id>,
+            "uuid", "group", "params", "frequency" (when set)} — the shapes
+            update_alert_rule takes (pass `uuid` back to keep the action's
+            identity). Read a rule here before update_alert_rule
+            merges into its params, and again afterwards to confirm the change.
+            Rules hold no secrets (connectors do; see get_connector).
 
             `space` targets a Kibana space by id (default: the default space)."""
             with gateway_errors(), deps.gateway_factory(space) as gw:
@@ -102,6 +111,21 @@ class AlertingToolbox:
             with gateway_errors(), deps.gateway_factory(space) as gw:
                 return [asdict(c) for c in gw.list_connectors()]
 
+        @mcp.tool(tags={self.name, "read"}, annotations=_READ)
+        def get_connector(
+            connector_id: Annotated[str, Field(min_length=1)],
+            space: Annotated[str, Field(pattern=SPACE_ID_PATTERN)] | None = None,
+        ) -> dict[str, Any]:
+            """Get one action connector by id: name, connector_type_id, its
+            non-secret `config`, and flags (is_preconfigured, is_missing_secrets,
+            is_deprecated, is_system_action, is_connector_type_deprecated).
+            Secrets are never returned — Kibana does not expose them.
+
+            Preconfigured connectors (defined in kibana.yml) are instance-global and resolve in every space.
+            `space` targets a Kibana space by id (default: the default space)."""
+            with gateway_errors(), deps.gateway_factory(space) as gw:
+                return with_space(asdict(gw.get_connector(connector_id)), space)
+
     def _register_write(self, mcp: FastMCP, deps: ToolboxDeps) -> None:
         @mcp.tool(tags={self.name, "write"}, annotations=_WRITE)
         def create_alert_rule(
@@ -129,6 +153,45 @@ class AlertingToolbox:
             with gateway_errors(), deps.gateway_factory(space) as gw:
                 return with_space(asdict(gw.create_alert_rule(
                     name, rule_type_id, consumer, schedule_interval, params, tags, enabled
+                )), space)
+
+        @mcp.tool(tags={self.name, "write"}, annotations=_WRITE)
+        def update_alert_rule(
+            rule_id: Annotated[str, Field(min_length=1)],
+            name: Annotated[str, Field(min_length=1)] | None = None,
+            tags: list[str] | None = None,
+            schedule_interval: Annotated[str, Field(min_length=1)] | None = None,
+            params: dict[str, Any] | None = None,
+            actions: list[dict[str, Any]] | None = None,
+            space: Annotated[str, Field(pattern=SPACE_ID_PATTERN)] | None = None,
+        ) -> dict[str, Any]:
+            """Edit an existing alerting rule in place, by id. Only the fields
+            you pass change; everything else is kept (read-modify-write).
+            `params` is MERGED key-by-key into the rule's current params, so pass
+            only the keys you change (e.g. {"threshold": [10]}); get_alert_rule
+            shows the current params and actions before the edit, and confirms
+            them after it (this tool returns the summary only). `tags` and
+            `actions` replace the whole list (pass [] to clear). An action is
+            {"id": <connector id>, "group": <action group, e.g. "query matched">,
+             "params": {...type-specific, e.g. {"message": "..."}},
+             "frequency": {"summary": false, "notify_when": "onActionGroupChange",
+             "throttle": null}}.
+            Actions that carry `frequency` replace any rule-level notify_when /
+            throttle (Kibana does not allow both), so the rule's timing then
+            comes from each action's frequency.
+            `rule_type_id` and `consumer` cannot change. This does NOT enable or
+            disable the rule — use enable_alert_rule / disable_alert_rule.
+
+            `space` targets a Kibana space by id (default: the default space)."""
+            if all(v is None for v in (name, tags, schedule_interval, params, actions)):
+                raise ToolError(
+                    "provide at least one field to update: name, tags, schedule_interval, "
+                    "params or actions (to start or stop the rule use enable_alert_rule / "
+                    "disable_alert_rule)"
+                )
+            with gateway_errors(), deps.gateway_factory(space) as gw:
+                return with_space(asdict(gw.update_alert_rule(
+                    rule_id, name, tags, schedule_interval, params, actions
                 )), space)
 
         @mcp.tool(tags={self.name, "write"}, annotations=_WRITE)
@@ -171,6 +234,32 @@ class AlertingToolbox:
             with gateway_errors(), deps.gateway_factory(space) as gw:
                 return with_space(
                     asdict(gw.create_connector(name, connector_type_id, config, secrets)), space
+                )
+
+        @mcp.tool(tags={self.name, "write"}, annotations=_WRITE)
+        def update_connector(
+            connector_id: Annotated[str, Field(min_length=1)],
+            name: Annotated[str, Field(min_length=1)] | None = None,
+            config: dict[str, Any] | None = None,
+            secrets: dict[str, Any] | None = None,
+            space: Annotated[str, Field(pattern=SPACE_ID_PATTERN)] | None = None,
+        ) -> dict[str, Any]:
+            """Edit an action connector in place, by id: rename it and/or change
+            its `config`. `config` is MERGED key-by-key into the current config
+            (pass only the keys you change; null clears an optional key). The
+            connector type cannot change. `secrets` are write-only: Kibana never
+            returns them and resets them on any update that omits them, so for
+            a type that can hold secrets (every type except .index and
+            .server-log) you must pass the full `secrets`, or the call is
+            refused. Secrets are never echoed back. Preconfigured (kibana.yml)
+            connectors cannot be edited. Returns the connector as get_connector does.
+
+            `space` targets a Kibana space by id (default: the default space)."""
+            if name is None and config is None and secrets is None:
+                raise ToolError("provide at least one field to update: name, config or secrets")
+            with gateway_errors(), deps.gateway_factory(space) as gw:
+                return with_space(
+                    asdict(gw.update_connector(connector_id, name, config, secrets)), space
                 )
 
     def _register_destructive(self, mcp: FastMCP, deps: ToolboxDeps) -> None:

@@ -2,8 +2,8 @@
 # repo's scripts and gates. Logic lives in scripts/; recipes stay one-liners.
 # Facade design tracked in issue #14.
 # GNU Make 3.81 compatible. .NOTPARALLEL: facade targets mutate shared state
-# (elastic-start-local/.env.seed, the smoke container) — do not run test-contract and test-e2e
-# concurrently. Target names follow the shared cross-repo vocabulary, checked by
+# (elastic-start-local/.env.seed, the smoke container) — do not run test-contract and the
+# test-e2e* tiers concurrently. Target names follow the shared cross-repo vocabulary, checked by
 # the vocabulary-conformance hook pinned in .pre-commit-config.yaml (the name
 # manifest ships with the hook; nothing is vendored here).
 
@@ -58,7 +58,11 @@ test-contract-ci: ## Contract tests against an ALREADY-provisioned stack (no sta
 	uv run pytest -m contract -q
 
 .PHONY: test-e2e
-test-e2e: ## Run E2E tests (stack + local LM Studio — see docs/e2e-setup.md)
+test-e2e: ## Live-model tier: Claude via `claude -p`, only this server's tools, runs the pre-registered tasks (needs Claude sign-in; model/runs/budget via CLAUDE_E2E_* — see docs/e2e-setup.md)
+	scripts/stack.sh up && scripts/stack.sh seed && uv run pytest -m e2e_claude -q
+
+.PHONY: test-e2e-local
+test-e2e-local: ## Live-model tier on a small local model in LM Studio (LMSTUDIO_MODEL required — see docs/e2e-setup.md)
 	scripts/stack.sh up && scripts/stack.sh seed && uv run pytest -m e2e -q
 
 .PHONY: test-e2e-replay

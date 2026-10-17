@@ -9,6 +9,15 @@ is just a choice on two axes:
 - **Tier** (`KIBANA_MCP_TIER` = `read` | `write` | `destructive`) — *what you can
   do*: a cap that hides every tool above it.
 
+A third axis exists for a surface no toolbox set fits: **a hand-picked tool list**
+(`KIBANA_MCP_TOOLS`). When set, it replaces the toolbox choice and the server
+publishes exactly the listed tools the tier allows — see
+[Tool selection](../docs/configuration.md#tool-selection). A list can name a
+**named list** with `@`: the server ships two of the personas below as built-in
+lists (`@read-only-explorer`, `@dashboards-analyst`), and you can keep your own in a
+TOML file — see [Named lists](../docs/configuration.md#named-lists). Mix them
+with single tools, e.g. `KIBANA_MCP_TOOLS=@dashboards-analyst,create_alert_rule`.
+
 > **Toolbox + tier are curation, not a security boundary.** The real boundary is
 > the Kibana **API key** you supply: the server acts only within that key's RBAC.
 > Scope the key to least privilege (and, over HTTP, per caller).
@@ -32,26 +41,34 @@ subscription, which is out of scope, so it will never graduate.
 
 ## 🟩 Live profiles
 
-The first two prove the two-axis model: they differ in **both** their toolbox set
-(read-only-explorer adds `platform-health`; dashboards-analyst raises the tier)
-and their tier. `fleet-admin` adds the `fleet` toolbox (read-first v1).
+Each profile is whole toolboxes at a tier, so each names its toolboxes and tier,
+the axes that say it exactly: read-only-explorer is three toolboxes at `read`;
+dashboards-analyst is two at `write` (the server's default) — raising the tier is
+how it gains the delete tools; `fleet-admin` is the whole `fleet` toolbox at
+`destructive`. read-only-explorer and dashboards-analyst are also built-in lists,
+for mixing with tools from other toolboxes; their tools are listed once, in
+[Built-in lists](../docs/configuration.md#built-in-lists), and a unit test keeps
+each list equal to its profile's surface, so a tool added to those toolboxes
+fails the test until the list names it too.
 
-### [`read-only-explorer.mcp.json`](./read-only-explorer.mcp.json) — 9 tools · `read`
-The small-/local-model reference. Explore existing dashboards and data views and
-check stack health; change nothing. Toolboxes: `dashboards` (read) +
-`platform-health` + `data-management` (read). Tools: `list_data_views`,
-`describe_data_view`, `resolve_short_url`, `search_dashboards`, `get_dashboard`,
-`export_saved_objects`, `get_kibana_status`, `get_kibana_stats`, `get_task_manager_health`.
+### [`read-only-explorer.mcp.json`](./read-only-explorer.mcp.json) — 11 tools · `read`
+The small-/local-model reference. Explore existing dashboards, library
+visualizations and data views and check stack health; change nothing.
+Toolboxes: `dashboards` + `platform-health` + `data-management` at `read`: their
+read tools. The same 11 tools are the built-in list `@read-only-explorer`, for
+mixing with tools from other toolboxes.
 *Persona:* an analyst or on-device model browsing what's already in Kibana.
 
-### [`dashboards-analyst.mcp.json`](./dashboards-analyst.mcp.json) — 16 tools · `write`
+### [`dashboards-analyst.mcp.json`](./dashboards-analyst.mcp.json) — 21 tools · `write`
 Turn plain-English asks into real Lens visualizations and dashboards (idempotent —
 re-creating the same title updates rather than duplicates). Toolboxes: `dashboards`
-+ `data-management`. Adds `create_dashboard`, `create_visualization`, `add_panel`,
-`update_panel`, `create_data_view`, `create_short_url` to the read tools. This is
-the project's MVP default. *Persona:* data/BI analyst, dashboard builder.
++ `data-management` at `write`: their read tools plus the creates and in-place
+updates. The same 21 tools are the built-in list `@dashboards-analyst`, for
+mixing with tools from other toolboxes. This is the project's MVP default.
+*Persona:* data/BI analyst, dashboard builder.
 *(Deletion tools exist but are `destructive`-tier — raise `KIBANA_MCP_TIER` to
-`destructive` only if you want the model to delete dashboards/panels.)*
+`destructive` only if you want the model to delete dashboards, panels or library
+visualizations.)*
 
 ### [`fleet-admin.mcp.json`](./fleet-admin.mcp.json) — 35 tools · `destructive`
 Administer the Elastic Agent fleet: agents, agent + integration policies, enrolled

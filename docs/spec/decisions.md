@@ -1,6 +1,6 @@
 # Decisions ledger
 
-Status: Draft v1.5 (2026-10-11) — regeneration corpus. Consumes
+Status: Draft v1.12 (2026-10-17) — regeneration corpus. Consumes
 [brief.md](brief.md); read alongside [design.md](design.md).
 
 Each entry is a decision a rewrite must not silently re-litigate: what was
@@ -49,6 +49,126 @@ this ledger stands without them.
   tier 125 passed on 9.4.7 and 125 passed on 9.5.4; on 9.5.4 the e2e replay 4
   passed and the live-model gate (`gemma-4-12b-qat`) 1 passed — no gateway
   change. Supersedes D29.
+- **D34 (2026-10-12)** — A per-tool allow list, `KIBANA_MCP_TOOLS` (owner
+  spec), is the third selection axis beside toolbox and tier. Semantics:
+  **published = listed ∩ tier**, nothing else. **The list alone decides**:
+  the server registers the toolboxes that own the listed tools, and an
+  explicit `KIBANA_MCP_TOOLBOXES` is ignored with one stderr line. A listed
+  tool **above the tier stays hidden** with one stderr line naming it and the
+  tier that would publish it — not an error, so one list is reusable at a
+  lower tier. A listed name that is **not a tool fails startup**, all unknown
+  names at once, each with a difflib "did you mean" and a pointer to
+  `docs/tools.md`. Unset or empty is byte-identical to before (D7's additive
+  rule). **Start time only**: runtime list changes are rejected for now —
+  MCP clients' support for `notifications/tools/list_changed` is uneven and
+  the HTTP transport is stateless, so a changed list would reach some
+  clients and not others. **Mechanism: disable only.** The list hides every
+  registered unlisted tool with `mcp.disable(names=…)` beside the tier's
+  `mcp.disable(tags=…)`; it never calls `mcp.enable`, because FastMCP (4.0.10)
+  documents that a later enable overrides an earlier disable, so an
+  enable-based allow list could re-publish a destructive tool the tier hid.
+  The names come from FastMCP's async tool listing over a throwaway server
+  per toolbox, run on its own event loop in a worker thread (FastMCP has no
+  synchronous public listing; registration does no I/O, so `build_server`
+  stays pure). Not a security boundary (D3): the API key's RBAC is. Named
+  custom toolboxes (a profile file with coherence warnings) were left open
+  here; they shipped as named tool lists (D41). Pinned by
+  `tests/unit/test_tool_allow_list.py`.
+- **D41 (2026-10-17, owner: Q10, Q11, Q12, Q15)** — Named tool lists, inside
+  the D34 allow list. **Syntax**: an entry of `KIBANA_MCP_TOOLS` that starts
+  with `@` names a list and stands for its tools, mixable with plain names
+  (`@dashboards-analyst,create_alert_rule`); the server expands every `@`
+  entry, in order, first occurrence wins, **before** it validates names, so
+  every D34 rule applies to the expanded list unchanged (published = listed ∩
+  tier; unknown tool fails startup, now with `from list '@<name>'` when a
+  list brought it in; above-tier tools logged). An unknown `@name` fails
+  startup naming every unknown one, a difflib "did you mean", and the
+  available lists. **What changes without an `@` entry**: with
+  `KIBANA_MCP_TOOLS` unset, none of this runs — the list file is not opened
+  (one stderr line if it is named) and the server is byte-identical. With a
+  plain list, the published tools — names, order, descriptions, schemas — are
+  unchanged (checked once by comparing full tool dumps at every tier with the
+  pre-change tree; names and order are pinned by a unit test), and so are the
+  instructions, which follow the published set; what is new is on stderr (the
+  coherence warning below) and the list file, which is read and validated
+  whenever `KIBANA_MCP_TOOLS` is set, so a broken file fails startup even when
+  no `@` entry uses it. **Sources** (owner,
+  Q10/Q15): built-in lists plus the operator's own file. The built-ins are
+  two shipped personas as tool names, for mixing with tools from other
+  toolboxes — `read-only-explorer` (11: `dashboards`, `platform-health` and
+  `data-management` at `read`) and `dashboards-analyst` (21: `dashboards` and
+  `data-management` at `write`, the default selection, D39) — held as data in
+  `src/kibana_mcp/tool_lists.py` (`BUILTIN_LISTS`); `profiles/README.md`
+  points to the list table in `docs/configuration.md` instead of repeating
+  names. **Profiles stay on toolbox + tier**, the axes that state each
+  persona exactly; a list is a frozen copy. A unit test keeps each list equal
+  to its profile's toolbox + tier surface, so a tool added to those toolboxes
+  at that tier fails the test until the list names it. A profile that named
+  its own list would break that pin (the test would compare the list with
+  itself) and a new read tool would silently stay out of the persona — the
+  drift that keeps `fleet-admin` from being a list: it is the whole `fleet`
+  toolbox at `destructive`, which the toolbox axis says exactly. For
+  dashboards-analyst, raising the tier is also how the profile gains the
+  delete tools. (The first cut pointed `profiles/read-only-explorer.mcp.json`
+  at `@read-only-explorer`; review found the persona unpinned and it went
+  back to `dashboards,platform-health,data-management` at `read` before any
+  release.) **File**: `KIBANA_MCP_TOOL_LISTS_FILE` names a
+  TOML file (stdlib `tomllib`, no new dependency) — `version = 1` and
+  `[lists.<name>] tools = [...]`, nothing else — documented in
+  `docs/configuration.md` as a compatibility contract (a version-1 file keeps
+  working on every release that reads version 1; a breaking change takes a new
+  version). A leading `~` is expanded; a relative path resolves against the
+  server's working directory, which the MCP client chooses, so an unreadable
+  file's error says what it resolved against and asks for the absolute path
+  of a readable file. Validation is strict, every error names the fix:
+  unreadable or non-UTF-8 file, bad TOML, missing or other `version` (a TOML
+  boolean is not `1`), unknown keys at either level, empty `tools`,
+  non-string or blank entries, a list name outside `[a-z0-9][a-z0-9_-]*`
+  (matched in full, so a quoted name ending in a newline is refused), a
+  nested `@` reference. **Clash rule: a file list named like a built-in is refused**, so
+  `@dashboards-analyst` means one surface on every deployment; refusing is
+  the safer of the two (overriding would let a file silently redefine a
+  documented persona). The file is read by `main()` (`load_tool_lists`), not
+  by `build_server`, which takes the parsed lists and does no I/O; and only
+  when `KIBANA_MCP_TOOLS` is set (otherwise ignored, one stderr line), so the
+  default path never opens it. Tool names in a list are checked when the list
+  is used; an unknown one from the file names the `[lists.<name>]` table and
+  the file to edit. The published set that the instructions and this check
+  read is worked out from the registered tools' tier tags and the allow list —
+  the same two rules as the disables — not from a server-level `tools/list`,
+  which would open a telemetry span at startup when OTEL is on; a unit test
+  keeps it equal to what clients list. **Warning rule** (owner, Q11): when `KIBANA_MCP_TOOLS` is set — named
+  or plain — and a published tool relies on a tool that is not published, the
+  server logs **one** stderr line naming each missing tool and what relies on
+  it, and starts anyway, the posture of a listed tool above the tier (the model
+  may get the input elsewhere, e.g. an id the user pastes). Dependencies are
+  followed transitively; tools hidden by the tier are not checked; toolbox
+  selections are not checked. **Dependency map**: one owner, data —
+  `DEPENDENCIES` in `src/kibana_mcp/tool_lists.py`, 34 edges from 30 tools.
+  An edge A → B means A takes an input only B shows the model and A's own
+  description or error guidance sends the model there: an index or field name
+  (`update_panel`/`delete_panel` → `get_dashboard`; every VizSpec tool →
+  `describe_data_view`, whose validation error says "Use describe_data_view"),
+  the state an in-place edit merges into (`update_alert_rule` →
+  `get_alert_rule`, D40; `update_connector` → `get_connector`, D35), an export
+  handle (`import_saved_objects`/`overwrite_saved_objects` →
+  `export_saved_objects`), or an existing object's id that the not-found
+  guidance says to look up ("call search_dashboards to find it": dashboards,
+  visualizations, data views, alert rules, connectors), plus ids and values
+  descriptions name (`get_space` → `list_spaces`, `get_synthetic_monitor` →
+  `list_synthetic_monitors`, `upgrade_agent` → `list_agent_versions`,
+  package-policy writes → `get_package`). Not seeded, with reasons: the
+  space-not-found guidance (`space` is optional everywhere), refusal
+  redirects (`update_panel` naming `update_visualization`), follow-ups
+  (`create_alert_rule` naming `enable_alert_rule`, which `enabled=True`
+  replaces), server-side read-modify-write tools that need no model-side read
+  (`update_case`, `update_space`, fleet updates), and streams fork lifecycles
+  (no streams tool names a partner for an input it takes). Edges point at the
+  same or a lower tier, so the warning's fix — list the tool — is never
+  blocked by the tier. Unit tests pin that both lists and the map name only
+  real tools, that edges respect tiers, and that every built-in list passes
+  its own check. The map grows when a tool's guidance starts naming another.
+  Pinned by `tests/unit/test_tool_lists.py`, `tests/unit/test_profiles.py`.
 
 ## Space targeting
 
@@ -102,6 +222,113 @@ this ledger stands without them.
   fine-grained PAT scoped to this repository; branch protection (no
   deletions, no force pushes, required checks) is the enforcement locus,
   not agent instructions.
+- **D35 (2026-10-12, probes on 9.5.4)** — In-place alerting edits are
+  read-modify-write, and a connector edit never drops secrets silently.
+  Observed: Kibana's rule PUT wipes omitted `actions`/`tags` to `[]`, rejects
+  omitted `params`, resets an omitted `notify_when`, rejects GET's
+  `actions[].connector_type_id` and any `enabled` key; its connector PUT resets
+  omitted `config` to `{}` (`.index` then fails validation). So
+  `update_alert_rule`/`update_connector` re-send every writable field and merge
+  `params`/`config` key by key — except a rule's rule-level
+  `notify_when`/`throttle` when the caller's `actions` carry a `frequency`:
+  Kibana refuses that mix ("Cannot specify per-action frequency params when
+  notify_when or throttle are defined at the rule level", observed), so the
+  pair is left out and Kibana clears it. Secrets cannot be read back, and kibana-py
+  0.6.0 documents that an omitted `secrets` is reset to `{}`; every type that
+  holds secrets is Gold+ (`.webhook` 403s on Basic), so the wipe is not
+  observable on the reference stack. Decision: only `.index` and
+  `.server-log` — whose secrets schema rejects any key, observed — may be
+  updated without `secrets`; any other type is refused before the write with
+  guidance to pass the full secrets (`{}` clears deliberately), and results
+  never carry secrets. Preconfigured connectors are refused client-side from
+  `is_preconfigured` (no such connector on the stack to probe). Contract:
+  [alerting](toolboxes/alerting.md).
+- **D36 (2026-10-12, probes on 9.5.4)** — An in-place data-view edit checks
+  the time field Kibana does not, and a refused edit changes nothing.
+  Observed: the data-view update merges the keys it is sent (omitted ones
+  survive), validates only types, and stores a time field that is missing or
+  a keyword, an empty time field, and an empty title (which then matches
+  every index); a view's fields are recomputed from its pattern on every
+  read and write and are empty for a pattern that matches no index. So
+  `update_data_view` sends only the changed keys, refuses empty values,
+  and requires the time field to keep to be a `date` field of the view —
+  checked before the write, or, when the pattern changes, after writing the
+  pattern alone, with the old pattern written back on a mismatch; when a write
+  after the pattern's fails (the restore, or the name/time-field write), the
+  error keeps the cause and states the pattern the view now has and the call
+  that undoes it. Rejected
+  alternatives: re-sending every field (needless: the update merges);
+  checking a new pattern's fields through Kibana's internal fields-for-wildcard
+  route (internal, and absent from kibana-py). An empty field list skips the
+  check, matching `create_data_view`'s acceptance of a pattern for data not
+  yet ingested. Contract: [data-management](toolboxes/data-management.md).
+- **D37 (2026-10-12, probes on 9.5.4)** — Library visualizations are placed
+  on dashboards by reference, and every dashboards tool keeps working on a
+  dashboard that holds one. Observed: the public Dashboards API stores a panel
+  `{"type": "vis", "config": {"ref_id": "<visualization id>"}}` (plus an
+  optional `title` override), records it as a `lens` saved-object reference,
+  and reads it back unchanged with no warnings, so the unsupported-panels
+  refusal does not trip and the existing read-modify-write tools carry it
+  through untouched; it also stores a `ref_id` that names no visualization.
+  Deleting a visualization a dashboard references succeeds (204), and the
+  dashboard keeps the dangling ref and still round-trips. The visualization
+  PUT is an upsert (an unknown id creates one). So `add_library_panel` checks
+  the visualization exists, in the same scoped gateway, before it writes;
+  `update_visualization` reads first, then fully pre-flights the new VizSpec
+  against the real data view, and never creates; `get_dashboard` adds
+  `visualization_id` to a by-reference panel only (inline panels keep their
+  shape) and names it by the library item's title, `""` once that item is
+  gone; `delete_visualization`'s description says a panel stays behind,
+  broken. `update_panel` refuses a by-reference panel, naming
+  `update_visualization` (or, when the item is gone, `delete_panel` then
+  `add_panel`/`add_library_panel`), rather than silently unlinking it by
+  writing an inline copy over it: the owner wants charts reused, and the change a user
+  asks of a linked chart belongs on the chart. Rejected alternative: placing
+  a by-value copy of the library config (it would work, but later edits to
+  the library item would not reach the dashboard, which is what reuse means).
+  Kibana 9.4.7 was not probed by hand; the contract tier covers it in CI
+  (D30). Contract: [dashboards](toolboxes/dashboards.md).
+- **D40 (2026-10-17, probe on 9.5.4)** — *Amended 2026-10-17: each read
+  action now also carries its `uuid`; the "`uuid` because the tool does not
+  take it" clause below is superseded.* `get_alert_rule` returns the rule's
+  `params` and `actions`; it is the read half of `update_alert_rule` (D35),
+  as `get_dashboard` is `update_panel`'s. Observed: GET
+  `/api/alerting/rule/{id}` carries the `params` Kibana stores (with the
+  defaults it adds, e.g. `aggType`, `groupBy`, `excludeHitsFromPreviousRun`
+  on `.es-query`) and `actions` (`group`, `id`, `params`,
+  `connector_type_id`, `uuid`, and `frequency` when set), plus bookkeeping
+  (`created_by`, `api_key_owner`, `api_key_created_by_user`, `revision`,
+  `running`, ...) and no secret: the rule's API key is never in the body,
+  enabled or not, and connector secrets are not on rules; the `_find` rows
+  have the same keys. kibana-py 0.6.0 returns the raw body, so no client
+  change is needed. Decision: the result adds `params` verbatim and each
+  action in the shape `update_alert_rule` takes (`id`, `group`, `params`,
+  `frequency`, the last two only when sent), built from named keys —
+  `connector_type_id` is dropped because the update rejects it, ~~`uuid`
+  because the tool does not take it~~ (superseded: see the amendment below). `list_alert_rules` and `update_alert_rule` keep
+  the summary. Why: with params invisible, the first counted Claude block's
+  `fix_rule_threshold` answers all said the model could not see the rule's
+  params (`scripts/experiment/runs/claude-e2e/counted-2026-10-17/`
+  transcripts). Not done here, left open: returning the detail from
+  `update_alert_rule` as well (as `update_connector` returns `get_connector`'s
+  shape); the change keeps to the read tool. Evidence after the change: the
+  counted block `scripts/experiment/runs/claude-e2e/counted-2026-10-17-d40/`
+  (same pre-registered tasks, `SUMMARY.md` generated from its `runs.jsonl`);
+  every `fix_rule_threshold` transcript in it calls `get_alert_rule` before and
+  after `update_alert_rule`. Contract: [alerting](toolboxes/alerting.md).
+  **Amendment (2026-10-17, probe on 9.5.4, independent review of PR #25).**
+  The premise for dropping `uuid` was wrong: `update_alert_rule` passes its
+  `actions` through to the PUT, which accepts `uuid`, so a read →
+  update round trip without it made Kibana mint a new uuid for every action.
+  Observed on a `.es-query` rule with two `.server-log` actions: a PUT whose
+  actions omit `uuid` replaced both uuids with new ones; a PUT that sends the
+  read uuids kept both; and `get_alert_rule` → `update_alert_rule` with the
+  read actions (now carrying `uuid`) kept both. Decision: each read action
+  carries `uuid` when Kibana sent it, and `get_alert_rule`'s description says
+  to pass it back; `connector_type_id` is still dropped. Evidence: the live
+  assertions in
+  `tests/contract/test_gateway_contract.py::test_get_alert_rule_reads_params_before_and_after_a_threshold_fix_live`
+  (round trip keeps the uuids, an action sent without one gets a new uuid).
 
 ## Reliability and models (measured)
 
@@ -133,8 +360,9 @@ this ledger stands without them.
   the capability the space gates exist to catch, so the reference stays
   `gemma-4-12b-qat`. On that evidence `e2e_green` runs all three gates (the
   flights dashboard and both space chains), and the reference model is the
-  `LMSTUDIO_MODEL` fallback in every live-model test. Since D31 the criterion
-  is `n/a` in `dod.config`; the three tests run on demand.
+  `LMSTUDIO_MODEL` fallback in every live-model test. Since D31 the three
+  LM Studio tests run on demand (`make test-e2e-local` since D38); since D42
+  `e2e_green` runs the Claude tier.
 - **D19 (2026-08-19)** — Replay transcripts carry recorded bytes, never
   hand-written arguments; error steps are recorded with their guidance
   needles; server-generated ids (alert rules) bind at replay time from the
@@ -143,7 +371,11 @@ this ledger stands without them.
   space-dashboard sequence) has a hand-chosen call ORDER over real
   recorded wire bytes — its order carries no evidence about model behavior
   and each transcript's `recorded` block says which kind it is.
-- **D31 (2026-10-04)** — The Definition of Done needs no LLM: `e2e_green` is
+- **D31 (2026-10-04)** — *The on-demand rule below now runs `make test-e2e`,
+  the Claude tier, superseded by D38; the gate decision is superseded for the
+  local `dod.config` by D42 (`e2e_green = required` there) and stands for
+  every `.github/dod` config.* The
+  Definition of Done needs no LLM: `e2e_green` is
   `n/a` in `dod.config` as in every `.github/dod` config. Why: the gate must
   reach GO wherever the project is worked on — CI runners and Claude Code
   cloud sessions have no LM Studio runtime — and a live-model pass certifies
@@ -174,12 +406,88 @@ this ledger stands without them.
   naming the field to set. The tool surface models see (names,
   descriptions, JSON schemas) is byte-identical, so D31's on-demand
   live-model run is not triggered.
-- **D33 (2026-10-12)** — No model is privileged: the live-model tests drive
+- **D33 (2026-10-12)** — *Its scope is narrowed by D38: it governs the
+  LM Studio tier (`make test-e2e-local`) only. The Claude tier
+  (`make test-e2e`) drives `CLAUDE_E2E_MODEL`, which defaults to the `haiku`
+  alias; the no-privileged-model principle stands.* No model is privileged: the live-model tests drive
   whatever `LMSTUDIO_MODEL` names and fail with the fix when it is unset.
   Supersedes D18's reference-model status (owner, 2026-10-12): a model chosen
   on 2026-08-19 kept a default role because it had once been named, not
   because a later measurement chose it again. D18's numbers remain evidence
   about the models it measured; which model to drive is the caller's choice.
+- **D38 (2026-10-16, owner)** — *Its "`e2e_green` stays `n/a` in every DoD
+  config … outside every gate" is superseded for the local `dod.config` by
+  D42; the rest stands.* The live-model tier is driven by Claude.
+  `make test-e2e` runs headless Claude Code (`claude -p`) with this server's
+  tools and nothing else — `--tools ""` (no shell, files or web),
+  `--strict-mcp-config`, `--permission-mode dontAsk` with the allow list
+  `mcp__mcp-for-kibana` — through four tasks, five runs each, pre-registered in
+  `scripts/experiment/CLAUDE_E2E.md` before any counted run: the three
+  LM Studio tasks with their prompts and state-based scoring
+  (`tests/_live_tasks.py`, shared by both tiers), and `fix_rule_threshold`,
+  where the harness seeds a rule with a wrong threshold and the model must fix
+  it in place with the update tools (D35). The model is a parameter,
+  `CLAUDE_E2E_MODEL`, defaulting to `haiku` — the alias, not a dated id, so the
+  default follows the current Haiku instead of keeping a model because it was
+  once named (D33's concern), and every run record names the model the CLI
+  reports. The Kibana API key reaches only the MCP server's environment (its
+  entry in a mode-0600 config file); the model's environment drops every
+  `KIBANA*` variable, and each transcript is searched for the key, a hit being
+  redacted on disk and failing the run. The LM Studio tests move unchanged to
+  `make test-e2e-local`, for testing small local models; D33 governs that tier
+  (`LMSTUDIO_MODEL` required, no default). Why: a Claude run needs only a
+  Claude sign-in, so it runs in a cloud session where LM Studio cannot, at
+  under a cent per run in the four dry runs
+  (`scripts/experiment/runs/claude-e2e/dryrun/`).
+  Owner's answer to Q13: a Claude run is enough live-model evidence for merging
+  PR #25. **Supersedes D31 in part**: D31's on-demand rule — run the live-model
+  tests when a change touches tool names, descriptions or schemas — now means
+  `make test-e2e` (Claude), not the LM Studio tests. D31's gate decision stands:
+  `e2e_green` stays `n/a` in every DoD config; whether the gate should require
+  the Claude run is open (Q16, [roadmap](../roadmap.md)). Off by default and
+  outside every gate. Evidence (2026-10-17, Kibana 9.5.4, `claude-haiku-5-5`):
+  the pre-registered 20 counted runs all passed and were all valid, none with
+  the key in its output (`scripts/experiment/runs/claude-e2e/counted-2026-10-17/`,
+  `SUMMARY.md` generated from its `runs.jsonl`).
+- **D39 (2026-10-16, owner)** — The default surface may exceed the ~20-tool
+  heuristic. The default selection (`dashboards,data-management` at `write`)
+  grew from 16 tools to 21 with the update and library tools of D36–D37, past
+  the ~20 tools that brief Goal 1 and D2 name as a working heuristic. Accepted
+  (owner's answer to Q14). Why: the heuristic is recorded, not measured (D2);
+  each added tool replaces a destructive delete-and-recreate that the default
+  tier hides; and an operator who wants fewer tools lists them with
+  `KIBANA_MCP_TOOLS` (D34). Evidence: the count is checked against a live
+  listing by `tests/unit/test_profiles.py` (the `dashboards-analyst` profile,
+  which is the default selection at `write`, lists 21).
+- **D42 (2026-10-17, owner: Q16)** — The local Definition-of-Done gate
+  requires the Claude live-model run: `e2e_green = required` in `dod.config`
+  (the gate a cloud session or the owner's laptop runs), and the criterion runs
+  `make test-e2e`'s selection — `pytest -m e2e_claude`, headless Claude Code
+  (`claude -p`) with only this server's tools through the pre-registered tasks
+  (`scripts/experiment/CLAUDE_E2E.md`, D38), model `CLAUDE_E2E_MODEL`, default
+  the `haiku` alias. The runner this criterion kept while it was `n/a` drove
+  the LM Studio tests; it now runs the Claude tier, and `make test-e2e-local`
+  is outside every gate. The gate mirrors the pytest line rather than nesting
+  `make` (as for `image_smoke`) and, like `contract_green`, takes a seeded
+  stack as its precondition instead of starting one; its run records go to the
+  gate's log directory, not into `scripts/experiment/runs/`. A missing `claude`
+  CLI, or a CLI that `claude auth status` does not report signed in, is NO-GO
+  with a message naming the fix (install Claude Code; `claude auth login`) —
+  never a skip and never a pass. `e2e_green` stays `n/a` in every
+  `.github/dod` config: CI has no Claude sign-in, and no CI job or secret is
+  added. Why (owner): the old rule required an LM Studio run on the owner's
+  laptop that in practice never ran on this branch; the Haiku run needs only a
+  Claude sign-in, takes about 5–6 minutes per gate run, and costs about $0.04
+  per 20-run block on the owner's subscription; cost is not a factor. A pass
+  still certifies only the model that ran (D31's caveat stands). Evidence: the
+  two committed blocks passed 40 of 40, every run valid
+  (`scripts/experiment/runs/claude-e2e/counted-2026-10-17/SUMMARY.md`, $0.0393;
+  `scripts/experiment/runs/claude-e2e/counted-2026-10-17-d40/SUMMARY.md`,
+  $0.0425; median wall time 14–19 s per run). **Supersedes D31 in part**: the
+  part that kept `e2e_green` `n/a` in the local `dod.config` (and D38's
+  restatement of it). D31's replay tiers stand, and so does the on-demand
+  rule: re-run `make test-e2e` when a change touches tool names, descriptions
+  or schemas, without waiting for the gate.
 
 ## Scope and licensing (probed on Basic)
 
@@ -253,6 +561,24 @@ this ledger stands without them.
 
 - ~~D18's reference-model status (`gemma-4-12b-qat` as the `LMSTUDIO_MODEL`
   fallback)~~ — superseded by D33; D18's measurements stand.
+
+- ~~D33's scope as every live-model test (`LMSTUDIO_MODEL` required, no
+  default, for all of them)~~ — narrowed by D38: D33 governs the LM Studio tier
+  (`make test-e2e-local`); the Claude tier defaults `CLAUDE_E2E_MODEL` to the
+  `haiku` alias.
+
+- ~~D40's dropping of each read action's `uuid` from `get_alert_rule`~~ —
+  superseded by D40's own amendment: the uuid is returned so a read → update
+  round trip keeps each action's identity.
+
+- ~~D31's on-demand live-model rule as the LM Studio tests (`make test-e2e` =
+  the three LM Studio tests)~~ — superseded by D38: `make test-e2e` is the
+  Claude tier and the LM Studio tests are `make test-e2e-local`.
+
+- ~~D31's gate decision for the local `dod.config` (`e2e_green = n/a`, the
+  Definition of Done needs no LLM)~~ — superseded by D42: the local gate
+  requires the Claude run. `e2e_green = n/a` stands in every `.github/dod`
+  config.
 
 - ~~D29 (2026-09-21): track the newest 9.4 patch and defer Kibana 9.5~~ —
   deferred 9.5 until kibana-py released its supported-set module, and on the

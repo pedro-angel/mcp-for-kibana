@@ -5,12 +5,12 @@ enabled .es-query alert rule inside it — through mcp-for-kibana.
 The alerting twin of the Study L space gate (test_lmstudio_space.py). The
 prompt, the pass criterion, and the progress ladder this gate implements
 were frozen before any run. The LM Studio server entry `mcp-for-kibana-alerting`
-(its own entry — the dashboards gate's `mcp-for-kibana` keeps its frozen
-24-tool surface; one shared entry cannot satisfy both designs) must expose
-KIBANA_MCP_TOOLBOXES=alerting,platform-admin (17 tools at tier=write, counted
-from the toolbox registrations — create_space lives in platform-admin, the
-rule tools in alerting; this gate was authored in a session that could not run
-the stack, so the first local run is the count's live confirmation).
+(its own entry — the dashboards gate's `mcp-for-kibana` keeps its own
+toolbox set, 29 tools at tier=write; one shared entry cannot satisfy both
+designs) must expose KIBANA_MCP_TOOLBOXES=alerting,platform-admin (20 tools at
+tier=write, counted from the toolbox registrations — create_space lives in
+platform-admin, the rule tools in alerting; 17 when the task was frozen, before
+D35's get_connector and in-place rule and connector edits joined alerting).
 
 Every run appends one JSONL record (ladder, tool calls, timings, versions) to
 KIBANA_MCP_EXPERIMENT_LOG or scripts/experiment/runs/. Tables in any report
@@ -35,7 +35,8 @@ from tests._alerting_space_ladder import (
     score_alerting_space_run,
     sweep_default_space_marker_rules,
 )
-from tests._space_ladder import FLIGHTS_INDEX, append_jsonl
+from tests._live_tasks import alerting_space_prompt
+from tests._space_ladder import append_jsonl
 from tests._stack_env import lmstudio_model
 
 pytestmark = pytest.mark.e2e
@@ -80,17 +81,9 @@ def _git_sha() -> str:
 def test_model_creates_alert_rule_in_its_own_space(lmstudio, root_gateway):
     marker = f"E2E {uuid.uuid4().hex[:8]}"
     space_id = f"e2e-{_model_slug(lmstudio['model'])}-{uuid.uuid4().hex[:8]}"
-    # The pre-registered prompt (frozen in the runbook before any run) with
-    # the local arm's "Using the kibana tools" opener. The chain, the rule
-    # type, the consumer, the index, and the time field are stated
-    # deliberately: the gate measures execution, not derivation.
-    prompt = (
-        f"Using the kibana tools, create a new Kibana space with id '{space_id}'. "
-        f"Inside that space, create an '.es-query' alert rule named "
-        f"'{marker} flight watch' with consumer 'stackAlerts' that fires when "
-        f"more than 0 documents match in the index '{FLIGHTS_INDEX}' (time "
-        f"field 'timestamp') over the last 5 minutes, then enable that rule."
-    )
+    # The pre-registered prompt (frozen in the runbook before any run), shared
+    # with the Claude tier through tests/_live_tasks.py.
+    prompt = alerting_space_prompt(space_id, marker)
     started = time.monotonic()
     ts_start = datetime.now(UTC).isoformat()
     record = {

@@ -37,7 +37,7 @@ surfaces are not worth duplicating here.
 
 ## Status
 
-**v0.3.0 — 10 toolboxes, 134 tools, live-tested.** The server exposes 134 tools
+**v0.4.0 — 10 toolboxes, 143 tools, live-tested.** The server exposes 143 tools
 across 10 composable toolboxes (dashboards, data management, alerting, cases,
 security detections, fleet, streams, observability, platform admin, and platform
 health), each classified read / write / destructive and contract-tested against
@@ -59,7 +59,7 @@ tool-call markers about one run in three.
 ## What it does
 
 Lets an LLM work with Kibana through a small, reliable, purpose-built tool surface
-instead of ~610 raw endpoints — 134 tools grouped into 10 composable toolboxes you
+instead of ~610 raw endpoints — 143 tools grouped into 10 composable toolboxes you
 enable per deployment. The flagship **dashboards** toolbox lets a user describe the
 chart they want, and the server translates a simple declarative spec into real
 Kibana Lens visualizations and dashboards via the modern Dashboards API (Kibana
@@ -129,17 +129,17 @@ for running the HTTP server.
 
 ## Tool reference
 
-**134 tools across 10 toolboxes**, each tool classified by tier — read / write /
-destructive (64 / 40 / 29). Enable toolboxes per deployment with
+**143 tools across 10 toolboxes**, each tool classified by tier — read / write /
+destructive (68 / 45 / 30). Enable toolboxes per deployment with
 `KIBANA_MCP_TOOLBOXES`; cap the tier with `KIBANA_MCP_TIER`. A tool above the cap
 is not merely denied at call time — it never appears in the tool list (registered,
 then hidden via FastMCP's visibility API).
 
 | Toolbox | Tools | What it does |
 |---|--:|---|
-| `dashboards` | 11 | Build Lens visualizations + dashboards from a declarative spec — the flagship plain-English → dashboard path. |
-| `data-management` | 10 | Data views + short URLs (the datasets you visualize). |
-| `alerting` | 12 | Alerting rules and connectors. |
+| `dashboards` | 16 | Build Lens visualizations + dashboards from a declarative spec — the flagship plain-English → dashboard path. |
+| `data-management` | 11 | Data views + short URLs (the datasets you visualize). |
+| `alerting` | 15 | Alerting rules and connectors. |
 | `cases` | 6 | Kibana Cases: create, comment, update status. |
 | `security-detections` | 25 | Detection rules, exception lists, value lists. |
 | `fleet` | 35 | Fleet agents, agent/package policies, outputs, enrollment. |
@@ -169,6 +169,8 @@ prefixed, matching how Kibana's own tooling names them):
 | `KIBANA_API_KEY` | (none) | stdio mode: the API key used for every request. HTTP mode: ignored unless `KIBANA_MCP_ALLOW_ENV_KEY_HTTP=true` — each caller sends their own key. |
 | `KIBANA_MCP_TOOLBOXES` | `dashboards,data-management` | Comma-separated list of toolboxes to register (of the 10 available). |
 | `KIBANA_MCP_TIER` | `write` | Max tool tier to register: `read`, `write`, or `destructive`. |
+| `KIBANA_MCP_TOOLS` | (none — off) | Comma-separated allow list of tool names. When set, the server publishes exactly the listed tools the tier allows and nothing else, and `KIBANA_MCP_TOOLBOXES` is ignored. An `@name` entry stands for a named list's tools (`@dashboards-analyst`). See [Tool selection](https://mcp-for-kibana.readthedocs.io/en/latest/configuration/#tool-selection). |
+| `KIBANA_MCP_TOOL_LISTS_FILE` | (none — off) | Path to a TOML file of your own named tool lists, used as `@name` in `KIBANA_MCP_TOOLS`. Read at startup only when `KIBANA_MCP_TOOLS` is set; a file that cannot be read or does not validate fails startup. See [Your own lists](https://mcp-for-kibana.readthedocs.io/en/latest/configuration/#your-own-lists-the-list-file). |
 | `KIBANA_MCP_EXPORT_DIR` | (none — a fresh, unguessable 0700 temp dir per run) | Directory where saved-objects export/import NDJSON files are written. An explicit path is created 0700, a symlink there is refused, and a pre-existing directory is tightened to 0700. |
 | `KIBANA_MCP_TRANSPORT` | `stdio` | `stdio` or `http`. |
 | `KIBANA_MCP_HOST` | `127.0.0.1` | Bind host (HTTP transport only). |
@@ -217,18 +219,20 @@ CI discipline comes from
 
 ### Test matrix
 
-Six tiers, from fastest/most-isolated to slowest/most-real:
+Seven tiers, from fastest/most-isolated to slowest/most-real:
 
 ```bash
 make test              # unit — fakes only, no network; the default selection
 make test-contract     # starts + seeds the docker Kibana stack itself, then -m contract
 make test-e2e-replay   # replays a RECORDED model turn through a real MCP client
-make test-e2e          # a REAL local model in LM Studio — see docs/e2e-setup.md
+make test-e2e          # REAL Claude (claude -p, default haiku) with only this server's tools
+make test-e2e-local    # a REAL local model in LM Studio — see docs/e2e-setup.md
 make streams-ephemeral # destructive streams path on its own throwaway stack
 make fleet-ephemeral   # agent lifecycle on a throwaway 2-agent fleet stack
 ```
 
-Everything except `test-e2e` runs in CI. The two ephemeral tiers own their
+Everything except the two live-model tiers (`test-e2e`, `test-e2e-local`)
+runs in CI. The two ephemeral tiers own their
 stack's whole lifecycle (up → test → down) because their paths are destructive:
 they delete every wired stream, or mutate real enrolled agents, so they cannot
 share the dev stack. They also cannot run *beside* it — see
@@ -237,11 +241,11 @@ share the dev stack. They also cannot run *beside* it — see
 **On the two e2e tiers.** They are not redundant, and one is not a substitute
 for the other:
 
-| | `test-e2e` | `test-e2e-replay` |
+| | `test-e2e` / `test-e2e-local` | `test-e2e-replay` |
 |---|---|---|
-| Who picks the tool calls | a real local LLM | a recorded transcript |
+| Who picks the tool calls | a real LLM (Claude / a local model) | a recorded transcript |
 | Server, MCP transport, Kibana, ES | real | real |
-| Runs in CI | no — needs a GPU + loaded model | **yes** |
+| Runs in CI | no — needs a Claude sign-in / a GPU + loaded model | **yes** |
 | Proves a model can *reason* to the calls | **yes** | no |
 | Proves the model-facing surface still works | yes | **yes, per-PR** |
 
@@ -255,7 +259,7 @@ your data's field names, and degrading `"field 'price' does not exist … did yo
 mean 'Carrier'?"` to a bare 400 breaks self-correction for every LLM using this
 server. Four mutation tests confirm the tier fails when each guard is broken.
 
-(Raw commands underneath: `uv run pytest [-m contract|-m e2e|-m e2e_replay]` —
+(Raw commands underneath: `uv run pytest [-m contract|-m e2e_claude|-m e2e|-m e2e_replay]` —
 the suites load `elastic-start-local/.env.seed` + `.env.local` in-process; the
 Makefile is a thin facade.)
 
@@ -279,7 +283,7 @@ audit, SAST, unit across Python 3.12–3.14, docs, image build+smoke), and
 through *this same gate script* with per-tier configs in `.github/dod/` — so CI
 verdicts and `make dod` cannot drift.
 
-`make dod` needs the dev stack up for `contract`/`e2e_replay`/`wheel_replay` and down for
+`make dod` needs the dev stack up for `contract`/`e2e_replay`/`wheel_replay`/`e2e_green` and down for
 the ephemeral tiers, so a plain run cannot satisfy both halves. To get a
 one-shot GO, let the gate cycle the stack for you (default-off, so it never
 touches infrastructure unasked):
@@ -289,10 +293,16 @@ scripts/stack.sh up && scripts/stack.sh seed
 KIBANA_MCP_DOD_CYCLE_STACK=1 make dod
 ```
 
-`e2e_green` — a real model choosing the calls — is `n/a` in `dod.config` as in
-every `.github/dod` tier (D31): the DoD reaches GO without an LLM, and a pass
-would certify only the model that ran. Run the live-model tests on demand with
-`make test-e2e` when a change touches tool names, descriptions or schemas.
+`e2e_green` — a real model choosing the calls — is required in `dod.config`
+(D42): the gate runs the Claude tier (`make test-e2e`'s tasks via `claude -p`,
+model `CLAUDE_E2E_MODEL`, default `haiku`, D38), which needs a signed-in
+`claude` CLI and takes about 5–6 minutes; a missing CLI or sign-in is NO-GO
+and names the fix. It stays `n/a` in every `.github/dod` tier, since CI has no
+Claude sign-in, and a pass certifies only the model that ran. Run
+`make test-e2e` on its own when a change touches tool names, descriptions or
+schemas; `make test-e2e-local` runs three of those four tasks (all but
+`fix_rule_threshold`) as LM Studio tests on a small local model, outside every
+gate.
 
 ## License
 

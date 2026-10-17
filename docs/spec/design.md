@@ -11,7 +11,8 @@ implementation may change any mechanism this document does *not* name.
 
 ## The load-bearing shape
 
-- **Hexagonal, machine-enforced.** A core (`core/`, `ports/`, `config/`)
+- **Hexagonal, machine-enforced.** A core (`core/`, `ports/`, `config/`,
+  and the tool-list data `tool_lists`)
   that may not import `fastmcp`, `mcp`, or `kibana` (pydantic is allowed —
   the ban is those three, not frameworks in general); toolboxes above it;
   adapters at the edges; a composition root (`server.py`) that wires but
@@ -30,8 +31,8 @@ implementation may change any mechanism this document does *not* name.
   owning its tools, tiers, and guards. Rewrites happen toolbox-at-a-time
   against the behavior contracts under `docs/spec/toolboxes/`.
 - **Every tool name has exactly one owning toolbox.** No two toolboxes
-  register the same tool (133 names, zero duplicates — verified
-  2026-08-20); when two toolboxes want the same capability, the resolution
+  register the same tool (143 names, zero duplicates — verified
+  2026-10-12); when two toolboxes want the same capability, the resolution
   is extraction into a single owner or a distinguishing prefix, never
   sharing. Composition is defensively deterministic besides: duplicate
   registrations are ignored first-in-wins, so even a future overlap could
@@ -41,8 +42,11 @@ implementation may change any mechanism this document does *not* name.
   invariants below and the shared port. Ownership constrains
   *registration*, not *availability*: personas whose jobs cross ownership
   boundaries compose toolboxes (building a dashboard in a fresh space
-  takes three), and finer-grained per-tool selection is a filed roadmap
-  feature, not a reason to share registrations.
+  takes three), and finer-grained selection is the per-tool allow list
+  (`KIBANA_MCP_TOOLS`, D34), which registers the owning toolboxes and hides
+  every unlisted tool — selection, never a reason to share registrations.
+  Named tool lists (`@name` in that list, D41) are names for such selections,
+  not toolboxes: they own no tool and register nothing of their own.
 - **Dependency injection via one factory.** Toolboxes receive a
   `gateway_factory(space=None)` callable and never construct clients. The
   factory is where per-request credentials and space scoping happen; a fake
@@ -76,6 +80,14 @@ Tiering and destruction:
   — the point is that destructive tools never enter the model's context.
   A call naming a hidden tool fails as unknown (observed; the pinned
   assertions cover list-time visibility).
+- Surface selection only ever hides. The per-tool allow list
+  (`KIBANA_MCP_TOOLS`) is applied as a second disable beside the tier's, so
+  the published set is listed ∩ tier; assembly never calls an enable, which
+  in FastMCP overrides an earlier disable and could re-publish a tool the
+  tier hid (D34; pinned by `tests/unit/test_tool_allow_list.py`). Named
+  lists (`@name`, D41) expand before any name is checked, so they change what
+  is listed, never this rule; the coherence check over the published tools
+  only ever logs — it neither adds a tool nor fails startup.
 - Tier-gating is the destructive baseline; **additionally**, operations
   whose effect is invisible until the guidance is read carry an explicit
   `confirm` parameter (clearing all processing steps, activating a fork
@@ -139,6 +151,7 @@ mode enables host/origin protection on loopback binds.
 - Layering and purity: import-linter contracts (`pyproject.toml`), CI job.
 - Invariants: `tests/unit/` (fakes; auth, tiers, space threading, guards),
   `tests/contract/` (live Kibana), `tests/e2e_replay/` (recorded turns,
-  guidance strings, schema-rejection pins), `tests/e2e/` (live local model),
+  guidance strings, schema-rejection pins), `tests/e2e/` (live models:
+  Claude via `claude -p`, and a local model in LM Studio),
   `tests/ephemeral/` (destructive paths on throwaway stacks).
 - The whole: `make dod` → `VERDICT: GO` (see [brief.md](brief.md)).

@@ -1,14 +1,15 @@
 # Tool reference
 
 Toolboxes are selected via
-[`KIBANA_MCP_TOOLBOXES`](configuration.md): **dashboards**,
+[`KIBANA_MCP_TOOLBOXES`](configuration.md#toolbox-selection), or single tools
+via [`KIBANA_MCP_TOOLS`](configuration.md#tool-selection): **dashboards**,
 **[data-management](#data-management-toolbox)**,
 **[alerting](#alerting-toolbox)**, **[cases](#cases-toolbox)**,
 **[platform-health](#platform-health-toolbox)**,
 **[observability](#observability-toolbox)**,
 **[security-detections](#security-detections-toolbox)**,
 **[platform-admin](#platform-admin-toolbox)**,
-**[streams](#streams-toolbox)**, and **[fleet](#fleet-toolbox)** — 134 tools in
+**[streams](#streams-toolbox)**, and **[fleet](#fleet-toolbox)** — 143 tools in
 all. This reference details every toolbox in full. A drift-guard test
 (`tests/unit/test_docs_tool_reference.py`) asserts that every registered tool
 name appears on this page, so it cannot silently fall behind the code.
@@ -26,10 +27,18 @@ FastMCP's visibility API).
 | [`search_dashboards`](#search_dashboards) | read | Search dashboards by title/description. |
 | [`get_dashboard`](#get_dashboard) | read | Get a dashboard summary: title, description, and its panels. |
 | [`create_dashboard`](#create_dashboard) | write | Create a dashboard from one or more visualization specs; re-creating the same title overwrites it in place instead of duplicating. |
+| [`search_visualizations`](#search_visualizations) | read | Search library visualizations by title. |
+| [`get_visualization`](#get_visualization) | read | Get a library visualization in VizSpec terms: chart type, data view, metrics, group_by, filter query. |
 | [`create_visualization`](#create_visualization) | write | Create a reusable visualization in the library (not on a dashboard). |
+| [`update_visualization`](#update_visualization) | write | Replace a library visualization with a new spec, same id; dashboards that show it by reference change too. |
+| [`add_library_panel`](#add_library_panel) | write | Show a library visualization on an existing dashboard, linked (by reference), not copied. |
 | [`add_panel`](#add_panel) | write | Add a visualization panel to an existing dashboard. |
+| [`add_esql_metric_panel`](#esql-panels-dedicated-add_esql__panel-tools) | write | Add an ES\|QL metric panel to an existing dashboard: one output column as a single number. |
+| [`add_esql_table_panel`](#esql-panels-dedicated-add_esql__panel-tools) | write | Add an ES\|QL table panel to an existing dashboard: grouping columns as rows, metric columns as values. |
+| [`add_esql_xy_panel`](#esql-panels-dedicated-add_esql__panel-tools) | write | Add an ES\|QL bar/line/area panel to an existing dashboard. |
 | [`update_panel`](#update_panel) | write | Replace the visualization at a given panel index. |
 | [`delete_dashboard`](#delete_dashboard) | destructive | Permanently delete a dashboard. |
+| [`delete_visualization`](#delete_visualization) | destructive | Permanently delete a library visualization; dashboards that show it keep a broken panel. |
 | [`delete_panel`](#delete_panel) | destructive | Permanently remove one panel from a dashboard. |
 
 A tier includes everything below it: `write` (the default) registers
@@ -47,10 +56,10 @@ gating:
 
 | Tier | Tools | `readOnlyHint` | `destructiveHint` | `idempotentHint` |
 |---|---|---|---|---|
-| read | `list_data_views`, `describe_data_view`, `search_dashboards`, `get_dashboard` | `true` | — | — |
-| write | `create_visualization`, `add_panel` | `false` | `false` | `false` |
-| write (upsert) | `create_dashboard`, `update_panel` | `false` | `false` | `true` — `update_panel`: replacing the same index twice is a no-op; `create_dashboard`: re-creating the same title overwrites, never duplicates. |
-| destructive | `delete_dashboard`, `delete_panel` | `false` | `true` | `true` |
+| read | `list_data_views`, `describe_data_view`, `search_dashboards`, `get_dashboard`, `search_visualizations`, `get_visualization` | `true` | — | — |
+| write | `create_visualization`, `add_library_panel`, `add_panel`, `add_esql_metric_panel`, `add_esql_table_panel`, `add_esql_xy_panel` | `false` | `false` | `false` |
+| write (upsert) | `create_dashboard`, `update_panel`, `update_visualization` | `false` | `false` | `true` — `update_panel`/`update_visualization`: replacing with the same spec twice is a no-op; `create_dashboard`: re-creating the same title overwrites, never duplicates. |
+| destructive | `delete_dashboard`, `delete_visualization`, `delete_panel` | `false` | `true` | `true` |
 
 All tools also set `openWorldHint=False` (Kibana is a closed, known system,
 not an open web search).
@@ -165,7 +174,9 @@ Notes:
   even though column existence is not.
 - ES|QL is a **separate set of tools on purpose** — deliberately kept out of
   VizSpec so the field-based `create_dashboard`/`add_panel` schema (and small
-  local models' reli### The auto-filled `time_field`
+  local models' reliability on it) is unchanged.
+
+### The auto-filled `time_field`
 
 Omit `time_field`: the toolbox code (`_prepare_config` in `toolbox.py`)
 looks up the named `data_view` and, when `time_field` is `null` and the
@@ -177,9 +188,8 @@ Lens data source, and the two need not be the same field.
 Set `time_field` only when the data view has **no** default time field and
 a `group_by` entry is a `date_histogram`; the pre-flight then rejects the
 spec with a message naming the fix (see [error behavior](#error-behavior)).
-An explicit `time_field` must match the data view's own when it has one.
-
-ed as the
+An explicit `time_field` must match the data view's own when it has one;
+call `describe_data_view` first to learn it (it's returned as the
 `time_field` key).
 
 ## Returns
@@ -221,9 +231,47 @@ Returns a dashboard summary with its panel list, each panel's index used by
 ```json
 {
   "id": "...", "title": "...", "description": "...",
-  "panels": [{"index": 0, "type": "vis", "title": "..."}]
+  "panels": [
+    {"index": 0, "type": "vis", "title": "..."},
+    {"index": 1, "type": "vis", "title": "...", "visualization_id": "..."}
+  ]
 }
 ```
+
+Only a panel placed with [`add_library_panel`](#add_library_panel) carries
+`visualization_id` (the library item it shows by reference); its `title` is
+the library item's title, or `""` once that item has been deleted. Inline
+panels never carry the key.
+
+### `search_visualizations`
+
+Returns a list of library-visualization summaries (no `space` echo, like
+every list-returning tool); `query` matches whole title words,
+case-insensitively, and an empty query lists all:
+
+```json
+[{"id": "...", "title": "...", "description": "", "chart_type": "bar"}]
+```
+
+### `get_visualization`
+
+Returns one library visualization read back in [VizSpec](#the-vizspec-input)
+terms, so it can be edited and passed to `update_visualization`:
+
+```json
+{
+  "id": "...", "title": "...", "description": "", "chart_type": "bar",
+  "data_view": "kibana_sample_data_flights", "time_field": "timestamp",
+  "metrics": [{"agg": "average", "field": "AvgTicketPrice"}],
+  "group_by": [{"field": "Carrier", "kind": "terms", "limit": 10}],
+  "query": "Cancelled: false"
+}
+```
+
+`data_view` is the index pattern the chart embeds; `query` is the KQL its
+`filters` became (pass them back as `filters`). A chart made in the Kibana UI
+in a shape VizSpec does not have reports Kibana's own type name (e.g.
+`legacy_metric`) and only the metrics and groupings it can read.
 
 All write/destructive tools below return a small dict with the `id` and,
 where a dashboard is involved, a human-clickable `url` built as
@@ -249,6 +297,29 @@ outside this tool are preserved).
 
 No dashboard is involved, so there is no `url`.
 
+### `update_visualization`
+
+```json
+{"id": "...", "title": "..."}
+```
+
+The library item keeps its id; its whole config is replaced by the new spec,
+after the same [pre-flight validation](#pre-flight-spec-validation) as
+`create_visualization`. A wrong id is refused before validation and never
+creates an item (Kibana's PUT alone would). Every dashboard panel placed with
+`add_library_panel` shows the change; panels added with `add_panel` or
+`create_dashboard` are separate copies and do not.
+
+### `add_library_panel`
+
+```json
+{"id": "...", "url": "...", "panel_index": 2}
+```
+
+The dashboard's `id`/`url` and the new panel's index. The visualization must
+exist in the same space (Kibana itself would store a reference to nothing);
+the panel is appended at the bottom, half width.
+
 ### `add_panel`
 
 ```json
@@ -270,6 +341,16 @@ by id, only by index; see `get_dashboard`).
 {"id": "...", "deleted": true}
 ```
 
+### `delete_visualization`
+
+```json
+{"id": "...", "deleted": true}
+```
+
+Kibana deletes a library visualization even while dashboards show it. Their
+panels stay behind, broken (`get_dashboard` reports them with an empty
+`title`); remove each with `delete_panel`.
+
 ### `delete_panel`
 
 ```json
@@ -280,8 +361,8 @@ by id, only by index; see `get_dashboard`).
 
 ### Pre-flight spec validation
 
-Before any of `create_dashboard`, `create_visualization`, `add_panel`, or
-`update_panel` touch Kibana, `_prepare_config` calls
+Before any of `create_dashboard`, `create_visualization`,
+`update_visualization`, `add_panel`, or `update_panel` touch Kibana, `_prepare_config` calls
 `validate_spec(spec, data_view)`
 (`src/kibana_mcp/core/visualizations/validate.py`) against the real,
 just-fetched data view. If validation finds any problems, the tool raises
@@ -317,8 +398,9 @@ The specific checks, each producing its own bullet:
 
 ### The unsupported-panels refusal
 
-`add_panel`, `update_panel`, and `delete_panel` all read-modify-write an
-*existing* dashboard via `_checked_dashboard_data`
+`add_panel`, `add_library_panel`, the `add_esql_*_panel` tools,
+`update_panel`, and `delete_panel` all read-modify-write an *existing*
+dashboard via `_checked_dashboard_data`
 (`toolbox.py`), which calls `get_dashboard_data` and inspects the
 `warnings` it returns. If Kibana's own response carries warnings, or the
 dashboard has top-level fields the update API doesn't accept (anything
@@ -344,6 +426,21 @@ This is a deliberate fail-closed guard — see
 - `update_panel` targeting a non-visualization panel (e.g. a text/markdown
   panel at that index): `"panel {i} is type '{type}', not a visualization —
   only vis panels can be updated"`.
+- `update_panel` targeting a panel placed with `add_library_panel`: `"panel
+  {i} shows library visualization '{id}' — change it with
+  update_visualization, which updates every dashboard that shows it"`
+  (replacing it would silently unlink it from the library item). When that
+  visualization no longer exists, update_visualization cannot help, so the
+  refusal reads `"panel {i} shows library visualization '{id}', which no
+  longer exists — remove the broken panel with delete_panel (destructive
+  tier), then place a chart with add_panel or add_library_panel"`. A
+  by-reference panel does not trip the unsupported-panels refusal: the other
+  tools carry it through unchanged.
+- A `visualization_id` that is empty: `"visualization_id is empty — pass the
+  id that create_visualization or search_visualizations returns"`; one that
+  matches nothing: `"visualization '{id}' not found — visualization_id is the
+  id that create_visualization or search_visualizations returns, not the
+  visualization's title; call search_visualizations to find it"`.
 - Any error surfaced by Kibana itself (auth, not-found, schema rejection,
   connectivity) is translated from the gateway's domain exceptions
   (`KibanaAuthError`, `KibanaNotFound`, `KibanaRejected`,
@@ -353,9 +450,9 @@ This is a deliberate fail-closed guard — see
 
 ## Space targeting
 
-Every one of the 64 tools in the **dashboards**, **data-management**,
+Every one of the 73 tools in the **dashboards**, **data-management**,
 **alerting**, **cases**, and **security-detections** toolboxes — including
-the 14 destructive-tier ones — accepts an optional `space` parameter that
+the 15 destructive-tier ones — accepts an optional `space` parameter that
 targets a Kibana space by id:
 
 ```
@@ -383,7 +480,8 @@ sets `space`:
   [Configuration](configuration.md#space-targeting)).
 - **Result echo.** Every **dict-returning** tool's result gains
   `"space": "<the value passed>"` so the model can see where it acted. The
-  **list-returning** tools — `search_dashboards`, `list_data_views`,
+  **list-returning** tools — `search_dashboards`, `search_visualizations`,
+  `list_data_views`,
   `list_alert_rules`, `list_connectors`, `list_rule_types`, `list_cases`,
   `find_detection_rules`, `list_detection_rule_tags` (a bare string array),
   `search_detection_alerts`, `find_exception_lists`, `find_exception_items`,
@@ -448,9 +546,63 @@ export/import/overwrite tools are also part of this toolbox — see
 | `describe_data_view` | read | Get a data view's fields and types. |
 | `resolve_short_url` | read | Resolve a Kibana short-URL slug to its locator and target app path. |
 | `create_data_view` | write | Create a Kibana data view over an index pattern (e.g. `logs-*`). |
+| `update_data_view` | write | Edit a data view in place by id: `name`, `index_pattern` and/or `time_field`. Only the fields passed change; the time field must be a date field of the view. |
 | `create_short_url` | write | Create a Kibana short URL for a locator + app path. |
 | `delete_data_view` | destructive | Permanently delete a data view by id. This cannot be recovered. |
 | `delete_short_url` | destructive | Permanently delete a short URL by id. |
+
+Notes on `update_data_view`:
+
+- **Only what you pass changes.** Kibana's data-view update merges the keys it
+  is sent, so `name`, `index_pattern` and `time_field` are each optional and
+  an omitted one keeps its value. At least one is required, and a blank one is
+  refused before anything reaches Kibana. The argument names match
+  `create_data_view` and `describe_data_view`'s result.
+- **The time field is checked, because Kibana does not check it.** Kibana
+  stores any string as a data view's time field — one that does not exist, or
+  a keyword — and every chart the dashboards toolbox builds on the view then
+  inherits it. So the tool refuses a `time_field` that is not a `date` field of the view, and
+  lists the view's date fields: `time field 'Carrier' is a string field, not
+  a date field, of 'kibana_sample_data_flights' — pass time_field as one of
+  its date fields: timestamp`.
+- **A new index pattern is checked against its own fields.** When
+  `index_pattern` changes, the time field (the one passed, or the one the view
+  already has) must be a date field of the **new** pattern. The fields of a
+  pattern are known only once Kibana stores it, so the tool writes the pattern
+  first, checks, and on a mismatch writes the old pattern back and fails with
+  `... (nothing was changed)`. A pattern that matches no index yet has no
+  fields, so it is accepted unchecked and the result's `field_count` is `0`.
+- **A failure after the pattern was written says what the view now holds.**
+  If writing the old pattern back fails, the error keeps the time-field
+  rejection, adds the restore's own error, and ends `so the index pattern is
+  now '<new>' — to undo, call update_data_view with index_pattern='<old>'`.
+  If the pattern landed but the following write of `name`/`time_field`
+  fails, the error keeps Kibana's cause and adds `the index pattern was
+  changed to '<new>' but name='…' was not saved; call update_data_view again
+  with name='…' to finish, or to undo, call update_data_view with
+  index_pattern='<old>'`.
+- **What it does not do.** It cannot remove a time field (Kibana rejects
+  `null`). A name that Kibana defaulted to the old pattern (a view created
+  without `name`) keeps the old pattern as its name; pass `name` to change it.
+  Kibana does not keep names or patterns unique, so a duplicate name makes
+  `describe_data_view` by that name ambiguous (it then asks for the id).
+- **Built dashboards are unaffected.** Panels this server builds carry the
+  pattern and time field inline, not the data view's id, so an edit does not
+  reach them; rebuild a panel with `update_panel` to use the new values.
+  New panels resolve the data view by its current name, pattern, or id.
+- **A wrong id names its source.** `data view '<id>' not found — view_id is
+  the id that create_data_view or list_data_views returns, not the view's
+  name or index pattern; call list_data_views to find it`, plus the
+  `(in space '<id>')` suffix when `space` is set. Kibana validation failures
+  keep the `Kibana rejected the payload:` prefix.
+
+Returns:
+
+```jsonc
+// update_data_view  (+ "space" when the caller passed one)
+{"id": "7902514d-...", "name": "Flights", "index_pattern": "kibana_sample_data_flights",
+ "time_field": "timestamp", "field_count": 32}
+```
 
 ## alerting toolbox
 
@@ -459,17 +611,95 @@ Alerting rules and action connectors.
 | Tool | Tier | Description |
 |---|---|---|
 | `list_alert_rules` | read | List alerting rules (optionally filtered by a name search). |
-| `get_alert_rule` | read | Get one alerting rule's summary by id. |
+| `get_alert_rule` | read | Get one rule by id: the summary fields plus its full `params` and its `actions` (`id` = connector id, `uuid`, `group`, `params`, `frequency` when set). Read it before and after `update_alert_rule`. |
 | `get_alerting_health` | read | Kibana alerting framework health status. |
 | `list_connectors` | read | List configured action connectors (id, name, connector_type_id). |
 | `list_rule_types` | read | List rule types: `id` (the `rule_type_id`), the `consumers` the caller may create it under, licence status. No `params` schema (Kibana's API has none). |
+| `get_connector` | read | Get one connector by id: name, type, its non-secret `config` and flags (`is_preconfigured`, `is_missing_secrets`, ...). Never returns secrets. |
 | `create_alert_rule` | write | Create an alerting rule (e.g. `rule_type_id` `.es-query`). |
+| `update_alert_rule` | write | Edit a rule in place by id (read-modify-write): `name`, `tags`, `schedule_interval`, `params` (merged key-by-key), `actions`. Never toggles `enabled`. |
 | `enable_alert_rule` | write | Enable (start running) an alerting rule. |
 | `disable_alert_rule` | write | Disable (stop running) an alerting rule. |
 | `create_connector` | write | Create an action connector (e.g. `.index`, `.webhook`). |
+| `update_connector` | write | Edit a connector in place by id: `name`, `config` (merged key-by-key), and `secrets` only when passed. Refuses preconfigured connectors. |
 | `delete_alert_rule` | destructive | Permanently delete an alerting rule. |
 | `delete_connector` | destructive | Permanently delete an action connector. This cannot be undone. |
 | `execute_connector` | destructive | Run a connector now with the given type-specific params. |
+
+A tier includes everything below it: `write` (the default) shows the 6 reads +
+6 writes; `destructive` adds the 2 deletes and `execute_connector`; `read`
+shows only the 6 reads.
+
+Notes:
+
+- **Edits keep what you did not pass.** Kibana's rule and connector updates are
+  full replaces: a rule update that omits `actions` or `tags` empties them and
+  one that omits `params` is rejected; a connector update that omits `config`
+  resets it. `update_alert_rule` and `update_connector` therefore read the
+  object, re-send every field, and overlay only the arguments given. `params`
+  and `config` merge key by key, so pass only the keys that change
+  (`params={"threshold": [10]}`); `tags` and `actions` replace the whole list
+  (`[]` clears it). `get_alert_rule` shows a rule's current `params` and
+  `actions` before the edit and confirms them after it (`update_alert_rule`
+  returns the summary only); its actions are in the shape `actions` takes,
+  so one can be read, changed and passed back. Pass each read action's `uuid`
+  back with it: Kibana then keeps the action's identity, while an action sent
+  without one gets a new uuid.
+- **`update_alert_rule` does not start or stop a rule.** `enabled` is not an
+  argument (Kibana rejects it on update); an enabled rule stays enabled. Use
+  `enable_alert_rule` / `disable_alert_rule`. `rule_type_id` and `consumer`
+  cannot change. A rule's action is
+  `{"id": <connector id>, "group": "query matched", "params": {...}, "frequency": {"summary": false, "notify_when": "onActionGroupChange", "throttle": null}}`;
+  the rule-level `notify_when`/`throttle` are not arguments (Kibana refuses
+  them beside a per-action `frequency`). A rule that already has them keeps
+  them, unless the `actions` passed carry a `frequency`: then they are left
+  out of the update, Kibana clears them, and the rule's timing comes from each
+  action's `frequency`.
+- **Connector secrets are write-only.** Kibana never returns them, so
+  `get_connector` and `update_connector` cannot either, and a connector
+  update that omits `secrets` resets them. For every type except `.index`
+  and `.server-log` (whose secrets schema is empty) `update_connector`
+  refuses a call without `secrets` and says to pass the full secret values;
+  `secrets={}` clears them deliberately. Passed secrets are sent to Kibana
+  and never echoed back.
+- **Preconfigured connectors cannot be edited.** A connector defined in
+  `kibana.yml` (`is_preconfigured: true`) is refused before any write, with a
+  pointer to `kibana.yml` or `create_connector`.
+- **A wrong id names its source.** An id that matches nothing fails with
+  `connector '<id>' not found — connector_id is the id that create_connector
+  or list_connectors returns, not the connector's name; call list_connectors
+  to find it` (and the rule equivalent naming `list_alert_rules`), plus the
+  `(in space '<id>')` suffix when `space` is set. Kibana validation failures
+  keep the `Kibana rejected the payload:` prefix.
+
+Returns:
+
+```jsonc
+// get_connector / update_connector  (+ "space" when the caller passed one)
+{"id": "032a5771-...", "name": "Alert index", "connector_type_id": ".index",
+ "config": {"index": "alerts-out", "refresh": false, "executionTimeField": null},
+ "is_preconfigured": false, "is_system_action": false, "is_deprecated": false,
+ "is_missing_secrets": false, "is_connector_type_deprecated": false}
+
+// update_alert_rule  (the summary each list_alert_rules row carries)
+{"id": "8b1c...", "name": "Flights over threshold", "rule_type_id": ".es-query",
+ "consumer": "stackAlerts", "enabled": true, "schedule_interval": "5m",
+ "status": "ok", "tags": ["flights"]}
+
+// get_alert_rule  (the summary + params as Kibana stores them + actions)
+{"id": "8b1c...", "name": "Flights over threshold", "rule_type_id": ".es-query",
+ "consumer": "stackAlerts", "enabled": true, "schedule_interval": "5m",
+ "status": "ok", "tags": ["flights"],
+ "params": {"searchType": "esQuery", "esQuery": "{\"query\":{\"match_all\":{}}}",
+            "index": ["kibana_sample_data_flights"], "timeField": "timestamp",
+            "threshold": [100], "thresholdComparator": ">", "timeWindowSize": 5,
+            "timeWindowUnit": "m", "size": 100, "aggType": "count", "groupBy": "all",
+            "excludeHitsFromPreviousRun": true},
+ "actions": [{"id": "032a5771-...", "uuid": "5f0e...", "group": "query matched",
+              "params": {"message": "{{rule.name}} matched"},
+              "frequency": {"summary": false, "notify_when": "onActionGroupChange",
+                            "throttle": null}}]}
+```
 
 ## cases toolbox
 

@@ -21,7 +21,7 @@ flowchart LR
     subgraph server["mcp-for-kibana"]
         direction TB
         Transport["Transport<br/>stdio | streamable-HTTP"]
-        Toolboxes["10 toolboxes / 134 tools<br/>tier-gated read / write / destructive"]
+        Toolboxes["10 toolboxes / 143 tools<br/>tier-gated read / write / destructive"]
         Core["Hexagonal core<br/>VizSpec → Lens"]
         Gateway["kibana-py gateway"]
         Transport --> Toolboxes --> Core
@@ -48,7 +48,7 @@ layering is not just a diagram — it's machine-enforced by
 flowchart TD
     Client["MCP client (LLM host)"] -->|MCP protocol| Server
     AuthAdapter["adapters/mcp — per-request ApiKey auth"] --> Server
-    Server["server.py — composition root"] --> Toolboxes["toolboxes/ — 10 toolboxes, 134 tools, tiered<br/>(dashboards shown)"]
+    Server["server.py — composition root"] --> Toolboxes["toolboxes/ — 10 toolboxes, 143 tools, tiered<br/>(dashboards shown)"]
     Toolboxes --> Ports["ports/gateway.py — KibanaGateway protocol"]
     Toolboxes --> Core["core/ — VizSpec, validate, translate, compose (pure, no framework imports)"]
     Ports -. implemented by .-> KibanaAdapter["adapters/kibana — KibanaPyGateway (only module importing kibana-py)"]
@@ -93,15 +93,21 @@ class Toolbox(Protocol):
 `toolboxes/__init__.py` holds the registry (`TOOLBOXES: dict[str,
 Toolbox]`) — ten toolboxes today (`dashboards`, `data-management`,
 `alerting`, `cases`, `platform-health`, `observability`,
-`security-detections`, `platform-admin`, `streams`, `fleet` — 134 tools in
+`security-detections`, `platform-admin`, `streams`, `fleet` — 143 tools in
 all). Deployment
 config (`KIBANA_MCP_TOOLBOXES`, see
 [Configuration](configuration.md#toolbox-selection)) picks which entries to
-register; an unknown name fails startup loudly rather than silently
+register; or, when set, the per-tool allow list `KIBANA_MCP_TOOLS` (see
+[Tool selection](configuration.md#tool-selection)) registers the toolboxes
+that own the listed tools and hides every other tool they register. Its
+`@name` entries expand to a [named list](configuration.md#named-lists) of
+tools first. An
+unknown toolbox or tool name fails startup loudly rather than silently
 omitting tools. This is the mechanism behind the **composable toolboxes**
 pillar: a small local model can be handed a narrower tool surface (fewer
-toolboxes, or a capped [tier](configuration.md#tier-semantics)) than a
-larger model, purely through configuration — no code branches on model
+toolboxes, a hand-picked tool list, or a capped
+[tier](configuration.md#tier-semantics)) than a larger model, purely through
+configuration — no code branches on model
 identity anywhere in the server.
 
 Within a toolbox, tools are further split by **tier** (`read` / `write` /
@@ -231,9 +237,12 @@ works in practice.
 
 ## The dropped-panel guard
 
-`add_panel`, `update_panel`, and `delete_panel` all modify an *existing*
-dashboard by reading its current data, changing one part, and writing the
-whole thing back (there is no partial-update API for individual panels).
+`add_panel`, `add_library_panel`, the `add_esql_*_panel` tools,
+`update_panel`, and `delete_panel` all modify an *existing* dashboard by
+reading its current data, changing one part, and writing the whole thing
+back (there is no partial-update API for individual panels). A panel that
+shows a library visualization by reference (`{"ref_id": ...}`) round-trips
+losslessly, so it passes this guard (D37).
 That read-modify-write is unsafe if the dashboard contains anything the
 Dashboards API can't fully round-trip — Kibana panel types outside the
 Technical Preview API's coverage (maps, ML panels, …), or top-level
@@ -274,8 +283,9 @@ built:
    framework leaks inward. It keeps the Lens translation unit-testable without a
    stack, and makes the MCP layer replaceable.
 2. **Toolboxes compose; the server assembles.** Each toolbox registers its own
-   tools and owns nothing global, so `KIBANA_MCP_TOOLBOXES` selects a surface at
-   deploy time without conditional logic threaded through the server.
+   tools and owns nothing global, so `KIBANA_MCP_TOOLBOXES` (or, per tool,
+   `KIBANA_MCP_TOOLS`) selects a surface at deploy time without conditional
+   logic threaded through the server.
 3. **Write safety is a registration-time tier, not a runtime check.** A tool
    above `KIBANA_MCP_TIER` is never advertised, so a model cannot call what it
    cannot see. Refusing at call time would leave destructive tools in the model's

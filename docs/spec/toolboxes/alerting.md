@@ -1,6 +1,6 @@
 # alerting — behavior contract
 
-Status: Draft v1.1 (2026-09-20) — regeneration corpus, reconciled to shipped code
+Status: Draft v1.4 (2026-10-17) — regeneration corpus, reconciled to shipped code
 Surface reference: docs/tools.md#alerting-toolbox · Enforcement: named per section below
 
 ## Purpose & persona
@@ -13,24 +13,27 @@ track) has both halves; it is the alerting half of the withdrawn
 `observability-sre` profile (paired with `observability` + `cases`; that persona is
 withdrawn because its SLO reads are Platinum-gated and out of scope, not because of
 anything in this toolbox). It also stands alone: any deployment wanting rule/connector
-CRUD and the ability to test-fire a connector can enable just `alerting`.
+CRUD, in-place edits of both, and the ability to test-fire a connector can
+enable just `alerting`.
 
 ## Surface
 
-12 tools: 5 `read`, 4 `write`, 3 `destructive` — one Kibana operation per
-tool, no batch or bulk form. `read`: `list_alert_rules`, `get_alert_rule`,
-`get_alerting_health`, `list_connectors`, `list_rule_types`. `write`: `create_alert_rule`,
-`enable_alert_rule`, `disable_alert_rule`, `create_connector`.
+15 tools: 6 `read`, 6 `write`, 3 `destructive` — one Kibana object per
+tool, no batch or bulk form (the two `update_*` tools read the object before
+writing it). `read`: `list_alert_rules`, `get_alert_rule`,
+`get_alerting_health`, `list_connectors`, `list_rule_types`, `get_connector`.
+`write`: `create_alert_rule`, `update_alert_rule`, `enable_alert_rule`,
+`disable_alert_rule`, `create_connector`, `update_connector`.
 `destructive`: `delete_alert_rule`, `delete_connector`, `execute_connector`.
 The tier cap hides the destructive three at the default `write` tier and all
-seven non-read tools at `read` tier — a rewrite must keep `execute_connector`
+nine non-read tools at `read` tier — a rewrite must keep `execute_connector`
 in the destructive group even though it deletes nothing (see Behavioral
 guarantees). Full per-tool arguments, return shapes, and examples:
 docs/tools.md#alerting-toolbox.
 
 ## Behavioral guarantees
 
-- **Space targeting follows the shared 63-tool contract**
+- **Space targeting follows the shared 73-tool contract**
   (docs/tools.md#space-targeting): optional `space` on every tool; omitted
   means the default space, byte-identical to before the parameter existed;
   a nonexistent `space` fails closed before any other work; every
@@ -45,6 +48,64 @@ docs/tools.md#alerting-toolbox.
   appear in `list_connectors` with the same id in every space, and
   `execute_connector` against one succeeds from any space — neither is a
   per-space object to isolate.
+- **In-place edits keep what the caller did not pass.** Both Kibana update
+  endpoints are full replaces (probed on 9.5.4): a rule PUT that omits
+  `actions` or `tags` empties them, one that omits `params` fails validation,
+  and one that omits `notify_when` resets it to null; a connector PUT that
+  omits `config` resets it to `{}` (a `.index` connector then fails
+  validation) and requires `name`. `update_alert_rule` and `update_connector`
+  therefore fetch the object, re-send every writable field, and overlay only
+  the arguments given. `params` (rule) and `config` (connector) merge key by
+  key, so the caller passes only what changes (`get_alert_rule` and
+  `get_connector` show the rest); `tags` and `actions` replace the whole list, so
+  `[]` clears. The rule's `throttle`, `notify_when`, `alert_delay`, `flapping`
+  and `artifacts` are re-sent when set — except `notify_when` and `throttle`
+  when the caller's `actions` carry a `frequency` (see the caveat below). GET echoes each action's
+  `connector_type_id`, which the PUT schema rejects, so it is stripped; the
+  action's `uuid` is kept and Kibana preserves it.
+- **`get_alert_rule` is the read half of `update_alert_rule`.** It returns
+  the summary fields plus the rule's `params` as Kibana stores them (defaults
+  it filled in included) and its `actions`, so a caller reads the value
+  before merging into it and reads it again to confirm the edit;
+  `update_alert_rule`'s own result stays the summary, and the two
+  descriptions point to each other. Each action carries the keys
+  `update_alert_rule`'s `actions` take — `id` (the connector id), `group`,
+  `params`, `frequency` and `uuid` — with `group`, `frequency` and `uuid`
+  present only when Kibana sent them (a system action has no group), and
+  without GET's `connector_type_id` (the update rejects it), so a read action
+  passes back unchanged. `uuid` is the action's identity: passed back, Kibana
+  keeps it; an action sent without one gets a new uuid (probed on 9.5.4, D40
+  amendment), so a read → update round trip keeps every action's identity. The result is built from named keys: a rule holds no
+  secret (secrets live on connectors), and the GET body (probed on 9.5.4)
+  carries `api_key_owner` and `api_key_created_by_user` but never the rule's
+  API key; neither they nor any other bookkeeping key are returned.
+  `list_alert_rules` stays a summary per row (its description says so and
+  names `get_alert_rule`).
+- **`update_alert_rule` never changes `enabled`.** It has no `enabled`
+  argument (Kibana's update schema rejects the key), and an enabled rule is
+  still enabled afterwards (probed); `enable_alert_rule` /
+  `disable_alert_rule` own that state. `rule_type_id` and `consumer` are
+  immutable after creation.
+- **Connector secrets are write-only, and an edit never loses them
+  silently.** Kibana never returns a connector's secrets, and its update
+  resets omitted `secrets` to `{}`. The secrets schema of `.index` and
+  `.server-log` is empty — Kibana rejects any key with "Unrecognized key"
+  (probed on 9.5.4) — so updating those without `secrets` loses nothing; for
+  every other type `update_connector` refuses a call without `secrets`,
+  before any write, naming the fix (pass the full secret values; `{}` clears
+  them deliberately). The wipe itself is not observed on the reference stack:
+  every type that holds secrets needs Gold or above (`.webhook` 403s on
+  Basic), so the refusal rests on kibana-py 0.6.0's documented PUT contract
+  and is fail-safe by construction. Passed secrets go to Kibana and never
+  come back: `get_connector`/`update_connector` results are built from named
+  non-secret keys only.
+- **Preconfigured connectors are refused before any edit.** A connector with
+  `is_preconfigured` set (defined in `kibana.yml`) cannot be changed through
+  the API; `update_connector` reads the flag and refuses with a pointer to
+  `kibana.yml` or `create_connector`. Not live-verified: the reference stack
+  defines no preconfigured connector. System connectors
+  (`system-connector-.cases`, ...) 404 on GET, so they surface as not-found
+  (Kibana's own PUT answers "System action ... can not be updated", probed).
 - **Rules are created disabled by default.** `create_alert_rule`'s `enabled`
   parameter defaults to `False`; a rule exists inert until an explicit
   `enable_alert_rule` call. This is a deliberate safety default, not an
@@ -82,14 +143,15 @@ docs/tools.md#alerting-toolbox.
   must not add one; that would change the tested call signature for no
   behavior this toolbox promises.
 - **Guard-before-gateway ordering** applies toolbox-wide: schema guards
-  (non-empty `rule_id`/`name`/`connector_id`, the `space` pattern) reject
-  before the gateway is ever constructed, so a schema failure performs no
+  (non-empty `rule_id`/`name`/`connector_id`, the `space` pattern) and the
+  update tools' "provide at least one field to update" check reject before
+  the gateway is ever constructed, so such a failure performs no
   space-existence check.
 
 ## Invariants
 
-- MUST register exactly 12 tools, split 5 read / 4 write / 3 destructive, as
-  listed under Surface — one call per Kibana operation.
+- MUST register exactly 15 tools, split 6 read / 6 write / 3 destructive, as
+  listed under Surface.
 - MUST default `create_alert_rule`'s `enabled` to `False`.
 - MUST NOT echo `space` on `list_alert_rules`, `list_connectors` or
   `list_rule_types` results,
@@ -112,12 +174,29 @@ docs/tools.md#alerting-toolbox.
   error or a false `"ok"`.
 - MUST NOT require a `confirm` parameter on any tool in this toolbox.
 - MUST run schema/argument guards before the gateway is constructed.
-- MUST answer an empty `rule_id` on `get`/`enable`/`disable`/`delete_alert_rule`
+- MUST answer an empty `rule_id` on `get`/`update`/`enable`/`disable`/`delete_alert_rule`
   with "rule_id is empty — pass the id that create_alert_rule or
   list_alert_rules returns", and a `rule_id` that matches no rule with
   "alert rule '<id>' not found — rule_id is the id … not the rule's name; call
   list_alert_rules to find it" (D17; the space suffix still applies). Probed
   on Kibana 9.5.5: models pass a rule's name or an empty string as its id.
+  `get_connector`/`update_connector` answer the same way for `connector_id`,
+  naming `create_connector or list_connectors` and `list_connectors`.
+- MUST return `params` and `actions` from `get_alert_rule`, each action in
+  `update_alert_rule`'s `actions` shape (no `connector_type_id`; `uuid` kept
+  when Kibana sent it, so a round trip keeps the action's identity), built from
+  named keys only; MUST keep `list_alert_rules` rows and `update_alert_rule`'s
+  result the summary.
+- MUST make `update_alert_rule` and `update_connector` read-modify-write:
+  an argument not passed leaves that field as it was.
+- MUST NOT change a rule's `enabled` state from `update_alert_rule`.
+- MUST leave the rule-level `notify_when`/`throttle` out of an
+  `update_alert_rule` whose `actions` carry a `frequency`, and re-send them
+  otherwise.
+- MUST NOT return a connector's secrets from any tool.
+- MUST refuse `update_connector` without `secrets` on any connector type
+  other than `.index` and `.server-log`, and on any preconfigured connector,
+  before writing anything.
 
 ## Deliberate exclusions & caveats
 
@@ -126,13 +205,29 @@ docs/tools.md#alerting-toolbox.
   Basic, so there is no license to build or contract-test it against either.
 - **Exactly one connector surface.** Connectors are managed through Kibana's
   current connector API only — never a deprecated legacy alias naming the
-  same objects — so there is one path to create/list/delete/execute a
-  connector, not two views of the same store.
+  same objects — so there is one path to create/list/get/update/delete/execute
+  a connector, not two views of the same store.
 - **Rule-lifecycle depth deferred** (recorded 2026-08-19, ordered as this
-  toolbox's next work): in-place rule `update` (today the only way to
-  change an existing rule's config is delete + recreate), mute/unmute
-  (per-alert and rule-wide), snooze/unsnooze, and `update_api_key`. The
-  `rule_types` read shipped 2026-10-12 as `list_rule_types`.
+  toolbox's next work): mute/unmute (per-alert and rule-wide),
+  snooze/unsnooze, and `update_api_key`. The `rule_types` read shipped
+  2026-10-12 as `list_rule_types`, and in-place rule `update` shipped
+  2026-10-12 as `update_alert_rule` (with `get_connector`/`update_connector`
+  for connectors).
+- **`update_alert_rule` leaves out the rule-level `notify_when` and
+  `throttle`.** Kibana 9.5 refuses them beside any action carrying a
+  per-action `frequency` ("Cannot specify per-action frequency params when
+  notify_when or throttle are defined at the rule level", probed), and
+  kibana-py marks rule-level `throttle` deprecated in favour of `frequency`;
+  `create_alert_rule` does not take them either. A rule that already has
+  them keeps them, unless the `actions` passed carry a `frequency`: then the
+  pair is left out of the PUT, which clears it (probed on 9.5.4: a PUT
+  without them succeeds and stores `null`), so the rule moves to per-action
+  timing instead of the edit failing with no tool able to clear them.
+  `alert_delay`, `flapping` and `artifacts` are preserved, not editable.
+- **A merge cannot remove a key.** `params`/`config` merge key by key, so a
+  key can be overwritten (or set to `null` where the type allows it) but not
+  dropped; Kibana fills defaults into a rule's stored params anyway
+  (`aggType`, `groupBy`, `excludeHitsFromPreviousRun` on `.es-query`).
 - **`list_rule_types` lists, it does not describe `params`.** Each row is
   the type's `id` (the `rule_type_id`), name, category, producer, the
   `consumers` the caller may create it under (Kibana's `authorized_consumers`
@@ -144,8 +239,9 @@ docs/tools.md#alerting-toolbox.
   as if it were one.
 - **Preconfigured connectors cannot be deleted through `delete_connector`.**
   Kibana itself rejects the attempt; the `is_preconfigured` field returned
-  by `list_connectors`/`create_connector` is the only signal a caller has
-  to avoid trying — no client-side guard short-circuits it.
+  by `list_connectors`/`create_connector`/`get_connector` is the signal a
+  caller has to avoid trying — no client-side guard short-circuits the
+  delete (unlike `update_connector`, which already reads the connector).
 - **`is_missing_secrets` is informational, not enforced.** A connector can
   be created successfully even when required secrets are absent; the field
   tells the caller it will be non-functional, it does not block creation.
@@ -156,7 +252,7 @@ docs/tools.md#alerting-toolbox.
 
 ## Enforcement
 
-- `tests/unit/toolboxes/test_alerting.py` — the exact 11-tool set;
+- `tests/unit/toolboxes/test_alerting.py` — the exact 15-tool set;
   `create_alert_rule` defaulting to disabled; a full rule lifecycle
   (create → enable → get → list → delete); a connector lifecycle including
   `execute_connector`'s `status: "ok"` path; `get_alerting_health`'s
@@ -164,9 +260,9 @@ docs/tools.md#alerting-toolbox.
   distinct destructive/non-idempotent/open-world triple; space threading
   and echo for a representative call; the no-`space` call keeping the
   pre-space result shape byte-identical.
-- `tests/unit/toolboxes/test_space_threading.py` — the shared 63-tool space
+- `tests/unit/toolboxes/test_space_threading.py` — the shared 73-tool space
   contract (factory threading, schema shape, echo-only-when-set, scoped
-  not-found suffix) parametrized over all 11 alerting tools alongside the
+  not-found suffix) parametrized over all 15 alerting tools alongside the
   other space-aware toolboxes.
 - `tests/contract/test_gateway_contract.py` — live-Kibana pins:
   `get_alerting_health`'s status enum and encryption-key flag; a full
@@ -197,5 +293,41 @@ docs/tools.md#alerting-toolbox.
   `.es-query` lists `stackAlerts` as a consumer on Basic, and types the
   licence does not allow are flagged, not hidden.
 - `tests/unit/adapters/test_id_guidance.py` — the empty-id and unknown-id
-  guidance for dashboards and alert rules, and that a missing space still
-  reports the space.
+  guidance for dashboards, alert rules (including `update_alert_rule`) and
+  connectors, and that a missing space still reports the space.
+- `tests/unit/adapters/test_alerting_gateway.py` — the update bodies:
+  every writable rule field re-sent, params merged, `connector_type_id`
+  stripped from echoed actions, no `enabled`, rule-level
+  `notify_when`/`throttle` left out only beside caller actions that carry a
+  `frequency`; connector config merged and
+  name kept; secrets forwarded but absent from results; the preconfigured
+  and missing-secrets refusals sending nothing.
+- `tests/unit/toolboxes/test_alerting.py` and
+  `tests/unit/test_server_assembly.py` — `get_connector` read-tier and the two
+  `update_*` tools write-tier; `update_alert_rule` has no `enabled`
+  argument; the at-least-one-field guards run before the factory; no secret
+  in any result.
+- `tests/unit/adapters/test_alerting_gateway.py` — `get_alert_rule`'s
+  params and actions (no `connector_type_id`; `uuid`, `group` and
+  `frequency` only when sent), named keys only against a hostile body, a read
+  action passing back into `update_alert_rule` unchanged, and
+  `list_alert_rules` staying a summary; `tests/unit/toolboxes/test_alerting.py`
+  — the read before and after an update through the tools, and the
+  descriptions naming each other.
+- `tests/contract/test_gateway_contract.py::test_get_alert_rule_reads_params_before_and_after_a_threshold_fix_live`
+  — live, through the MCP tools: create a rule, read its params (Kibana's
+  defaults included) and actions, merge a new threshold, read it again and
+  match Kibana's stored params; the result keeps to the named keys and an
+  enabled rule's API key never appears; the read actions passed back keep
+  their uuids, and an action sent without one gets a new uuid.
+- `tests/contract/test_gateway_contract.py` — live:
+  `test_update_alert_rule_preserves_what_it_was_not_given_live` (actions keep
+  their uuid, tags and params survive a params-only edit, an enabled rule
+  stays enabled, `[]` clears),
+  `test_update_alert_rule_per_action_frequency_replaces_rule_level_timing_live`
+  (a rule with a rule-level `notify_when` keeps it on a rename and takes
+  actions with a `frequency`), `test_update_alert_rule_rejections_name_the_fix_live`,
+  `test_connector_get_and_update_live` (a `.index` rename keeps its required
+  config; config merges; secrets on `.index` are rejected) and
+  `test_alerting_maintenance_tools_scoped_live` (the three tools through MCP
+  in a space: echo, scoped suffix, invisible from the root space).

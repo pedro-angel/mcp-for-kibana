@@ -141,3 +141,44 @@ def test_load_ignores_comments_and_blanks(isolated_env, tmp_path):
     seed.write_text("# a comment\n\nKIBANA_TEST_API_KEY=k\nnot a kv line\n")
     os.environ["KIBANA_MCP_ENV_FILE"] = str(seed)
     assert Settings.load().api_key == "k"
+
+
+def test_tools_default_is_empty(monkeypatch):
+    monkeypatch.delenv("KIBANA_MCP_TOOLS", raising=False)
+    assert Settings().tools == []
+
+
+def test_tools_env_is_split_trimmed_and_deduped(monkeypatch):
+    monkeypatch.setenv("KIBANA_MCP_TOOLS", " get_dashboard, list_data_views ,get_dashboard,,")
+    assert Settings().tools == ["get_dashboard", "list_data_views"]
+
+
+@pytest.mark.parametrize("raw", ["", " ", ",", " , ,, "])
+def test_tools_empty_env_is_feature_off(monkeypatch, raw):
+    monkeypatch.setenv("KIBANA_MCP_TOOLS", raw)
+    assert Settings().tools == []
+
+
+def test_toolboxes_explicitness_is_visible(monkeypatch):
+    # build_server logs that KIBANA_MCP_TOOLBOXES is ignored only when it was
+    # set explicitly; pydantic's model_fields_set is what tells the two apart.
+    monkeypatch.delenv("KIBANA_MCP_TOOLBOXES", raising=False)
+    assert "toolboxes" not in Settings().model_fields_set
+    monkeypatch.setenv("KIBANA_MCP_TOOLBOXES", "dashboards")
+    assert "toolboxes" in Settings().model_fields_set
+
+
+def test_tools_keep_list_references_through_splitting(monkeypatch):
+    # `@name` entries pass through untouched; the server expands them (D41).
+    monkeypatch.setenv("KIBANA_MCP_TOOLS", " @dashboards-analyst, create_alert_rule,@dashboards-analyst")
+    assert Settings().tools == ["@dashboards-analyst", "create_alert_rule"]
+
+
+def test_tool_lists_file_default_is_unset(monkeypatch):
+    monkeypatch.delenv("KIBANA_MCP_TOOL_LISTS_FILE", raising=False)
+    assert Settings().tool_lists_file is None
+
+
+def test_tool_lists_file_from_env(monkeypatch):
+    monkeypatch.setenv("KIBANA_MCP_TOOL_LISTS_FILE", "/etc/mcp/lists.toml")
+    assert Settings().tool_lists_file == "/etc/mcp/lists.toml"

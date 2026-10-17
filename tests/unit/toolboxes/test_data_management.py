@@ -25,7 +25,7 @@ async def test_exposes_exactly_the_expected_tools(mcp):
         names = {t.name for t in await client.list_tools()}
     assert names == {
         "list_data_views", "describe_data_view", "resolve_short_url", "export_saved_objects",
-        "create_data_view", "create_short_url", "import_saved_objects",
+        "create_data_view", "update_data_view", "create_short_url", "import_saved_objects",
         "delete_data_view", "delete_short_url", "overwrite_saved_objects",
     }
 
@@ -100,6 +100,8 @@ async def test_tier_tags(mcp):
     assert tools["create_data_view"].annotations.readOnlyHint is False
     assert tools["create_data_view"].annotations.destructiveHint is False
     assert tools["delete_data_view"].annotations.destructiveHint is True
+    assert tools["update_data_view"].annotations.readOnlyHint is False
+    assert tools["update_data_view"].annotations.destructiveHint is False
 
 
 # --- Task 6: space parameter on all 10 data-management tools ---
@@ -248,3 +250,95 @@ async def test_import_failure_message_is_content_free(gateway, tmp_path):
             await client.call_tool("import_saved_objects", {"handle": exp.data["handle"]})
     assert "s3cret" not in str(ei.value)  # detail (object bytes) NOT leaked
     assert "import failed" in str(ei.value)
+
+
+# --- update_data_view: edit a data view in place (write tier) ---
+
+
+# The write-tier tag itself is pinned per tier in test_server_assembly.
+
+
+async def test_update_data_view_changes_only_what_it_is_given(mcp, gateway):
+    async with Client(mcp) as client:
+        renamed = await client.call_tool("update_data_view", {"view_id": "dv1", "name": "Flights"})
+        assert renamed.data == {
+            "id": "dv1", "name": "Flights", "index_pattern": "kibana_sample_data_flights",
+            "time_field": "timestamp", "field_count": 5,
+        }
+        repointed = await client.call_tool(
+            "update_data_view", {"view_id": "dv1", "index_pattern": "kibana_sample_data_fl*"}
+        )
+    assert repointed.data["name"] == "Flights"  # the earlier rename is kept
+    assert repointed.data["time_field"] == "timestamp"
+    assert gateway.data_views["dv1"].index_pattern == "kibana_sample_data_fl*"
+    # The port receives None for every field the caller omitted.
+    assert gateway.data_view_updates[-1] == {
+        "view_id": "dv1", "name": None, "index_pattern": "kibana_sample_data_fl*",
+        "time_field": None,
+    }
+
+
+async def test_update_data_view_without_fields_is_refused_before_the_gateway(gateway):
+    calls = []
+
+    def factory(space=None):
+        calls.append(space)
+        return gateway
+
+    server = FastMCP("test")
+    DataManagementToolbox().register(
+        server, ToolboxDeps(gateway_factory=factory, public_kibana_url="http://kb:5601")
+    )
+    async with Client(server) as client:
+        with pytest.raises(
+            ToolError, match="provide at least one field to update: name, index_pattern or time_field"
+        ):
+            await client.call_tool("update_data_view", {"view_id": "dv1", "space": "sales"})
+        with pytest.raises(ToolError, match=r"`index_pattern` is blank — pass a value, or omit it"):
+            await client.call_tool("update_data_view", {"view_id": "dv1", "index_pattern": "  "})
+    assert calls == []  # guards run before the factory: no space check, no Kibana call
+    assert gateway.data_view_updates == []
+
+
+@pytest.mark.parametrize("field", ["name", "index_pattern", "time_field"])
+async def test_update_data_view_rejects_empty_strings_at_the_schema(mcp, gateway, field):
+    # An empty title is not harmless: Kibana stores it and the view then
+    # matches every index (probed on 9.5.4).
+    async with Client(mcp) as client:
+        with pytest.raises(ToolError):
+            await client.call_tool("update_data_view", {"view_id": "dv1", field: ""})
+    assert gateway.data_view_updates == []
+
+
+async def test_update_data_view_time_field_rejection_surfaces_as_tool_error(mcp, gateway):
+    async with Client(mcp) as client:
+        with pytest.raises(ToolError, match="time field 'Carrier' is not a date field"):
+            await client.call_tool("update_data_view", {"view_id": "dv1", "time_field": "Carrier"})
+    assert gateway.data_views["dv1"].time_field == "timestamp"
+
+
+async def test_update_data_view_unknown_id_names_list_data_views(mcp):
+    async with Client(mcp) as client:
+        with pytest.raises(ToolError, match=r"call list_data_views to find it"):
+            await client.call_tool("update_data_view", {"view_id": "flights", "name": "x"})
+
+
+async def test_update_data_view_in_space_threads_and_echoes(gateway):
+    calls = []
+
+    def factory(space=None):
+        calls.append(space)
+        return gateway
+
+    server = FastMCP("test")
+    DataManagementToolbox().register(
+        server, ToolboxDeps(gateway_factory=factory, public_kibana_url="http://kb:5601")
+    )
+    async with Client(server) as client:
+        scoped = await client.call_tool(
+            "update_data_view", {"view_id": "dv1", "time_field": "timestamp", "space": "sales"}
+        )
+        unscoped = await client.call_tool("update_data_view", {"view_id": "dv1", "name": "n"})
+    assert calls == ["sales", None]
+    assert scoped.data["space"] == "sales"
+    assert "space" not in unscoped.data

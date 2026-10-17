@@ -390,7 +390,7 @@ a{{color:var(--link)}} a:focus-visible{{outline:2px solid var(--link);outline-of
 <div class="facts">{tiles}</div>
 
 <h2>What was run</h2>
-<p>Each run sent one prompt to LM Studio's chat API with the server <code>{e(cfg["server"]["entry"])}</code> as its only integration: {e(cfg["server"]["expected_tools"])} tools from the toolboxes <code>{e(cfg["server"]["toolboxes"])}</code> at the <code>{e(cfg["server"]["tier"])}</code> tier, on Kibana's web-logs sample data. Level <i>k</i> asks for steps 1 to <i>k</i> in one prompt and is scored against every check of those steps. A run passes only when all of them pass. Kibana was reset after every run. The request carried no sampling parameters, so each model ran with its own defaults, loaded at its maximum context.</p>
+<p>Each run sent one prompt to LM Studio's chat API with the server <code>{e(cfg["server"]["entry"])}</code> as its only integration: {e(tools_phrase(runs))} from the toolboxes <code>{e(cfg["server"]["toolboxes"])}</code> at the <code>{e(cfg["server"]["tier"])}</code> tier, on Kibana's web-logs sample data. Level <i>k</i> asks for steps 1 to <i>k</i> in one prompt and is scored against every check of those steps. A run passes only when all of them pass. Kibana was reset after every run. The request carried no sampling parameters, so each model ran with its own defaults, loaded at its maximum context.</p>
 <div class="scroll"><table class="task wide"><thead><tr><th scope="col">Level</th><th scope="col">The prompt asks for</th><th scope="col">Checks</th></tr></thead><tbody>{"".join(task_rows)}</tbody></table></div>
 <p>Runs went in {len(blocks)} blocks, each running every model and level once, with the model order and the level order rotated from block to block.</p>
 
@@ -438,6 +438,20 @@ a{{color:var(--link)}} a:focus-visible{{outline:2px solid var(--link);outline-of
 </main>
 """
     (out_dir / "index.html").write_text(page)
+
+
+def tools_phrase(runs: list[dict]) -> str:
+    """The server's tool count as the run records observed it. The config's
+    expected_tools describes the server today, not the one these runs used,
+    and records from before the harness counted tools do not carry it."""
+    counts = sorted({r["server_tools"] for r in runs if r.get("server_tools") is not None})
+    missing = sum(1 for r in runs if r.get("server_tools") is None)
+    if not counts:
+        return "the tools (these run records do not record how many the server listed)"
+    phrase = " or ".join(str(c) for c in counts) + " tools"
+    if missing:
+        phrase += f" ({missing} of {len(runs)} run records do not record the count)"
+    return phrase
 
 
 def med_pool(runs: list[dict], model: str, metric: str) -> float | None:

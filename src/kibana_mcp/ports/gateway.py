@@ -7,12 +7,14 @@ from kibana_mcp.core.models import (
     AlertingHealth,
     RuleType,
     AlertRule,
+    AlertRuleDetail,
     ApmAgentConfig,
     ApmAnnotation,
     ApmEnvironment,
     ApmSourcemap,
     Case,
     Connector,
+    ConnectorDetail,
     DashboardDetail,
     DashboardSummary,
     DataViewDetail,
@@ -54,6 +56,8 @@ from kibana_mcp.core.models import (
     UptimeSettings,
     ValueList,
     ValueListItem,
+    VisualizationDetail,
+    VisualizationSummary,
 )
 
 
@@ -85,6 +89,16 @@ class KibanaGateway(Protocol):
 
     def create_visualization(self, config: dict[str, Any]) -> str: ...
 
+    def search_visualizations(self, query: str | None) -> list[VisualizationSummary]: ...
+
+    def get_visualization(self, visualization_id: str) -> VisualizationDetail: ...
+
+    def update_visualization(self, visualization_id: str, config: dict[str, Any]) -> None:
+        """Replace a library visualization's config. Must refuse an id that
+        matches nothing (KibanaNotFound), never create one: Kibana's PUT is an
+        upsert."""
+        ...
+
     def delete_dashboard(self, dashboard_id: str) -> None: ...
 
     def delete_visualization(self, visualization_id: str) -> None: ...
@@ -92,6 +106,14 @@ class KibanaGateway(Protocol):
     def create_data_view(
         self, index_pattern: str, name: str | None, time_field: str | None
     ) -> DataViewSummary: ...
+
+    def update_data_view(
+        self,
+        view_id: str,
+        name: str | None,
+        index_pattern: str | None,
+        time_field: str | None,
+    ) -> DataViewDetail: ...
 
     def delete_data_view(self, view_id: str) -> None: ...
 
@@ -103,7 +125,7 @@ class KibanaGateway(Protocol):
 
     def list_alert_rules(self, search: str | None) -> list[AlertRule]: ...
 
-    def get_alert_rule(self, rule_id: str) -> AlertRule: ...
+    def get_alert_rule(self, rule_id: str) -> AlertRuleDetail: ...
 
     def get_alerting_health(self) -> AlertingHealth: ...
 
@@ -120,6 +142,16 @@ class KibanaGateway(Protocol):
         enabled: bool,
     ) -> AlertRule: ...
 
+    def update_alert_rule(
+        self,
+        rule_id: str,
+        name: str | None,
+        tags: list[str] | None,
+        schedule_interval: str | None,
+        params: dict[str, Any] | None,
+        actions: list[dict[str, Any]] | None,
+    ) -> AlertRule: ...
+
     def enable_alert_rule(self, rule_id: str) -> None: ...
 
     def disable_alert_rule(self, rule_id: str) -> None: ...
@@ -128,9 +160,19 @@ class KibanaGateway(Protocol):
 
     def list_connectors(self) -> list[Connector]: ...
 
+    def get_connector(self, connector_id: str) -> ConnectorDetail: ...
+
     def create_connector(
         self, name: str, connector_type_id: str, config: dict[str, Any] | None, secrets: dict[str, Any] | None
     ) -> Connector: ...
+
+    def update_connector(
+        self,
+        connector_id: str,
+        name: str | None,
+        config: dict[str, Any] | None,
+        secrets: dict[str, Any] | None,
+    ) -> ConnectorDetail: ...
 
     def delete_connector(self, connector_id: str) -> None: ...
 

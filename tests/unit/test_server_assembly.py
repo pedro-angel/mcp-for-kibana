@@ -9,25 +9,29 @@ from tests.fakes import FakeGateway
 
 # dashboards toolbox (data-view tools moved to data-management in #28).
 DASHBOARDS_TOOLS = {
-    "search_dashboards", "get_dashboard",
-    "create_dashboard", "create_visualization", "add_panel", "update_panel",
+    "search_dashboards", "get_dashboard", "search_visualizations", "get_visualization",
+    "create_dashboard", "create_visualization", "update_visualization", "add_library_panel",
+    "add_panel", "update_panel",
     "add_esql_metric_panel", "add_esql_table_panel", "add_esql_xy_panel",
-    "delete_dashboard", "delete_panel",
+    "delete_dashboard", "delete_visualization", "delete_panel",
 }
 DASHBOARDS_WRITE = {
-    "create_dashboard", "create_visualization", "add_panel", "update_panel",
+    "create_dashboard", "create_visualization", "update_visualization", "add_library_panel",
+    "add_panel", "update_panel",
     "add_esql_metric_panel", "add_esql_table_panel", "add_esql_xy_panel",
 }
-DASHBOARDS_DESTRUCTIVE = {"delete_dashboard", "delete_panel"}
+DASHBOARDS_DESTRUCTIVE = {"delete_dashboard", "delete_visualization", "delete_panel"}
 
 # data-management toolbox (#28).
 DATA_MGMT_TOOLS = {
     "list_data_views", "describe_data_view", "resolve_short_url", "export_saved_objects",
-    "create_data_view", "create_short_url", "import_saved_objects",
+    "create_data_view", "update_data_view", "create_short_url", "import_saved_objects",
     "delete_data_view", "delete_short_url", "overwrite_saved_objects",
 }
 DATA_MGMT_READ = {"list_data_views", "describe_data_view", "resolve_short_url", "export_saved_objects"}
-DATA_MGMT_WRITE = {"create_data_view", "create_short_url", "import_saved_objects"}
+DATA_MGMT_WRITE = {
+    "create_data_view", "update_data_view", "create_short_url", "import_saved_objects",
+}
 DATA_MGMT_DESTRUCTIVE = {"delete_data_view", "delete_short_url", "overwrite_saved_objects"}
 
 PLATFORM_HEALTH_TOOLS = {"get_kibana_status", "get_kibana_stats", "get_task_manager_health"}
@@ -61,13 +65,15 @@ async def test_destructive_tier_shows_everything():
 
 ALERTING_TOOLS = {
     "list_alert_rules", "get_alert_rule", "get_alerting_health", "list_connectors",
-    "list_rule_types", "create_alert_rule", "enable_alert_rule", "disable_alert_rule", "create_connector",
+    "list_rule_types", "get_connector", "create_alert_rule", "update_alert_rule",
+    "enable_alert_rule", "disable_alert_rule", "create_connector", "update_connector",
     "delete_alert_rule", "delete_connector", "execute_connector",
 }
 ALERTING_READ = {
     "list_alert_rules", "get_alert_rule", "get_alerting_health", "list_connectors",
-    "list_rule_types",
+    "list_rule_types", "get_connector",
 }
+ALERTING_DESTRUCTIVE = {"delete_alert_rule", "delete_connector", "execute_connector"}
 
 
 async def test_unknown_toolbox_fails_fast():
@@ -80,6 +86,8 @@ async def test_alerting_toolbox_boots_all_tiers():
     assert names == ALERTING_TOOLS
     read_only = await visible_tools(Settings(toolboxes=["alerting"], tier=Tier.READ))
     assert read_only == ALERTING_READ
+    write = await visible_tools(Settings(toolboxes=["alerting"], tier=Tier.WRITE))
+    assert write == ALERTING_TOOLS - ALERTING_DESTRUCTIVE  # update_* visible at the default tier
 
 
 CASES_TOOLS = {
@@ -230,6 +238,8 @@ async def test_data_management_toolbox_boots_all_tiers():
     assert names == DATA_MGMT_TOOLS
     read_only = await visible_tools(Settings(toolboxes=["data-management"], tier=Tier.READ))
     assert read_only == DATA_MGMT_READ
+    write = await visible_tools(Settings(toolboxes=["data-management"], tier=Tier.WRITE))
+    assert write == DATA_MGMT_READ | DATA_MGMT_WRITE  # update_data_view at the default tier
 
 
 async def test_platform_health_combines_with_dashboards():
@@ -239,16 +249,20 @@ async def test_platform_health_combines_with_dashboards():
     assert names == DASHBOARDS_TOOLS | PLATFORM_HEALTH_TOOLS
 
 
-async def test_read_only_explorer_profile_is_nine_read_tools():
+async def test_read_only_explorer_profile_is_eleven_read_tools():
     # read-only-explorer: dashboards + platform-health + data-management at read tier
-    # (data-management read grew by export_saved_objects with #37).
+    # (data-management read grew by export_saved_objects with #37; dashboards read by
+    # search_visualizations + get_visualization, D37).
     names = await visible_tools(
         Settings(
             toolboxes=["dashboards", "platform-health", "data-management"], tier=Tier.READ
         )
     )
-    assert names == {"search_dashboards", "get_dashboard"} | PLATFORM_HEALTH_TOOLS | DATA_MGMT_READ
-    assert len(names) == 9
+    dashboards_read = {
+        "search_dashboards", "get_dashboard", "search_visualizations", "get_visualization",
+    }
+    assert names == dashboards_read | PLATFORM_HEALTH_TOOLS | DATA_MGMT_READ
+    assert len(names) == 11
 
 
 def _probe_toolbox(box_name, retval):
