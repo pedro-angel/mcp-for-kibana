@@ -25,7 +25,8 @@ Seven test tiers back that claim: unit (fakes), contract (live stack), e2e-repla
 (a recorded model turn through a real MCP client), two live-model tiers — e2e
 (Claude via `claude -p`, D38) and e2e-local (a local model in LM Studio) —
 plus two ephemeral tiers that stand up throwaway stacks for the destructive
-paths. Everything except the live-model tiers runs in CI.
+paths. Everything except the live-model tiers runs in CI; the local gate runs
+the Claude tier too (D42).
 
 The command that certifies completion is the Definition-of-Done gate — `make dod`,
 criteria declared in `dod.config`. Nothing is "done" because its author says so.
@@ -44,12 +45,6 @@ release claim, `make help` for the rest.
 
 As of this page:
 
-- **Open decision (Q16, filed 2026-10-16): should the DoD gate require the
-  Claude live-model run?** `make test-e2e` (D38) needs only a Claude sign-in,
-  so the reason D31 gave for `e2e_green = n/a` — no LLM runtime on CI or in a
-  cloud session — no longer holds everywhere; a CI runner would still need a
-  credential. Until the owner decides, `e2e_green` stays `n/a` in every gate
-  config and the Claude tier runs on demand.
 - **Observed in the Claude tier (2026-10-17), now addressed:** no alerting
   tool returned a rule's `params`, so after `update_alert_rule` a model could
   not read the new threshold back; in the `fix_rule_threshold` runs Haiku

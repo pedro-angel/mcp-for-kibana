@@ -40,7 +40,7 @@ _ONE_LINERS: dict[str, str] = {
     "configuration.md": "Every environment variable, tier semantics, toolbox selection.",
     "deployment.md": "stdio vs streamable HTTP, docker run, the per-request auth model.",
     "architecture.md": "Hexagonal layers, toolbox concept, VizSpec-to-Lens translation.",
-    "e2e-setup.md": "One-time LM Studio + docker Kibana stack setup for the E2E gate.",
+    "e2e-setup.md": "Live-model tiers: Claude via claude -p (in make dod) and LM Studio.",
 }
 
 # Module-level: mkdocs imports this file once per build and calls the event

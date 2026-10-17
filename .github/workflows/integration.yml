@@ -11,11 +11,11 @@ name: integration
 # streams_ephemeral and fleet_ephemeral on the pinned (newest) line. The fast
 # criteria run in checks.yml via the make leaves.
 #
-# e2e_green is `n/a` in every DoD config, dod.config included (D31): the gate
-# reaches GO without an LLM. The live-model tiers run on demand instead —
-# `make test-e2e` (Claude via `claude -p`, which needs a Claude sign-in; D38)
-# and `make test-e2e-local` (LM Studio) — and whether a gate should require
-# the Claude run is open (Q16). What CI runs per PR is e2e_replay_green — the
+# e2e_green is `n/a` in every .github/dod config: its run is Claude via
+# `claude -p` (D38), which needs a Claude sign-in CI does not have. The local
+# gate over dod.config requires it (D42), so `make dod` on a laptop or in a
+# cloud session runs the live model; `make test-e2e-local` (LM Studio) stays
+# on demand. What CI runs per PR is e2e_replay_green — the
 # same MCP surface driven by a recorded real-model turn instead of a live one.
 # That closes the per-PR gap without pretending a model ran.
 #

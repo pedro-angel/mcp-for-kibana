@@ -1,6 +1,6 @@
 # Decisions ledger
 
-Status: Draft v1.11 (2026-10-17) — regeneration corpus. Consumes
+Status: Draft v1.12 (2026-10-17) — regeneration corpus. Consumes
 [brief.md](brief.md); read alongside [design.md](design.md).
 
 Each entry is a decision a rewrite must not silently re-litigate: what was
@@ -345,8 +345,9 @@ this ledger stands without them.
   the capability the space gates exist to catch, so the reference stays
   `gemma-4-12b-qat`. On that evidence `e2e_green` runs all three gates (the
   flights dashboard and both space chains), and the reference model is the
-  `LMSTUDIO_MODEL` fallback in every live-model test. Since D31 the criterion
-  is `n/a` in `dod.config`; the three tests run on demand.
+  `LMSTUDIO_MODEL` fallback in every live-model test. Since D31 the three
+  LM Studio tests run on demand (`make test-e2e-local` since D38); since D42
+  `e2e_green` runs the Claude tier.
 - **D19 (2026-08-19)** — Replay transcripts carry recorded bytes, never
   hand-written arguments; error steps are recorded with their guidance
   needles; server-generated ids (alert rules) bind at replay time from the
@@ -356,7 +357,9 @@ this ledger stands without them.
   recorded wire bytes — its order carries no evidence about model behavior
   and each transcript's `recorded` block says which kind it is.
 - **D31 (2026-10-04)** — *The on-demand rule below now runs `make test-e2e`,
-  the Claude tier, superseded by D38; the gate decision stands.* The
+  the Claude tier, superseded by D38; the gate decision is superseded for the
+  local `dod.config` by D42 (`e2e_green = required` there) and stands for
+  every `.github/dod` config.* The
   Definition of Done needs no LLM: `e2e_green` is
   `n/a` in `dod.config` as in every `.github/dod` config. Why: the gate must
   reach GO wherever the project is worked on — CI runners and Claude Code
@@ -394,7 +397,9 @@ this ledger stands without them.
   on 2026-08-19 kept a default role because it had once been named, not
   because a later measurement chose it again. D18's numbers remain evidence
   about the models it measured; which model to drive is the caller's choice.
-- **D38 (2026-10-16, owner)** — The live-model tier is driven by Claude.
+- **D38 (2026-10-16, owner)** — *Its "`e2e_green` stays `n/a` in every DoD
+  config … outside every gate" is superseded for the local `dod.config` by
+  D42; the rest stands.* The live-model tier is driven by Claude.
   `make test-e2e` runs headless Claude Code (`claude -p`) with this server's
   tools and nothing else — `--tools ""` (no shell, files or web),
   `--strict-mcp-config`, `--permission-mode dontAsk` with the allow list
@@ -436,6 +441,35 @@ this ledger stands without them.
   `KIBANA_MCP_TOOLS` (D34). Evidence: the count is checked against a live
   listing by `tests/unit/test_profiles.py` (the `dashboards-analyst` profile,
   which is the default selection at `write`, lists 21).
+- **D42 (2026-10-17, owner: Q16)** — The local Definition-of-Done gate
+  requires the Claude live-model run: `e2e_green = required` in `dod.config`
+  (the gate a cloud session or the owner's laptop runs), and the criterion runs
+  `make test-e2e`'s selection — `pytest -m e2e_claude`, headless Claude Code
+  (`claude -p`) with only this server's tools through the pre-registered tasks
+  (`scripts/experiment/CLAUDE_E2E.md`, D38), model `CLAUDE_E2E_MODEL`, default
+  the `haiku` alias. The runner this criterion kept while it was `n/a` drove
+  the LM Studio tests; it now runs the Claude tier, and `make test-e2e-local`
+  is outside every gate. The gate mirrors the pytest line rather than nesting
+  `make` (as for `image_smoke`) and, like `contract_green`, takes a seeded
+  stack as its precondition instead of starting one; its run records go to the
+  gate's log directory, not into `scripts/experiment/runs/`. A missing `claude`
+  CLI, or a CLI that `claude auth status` does not report signed in, is NO-GO
+  with a message naming the fix (install Claude Code; `claude auth login`) —
+  never a skip and never a pass. `e2e_green` stays `n/a` in every
+  `.github/dod` config: CI has no Claude sign-in, and no CI job or secret is
+  added. Why (owner): the old rule required an LM Studio run on the owner's
+  laptop that in practice never ran on this branch; the Haiku run needs only a
+  Claude sign-in, takes about 5–6 minutes per gate run, and costs about $0.04
+  per 20-run block on the owner's subscription; cost is not a factor. A pass
+  still certifies only the model that ran (D31's caveat stands). Evidence: the
+  two committed blocks passed 40 of 40, every run valid
+  (`scripts/experiment/runs/claude-e2e/counted-2026-10-17/SUMMARY.md`, $0.0393;
+  `scripts/experiment/runs/claude-e2e/counted-2026-10-17-d40/SUMMARY.md`,
+  $0.0425; median wall time 14–19 s per run). **Supersedes D31 in part**: the
+  part that kept `e2e_green` `n/a` in the local `dod.config` (and D38's
+  restatement of it). D31's replay tiers stand, and so does the on-demand
+  rule: re-run `make test-e2e` when a change touches tool names, descriptions
+  or schemas, without waiting for the gate.
 
 ## Scope and licensing (probed on Basic)
 
@@ -512,8 +546,12 @@ this ledger stands without them.
 
 - ~~D31's on-demand live-model rule as the LM Studio tests (`make test-e2e` =
   the three LM Studio tests)~~ — superseded by D38: `make test-e2e` is the
-  Claude tier and the LM Studio tests are `make test-e2e-local`. D31's
-  `e2e_green = n/a` stands.
+  Claude tier and the LM Studio tests are `make test-e2e-local`.
+
+- ~~D31's gate decision for the local `dod.config` (`e2e_green = n/a`, the
+  Definition of Done needs no LLM)~~ — superseded by D42: the local gate
+  requires the Claude run. `e2e_green = n/a` stands in every `.github/dod`
+  config.
 
 - ~~D29 (2026-09-21): track the newest 9.4 patch and defer Kibana 9.5~~ —
   deferred 9.5 until kibana-py released its supported-set module, and on the

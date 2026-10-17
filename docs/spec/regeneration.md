@@ -60,7 +60,8 @@ trust the observation, and **reconcile the contract in the same change**
   stack start — the API key dies with the stack.
 - Fast gates: `make check`. Full certification: `KIBANA_MCP_DOD_CYCLE_STACK=1
   make dod` → must print `VERDICT: GO`. Criteria in `dod.config`; the gate,
-  not the author, certifies completion.
+  not the author, certifies completion. It includes the Claude live-model
+  tier (`e2e_green`, D42), so it needs a signed-in `claude` CLI.
 - Live-model tiers ([e2e-setup.md](../e2e-setup.md)): `make test-e2e` drives
   Claude via `claude -p` with only this server's tools through the
   pre-registered tasks, model `CLAUDE_E2E_MODEL` (default `haiku`, D38);

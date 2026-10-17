@@ -10,7 +10,8 @@ update tools. Tasks, pass criteria and N=5 runs per task were pre-registered in
 scripts/experiment/CLAUDE_E2E.md before any counted run.
 
 Needs Claude sign-in for `claude -p` (no API key is required) and a seeded
-stack. Off by default and outside the Definition-of-Done gate (D31, D38).
+stack. Off by default in `make check`; the local Definition-of-Done gate's
+`e2e_green` criterion runs this selection (D42), CI's gate configs do not.
 
     CLAUDE_E2E_MODEL       model or alias passed to --model (default: haiku)
     CLAUDE_E2E_RUNS        runs per task (default: 5, the pre-registered N)

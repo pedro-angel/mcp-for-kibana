@@ -11,9 +11,13 @@ prompts and score Kibana's state afterwards, never the model's text
 | `make test-e2e` | Claude via headless Claude Code (`claude -p`); `CLAUDE_E2E_MODEL`, default `haiku` | a Claude sign-in for the `claude` CLI (no API key) |
 | `make test-e2e-local` | a small local model in LM Studio; `LMSTUDIO_MODEL`, required | LM Studio with the one-time setup below |
 
-Neither is part of `make dod`: `e2e_green` is `n/a` in `dod.config` (D31).
-Run `make test-e2e` on demand when a change touches tool names, descriptions
-or schemas (D38).
+`make dod` runs the Claude tier: `e2e_green` is `required` in `dod.config`
+(D42) and runs the same `pytest -m e2e_claude` against the seeded stack, with
+its records in the gate's log directory (`/tmp/dod-<repo>/e2e_green-runs/`). A
+missing `claude` CLI or sign-in makes the criterion NO-GO with the fix named.
+CI's `.github/dod` configs keep `e2e_green` `n/a` (no Claude sign-in there).
+The LM Studio tier is outside every gate. Run `make test-e2e` on its own when
+a change touches tool names, descriptions or schemas (D38).
 
 ## The Claude tier (`make test-e2e`)
 

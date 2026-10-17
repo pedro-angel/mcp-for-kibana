@@ -293,12 +293,15 @@ scripts/stack.sh up && scripts/stack.sh seed
 KIBANA_MCP_DOD_CYCLE_STACK=1 make dod
 ```
 
-`e2e_green` — a real model choosing the calls — is `n/a` in `dod.config` as in
-every `.github/dod` tier (D31): the DoD reaches GO without an LLM, and a pass
-would certify only the model that ran. Run the live-model tier on demand with
-`make test-e2e` (Claude via `claude -p`, D38) when a change touches tool names,
-descriptions or schemas; `make test-e2e-local` runs the same tasks' LM Studio
-tests on a small local model.
+`e2e_green` — a real model choosing the calls — is required in `dod.config`
+(D42): the gate runs the Claude tier (`make test-e2e`'s tasks via `claude -p`,
+model `CLAUDE_E2E_MODEL`, default `haiku`, D38), which needs a signed-in
+`claude` CLI and takes about 5–6 minutes; a missing CLI or sign-in is NO-GO
+and names the fix. It stays `n/a` in every `.github/dod` tier, since CI has no
+Claude sign-in, and a pass certifies only the model that ran. Run
+`make test-e2e` on its own when a change touches tool names, descriptions or
+schemas; `make test-e2e-local` runs the same tasks' LM Studio tests on a small
+local model, outside every gate.
 
 ## License
 

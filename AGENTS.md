@@ -28,13 +28,15 @@ make test-e2e-local                            # live model: LM Studio (small lo
 KIBANA_MCP_DOD_CYCLE_STACK=1 make dod          # full Definition-of-Done → VERDICT: GO
 ```
 
-`make dod` needs no LLM: the live-model criterion (`e2e_green`) is `n/a` in
-`dod.config` as in CI's configs (D31), so the gate can reach GO on CI and in a
-cloud session. The live-model tier runs on demand with `make test-e2e` when a
-change touches tool names, descriptions or schemas: headless Claude Code
-(`claude -p`) with only this server's tools runs the pre-registered tasks
-(`scripts/experiment/CLAUDE_E2E.md`). It needs a Claude sign-in, no API key;
-the model is `CLAUDE_E2E_MODEL`, default `haiku` (D38). `make test-e2e-local`
+`make dod` runs the Claude live-model tier: the criterion `e2e_green` is
+`required` in `dod.config` (D42) and runs what `make test-e2e` runs — headless
+Claude Code (`claude -p`) with only this server's tools through the
+pre-registered tasks (`scripts/experiment/CLAUDE_E2E.md`), about 5–6 minutes.
+It needs a seeded stack and a signed-in `claude` CLI, no API key (check with
+`claude auth status`; without a sign-in the criterion is NO-GO and names the
+fix); the model is `CLAUDE_E2E_MODEL`, default `haiku` (D38). CI's configs keep
+`e2e_green` `n/a` (no Claude sign-in there). Run `make test-e2e` on its own when
+a change touches tool names, descriptions or schemas. `make test-e2e-local`
 runs the LM Studio tests for small local models — a tool-use model loaded and
 named in `LMSTUDIO_MODEL` ([docs/e2e-setup.md](docs/e2e-setup.md)).
 

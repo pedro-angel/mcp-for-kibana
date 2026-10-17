@@ -100,6 +100,20 @@ version section.
 
 ### Changed
 
+- **The local Definition-of-Done gate requires the Claude live-model run**
+  (D42, the owner's answer to Q16; supersedes D31 in part). `e2e_green` is
+  `required` in `dod.config`, and the gate now runs the Claude tier for it —
+  `make test-e2e`'s `pytest -m e2e_claude`, model `CLAUDE_E2E_MODEL`, default
+  `haiku` — against the seeded stack, writing its run records to the gate's
+  log directory; it no longer runs the LM Studio tests, which stay on demand
+  with `make test-e2e-local`. A missing `claude` CLI or sign-in reads NO-GO
+  and names the fix (install Claude Code; `claude auth login`). `make dod`
+  therefore needs a signed-in `claude` CLI and about 5–6 more minutes. Every
+  `.github/dod` config keeps `e2e_green = n/a`: CI has no Claude sign-in, and
+  no CI job or secret is added. Why: the old rule's LM Studio run never ran on
+  this branch in practice, while the Claude run needs only a sign-in and
+  passed 40 of 40 across the two committed blocks
+  (`scripts/experiment/runs/claude-e2e/counted-2026-10-17*/SUMMARY.md`).
 - **`get_alert_rule` now returns the rule's `params` and `actions`** beside
   its summary fields, so an agent can read a rule before `update_alert_rule`
   merges into its params and read it again to confirm the edit. `params` are
@@ -135,9 +149,10 @@ version section.
   and record; `scripts/experiment/claude_e2e_report.py` summarises a block.
   Tasks, criteria and N are pre-registered in
   `scripts/experiment/CLAUDE_E2E.md`. Needs a Claude sign-in, no API key; off
-  by default and outside the DoD gate (`e2e_green` stays `n/a`). Decisions D38
-  (supersedes D31's on-demand rule in part) and D39 (the default `write`
-  surface of 21 tools, past the ~20-tool heuristic, is accepted). The first
+  by default and outside CI's gates; the local DoD gate requires it (D42).
+  Decisions D38 (supersedes D31's on-demand rule in part) and D39 (the
+  default `write` surface of 21 tools, past the ~20-tool heuristic, is
+  accepted). The first
   counted block (Haiku, Kibana 9.5.4) is committed with its generated summary
   in `scripts/experiment/runs/claude-e2e/counted-2026-10-17/`.
 
