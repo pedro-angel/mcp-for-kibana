@@ -10,6 +10,8 @@ version section.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-17
+
 ### Added
 
 - **Named tool lists in `KIBANA_MCP_TOOLS`** (default off). An entry starting
@@ -100,20 +102,6 @@ version section.
 
 ### Changed
 
-- **The local Definition-of-Done gate requires the Claude live-model run**
-  (D42, the owner's answer to Q16; supersedes D31 in part). `e2e_green` is
-  `required` in `dod.config`, and the gate now runs the Claude tier for it —
-  `make test-e2e`'s `pytest -m e2e_claude`, model `CLAUDE_E2E_MODEL`, default
-  `haiku` — against the seeded stack, writing its run records to the gate's
-  log directory; it no longer runs the LM Studio tests, which stay on demand
-  with `make test-e2e-local`. A missing `claude` CLI or sign-in reads NO-GO
-  and names the fix (install Claude Code; `claude auth login`). `make dod`
-  therefore needs a signed-in `claude` CLI and about 5–6 more minutes. Every
-  `.github/dod` config keeps `e2e_green = n/a`: CI has no Claude sign-in, and
-  no CI job or secret is added. Why: the old rule's LM Studio run never ran on
-  this branch in practice, while the Claude run needs only a sign-in and
-  passed 40 of 40 across the two committed blocks
-  (`scripts/experiment/runs/claude-e2e/counted-2026-10-17*/SUMMARY.md`).
 - **`get_alert_rule` now returns the rule's `params` and `actions`** beside
   its summary fields, so an agent can read a rule before `update_alert_rule`
   merges into its params and read it again to confirm the edit. `params` are
@@ -133,6 +121,20 @@ version section.
   committed with its generated summary in
   `scripts/experiment/runs/claude-e2e/counted-2026-10-17-d40/`; in it every
   `fix_rule_threshold` run reads the rule back after the edit.
+- **The local Definition-of-Done gate requires the Claude live-model run**
+  (D42, the owner's answer to Q16; supersedes D31 in part). `e2e_green` is
+  `required` in `dod.config`, and the gate now runs the Claude tier for it —
+  `make test-e2e`'s `pytest -m e2e_claude`, model `CLAUDE_E2E_MODEL`, default
+  `haiku` — against the seeded stack, writing its run records to the gate's
+  log directory; it no longer runs the LM Studio tests, which stay on demand
+  with `make test-e2e-local`. A missing `claude` CLI or sign-in reads NO-GO
+  and names the fix (install Claude Code; `claude auth login`). `make dod`
+  therefore needs a signed-in `claude` CLI and about 5–6 more minutes. Every
+  `.github/dod` config keeps `e2e_green = n/a`: CI has no Claude sign-in, and
+  no CI job or secret is added. Why: the old rule's LM Studio run never ran on
+  this branch in practice, while the Claude run needs only a sign-in and
+  passed 40 of 40 across the two committed blocks
+  (`scripts/experiment/runs/claude-e2e/counted-2026-10-17*/SUMMARY.md`).
 - **`make test-e2e` is now the live-model tier driven by Claude; the LM Studio
   tests moved to `make test-e2e-local`, unchanged.** `make test-e2e` runs
   headless Claude Code (`claude -p`) with this server's tools and nothing
@@ -675,7 +677,8 @@ version section.
   `lms unload <identifier>`. It fails rather than skips, so the skip-green hole
   guarded in `tests/_stack_env.py` is not reopened here.
 
-[Unreleased]: https://github.com/pedro-angel/mcp-for-kibana/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/pedro-angel/mcp-for-kibana/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/pedro-angel/mcp-for-kibana/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/pedro-angel/mcp-for-kibana/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/pedro-angel/mcp-for-kibana/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/pedro-angel/mcp-for-kibana/releases/tag/v0.1.0
