@@ -608,7 +608,7 @@ Alerting rules and action connectors.
 | Tool | Tier | Description |
 |---|---|---|
 | `list_alert_rules` | read | List alerting rules (optionally filtered by a name search). |
-| `get_alert_rule` | read | Get one rule by id: the summary fields plus its full `params` and its `actions` (`id` = connector id, `group`, `params`, `frequency` when set). Read it before and after `update_alert_rule`. |
+| `get_alert_rule` | read | Get one rule by id: the summary fields plus its full `params` and its `actions` (`id` = connector id, `uuid`, `group`, `params`, `frequency` when set). Read it before and after `update_alert_rule`. |
 | `get_alerting_health` | read | Kibana alerting framework health status. |
 | `list_connectors` | read | List configured action connectors (id, name, connector_type_id). |
 | `list_rule_types` | read | List rule types: `id` (the `rule_type_id`), the `consumers` the caller may create it under, licence status. No `params` schema (Kibana's API has none). |
@@ -639,7 +639,9 @@ Notes:
   (`[]` clears it). `get_alert_rule` shows a rule's current `params` and
   `actions` before the edit and confirms them after it (`update_alert_rule`
   returns the summary only); its actions are in the shape `actions` takes,
-  so one can be read, changed and passed back.
+  so one can be read, changed and passed back. Pass each read action's `uuid`
+  back with it: Kibana then keeps the action's identity, while an action sent
+  without one gets a new uuid.
 - **`update_alert_rule` does not start or stop a rule.** `enabled` is not an
   argument (Kibana rejects it on update); an enabled rule stays enabled. Use
   `enable_alert_rule` / `disable_alert_rule`. `rule_type_id` and `consumer`
@@ -690,7 +692,7 @@ Returns:
             "threshold": [100], "thresholdComparator": ">", "timeWindowSize": 5,
             "timeWindowUnit": "m", "size": 100, "aggType": "count", "groupBy": "all",
             "excludeHitsFromPreviousRun": true},
- "actions": [{"id": "032a5771-...", "group": "query matched",
+ "actions": [{"id": "032a5771-...", "uuid": "5f0e...", "group": "query matched",
               "params": {"message": "{{rule.name}} matched"},
               "frequency": {"summary": false, "notify_when": "onActionGroupChange",
                             "throttle": null}}]}

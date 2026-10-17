@@ -249,9 +249,9 @@ def test_get_alert_rule_returns_params_and_actions_beside_the_summary():
     assert (r.id, r.name, r.enabled, r.status, r.tags) == ("r1", "my rule", False, "ok", ("a", "b"))
     assert r.params == {"index": ["logs-*"], "threshold": [0], "size": 100, "aggType": "count"}
     assert r.actions == ({
-        "id": "c1", "group": "query matched", "params": {"message": "hi"},
+        "id": "c1", "uuid": "u-1", "group": "query matched", "params": {"message": "hi"},
         "frequency": {"summary": False, "notify_when": "onActionGroupChange", "throttle": None},
-    },)  # connector_type_id (rejected by the PUT) and uuid are not returned
+    },)  # connector_type_id (rejected by the PUT) is not returned; uuid is (D40)
 
 
 def test_get_alert_rule_returns_named_keys_only():
@@ -264,17 +264,19 @@ def test_get_alert_rule_returns_named_keys_only():
     assert "s3cr3t" not in repr(out) and "api_key_owner" not in out
 
 
-def test_get_alert_rule_actions_carry_group_and_frequency_only_when_kibana_sent_them():
+def test_get_alert_rule_actions_carry_uuid_group_and_frequency_only_when_kibana_sent_them():
     body = {**_RULE_BODY, "actions": [
         {"id": "c1", "group": "query matched", "params": {"message": "x"},
          "connector_type_id": ".server-log", "uuid": "u-1"},
         {"id": "system-connector-.cases", "params": {"subAction": "run"}, "uuid": "u-2"},
+        {"id": "c2", "group": "query matched", "params": {}},
     ]}  # no "params" key on the rule: read as {}
     r = _get_gw(body).get_alert_rule("r1")
     assert r.params == {}
     assert r.actions == (
-        {"id": "c1", "group": "query matched", "params": {"message": "x"}},
-        {"id": "system-connector-.cases", "params": {"subAction": "run"}},
+        {"id": "c1", "uuid": "u-1", "group": "query matched", "params": {"message": "x"}},
+        {"id": "system-connector-.cases", "uuid": "u-2", "params": {"subAction": "run"}},
+        {"id": "c2", "group": "query matched", "params": {}},
     )
 
 
@@ -285,6 +287,8 @@ def test_get_alert_rule_actions_pass_back_into_update_alert_rule_unchanged():
     _rule_rmw_gw(sent).update_alert_rule("r1", None, None, None, None, list(read.actions))
     assert sent["actions"] == list(read.actions)
     assert all("connector_type_id" not in a for a in sent["actions"])
+    # the uuid goes back too, so Kibana keeps the action's identity (D40)
+    assert [a["uuid"] for a in sent["actions"]] == ["u-1"]
 
 
 def test_list_alert_rules_stays_a_summary():

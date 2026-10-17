@@ -349,10 +349,15 @@ def _to_alert_rule(body: dict[str, Any]) -> AlertRule:
 def _to_rule_action(raw: dict[str, Any]) -> dict[str, object]:
     # The keys update_alert_rule's `actions` take, so a read action can be
     # edited and passed back. GET's connector_type_id is left out (the PUT
-    # schema rejects it), as are uuid and any other key. A system action has
+    # schema rejects it), as is any other key. `uuid` is kept: the PUT accepts
+    # it and Kibana then keeps the action's identity, where an action sent
+    # without one gets a new uuid (probed on 9.5.4, D40). A system action has
     # no group, and an action without per-action timing no frequency: those
-    # keys appear only when Kibana sent them, so a round trip adds nothing.
+    # keys (and uuid) appear only when Kibana sent them, so a round trip adds
+    # nothing.
     action: dict[str, object] = {"id": raw.get("id", "")}
+    if raw.get("uuid") is not None:
+        action["uuid"] = raw["uuid"]
     if "group" in raw:
         action["group"] = raw["group"]
     action["params"] = dict(raw.get("params") or {})

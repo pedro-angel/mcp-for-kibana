@@ -288,7 +288,9 @@ this ledger stands without them.
   the library item would not reach the dashboard, which is what reuse means).
   Kibana 9.4.7 was not probed by hand; the contract tier covers it in CI
   (D30). Contract: [dashboards](toolboxes/dashboards.md).
-- **D40 (2026-10-17, probe on 9.5.4)** — `get_alert_rule` returns the rule's
+- **D40 (2026-10-17, probe on 9.5.4)** — *Amended 2026-10-17: each read
+  action now also carries its `uuid`; the "`uuid` because the tool does not
+  take it" clause below is superseded.* `get_alert_rule` returns the rule's
   `params` and `actions`; it is the read half of `update_alert_rule` (D35),
   as `get_dashboard` is `update_panel`'s. Observed: GET
   `/api/alerting/rule/{id}` carries the `params` Kibana stores (with the
@@ -302,8 +304,8 @@ this ledger stands without them.
   change is needed. Decision: the result adds `params` verbatim and each
   action in the shape `update_alert_rule` takes (`id`, `group`, `params`,
   `frequency`, the last two only when sent), built from named keys —
-  `connector_type_id` is dropped because the update rejects it, `uuid` because
-  the tool does not take it. `list_alert_rules` and `update_alert_rule` keep
+  `connector_type_id` is dropped because the update rejects it, ~~`uuid`
+  because the tool does not take it~~ (superseded: see the amendment below). `list_alert_rules` and `update_alert_rule` keep
   the summary. Why: with params invisible, the first counted Claude block's
   `fix_rule_threshold` answers all said the model could not see the rule's
   params (`scripts/experiment/runs/claude-e2e/counted-2026-10-17/`
@@ -314,6 +316,19 @@ this ledger stands without them.
   (same pre-registered tasks, `SUMMARY.md` generated from its `runs.jsonl`);
   every `fix_rule_threshold` transcript in it calls `get_alert_rule` before and
   after `update_alert_rule`. Contract: [alerting](toolboxes/alerting.md).
+  **Amendment (2026-10-17, probe on 9.5.4, independent review of PR #25).**
+  The premise for dropping `uuid` was wrong: `update_alert_rule` passes its
+  `actions` through to the PUT, which accepts `uuid`, so a read →
+  update round trip without it made Kibana mint a new uuid for every action.
+  Observed on a `.es-query` rule with two `.server-log` actions: a PUT whose
+  actions omit `uuid` replaced both uuids with new ones; a PUT that sends the
+  read uuids kept both; and `get_alert_rule` → `update_alert_rule` with the
+  read actions (now carrying `uuid`) kept both. Decision: each read action
+  carries `uuid` when Kibana sent it, and `get_alert_rule`'s description says
+  to pass it back; `connector_type_id` is still dropped. Evidence: the live
+  assertions in
+  `tests/contract/test_gateway_contract.py::test_get_alert_rule_reads_params_before_and_after_a_threshold_fix_live`
+  (round trip keeps the uuids, an action sent without one gets a new uuid).
 
 ## Reliability and models (measured)
 
@@ -543,6 +558,10 @@ this ledger stands without them.
 
 - ~~D18's reference-model status (`gemma-4-12b-qat` as the `LMSTUDIO_MODEL`
   fallback)~~ — superseded by D33; D18's measurements stand.
+
+- ~~D40's dropping of each read action's `uuid` from `get_alert_rule`~~ —
+  superseded by D40's own amendment: the uuid is returned so a read → update
+  round trip keeps each action's identity.
 
 - ~~D31's on-demand live-model rule as the LM Studio tests (`make test-e2e` =
   the three LM Studio tests)~~ — superseded by D38: `make test-e2e` is the

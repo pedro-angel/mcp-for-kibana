@@ -1928,12 +1928,26 @@ async def test_get_alert_rule_reads_params_before_and_after_a_threshold_fix_live
                 "update_alert_rule", {"rule_id": rid, "params": {"threshold": [100]}}
             )
             after_call = await client.call_tool("get_alert_rule", {"rule_id": rid})
-        after = after_call.data
-        with _raw_kibana() as raw:
-            stored = raw.alerting.rule.get(id=rid).body
+            after = after_call.data
+            with _raw_kibana() as raw:
+                stored = raw.alerting.rule.get(id=rid).body
+            # D40 amendment (probed on 9.5.4): the read uuid, passed back, keeps
+            # the action's identity; an action sent without one gets a new uuid.
+            await client.call_tool(
+                "update_alert_rule", {"rule_id": rid, "actions": after["actions"]}
+            )
+            with _raw_kibana() as raw:
+                kept = [a["uuid"] for a in raw.alerting.rule.get(id=rid).body["actions"]]
+            await client.call_tool("update_alert_rule", {"rule_id": rid, "actions": [action]})
+            with _raw_kibana() as raw:
+                minted = [a["uuid"] for a in raw.alerting.rule.get(id=rid).body["actions"]]
         assert before["params"]["threshold"] == [10000]
         assert before["params"]["aggType"] == "count"  # Kibana's default, read back
-        assert before["actions"] == [action] == after["actions"]
+        assert [a["uuid"] for a in after["actions"]] == [a["uuid"] for a in stored["actions"]]
+        assert [{k: v for k, v in a.items() if k != "uuid"} for a in before["actions"]] == [action]
+        assert before["actions"] == after["actions"]  # a params-only edit keeps the uuid
+        assert kept == [a["uuid"] for a in after["actions"]]
+        assert minted != kept  # the premise for returning uuid
         assert after["params"] == {**before["params"], "threshold": [100]}
         assert after["params"] == stored["params"]
         assert after["enabled"] is True and after["tags"] == ["contract"]

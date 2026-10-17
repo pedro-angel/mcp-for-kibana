@@ -175,6 +175,7 @@ async def test_get_and_update_alert_rule_descriptions_point_to_each_other(mcp):
         tools = {t.name: t.description for t in await client.list_tools()}
     assert "update_alert_rule" in tools["get_alert_rule"]
     assert "`params`" in tools["get_alert_rule"] and "`actions`" in tools["get_alert_rule"]
+    assert "`uuid`" in tools["get_alert_rule"]  # passed back, it keeps the action's identity
     assert "get_alert_rule" in tools["update_alert_rule"]
     assert "get_alert_rule" in tools["list_alert_rules"]
 

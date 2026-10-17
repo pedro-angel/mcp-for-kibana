@@ -62,8 +62,9 @@ class AlertingToolbox:
             """Get one alerting rule by id: the summary fields list_alert_rules
             returns plus the rule's full `params` (as Kibana stores them,
             defaults included) and its `actions`, each {"id": <connector id>,
-            "group", "params", "frequency" (when set)} — the shapes
-            update_alert_rule takes. Read a rule here before update_alert_rule
+            "uuid", "group", "params", "frequency" (when set)} — the shapes
+            update_alert_rule takes (pass `uuid` back to keep the action's
+            identity). Read a rule here before update_alert_rule
             merges into its params, and again afterwards to confirm the change.
             Rules hold no secrets (connectors do; see get_connector).
 

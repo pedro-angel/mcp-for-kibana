@@ -106,12 +106,16 @@ version section.
   its summary fields, so an agent can read a rule before `update_alert_rule`
   merges into its params and read it again to confirm the edit. `params` are
   what Kibana stores, defaults included; each action is `id` (the connector
-  id), `group`, `params` and `frequency` when set — the shape
+  id), its `uuid`, `group`, `params` and `frequency` when set — the shape
   `update_alert_rule` takes, so an action can be read, edited and passed back
-  (Kibana's `connector_type_id`, which the update rejects, and `uuid` are left
-  out). Nothing secret comes back: a rule holds none (secrets live on
-  connectors), and the GET response carries no API key, only
-  `api_key_owner`, which is not returned either (probed on 9.5.4).
+  (Kibana's `connector_type_id`, which the update rejects, is left out). The
+  `uuid` comes back so a read → update round trip keeps each action's
+  identity: Kibana keeps a uuid the update sends and mints a new one for an
+  action sent without it (probed on 9.5.4; amendment to D40, after an
+  independent review found the first version dropped it). Nothing secret
+  comes back: a rule holds none (secrets live on connectors), and the GET
+  response carries no API key, only `api_key_owner`, which is not returned
+  either (probed on 9.5.4).
   `list_alert_rules` and `update_alert_rule` still return the summary; the two
   descriptions point to `get_alert_rule`. Decision D40. Why: in the first
   counted Claude block every `fix_rule_threshold` final answer said the

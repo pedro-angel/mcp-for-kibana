@@ -1,6 +1,6 @@
 # alerting — behavior contract
 
-Status: Draft v1.3 (2026-10-17) — regeneration corpus, reconciled to shipped code
+Status: Draft v1.4 (2026-10-17) — regeneration corpus, reconciled to shipped code
 Surface reference: docs/tools.md#alerting-toolbox · Enforcement: named per section below
 
 ## Purpose & persona
@@ -70,10 +70,12 @@ docs/tools.md#alerting-toolbox.
   `update_alert_rule`'s own result stays the summary, and the two
   descriptions point to each other. Each action carries the keys
   `update_alert_rule`'s `actions` take — `id` (the connector id), `group`,
-  `params`, and `frequency` — with `group` and `frequency` present only when
-  Kibana sent them (a system action has no group), and without GET's
-  `connector_type_id` (the update rejects it) or `uuid`, so a read action
-  passes back unchanged. The result is built from named keys: a rule holds no
+  `params`, `frequency` and `uuid` — with `group`, `frequency` and `uuid`
+  present only when Kibana sent them (a system action has no group), and
+  without GET's `connector_type_id` (the update rejects it), so a read action
+  passes back unchanged. `uuid` is the action's identity: passed back, Kibana
+  keeps it; an action sent without one gets a new uuid (probed on 9.5.4, D40
+  amendment), so a read → update round trip keeps every action's identity. The result is built from named keys: a rule holds no
   secret (secrets live on connectors), and the GET body (probed on 9.5.4)
   carries `api_key_owner` and `api_key_created_by_user` but never the rule's
   API key; neither they nor any other bookkeeping key are returned.
@@ -181,7 +183,8 @@ docs/tools.md#alerting-toolbox.
   `get_connector`/`update_connector` answer the same way for `connector_id`,
   naming `create_connector or list_connectors` and `list_connectors`.
 - MUST return `params` and `actions` from `get_alert_rule`, each action in
-  `update_alert_rule`'s `actions` shape (no `connector_type_id`), built from
+  `update_alert_rule`'s `actions` shape (no `connector_type_id`; `uuid` kept
+  when Kibana sent it, so a round trip keeps the action's identity), built from
   named keys only; MUST keep `list_alert_rules` rows and `update_alert_rule`'s
   result the summary.
 - MUST make `update_alert_rule` and `update_connector` read-modify-write:
@@ -305,7 +308,7 @@ docs/tools.md#alerting-toolbox.
   argument; the at-least-one-field guards run before the factory; no secret
   in any result.
 - `tests/unit/adapters/test_alerting_gateway.py` — `get_alert_rule`'s
-  params and actions (no `connector_type_id` or `uuid`; `group` and
+  params and actions (no `connector_type_id`; `uuid`, `group` and
   `frequency` only when sent), named keys only against a hostile body, a read
   action passing back into `update_alert_rule` unchanged, and
   `list_alert_rules` staying a summary; `tests/unit/toolboxes/test_alerting.py`
@@ -315,7 +318,8 @@ docs/tools.md#alerting-toolbox.
   — live, through the MCP tools: create a rule, read its params (Kibana's
   defaults included) and actions, merge a new threshold, read it again and
   match Kibana's stored params; the result keeps to the named keys and an
-  enabled rule's API key never appears.
+  enabled rule's API key never appears; the read actions passed back keep
+  their uuids, and an action sent without one gets a new uuid.
 - `tests/contract/test_gateway_contract.py` — live:
   `test_update_alert_rule_preserves_what_it_was_not_given_live` (actions keep
   their uuid, tags and params survive a params-only edit, an enabled rule
