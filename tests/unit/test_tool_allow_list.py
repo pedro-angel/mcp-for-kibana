@@ -95,8 +95,10 @@ async def test_explicit_toolboxes_are_ignored_with_one_log_line(caplog):
 
 
 async def test_default_toolboxes_log_nothing(caplog):
+    # A coherent list (get_dashboard's ids come from search_dashboards, D41), so
+    # no coherence line either: unset toolboxes add no line of their own.
     with caplog.at_level(logging.WARNING, logger="kibana_mcp.server"):
-        await _visible(tools=["get_dashboard"])
+        await _visible(tools=["search_dashboards", "get_dashboard"])
     assert not caplog.records
 
 

@@ -18,6 +18,7 @@ from kibana_mcp.config import Settings
 from kibana_mcp.core.errors import KibanaRejected
 from kibana_mcp.ports.gateway import KibanaGateway
 from kibana_mcp.telemetry import configure_telemetry
+from kibana_mcp.tool_lists import FILE_SETTING, available_lists, expand, missing_dependencies
 from kibana_mcp.toolboxes import TOOLBOXES
 from kibana_mcp.toolboxes.base import GatewayFactory, ToolboxDeps
 
@@ -77,6 +78,11 @@ def build_server(
     if settings.tools:
         toolboxes, unlisted = _select_tools(settings, deps)
     else:
+        if settings.tool_lists_file:
+            _log.warning(
+                "%s is ignored: KIBANA_MCP_TOOLS is not set, so no named list is used",
+                FILE_SETTING,
+            )
         unknown = set(settings.toolboxes) - TOOLBOXES.keys()
         if unknown:
             raise ValueError(
@@ -97,7 +103,10 @@ def build_server(
     if unlisted:
         mcp.disable(names=unlisted, components={"tool"})
     # The instructions describe what is published, after every disable above.
-    mcp.instructions = _instructions(_published_tools(mcp))
+    published = _published_tools(mcp)
+    if settings.tools:
+        _warn_missing_dependencies(published)
+    mcp.instructions = _instructions(published)
     _register_docs_resources(mcp)
     return mcp
 
@@ -139,20 +148,25 @@ def _tool_catalog(deps: ToolboxDeps) -> dict[str, tuple[str, frozenset[str]]]:
 
 def _select_tools(settings: Settings, deps: ToolboxDeps) -> tuple[list[str], set[str]]:
     """KIBANA_MCP_TOOLS decides alone: the toolboxes owning the listed tools, and
-    the names those toolboxes register that are not listed (to hide). Listed
-    tools above the tier stay hidden by the tier; an unknown name fails startup."""
+    the names those toolboxes register that are not listed (to hide). `@name`
+    entries expand to a named list's tools first (D41). Listed tools above the
+    tier stay hidden by the tier; an unknown name fails startup."""
+    # The only file read in assembly: the operator's list file, when named.
+    selection = expand(settings.tools, available_lists(settings.tool_lists_file))
     catalog = _tool_catalog(deps)
-    unknown = [name for name in settings.tools if name not in catalog]
+    unknown = [name for name in selection if name not in catalog]
     if unknown:
         hints = []
         for name in unknown:
             close = difflib.get_close_matches(name, catalog, n=1)
-            hints.append(f"{name!r} (did you mean {close[0]!r}?)" if close else repr(name))
+            hint = f"{name!r} (did you mean {close[0]!r}?)" if close else repr(name)
+            origin = selection[name]
+            hints.append(f"{hint} from list '@{origin}'" if origin else hint)
         raise ValueError(
             f"unknown tool(s) in KIBANA_MCP_TOOLS: {', '.join(hints)}; "
             "fix the name(s) — every tool is listed in docs/tools.md"
         )
-    listed = set(settings.tools)
+    listed = set(selection)
     if "toolboxes" in settings.model_fields_set:
         _log.warning(
             "KIBANA_MCP_TOOLBOXES is ignored: KIBANA_MCP_TOOLS is set and decides "
@@ -161,7 +175,7 @@ def _select_tools(settings: Settings, deps: ToolboxDeps) -> tuple[list[str], set
     hidden_tiers = _TIER_TAGS - settings.tier.allowed
     above = {
         name: "/".join(sorted(catalog[name][1] & hidden_tiers))
-        for name in settings.tools
+        for name in selection
         if catalog[name][1] & hidden_tiers
     }
     if above:
@@ -175,6 +189,21 @@ def _select_tools(settings: Settings, deps: ToolboxDeps) -> tuple[list[str], set
     toolboxes = [box for box in TOOLBOXES if any(catalog[n][0] == box for n in listed)]
     unlisted = {n for n, (box, _) in catalog.items() if box in toolboxes} - listed
     return toolboxes, unlisted
+
+
+def _warn_missing_dependencies(published: set[str]) -> None:
+    """One stderr line when the published tools rely on tools the list left out
+    (tool_lists.DEPENDENCIES, followed transitively). A warning, not an error:
+    the model may get those inputs another way, e.g. from the user (D41)."""
+    missing = missing_dependencies(published)
+    if missing:
+        _log.warning(
+            "KIBANA_MCP_TOOLS leaves out %d tool(s) that published tools rely on: %s; "
+            "add them to KIBANA_MCP_TOOLS, or ignore this if the model gets those "
+            "inputs another way",
+            len(missing),
+            ", ".join(f"{tool} (relied on by {', '.join(by)})" for tool, by in missing.items()),
+        )
 
 
 def _register_docs_resources(mcp: FastMCP) -> None:

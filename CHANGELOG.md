@@ -12,6 +12,26 @@ version section.
 
 ### Added
 
+- **Named tool lists in `KIBANA_MCP_TOOLS`** (default off). An entry starting
+  with `@` stands for a list of tools and mixes with plain names:
+  `KIBANA_MCP_TOOLS=@dashboards-analyst,create_alert_rule`. Two lists are
+  built in — `read-only-explorer` (11 tools) and `dashboards-analyst` (21, the
+  default selection at `write`) — and `KIBANA_MCP_TOOL_LISTS_FILE` names a
+  TOML file of your own (`version = 1`, `[lists.<name>] tools = [...]`; the
+  format is a documented compatibility contract, validated strictly; a list
+  named like a built-in is refused). Lists expand before names are checked,
+  so the published set is still the listed tools the tier allows; an unknown
+  `@name` fails startup naming the lists that exist. Without an `@` entry
+  nothing changes, and the file is read only when `KIBANA_MCP_TOOLS` is set.
+  The `read-only-explorer` profile now names its list
+  (`KIBANA_MCP_TOOLS=@read-only-explorer`, same 11 tools); `profiles/README.md`
+  points to the list table instead of repeating tool names.
+- **Coherence warnings for `KIBANA_MCP_TOOLS`.** When a published tool relies
+  on a tool the list left out — `update_panel` on `get_dashboard` for panel
+  indexes, `create_dashboard` on `describe_data_view` for field names,
+  `update_alert_rule` on `get_alert_rule` for the params it merges into, and
+  31 more relationships kept as data in one map — one stderr line names each
+  missing tool and what relies on it. The server still starts. Decision D41.
 - **`KIBANA_MCP_TOOLS`** (default off): a comma-separated allow list of tool
   names. When set, the server publishes the listed tools the tier allows and
   nothing else, registering whichever toolboxes own them;

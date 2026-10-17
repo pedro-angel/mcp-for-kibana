@@ -76,11 +76,15 @@ Basic-buildable **toolboxes** that had never been filed. Now filed, in build ord
   decides which toolboxes register, start time only, applied by disable only.
   A persona that crosses ownership boundaries (a dashboard in a fresh space:
   dashboards + data-management + platform-admin, 29 tools at write) can now be
-  trimmed toward the ~20-tool heuristic. **Still open, ordered after the
-  day-to-day tool work above:** named custom toolboxes — a profile file that
-  names a tool set — with coherence warnings for lists that split working
-  pairs (read-modify-write partners, fork lifecycles); today the docs name
-  the foot-gun and the server does not check it.
+  trimmed toward the ~20-tool heuristic. **Named tool lists with coherence
+  warnings shipped 2026-10-17** ([Named lists](configuration.md#named-lists),
+  decision [D41](spec/decisions.md)): `@name` entries in `KIBANA_MCP_TOOLS`
+  name a built-in list (`read-only-explorer`, `dashboards-analyst`) or one
+  from the operator's TOML file (`KIBANA_MCP_TOOL_LISTS_FILE`), and a list
+  that leaves out a tool a published tool relies on gets one stderr line.
+  **Still open:** fork lifecycles are not in the dependency map — no streams
+  tool names a partner for an input it takes, so there is no edge to record
+  yet.
 - feat: dashboards library loop — **shipped 2026-10-12** (D37):
   `search_visualizations`, `get_visualization`, `update_visualization`,
   `add_library_panel` (by reference) and `delete_visualization` make the id

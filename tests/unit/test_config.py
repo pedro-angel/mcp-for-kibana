@@ -166,3 +166,19 @@ def test_toolboxes_explicitness_is_visible(monkeypatch):
     assert "toolboxes" not in Settings().model_fields_set
     monkeypatch.setenv("KIBANA_MCP_TOOLBOXES", "dashboards")
     assert "toolboxes" in Settings().model_fields_set
+
+
+def test_tools_keep_list_references_through_splitting(monkeypatch):
+    # `@name` entries pass through untouched; the server expands them (D41).
+    monkeypatch.setenv("KIBANA_MCP_TOOLS", " @dashboards-analyst, create_alert_rule,@dashboards-analyst")
+    assert Settings().tools == ["@dashboards-analyst", "create_alert_rule"]
+
+
+def test_tool_lists_file_default_is_unset(monkeypatch):
+    monkeypatch.delenv("KIBANA_MCP_TOOL_LISTS_FILE", raising=False)
+    assert Settings().tool_lists_file is None
+
+
+def test_tool_lists_file_from_env(monkeypatch):
+    monkeypatch.setenv("KIBANA_MCP_TOOL_LISTS_FILE", "/etc/mcp/lists.toml")
+    assert Settings().tool_lists_file == "/etc/mcp/lists.toml"

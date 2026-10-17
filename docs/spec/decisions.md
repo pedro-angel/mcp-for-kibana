@@ -1,6 +1,6 @@
 # Decisions ledger
 
-Status: Draft v1.10 (2026-10-17) — regeneration corpus. Consumes
+Status: Draft v1.11 (2026-10-17) — regeneration corpus. Consumes
 [brief.md](brief.md); read alongside [design.md](design.md).
 
 Each entry is a decision a rewrite must not silently re-litigate: what was
@@ -71,8 +71,81 @@ this ledger stands without them.
   per toolbox, run on its own event loop in a worker thread (FastMCP has no
   synchronous public listing; registration does no I/O, so `build_server`
   stays pure). Not a security boundary (D3): the API key's RBAC is. Named
-  custom toolboxes (a profile file with coherence warnings) remain open
-  ([roadmap](../roadmap.md)). Pinned by `tests/unit/test_tool_allow_list.py`.
+  custom toolboxes (a profile file with coherence warnings) were left open
+  here; they shipped as named tool lists (D41). Pinned by
+  `tests/unit/test_tool_allow_list.py`.
+- **D41 (2026-10-17, owner: Q10, Q11, Q12, Q15)** — Named tool lists, inside
+  the D34 allow list. **Syntax**: an entry of `KIBANA_MCP_TOOLS` that starts
+  with `@` names a list and stands for its tools, mixable with plain names
+  (`@dashboards-analyst,create_alert_rule`); the server expands every `@`
+  entry, in order, first occurrence wins, **before** it validates names, so
+  every D34 rule applies to the expanded list unchanged (published = listed ∩
+  tier; unknown tool fails startup, now with `from list '@<name>'` when a
+  list brought it in; above-tier tools logged). An unknown `@name` fails
+  startup naming every unknown one, a difflib "did you mean", and the
+  available lists. No `@` entry: byte-identical to before (checked once by
+  comparing full tool dumps at every tier with the pre-change tree; names and
+  order are pinned by a unit test). **Sources** (owner,
+  Q10/Q15): built-in lists plus the operator's own file. The built-ins are
+  the shipped personas whose surface is a hand-picked set —
+  `read-only-explorer` (11) and `dashboards-analyst` (21, the default
+  selection at `write`, D39) — held as data in
+  `src/kibana_mcp/tool_lists.py` (`BUILTIN_LISTS`), the one source:
+  `profiles/read-only-explorer.mcp.json` now says
+  `KIBANA_MCP_TOOLS=@read-only-explorer`, and `profiles/README.md` points to
+  the list table in `docs/configuration.md` instead of repeating names.
+  `dashboards-analyst.mcp.json` stays on toolbox + tier, because raising that
+  profile's tier is how it gains the delete tools and a list would freeze
+  them out; a unit test keeps each list equal to its profile's surface.
+  `fleet-admin` is not a list: it is the whole `fleet` toolbox at
+  `destructive`, which the toolbox axis says exactly, and a list would drift
+  from the toolbox as it grows. **File**: `KIBANA_MCP_TOOL_LISTS_FILE` names a
+  TOML file (stdlib `tomllib`, no new dependency) — `version = 1` and
+  `[lists.<name>] tools = [...]`, nothing else — documented in
+  `docs/configuration.md` as a compatibility contract (a version-1 file keeps
+  working on every release that reads version 1; a breaking change takes a new
+  version). Validation is strict, every error names the fix: unreadable or
+  non-UTF-8 file, bad TOML, missing or other `version` (a TOML boolean is not
+  `1`), unknown keys at either level, empty `tools`, non-string or blank
+  entries, a list name outside `^[a-z0-9][a-z0-9_-]*$`, a nested `@`
+  reference. **Clash rule: a file list named like a built-in is refused**, so
+  `@dashboards-analyst` means one surface on every deployment; refusing is
+  the safer of the two (overriding would let a file silently redefine a
+  documented persona). The file is read at assembly only when
+  `KIBANA_MCP_TOOLS` is set (otherwise ignored, one stderr line), so the
+  default path never opens it; tool names in a list are checked when the list
+  is used. **Warning rule** (owner, Q11): when `KIBANA_MCP_TOOLS` is set — named
+  or plain — and a published tool relies on a tool that is not published, the
+  server logs **one** stderr line naming each missing tool and what relies on
+  it, and starts anyway, the posture of a listed tool above the tier (the model
+  may get the input elsewhere, e.g. an id the user pastes). Dependencies are
+  followed transitively; tools hidden by the tier are not checked; toolbox
+  selections are not checked. **Dependency map**: one owner, data —
+  `DEPENDENCIES` in `src/kibana_mcp/tool_lists.py`, 34 edges from 30 tools.
+  An edge A → B means A takes an input only B shows the model and A's own
+  description or error guidance sends the model there: an index or field name
+  (`update_panel`/`delete_panel` → `get_dashboard`; every VizSpec tool →
+  `describe_data_view`, whose validation error says "Use describe_data_view"),
+  the state an in-place edit merges into (`update_alert_rule` →
+  `get_alert_rule`, D40; `update_connector` → `get_connector`, D35), an export
+  handle (`import_saved_objects`/`overwrite_saved_objects` →
+  `export_saved_objects`), or an existing object's id that the not-found
+  guidance says to look up ("call search_dashboards to find it": dashboards,
+  visualizations, data views, alert rules, connectors), plus ids and values
+  descriptions name (`get_space` → `list_spaces`, `get_synthetic_monitor` →
+  `list_synthetic_monitors`, `upgrade_agent` → `list_agent_versions`,
+  package-policy writes → `get_package`). Not seeded, with reasons: the
+  space-not-found guidance (`space` is optional everywhere), refusal
+  redirects (`update_panel` naming `update_visualization`), follow-ups
+  (`create_alert_rule` naming `enable_alert_rule`, which `enabled=True`
+  replaces), server-side read-modify-write tools that need no model-side read
+  (`update_case`, `update_space`, fleet updates), and streams fork lifecycles
+  (no streams tool names a partner for an input it takes). Edges point at the
+  same or a lower tier, so the warning's fix — list the tool — is never
+  blocked by the tier. Unit tests pin that both lists and the map name only
+  real tools, that edges respect tiers, and that every built-in list passes
+  its own check. The map grows when a tool's guidance starts naming another.
+  Pinned by `tests/unit/test_tool_lists.py`, `tests/unit/test_profiles.py`.
 
 ## Space targeting
 

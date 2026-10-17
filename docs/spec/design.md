@@ -11,7 +11,8 @@ implementation may change any mechanism this document does *not* name.
 
 ## The load-bearing shape
 
-- **Hexagonal, machine-enforced.** A core (`core/`, `ports/`, `config/`)
+- **Hexagonal, machine-enforced.** A core (`core/`, `ports/`, `config/`,
+  and the tool-list data `tool_lists`)
   that may not import `fastmcp`, `mcp`, or `kibana` (pydantic is allowed —
   the ban is those three, not frameworks in general); toolboxes above it;
   adapters at the edges; a composition root (`server.py`) that wires but
@@ -44,6 +45,8 @@ implementation may change any mechanism this document does *not* name.
   takes three), and finer-grained selection is the per-tool allow list
   (`KIBANA_MCP_TOOLS`, D34), which registers the owning toolboxes and hides
   every unlisted tool — selection, never a reason to share registrations.
+  Named tool lists (`@name` in that list, D41) are names for such selections,
+  not toolboxes: they own no tool and register nothing of their own.
 - **Dependency injection via one factory.** Toolboxes receive a
   `gateway_factory(space=None)` callable and never construct clients. The
   factory is where per-request credentials and space scoping happen; a fake
@@ -81,7 +84,10 @@ Tiering and destruction:
   (`KIBANA_MCP_TOOLS`) is applied as a second disable beside the tier's, so
   the published set is listed ∩ tier; assembly never calls an enable, which
   in FastMCP overrides an earlier disable and could re-publish a tool the
-  tier hid (D34; pinned by `tests/unit/test_tool_allow_list.py`).
+  tier hid (D34; pinned by `tests/unit/test_tool_allow_list.py`). Named
+  lists (`@name`, D41) expand before any name is checked, so they change what
+  is listed, never this rule; the coherence check over the published tools
+  only ever logs — it neither adds a tool nor fails startup.
 - Tier-gating is the destructive baseline; **additionally**, operations
   whose effect is invisible until the guidance is read carry an explicit
   `confirm` parameter (clearing all processing steps, activating a fork

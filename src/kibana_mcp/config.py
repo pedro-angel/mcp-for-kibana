@@ -76,7 +76,12 @@ class Settings(BaseSettings):
     # Per-tool allow list (additive, default-off; D34). When non-empty it alone
     # decides the surface: the server registers the toolboxes that own the
     # listed tools and publishes exactly the listed tools the tier allows.
+    # An `@name` entry stands for a named list's tools (D41).
     tools: Annotated[list[str], NoDecode] = []
+    # The operator's named tool lists: a TOML file (format in
+    # docs/configuration.md, D41), referenced from `tools` as `@name` beside
+    # the built-in lists. Read at assembly, only when `tools` is set.
+    tool_lists_file: str | None = None
     # Where saved-objects export writes NDJSON handles (import reads them back);
     # None -> <tempdir>/mcp-for-kibana-exports at server assembly. The bytes live on
     # disk in this dir, never in the model context (#37).

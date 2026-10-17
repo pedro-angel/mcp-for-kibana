@@ -9,11 +9,14 @@ is just a choice on two axes:
 - **Tier** (`KIBANA_MCP_TIER` = `read` | `write` | `destructive`) — *what you can
   do*: a cap that hides every tool above it.
 
-A third axis exists for a surface no profile fits: **a hand-picked tool list**
+A third axis exists for a surface no toolbox set fits: **a hand-picked tool list**
 (`KIBANA_MCP_TOOLS`). When set, it replaces the toolbox choice and the server
 publishes exactly the listed tools the tier allows — see
-[Tool selection](../docs/configuration.md#tool-selection). The profiles here use
-the two axes above.
+[Tool selection](../docs/configuration.md#tool-selection). A list can name a
+**named list** with `@`: the server ships the personas below as built-in lists
+(`@read-only-explorer`, `@dashboards-analyst`), and you can keep your own in a
+TOML file — see [Named lists](../docs/configuration.md#named-lists). Mix them
+with single tools, e.g. `KIBANA_MCP_TOOLS=@dashboards-analyst,create_alert_rule`.
 
 > **Toolbox + tier are curation, not a security boundary.** The real boundary is
 > the Kibana **API key** you supply: the server acts only within that key's RBAC.
@@ -38,26 +41,29 @@ subscription, which is out of scope, so it will never graduate.
 
 ## 🟩 Live profiles
 
-The first two prove the two-axis model: they differ in **both** their toolbox set
-(read-only-explorer adds `platform-health`; dashboards-analyst raises the tier)
-and their tier. `fleet-admin` adds the `fleet` toolbox (read-first v1).
+Each profile picks its surface on whichever axis says it exactly:
+read-only-explorer is a hand-picked list across three toolboxes, so its profile
+names the built-in list; dashboards-analyst is two whole toolboxes at `write`
+(the server's default), so its profile names the toolboxes and the tier — raising
+the tier is how it gains the delete tools; `fleet-admin` is the whole `fleet`
+toolbox at `destructive`. The tools of the two built-in lists are listed once, in
+[Built-in lists](../docs/configuration.md#built-in-lists); a unit test keeps each
+list equal to its profile's surface.
 
 ### [`read-only-explorer.mcp.json`](./read-only-explorer.mcp.json) — 11 tools · `read`
 The small-/local-model reference. Explore existing dashboards, library
-visualizations and data views and check stack health; change nothing. Toolboxes:
-`dashboards` (read) + `platform-health` + `data-management` (read). Tools:
-`list_data_views`, `describe_data_view`, `resolve_short_url`, `search_dashboards`,
-`get_dashboard`, `search_visualizations`, `get_visualization`,
-`export_saved_objects`, `get_kibana_status`, `get_kibana_stats`, `get_task_manager_health`.
+visualizations and data views and check stack health; change nothing. Tools: the
+built-in list `@read-only-explorer` (`KIBANA_MCP_TOOLS=@read-only-explorer`) —
+the read tools of `dashboards` and `data-management` plus `platform-health`.
 *Persona:* an analyst or on-device model browsing what's already in Kibana.
 
 ### [`dashboards-analyst.mcp.json`](./dashboards-analyst.mcp.json) — 21 tools · `write`
 Turn plain-English asks into real Lens visualizations and dashboards (idempotent —
 re-creating the same title updates rather than duplicates). Toolboxes: `dashboards`
-+ `data-management`. Adds `create_dashboard`, `create_visualization`,
-`update_visualization`, `add_library_panel`, `add_panel`, `update_panel`,
-`create_data_view`, `update_data_view`, `create_short_url` to the read tools. This is
-the project's MVP default. *Persona:* data/BI analyst, dashboard builder.
++ `data-management` at `write`: their read tools plus the creates and in-place
+updates. The same 21 tools are the built-in list `@dashboards-analyst`, for
+mixing with tools from other toolboxes. This is the project's MVP default.
+*Persona:* data/BI analyst, dashboard builder.
 *(Deletion tools exist but are `destructive`-tier — raise `KIBANA_MCP_TIER` to
 `destructive` only if you want the model to delete dashboards, panels or library
 visualizations.)*

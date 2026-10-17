@@ -191,13 +191,13 @@ layers = [
     "kibana_mcp.toolboxes",
     "kibana_mcp.adapters",
     "kibana_mcp.ports",
-    "kibana_mcp.core | kibana_mcp.config",
+    "kibana_mcp.core | kibana_mcp.config | kibana_mcp.tool_lists",
 ]
 
 [[tool.importlinter.contracts]]
 name = "core and ports are pure of frameworks"
 type = "forbidden"
-source_modules = ["kibana_mcp.core", "kibana_mcp.ports", "kibana_mcp.config"]
+source_modules = ["kibana_mcp.core", "kibana_mcp.ports", "kibana_mcp.config", "kibana_mcp.tool_lists"]
 forbidden_modules = ["fastmcp", "mcp", "kibana"]
 
 [[tool.importlinter.contracts]]

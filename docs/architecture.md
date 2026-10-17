@@ -99,7 +99,9 @@ config (`KIBANA_MCP_TOOLBOXES`, see
 [Configuration](configuration.md#toolbox-selection)) picks which entries to
 register; or, when set, the per-tool allow list `KIBANA_MCP_TOOLS` (see
 [Tool selection](configuration.md#tool-selection)) registers the toolboxes
-that own the listed tools and hides every other tool they register. An
+that own the listed tools and hides every other tool they register. Its
+`@name` entries expand to a [named list](configuration.md#named-lists) of
+tools first. An
 unknown toolbox or tool name fails startup loudly rather than silently
 omitting tools. This is the mechanism behind the **composable toolboxes**
 pillar: a small local model can be handed a narrower tool surface (fewer
