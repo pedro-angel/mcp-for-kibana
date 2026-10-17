@@ -383,3 +383,158 @@ def test_update_data_view_failed_second_write_keeps_the_error_kind():
     assert "was changed to 'logs-*' but time_field='@timestamp' was not saved" in (
         exc.value.message
     )
+
+
+# --- create_data_view: the time field is checked; a refused call leaves nothing ---
+
+
+class _CreatingDataViews:
+    """A data-view client stub that creates like Kibana does: it stores any
+    time field and returns the view with the fields of the indices its pattern
+    matches (empty for a pattern that matches none; probed on 9.5.4)."""
+
+    def __init__(self, fields_by_pattern, delete_error=None):
+        self.fields_by_pattern = fields_by_pattern
+        self.delete_error = delete_error
+        self.views = {}
+        self.deleted = []
+
+    def create(self, data_view):
+        view_id = f"dv-{len(self.views) + len(self.deleted) + 1}"
+        self.views[view_id] = {"id": view_id, "name": data_view["title"], **data_view}
+        fields = self.fields_by_pattern.get(data_view["title"], {})
+        return FakeResponse({"data_view": {**self.views[view_id], "fields": fields}})
+
+    def delete(self, view_id):
+        self.deleted.append(view_id)
+        if self.delete_error is not None:
+            raise self.delete_error
+        del self.views[view_id]
+        return FakeResponse({})
+
+
+_NANOS_FIELDS = {
+    # A date_nanos field is typed "date" in the view's fields (esTypes keeps
+    # the mapping type; probed on 9.5.4).
+    "ts": {"name": "ts", "type": "date", "esTypes": ["date_nanos"]},
+    "k": {"name": "k", "type": "string", "esTypes": ["keyword"]},
+}
+
+
+def _creating(**kw):
+    stub = _CreatingDataViews({
+        "flights": _FLIGHT_FIELDS, "nanos": _NANOS_FIELDS,
+        "kw": {"k": {"name": "k", "type": "string"}},
+    }, **kw)
+    return stub, _gw(data_views=stub)
+
+
+@pytest.mark.parametrize(("field", "why"), [
+    ("@timestamp", "is not a field of 'flights'"),
+    ("Carrier", "is a string field, not a date field, of 'flights'"),
+])
+def test_create_data_view_refuses_a_time_field_that_is_not_a_date_and_deletes_the_view(field, why):
+    stub, gw = _creating()
+    with pytest.raises(KibanaRejected) as exc:
+        gw.create_data_view("flights", "Flights", field)
+    assert exc.value.message == (
+        f"time field '{field}' {why} — pass time_field as one of its date fields: "
+        "timestamp (no data view was created)"
+    )
+    assert stub.deleted == ["dv-1"] and stub.views == {}  # nothing left behind
+
+
+def test_create_data_view_on_a_pattern_without_date_fields_says_to_omit_the_time_field():
+    stub, gw = _creating()
+    with pytest.raises(KibanaRejected) as exc:
+        gw.create_data_view("kw", None, "k")
+    assert exc.value.message == (
+        "time field 'k' is a string field, not a date field, of 'kw' — 'kw' has no date "
+        "fields, so a data view over it cannot have a time field; use create_data_view "
+        "without time_field (no data view was created)"
+    )
+    assert stub.views == {}
+
+
+@pytest.mark.parametrize(("pattern", "field"), [
+    ("flights", "timestamp"),
+    ("nanos", "ts"),  # date_nanos
+])
+def test_create_data_view_keeps_a_view_whose_time_field_is_a_date(pattern, field):
+    stub, gw = _creating()
+    view = gw.create_data_view(pattern, None, field)
+    assert (view.id, view.index_pattern) == ("dv-1", pattern)
+    assert stub.views["dv-1"]["timeFieldName"] == field and stub.deleted == []
+
+
+def test_create_data_view_accepts_any_time_field_on_a_pattern_that_matches_no_index():
+    stub, gw = _creating()
+    view = gw.create_data_view("future-*", None, "@timestamp")
+    assert view.id == "dv-1" and stub.views["dv-1"]["timeFieldName"] == "@timestamp"
+    assert stub.deleted == []  # no fields yet: nothing to check against
+
+
+def test_create_data_view_failed_cleanup_names_the_view_and_the_fix():
+    stub, gw = _creating(delete_error=_bad_request("delete refused"))
+    with pytest.raises(KibanaRejected) as exc:
+        gw.create_data_view("flights", None, "@timestamp")
+    assert exc.value.message == (
+        "time field '@timestamp' is not a field of 'flights' — pass time_field as one of "
+        "its date fields: timestamp. Deleting the data view this call created then failed "
+        "(Kibana rejected the payload: delete refused), so data view 'dv-1' exists with "
+        "time field '@timestamp' — fix it with update_data_view (view_id='dv-1', "
+        "time_field=<a date field>), or remove it with delete_data_view (view_id='dv-1')"
+    )
+    assert isinstance(exc.value.__cause__, BadRequestError)  # the original cause is kept
+    assert "dv-1" in stub.views  # the state the message reports
+
+
+def _refusing_create(message, views=None):
+    def create(data_view):
+        raise _bad_request(message)
+
+    listing = [] if views is None else views
+    return _gw(data_views=SimpleNamespace(
+        create=create, get_all=lambda: FakeResponse({"data_view": listing}),
+    ))
+
+
+def test_create_data_view_duplicate_name_names_the_existing_view_and_update_data_view():
+    gw = _refusing_create("Duplicate data view: flights", [
+        {"id": "dv-old", "name": "flights", "title": "flights"},
+        {"id": "dv-other", "name": "Flights 2", "title": "flights"},
+    ])
+    with pytest.raises(ToolError) as exc:
+        with gateway_errors():
+            gw.create_data_view("flights", None, None)
+    assert str(exc.value) == (
+        "Kibana rejected the payload: Duplicate data view: flights — a data view named "
+        "'flights' (id 'dv-old') already exists: use it, change it in place with "
+        "update_data_view(view_id='dv-old'), or pass a different name"
+    )
+
+
+def test_create_data_view_duplicate_name_without_the_id_still_names_update_data_view():
+    def get_all():
+        raise _bad_request("listing refused")
+
+    def create(data_view):
+        raise _bad_request("Duplicate data view: Flights")
+
+    gw = _gw(data_views=SimpleNamespace(create=create, get_all=get_all))
+    with pytest.raises(KibanaRejected) as exc:
+        gw.create_data_view("flights", "Flights", None)
+    assert exc.value.detail == (
+        "Duplicate data view: Flights — a data view named 'Flights' already exists: use "
+        "it, change it in place with update_data_view, or pass a different name"
+    )
+
+
+def test_create_data_view_other_400_is_unchanged():
+    with pytest.raises(KibanaRejected) as exc:
+        _refusing_create("[request body.data_view.title]: expected string").create_data_view(
+            "flights", None, None
+        )
+    assert (exc.value.message, exc.value.detail) == (
+        "Kibana rejected the payload", "[request body.data_view.title]: expected string"
+    )

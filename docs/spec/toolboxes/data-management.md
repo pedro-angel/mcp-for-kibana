@@ -1,6 +1,6 @@
 # data-management — behavior contract
 
-Status: Draft v1.1 (2026-10-12) — regeneration corpus, reconciled to shipped code
+Status: Draft v1.2 (2026-10-17) — regeneration corpus, reconciled to shipped code
 Surface reference: docs/tools.md#data-management-toolbox · Enforcement: named per section below
 
 ## Purpose & persona
@@ -67,11 +67,33 @@ and docs/tools.md#saved-objects-exportimport-data-management.
   message (verb is `import`/`restore`, never the Kibana rejection's own
   detail text — that text can carry object bytes), the data-view
   not-found guidance `describe_data_view` shares with the gateway port, and
-  `update_data_view`'s time-field rejection (which names the view's date
-  fields) and wrong-id guidance (which names `list_data_views`, D17).
+  `create_data_view`'s and `update_data_view`'s time-field rejections
+  (which name the pattern's date fields), `create_data_view`'s
+  duplicate-name guidance (which names `update_data_view`), and
+  `update_data_view`'s wrong-id guidance (which names `list_data_views`,
+  D17).
+- **Data-view creation checks the time field and leaves a refused call
+  without effect (D43).** Probed on 9.5.4: Kibana's data-view create
+  (`POST /api/data_views/data_view`) stores any string as the time field
+  (`@timestamp` on the flights sample, which has only `timestamp`), and no
+  public route lists a pattern's fields without creating a view (the
+  fields-for-wildcard route is internal). The create returns the view's
+  `fields`, so `create_data_view` checks the time field against them — it
+  must be a `date` field (a `date_nanos` mapping is typed `date` there) —
+  and on a mismatch deletes the view it just created and fails with
+  `... (no data view was created)`. If that delete fails, the error keeps
+  the rejection and the delete's own error, names the view's id, and names
+  the two calls that fix or remove it (`update_data_view`,
+  `delete_data_view`). A pattern that matches no index has no fields, so its
+  time field is not checked, as for `update_data_view`. Kibana refuses a
+  second view under a name already used (the name defaults to the pattern):
+  `Duplicate data view: <name>`; the error then adds the id of the view
+  that holds the name when one view does, and names `update_data_view` and
+  passing a different name. A second view over the same pattern under a
+  different name is accepted.
 - **In-place data-view edits read first and leave a refused call without
-  effect (D36).** `update_data_view` is the one tool here that does more
-  than one Kibana operation. Probed on 9.5.4: Kibana's data-view update
+  effect (D36).** `update_data_view` reads before it writes and may write
+  twice. Probed on 9.5.4: Kibana's data-view update
   (`POST /api/data_views/data_view/{id}`) merges the keys it is sent, so
   omitted fields survive without a re-send; it validates no value
   semantically — a time field that does not exist or is a keyword is
@@ -94,7 +116,8 @@ and docs/tools.md#saved-objects-exportimport-data-management.
   data not yet ingested is legitimate, as `create_data_view` allows).
 - **No derived identity, no confirm gate beyond tier.** Every other
   write/destructive tool opens one scoped gateway and performs exactly one
-  Kibana operation. Data-view and short-url ids are minted by Kibana, never derived
+  Kibana operation, except `create_data_view`'s cleanup delete after a
+  refused time field and its id lookup after a duplicate name. Data-view and short-url ids are minted by Kibana, never derived
   (unlike the dashboards toolbox's title-derived id). `delete_data_view`,
   `delete_short_url`, and `overwrite_saved_objects` require nothing beyond
   the `destructive` tier cap — no `force`/`confirm` parameter, unlike
@@ -138,6 +161,10 @@ and docs/tools.md#saved-objects-exportimport-data-management.
   call it refuses must leave the data view as it found it, and when a
   later write fails after the pattern was written, its error must say the
   pattern changed and name the call that undoes it.
+- `create_data_view` must never leave a data view whose time field is not a
+  `date` field of its pattern whenever that pattern has fields: a call it
+  refuses must leave no data view behind, and when the cleanup delete fails,
+  its error must name the view's id and the calls that fix or remove it.
 - `update_data_view`'s result must carry `field_count`, never the field map
   (a broad pattern has thousands of fields; `describe_data_view` returns
   them).
@@ -181,6 +208,8 @@ and docs/tools.md#saved-objects-exportimport-data-management.
 
 - **Unit — `tests/unit/toolboxes/test_data_management.py`.** The exact
   11-tool surface; data-view create/delete and optional `time_field`;
+  `create_data_view`'s time-field refusal (nothing created) and its
+  description stating the check;
   `update_data_view`'s partial update, guards before the factory, schema
   rejection of empty strings, time-field and wrong-id guidance, space
   threading and echo;
@@ -197,6 +226,13 @@ and docs/tools.md#saved-objects-exportimport-data-management.
   original cause, accepts a field-less pattern, caps the listed
   date fields, keeps the `Kibana rejected the payload:` prefix, and turns an
   empty or unknown `view_id` into guidance (scoped suffix once).
+  `create_data_view` refuses a missing or non-date time field and deletes
+  the view it created, says to omit the time field on a pattern without
+  date fields, keeps a `date` (including `date_nanos`) time field, accepts
+  any time field on a pattern that matches no index, reports a failed
+  cleanup with the view's id, the fix and the original cause, and turns
+  Kibana's duplicate-name 400 into guidance naming the existing view's id
+  and `update_data_view` (other 400s unchanged).
 - **Unit — `tests/unit/toolboxes/test_space_threading.py`.** All 11 tools
   inside the shared 73-tool cross-toolbox matrix: threading (the factory
   sees exactly the caller's space), schema (space present, optional,
@@ -206,6 +242,8 @@ and docs/tools.md#saved-objects-exportimport-data-management.
   `test_create_and_delete_data_view_live`, `test_short_url_lifecycle_live`,
   `test_saved_objects_export_import_roundtrip_live`,
   `test_read_export_confines_to_export_dir`,
+  `test_create_data_view_time_field_guard_live` (a wrong time field is
+  refused and no view is left; a duplicate name names the existing view),
   `test_update_data_view_partial_and_time_field_guard_live`,
   `test_data_view_edit_leaves_built_panels_alone_live`,
   `test_export_overwrite_restores_in_place_tool_live` (drives the MCP tool

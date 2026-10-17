@@ -169,6 +169,22 @@ version section.
 
 ### Fixed
 
+- **`create_data_view` refuses a time field the index does not have.** Kibana
+  stores any string as a new view's time field, so
+  `create_data_view(index_pattern="kibana_sample_data_flights",
+  time_field="@timestamp")` succeeded although flights' date field is
+  `timestamp`, and `create_dashboard` refused the view later (reported by a
+  study run on 0.3.0). The tool now checks the time field the way
+  `update_data_view` does (D36): it must be a date field (`date_nanos`
+  included) of the pattern, else the error lists the pattern's date fields and
+  no data view is left — Kibana's public API cannot list a pattern's fields
+  without creating a view, so the view is created, checked and deleted again;
+  if that delete fails, the error names the view's id and the
+  `update_data_view` / `delete_data_view` call that fixes or removes it. A
+  pattern that matches no index yet is still accepted unchecked. A create under
+  a name already used (the name defaults to the pattern) now adds the existing
+  view's id and names `update_data_view` to Kibana's `Duplicate data view`
+  error. See D43 and the [tool reference](docs/tools.md#data-management-toolbox).
 - **A Claude-tier run that never started reports why.** When seeding the task
   or launching `claude` raised (no CLI on PATH, Kibana down), the test's first
   assertion read the missing leak flag as a leak and said the API key appeared

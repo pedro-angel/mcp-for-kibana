@@ -270,6 +270,38 @@ def test_create_and_delete_data_view_live(gateway):
     assert not any(v.id == created.id for v in gateway.list_data_views())  # gone
 
 
+def test_create_data_view_time_field_guard_live(gateway):
+    # Kibana's data-view create stores any time field — flights has no
+    # `@timestamp`, yet the create succeeds (probed on 9.5.4) — and no public
+    # route lists a pattern's fields first, so the adapter checks the fields
+    # the create returns and deletes the view on a mismatch.
+    pattern = _dv_pattern()
+    name = f"ct-create-dv {uuid.uuid4().hex[:8]}"
+    with pytest.raises(KibanaRejected) as exc:
+        gateway.create_data_view(pattern, name, "@timestamp")
+    assert exc.value.message == (
+        f"time field '@timestamp' is not a field of '{pattern}' — pass time_field as one "
+        "of its date fields: timestamp (no data view was created)"
+    )
+    with pytest.raises(KibanaRejected, match=r"is a string field, not a date field"):
+        gateway.create_data_view(pattern, name, "Carrier")
+    assert not any(v.name == name or v.index_pattern == pattern
+                   for v in gateway.list_data_views())  # nothing left behind
+    created = gateway.create_data_view(pattern, name, "timestamp")
+    try:
+        # A second create under the same name is Kibana's duplicate 400, which
+        # names the view that holds the name and update_data_view.
+        with pytest.raises(KibanaRejected) as dup:
+            gateway.create_data_view(pattern, name, None)
+        assert dup.value.detail == (
+            f"Duplicate data view: {name} — a data view named '{name}' (id '{created.id}') "
+            f"already exists: use it, change it in place with "
+            f"update_data_view(view_id='{created.id}'), or pass a different name"
+        )
+    finally:
+        gateway.delete_data_view(created.id)
+
+
 def _dv_pattern():
     # Unique (no two runs share a title) yet carries the flights fields: the
     # second, never-matching member keeps it unique.

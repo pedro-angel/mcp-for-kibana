@@ -58,6 +58,29 @@ async def test_create_data_view_time_field_optional(mcp, gateway):
     assert gateway.data_views[created.data["id"]].time_field is None
 
 
+async def test_create_data_view_wrong_time_field_is_a_tool_error_and_creates_nothing(mcp, gateway):
+    async with Client(mcp) as client:
+        with pytest.raises(ToolError, match=r"time field '@timestamp' is not a date field .*"
+                                            r"\(no data view was created\)"):
+            await client.call_tool("create_data_view", {
+                "index_pattern": "kibana_sample_data_flights", "name": "flights 2",
+                "time_field": "@timestamp",
+            })
+        created = await client.call_tool("create_data_view", {
+            "index_pattern": "kibana_sample_data_flights", "name": "flights 3",
+            "time_field": "timestamp",
+        })
+    assert set(gateway.data_views) == {"dv1", created.data["id"]}
+
+
+async def test_create_data_view_description_states_the_time_field_check(mcp):
+    async with Client(mcp) as client:
+        tools = {t.name: t for t in await client.list_tools()}
+    text = tools["create_data_view"].description
+    assert "must be a date field" in text and "no data view is" in text
+    assert "update_data_view" in text
+
+
 async def test_short_url_create_resolve_delete(mcp, gateway):
     async with Client(mcp) as client:
         created = await client.call_tool(
