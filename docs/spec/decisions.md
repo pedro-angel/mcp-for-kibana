@@ -406,7 +406,10 @@ this ledger stands without them.
   naming the field to set. The tool surface models see (names,
   descriptions, JSON schemas) is byte-identical, so D31's on-demand
   live-model run is not triggered.
-- **D33 (2026-10-12)** — No model is privileged: the live-model tests drive
+- **D33 (2026-10-12)** — *Its scope is narrowed by D38: it governs the
+  LM Studio tier (`make test-e2e-local`) only. The Claude tier
+  (`make test-e2e`) drives `CLAUDE_E2E_MODEL`, which defaults to the `haiku`
+  alias; the no-privileged-model principle stands.* No model is privileged: the live-model tests drive
   whatever `LMSTUDIO_MODEL` names and fail with the fix when it is unset.
   Supersedes D18's reference-model status (owner, 2026-10-12): a model chosen
   on 2026-08-19 kept a default role because it had once been named, not
@@ -558,6 +561,11 @@ this ledger stands without them.
 
 - ~~D18's reference-model status (`gemma-4-12b-qat` as the `LMSTUDIO_MODEL`
   fallback)~~ — superseded by D33; D18's measurements stand.
+
+- ~~D33's scope as every live-model test (`LMSTUDIO_MODEL` required, no
+  default, for all of them)~~ — narrowed by D38: D33 governs the LM Studio tier
+  (`make test-e2e-local`); the Claude tier defaults `CLAUDE_E2E_MODEL` to the
+  `haiku` alias.
 
 - ~~D40's dropping of each read action's `uuid` from `get_alert_rule`~~ —
   superseded by D40's own amendment: the uuid is returned so a read → update

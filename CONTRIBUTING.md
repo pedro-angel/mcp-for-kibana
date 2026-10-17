@@ -85,7 +85,8 @@ Tests are split into tiers by the infrastructure they need
 ```bash
 make test              # unit — fakes only, no network, with coverage (>=90%)
 make test-contract     # contract — starts+seeds the stack, hits live Kibana
-make test-e2e          # e2e — drives the server through LM Studio (see docs/e2e-setup.md)
+make test-e2e          # e2e — drives the server through Claude (`claude -p`; see docs/e2e-setup.md)
+make test-e2e-local    # e2e — the same server through a small local model in LM Studio
 make streams-ephemeral # destructive streams path on an isolated ephemeral stack
 make fleet-ephemeral   # fleet agent-lifecycle on an isolated 2-agent stack
 ```

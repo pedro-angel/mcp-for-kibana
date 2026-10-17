@@ -33,6 +33,9 @@ FastMCP's visibility API).
 | [`update_visualization`](#update_visualization) | write | Replace a library visualization with a new spec, same id; dashboards that show it by reference change too. |
 | [`add_library_panel`](#add_library_panel) | write | Show a library visualization on an existing dashboard, linked (by reference), not copied. |
 | [`add_panel`](#add_panel) | write | Add a visualization panel to an existing dashboard. |
+| [`add_esql_metric_panel`](#esql-panels-dedicated-add_esql__panel-tools) | write | Add an ES\|QL metric panel to an existing dashboard: one output column as a single number. |
+| [`add_esql_table_panel`](#esql-panels-dedicated-add_esql__panel-tools) | write | Add an ES\|QL table panel to an existing dashboard: grouping columns as rows, metric columns as values. |
+| [`add_esql_xy_panel`](#esql-panels-dedicated-add_esql__panel-tools) | write | Add an ES\|QL bar/line/area panel to an existing dashboard. |
 | [`update_panel`](#update_panel) | write | Replace the visualization at a given panel index. |
 | [`delete_dashboard`](#delete_dashboard) | destructive | Permanently delete a dashboard. |
 | [`delete_visualization`](#delete_visualization) | destructive | Permanently delete a library visualization; dashboards that show it keep a broken panel. |
@@ -54,7 +57,7 @@ gating:
 | Tier | Tools | `readOnlyHint` | `destructiveHint` | `idempotentHint` |
 |---|---|---|---|---|
 | read | `list_data_views`, `describe_data_view`, `search_dashboards`, `get_dashboard`, `search_visualizations`, `get_visualization` | `true` | — | — |
-| write | `create_visualization`, `add_library_panel`, `add_panel` | `false` | `false` | `false` |
+| write | `create_visualization`, `add_library_panel`, `add_panel`, `add_esql_metric_panel`, `add_esql_table_panel`, `add_esql_xy_panel` | `false` | `false` | `false` |
 | write (upsert) | `create_dashboard`, `update_panel`, `update_visualization` | `false` | `false` | `true` — `update_panel`/`update_visualization`: replacing with the same spec twice is a no-op; `create_dashboard`: re-creating the same title overwrites, never duplicates. |
 | destructive | `delete_dashboard`, `delete_visualization`, `delete_panel` | `false` | `true` | `true` |
 

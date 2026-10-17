@@ -80,7 +80,8 @@ class Settings(BaseSettings):
     tools: Annotated[list[str], NoDecode] = []
     # The operator's named tool lists: a TOML file (format in
     # docs/configuration.md, D41), referenced from `tools` as `@name` beside
-    # the built-in lists. Read at assembly, only when `tools` is set.
+    # the built-in lists. Read at startup by main() (server.load_tool_lists),
+    # only when `tools` is set; build_server reads no file.
     tool_lists_file: str | None = None
     # Where saved-objects export writes NDJSON handles (import reads them back);
     # None -> <tempdir>/mcp-for-kibana-exports at server assembly. The bytes live on

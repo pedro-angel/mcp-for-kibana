@@ -62,9 +62,10 @@ version section.
   never secrets. `update_connector` refuses preconfigured connectors, and
   refuses a call without `secrets` on any type except `.index` and
   `.server-log`, since Kibana resets omitted secrets and cannot return them.
-  All three take `space`. Decision D35. The local study's server entry
-  (dashboards, data-management, alerting at `write`) now lists 28 tools;
-  `local_study.json`'s `expected_tools` and its runbook follow.
+  All three take `space`. Decision D35. The three tools join the local
+  study's server entry (dashboards, data-management, alerting at `write`);
+  `local_study.json`'s `expected_tools` and its runbook follow (33 tools once
+  this release's additions are counted, below).
 - **`update_data_view` (data-management, write).** An agent at the default
   `write` tier can now fix a data view's `name`, `index_pattern` or
   `time_field` in place, by id, instead of deleting it (destructive) and
@@ -77,8 +78,9 @@ version section.
   changes nothing; if a write after the pattern's fails, the error says the
   pattern changed and names the call that undoes it. A pattern that matches no index yet is accepted with
   `field_count` 0. A wrong id names `list_data_views`. Takes `space`.
-  Decision D36. The `dashboards-analyst` profile now lists 17 tools and the
-  local study's server entry 29; `local_study.json` and its runbook follow.
+  Decision D36. The tool joins the `dashboards-analyst` profile and the local
+  study's server entry; `local_study.json` and its runbook follow (final
+  counts below).
 - **Library visualizations: `search_visualizations`, `get_visualization`
   (read), `update_visualization`, `add_library_panel` (write) and
   `delete_visualization` (destructive), in the dashboards toolbox.** The id
@@ -154,7 +156,7 @@ version section.
   `haiku`; `CLAUDE_E2E_RUNS`, `CLAUDE_E2E_BUDGET_USD` (default $5 per session)
   and `CLAUDE_E2E_OUT` set the rest. The Kibana API key reaches only the MCP
   server's environment, and every transcript is searched for it: a hit is
-  redacted on disk and fails the run. Each run commits its prompt, transcript
+  redacted on disk and fails the run. Each run writes its prompt, transcript
   and record; `scripts/experiment/claude_e2e_report.py` summarises a block.
   Tasks, criteria and N are pre-registered in
   `scripts/experiment/CLAUDE_E2E.md`. Needs a Claude sign-in, no API key; off
@@ -174,6 +176,17 @@ version section.
   (`claude auth status`; `scripts/stack.sh up && scripts/stack.sh seed`), and
   the test also asserts the run is valid — the CLI ended with a result event
   or timed out — as `scripts/experiment/CLAUDE_E2E.md` requires for a pass.
+- **Docs match the shipped tiers and tools.** `CONTRIBUTING.md` names Claude
+  for `make test-e2e` and lists `make test-e2e-local`; the README lists
+  `e2e_green` among the criteria that need the dev stack up and says the
+  LM Studio tier runs three of the four tasks (not `fix_rule_threshold`);
+  `docs/e2e-setup.md` covers installing Claude Code, `claude auth login` and
+  `claude auth status`, which the gate's NO-GO text points to; the tool
+  reference lists the three `add_esql_*_panel` write tools in the dashboards
+  and annotations tables; D33 carries the scope note D38 narrowed it with; and
+  the roadmap files `update_alert_rule` returning the rule's detail as open
+  work, with the addressed `params` item marked done.
+
 - **The server's MCP instructions follow the published tools.** They always
   described the dashboards flow (`list_data_views` → `describe_data_view` →
   `create_dashboard`), even on a surface without those tools — the `alerting`

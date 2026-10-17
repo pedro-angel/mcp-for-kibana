@@ -45,13 +45,12 @@ release claim, `make help` for the rest.
 
 As of this page:
 
-- **Observed in the Claude tier (2026-10-17), now addressed:** no alerting
-  tool returned a rule's `params`, so after `update_alert_rule` a model could
-  not read the new threshold back; in the `fix_rule_threshold` runs Haiku
-  fixed the rule but its final answers say it could not see the params
-  (`scripts/experiment/runs/claude-e2e/counted-2026-10-17/`). `get_alert_rule`
-  now returns `params` and `actions` (D40); `update_alert_rule`'s result
-  stays the summary.
+- feat: `update_alert_rule` returns the rule's detail — **open (left open by
+  D40)**. Its result is still the summary, so a model confirms an edit with a
+  second call to `get_alert_rule`; returning `get_alert_rule`'s shape instead
+  (as `update_connector` returns `get_connector`'s) would save that call.
+  Additive to the result, but it changes what models see, so it re-runs
+  `make test-e2e` (D31/D38).
 
 **Buildable now (Basic license).** The *write-tier* campaign on the
 existing read toolboxes is done, but a 2026-07-16 catalog audit found unbuilt
@@ -60,7 +59,7 @@ Basic-buildable **toolboxes** that had never been filed. Now filed, in build ord
 - feat: `fleet` toolbox — **DONE**. Read-first v1 (20 tools) + **write/destructive tier shipped 2026-07-18**: 15 tools (agent/package-policy + output CRUD, single+bulk agent actions), `fleet-admin` profile now `destructive`, a `fleet_ephemeral` 2-agent battle-test harness + DoD criterion. Enrollment-key mint/revoke deferred (unsafe under api-key auth — inline leaks to context, on-disk breaks HTTP transport).
 - feat: `streams` write follow-ups — **shipped 2026-07-18**. 3 tools (9→12): `set_stream_processing` (RMW the processing.steps facet), `deactivate_fork` (write), `activate_fork` (**destructive + confirm** — activation diverts live docs; already-routed docs stay in the child, per env-research). ILM-mode retention (no ILM policy on-stack) and raw full-config `update_ingest` (footgun) + `space_id` deferred.
 - feat: `security-detections` write follow-ups — **shipped 2026-07-18**. 6 tools (19→25): value-list item CRUD, full-replace `replace_detection_rule` (RMW — omitting a field wipes it; also translates the `from_`↔`from` kwarg/body-key mismatch), and enable/disable. **Env-research corrected the "enable/disable is privilege-gated" premise**: `bulk_action`/`patch` do 403/500 under api-key auth, but `update_rule(enabled=…)` works (the path kibana-py's docstring recommends) — so it's buildable, and shipped.
-- feat: `alerting` rule-lifecycle follow-ups — **next up (ordered 2026-08-19)**. The kibana-py `alerting.rule` surface is 8/16 wrapped: missing mute/unmute (per-alert and rule-wide), snooze/unsnooze, and `update_api_key`. The `rule_types` read shipped 2026-10-12 as `list_rule_types`; in-place rule edit (`update`) shipped 2026-10-12 as `update_alert_rule`, with connector `get`/`update` as `get_connector`/`update_connector` (D35). All Basic; same toolbox, additive tools.
+- feat: `alerting` rule-lifecycle follow-ups — **next up (ordered 2026-08-19)**. The kibana-py `alerting.rule` surface is 8/16 wrapped: missing mute/unmute (per-alert and rule-wide), snooze/unsnooze, and `update_api_key`. The `rule_types` read shipped 2026-10-12 as `list_rule_types`; in-place rule edit (`update`) shipped 2026-10-12 as `update_alert_rule`, with connector `get`/`update` as `get_connector`/`update_connector` (D35). **Done 2026-10-17:** the Claude tier showed no alerting tool returned a rule's `params`, so after `update_alert_rule` a model could not read the new threshold back (`scripts/experiment/runs/claude-e2e/counted-2026-10-17/`); `get_alert_rule` now returns `params` and `actions`, each action with its `uuid` so a read → update round trip keeps it (D40 and its amendment). All Basic; same toolbox, additive tools.
 - feat: `synthetics` write tier — **second (ordered 2026-08-19)**. The observability toolbox reads monitors/params/private-locations (4/19 methods); the write tier adds monitor + param + private-location CRUD and `test_monitor`. The API is Basic (reads contract-tested); env-research must confirm the execution paths — private locations need a synthetics-capable Fleet agent, so run-side value may be infra-bounded like osquery below.
 - **Deprioritized, with the reason on record (2026-08-19):** `cases` depth (comments management, files, configuration, tags/reporters, alert linkage — 6/22 methods wrapped). Core case CRUD is Basic and shipped; the depth that makes cases compelling is license-locked — external push needs Gold+ connector types, assignees need Platinum — so the remaining Basic-buildable slice is thin workflow plumbing. Not revisited: the depth that would make it compelling is subscription-locked, which is out of scope.
 - **Parked as infra-gated (re-confirmed 2026-08-19):** `osquery` — the one whole Basic namespace with zero coverage (0/14 methods; live probe: saved-queries/packs answer 200 on Basic). Already classified under `security-response` below: useful only with the osquery_manager integration on an agent policy and hosts worth querying — the dockerized lab agents would return container-level trivia. Revisit when real endpoints enroll.

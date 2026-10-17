@@ -283,7 +283,7 @@ audit, SAST, unit across Python 3.12–3.14, docs, image build+smoke), and
 through *this same gate script* with per-tier configs in `.github/dod/` — so CI
 verdicts and `make dod` cannot drift.
 
-`make dod` needs the dev stack up for `contract`/`e2e_replay`/`wheel_replay` and down for
+`make dod` needs the dev stack up for `contract`/`e2e_replay`/`wheel_replay`/`e2e_green` and down for
 the ephemeral tiers, so a plain run cannot satisfy both halves. To get a
 one-shot GO, let the gate cycle the stack for you (default-off, so it never
 touches infrastructure unasked):
@@ -300,8 +300,9 @@ model `CLAUDE_E2E_MODEL`, default `haiku`, D38), which needs a signed-in
 and names the fix. It stays `n/a` in every `.github/dod` tier, since CI has no
 Claude sign-in, and a pass certifies only the model that ran. Run
 `make test-e2e` on its own when a change touches tool names, descriptions or
-schemas; `make test-e2e-local` runs the same tasks' LM Studio tests on a small
-local model, outside every gate.
+schemas; `make test-e2e-local` runs three of those four tasks (all but
+`fix_rule_threshold`) as LM Studio tests on a small local model, outside every
+gate.
 
 ## License
 
