@@ -15,7 +15,7 @@ import pytest
 from fastmcp import Client
 
 from kibana_mcp.config import Settings, Tier
-from kibana_mcp.server import _tool_catalog, build_server
+from kibana_mcp.server import _tool_catalog, build_server, load_tool_lists
 from kibana_mcp.tool_lists import (
     BUILTIN_LISTS,
     DEPENDENCIES,
@@ -44,7 +44,11 @@ def _tier(catalog, name):
 
 
 def _build(**over):
-    return build_server(Settings(**over), lambda space=None: FakeGateway())
+    # As main() does: the list file is loaded outside build_server, which reads no file.
+    settings = Settings(**over)
+    return build_server(
+        settings, lambda space=None: FakeGateway(), tool_lists=load_tool_lists(settings)
+    )
 
 
 async def _visible(**over):
@@ -188,6 +192,8 @@ def test_file_with_a_bom_is_read(tmp_path):
         ('version = 1\n[lists.x]\ntools = ["a", " "]\n', "tool entries that are not names"),
         ('version = 1\n[lists.x]\ntools = ["@read-only-explorer"]\n', "references other lists"),
         ("version = 1\n[lists.x\n", "is not valid TOML"),
+        # `$` would accept a trailing newline; the name grammar is matched in full
+        ('version = 1\n[lists."ok\\n"]\ntools = ["a"]\n', "list name 'ok\\n' is not allowed"),
     ],
 )
 def test_file_problems_fail_naming_the_fix(tmp_path, text, needle):
@@ -198,16 +204,36 @@ def test_file_problems_fail_naming_the_fix(tmp_path, text, needle):
     assert str(err.value).startswith(f"KIBANA_MCP_TOOL_LISTS_FILE={path!r}: ")
 
 
-def test_unreadable_file_fails(tmp_path):
+def test_unreadable_file_fails_asking_for_a_readable_absolute_path(tmp_path):
     missing = str(tmp_path / "nope.toml")
-    with pytest.raises(ToolListError, match="could not be read"):
+    with pytest.raises(ToolListError) as err:
         load_list_file(missing)
+    text = str(err.value)
+    assert "could not be read: No such file or directory" in text
+    assert "set KIBANA_MCP_TOOL_LISTS_FILE to the absolute path of a readable file" in text
+    assert "working directory" not in text  # absolute already: no cwd caveat
 
 
-def test_non_utf8_file_fails(tmp_path):
+def test_relative_path_error_says_what_it_resolved_against(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    with pytest.raises(ToolListError) as err:
+        load_list_file("lists.toml")
+    text = str(err.value)
+    assert f"resolved against the server's working directory {str(tmp_path)!r}" in text
+    assert "which the MCP client chooses" in text
+    assert "absolute path of a readable file" in text
+
+
+def test_home_tilde_is_expanded(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    _write(tmp_path, MINE)
+    assert "alert-triage" in load_list_file("~/lists.toml")
+
+
+def test_non_utf8_file_fails_asking_for_utf8(tmp_path):
     path = tmp_path / "latin1.toml"
     path.write_bytes(b"version = 1\n# caf\xe9\n")
-    with pytest.raises(ToolListError, match="could not be read"):
+    with pytest.raises(ToolListError, match=r"is not UTF-8 text \(.* at byte 17\); save it as UTF-8"):
         load_list_file(str(path))
 
 
@@ -247,13 +273,41 @@ def test_unknown_list_fails_startup():
         _build(tools=["@read-only"])
 
 
-def test_unknown_tool_in_a_file_list_names_the_list(tmp_path):
+def test_unknown_tool_in_a_file_list_names_the_list_and_the_file(tmp_path):
     path = _write(tmp_path, 'version = 1\n[lists.mine]\ntools = ["get_dashbord"]\n')
     with pytest.raises(ValueError) as err:
         _build(tools=["@mine", "list_data_view"], tool_lists_file=path)
     text = str(err.value)
     assert "'get_dashbord' (did you mean 'get_dashboard'?) from list '@mine'" in text
     assert "'list_data_view' (did you mean 'list_data_views'?);" in text  # plain: no origin
+    assert (
+        f"fix the name(s) in KIBANA_MCP_TOOLS and edit [lists.mine] in "
+        f"KIBANA_MCP_TOOL_LISTS_FILE={path!r}"
+    ) in text
+
+
+def test_unknown_plain_tool_points_at_the_variable_only():
+    with pytest.raises(ValueError) as err:
+        _build(tools=["get_dashbord"])
+    text = str(err.value)
+    assert "fix the name(s) in KIBANA_MCP_TOOLS — every tool is listed in docs/tools.md" in text
+    assert "KIBANA_MCP_TOOL_LISTS_FILE" not in text
+
+
+def test_build_server_reads_no_file(tmp_path):
+    # main() loads the file (load_tool_lists) and passes the lists in; given
+    # them, build_server never opens the path, even one that does not exist.
+    settings = Settings(tools=["@read-only-explorer"], tool_lists_file=str(tmp_path / "nope.toml"))
+    build_server(settings, lambda space=None: FakeGateway(), tool_lists=BUILTIN_LISTS)
+    # Without them it refuses rather than silently dropping the operator's lists.
+    with pytest.raises(ValueError, match=r"pass tool_lists=load_tool_lists\(settings\)"):
+        build_server(settings, lambda space=None: FakeGateway())
+
+
+def test_file_is_read_with_a_plain_list_too(tmp_path):
+    # No `@` entry, but KIBANA_MCP_TOOLS is set: the named file is still validated.
+    with pytest.raises(ToolListError, match="could not be read"):
+        load_tool_lists(Settings(tools=["get_dashboard"], tool_lists_file=str(tmp_path / "x")))
 
 
 def test_bad_file_fails_startup_when_the_list_is_set(tmp_path):

@@ -82,8 +82,9 @@ DEPENDENCIES: Mapping[str, tuple[str, ...]] = MappingProxyType({
 
 LIST_FILE_VERSION = 1
 FILE_SETTING = "KIBANA_MCP_TOOL_LISTS_FILE"
-# A list name must survive a comma-separated env var after '@'.
-_LIST_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
+# A list name must survive a comma-separated env var after '@'. Used with
+# fullmatch: `$` alone would also accept a name ending in a newline.
+_LIST_NAME_RE = re.compile(r"[a-z0-9][a-z0-9_-]*")
 
 
 class ToolListError(ValueError):
@@ -97,15 +98,29 @@ def load_list_file(path: str) -> dict[str, tuple[str, ...]]:
         [lists.<name>]
         tools = ["tool_a", "tool_b"]
 
-    Every problem is an error that names the fix; nothing is skipped. Tool names
-    are checked against the server's catalog later, when a list is used."""
+    A leading `~` is expanded; a relative path resolves against the server's
+    working directory, which the MCP client chooses. Every problem is an error
+    that names the fix; nothing is skipped. Tool names are checked against the
+    server's catalog later, when a list is used."""
     def fail(problem: str) -> ToolListError:
         return ToolListError(f"{FILE_SETTING}={path!r}: {problem}")
 
+    file = Path(path).expanduser()
     try:
-        data = tomllib.loads(Path(path).read_text(encoding="utf-8-sig"))
-    except (OSError, UnicodeDecodeError) as e:
-        raise fail(f"could not be read: {e}") from e
+        text = file.read_text(encoding="utf-8-sig")
+    except OSError as e:
+        where = "" if file.is_absolute() else (
+            f" (a relative path, resolved against the server's working directory "
+            f"{str(Path.cwd())!r}, which the MCP client chooses)"
+        )
+        raise fail(
+            f"could not be read{where}: {e.strerror or e}; set {FILE_SETTING} to the "
+            "absolute path of a readable file"
+        ) from e
+    except UnicodeDecodeError as e:
+        raise fail(f"is not UTF-8 text ({e.reason} at byte {e.start}); save it as UTF-8") from e
+    try:
+        data = tomllib.loads(text)
     except tomllib.TOMLDecodeError as e:
         raise fail(f"is not valid TOML: {e}") from e
     unknown = sorted(set(data) - {"version", "lists"})
@@ -124,7 +139,7 @@ def load_list_file(path: str) -> dict[str, tuple[str, ...]]:
         raise fail('defines no lists; add one as `[lists.<name>]` with `tools = ["..."]`')
     parsed: dict[str, tuple[str, ...]] = {}
     for name, body in lists.items():
-        if not _LIST_NAME_RE.match(name):
+        if not _LIST_NAME_RE.fullmatch(name):
             raise fail(
                 f"list name {name!r} is not allowed; use lowercase letters, digits, "
                 "'-' and '_', starting with a letter or digit"

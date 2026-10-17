@@ -6,8 +6,9 @@ The default selection keeps the exact text it always had.
 """
 
 import pytest
-from fastmcp import Client
+from fastmcp import Client, FastMCP
 
+from kibana_mcp import server
 from kibana_mcp.config import Settings, Tier
 from kibana_mcp.server import build_server
 from tests.fakes import FakeGateway
@@ -68,3 +69,34 @@ async def test_flow_listed_above_the_tier_is_not_described():
     )
     assert "create_dashboard" not in published
     assert text != DASHBOARDS_TEXT
+
+
+# build_server works out the published set from what it registered (tier tags
+# and the allow list), not from FastMCP's tools/list, which opens a telemetry
+# span when OTEL is on. The two must agree on every kind of surface.
+@pytest.mark.parametrize(
+    "over",
+    [
+        {},
+        {"tier": Tier.READ},
+        {"tier": Tier.DESTRUCTIVE},
+        {"toolboxes": ["alerting", "fleet", "streams"], "tier": Tier.DESTRUCTIVE},
+        {"tools": ["get_dashboard", "delete_dashboard", "create_alert_rule", "list_agents"]},
+        {"tools": ["@dashboards-analyst", "delete_panel"], "tier": Tier.READ},
+    ],
+)
+async def test_published_set_equals_what_clients_list(monkeypatch, over):
+    seen = []
+    real = server._instructions
+    monkeypatch.setattr(server, "_instructions", lambda published: seen.append(published) or real(published))
+    _, listed = await _instructions(**over)
+    assert seen == [listed]
+
+
+def test_assembly_sends_no_tools_list(monkeypatch):
+    async def refuse(*args, **kwargs):
+        raise AssertionError("build_server ran a server-level tools/list")
+
+    monkeypatch.setattr(FastMCP, "list_tools", refuse)
+    build_server(Settings(), lambda space=None: FakeGateway())
+    build_server(Settings(tools=["get_dashboard"]), lambda space=None: FakeGateway())

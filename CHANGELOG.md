@@ -21,11 +21,17 @@ version section.
   format is a documented compatibility contract, validated strictly; a list
   named like a built-in is refused). Lists expand before names are checked,
   so the published set is still the listed tools the tier allows; an unknown
-  `@name` fails startup naming the lists that exist. Without an `@` entry
-  nothing changes, and the file is read only when `KIBANA_MCP_TOOLS` is set.
-  The `read-only-explorer` profile now names its list
-  (`KIBANA_MCP_TOOLS=@read-only-explorer`, same 11 tools); `profiles/README.md`
-  points to the list table instead of repeating tool names.
+  `@name` fails startup naming the lists that exist. With `KIBANA_MCP_TOOLS`
+  unset nothing changes and the file is never read. With a plain list (no `@`
+  entry) the published tools are unchanged; what is new is the coherence
+  warning below on stderr, and a named list file is still read and validated,
+  so a broken one fails startup. A leading `~` in the file path is expanded;
+  a relative path resolves against the directory the MCP client starts the
+  server in, which an unreadable-file error names. The profiles keep naming
+  toolboxes and a tier, and a unit test keeps each built-in list equal to its
+  profile, so a new tool in those toolboxes cannot drift out of the list
+  unnoticed; `profiles/README.md` points to the list table instead of
+  repeating tool names.
 - **Coherence warnings for `KIBANA_MCP_TOOLS`.** When a published tool relies
   on a tool the list left out — `update_panel` on `get_dashboard` for panel
   indexes, `create_dashboard` on `describe_data_view` for field names,

@@ -4,7 +4,7 @@ import asyncio
 import difflib
 import logging
 import tempfile
-from collections.abc import Callable, Coroutine
+from collections.abc import Callable, Coroutine, Mapping
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
@@ -18,7 +18,13 @@ from kibana_mcp.config import Settings
 from kibana_mcp.core.errors import KibanaRejected
 from kibana_mcp.ports.gateway import KibanaGateway
 from kibana_mcp.telemetry import configure_telemetry
-from kibana_mcp.tool_lists import FILE_SETTING, available_lists, expand, missing_dependencies
+from kibana_mcp.tool_lists import (
+    BUILTIN_LISTS,
+    FILE_SETTING,
+    available_lists,
+    expand,
+    missing_dependencies,
+)
 from kibana_mcp.toolboxes import TOOLBOXES
 from kibana_mcp.toolboxes.base import GatewayFactory, ToolboxDeps
 
@@ -63,26 +69,47 @@ def _instructions(published: set[str]) -> str:
     return _INSTRUCTIONS if _DASHBOARDS_FLOW <= published else _GENERIC_INSTRUCTIONS
 
 
+def load_tool_lists(settings: Settings) -> Mapping[str, tuple[str, ...]]:
+    """The named lists `@name` can use: the built-ins, plus the operator's
+    KIBANA_MCP_TOOL_LISTS_FILE when KIBANA_MCP_TOOLS is set (D41). main() calls
+    this and passes the result to build_server, which reads no file. The file
+    is read and validated whenever the list is set, even with no `@` entry, so
+    a broken file fails the first start that could use it."""
+    if not settings.tool_lists_file:
+        return BUILTIN_LISTS
+    if not settings.tools:
+        _log.warning(
+            "%s is ignored: KIBANA_MCP_TOOLS is not set, so no named list is used",
+            FILE_SETTING,
+        )
+        return BUILTIN_LISTS
+    return available_lists(settings.tool_lists_file)
+
+
 def build_server(
     settings: Settings,
     gateway_factory: GatewayFactory,
     export_dir: Path | None = None,
+    tool_lists: Mapping[str, tuple[str, ...]] | None = None,
 ) -> FastMCP:
     # No I/O here (build_server stays pure for FakeGateway tests): main() creates
-    # export_dir and passes it; unit tests take the ToolboxDeps default (unused).
+    # export_dir and loads the list file (load_tool_lists) and passes both; unit
+    # tests take the ToolboxDeps default (unused) and the built-in lists.
     deps = ToolboxDeps(
         gateway_factory=gateway_factory,
         public_kibana_url=settings.effective_public_url,
         **({"export_dir": export_dir} if export_dir is not None else {}),
     )
-    if settings.tools:
-        toolboxes, unlisted = _select_tools(settings, deps)
-    else:
-        if settings.tool_lists_file:
-            _log.warning(
-                "%s is ignored: KIBANA_MCP_TOOLS is not set, so no named list is used",
-                FILE_SETTING,
+    if tool_lists is None:
+        if settings.tools and settings.tool_lists_file:
+            raise ValueError(
+                f"build_server reads no files: {FILE_SETTING} is set, so pass "
+                "tool_lists=load_tool_lists(settings)"
             )
+        tool_lists = BUILTIN_LISTS
+    if settings.tools:
+        toolboxes, unlisted = _select_tools(settings, deps, tool_lists)
+    else:
         unknown = set(settings.toolboxes) - TOOLBOXES.keys()
         if unknown:
             raise ValueError(
@@ -96,14 +123,20 @@ def build_server(
     mcp = FastMCP("mcp-for-kibana", on_duplicate="ignore", mask_error_details=True)
     for name in toolboxes:
         TOOLBOXES[name].register(mcp, deps)
-    for tier_tag in _TIER_TAGS - settings.tier.allowed:
+    hidden_tiers = _TIER_TAGS - settings.tier.allowed
+    for tier_tag in hidden_tiers:
         mcp.disable(tags={tier_tag})
     # The allow list only ever hides (D34). Never mcp.enable(): a later enable
     # overrides an earlier disable, so it could re-publish a tool the tier hid.
     if unlisted:
         mcp.disable(names=unlisted, components={"tool"})
-    # The instructions describe what is published, after every disable above.
-    published = _published_tools(mcp)
+    # The instructions describe what is published: the same two rules as the
+    # disables above, applied to what was registered.
+    published = {
+        name
+        for name, tags in _registered_tools(mcp).items()
+        if not tags & hidden_tiers and name not in unlisted
+    }
     if settings.tools:
         _warn_missing_dependencies(published)
     mcp.instructions = _instructions(published)
@@ -119,10 +152,11 @@ def _run_async[T](make: Callable[[], Coroutine[Any, Any, T]]) -> T:
         return pool.submit(lambda: asyncio.run(make())).result()
 
 
-def _published_tools(mcp: FastMCP) -> set[str]:
-    """The names the server will advertise: FastMCP's own listing, with the
-    tier's and the allow list's visibility applied."""
-    return {t.name for t in _run_async(lambda: mcp.list_tools(run_middleware=False))}
+def _registered_tools(mcp: FastMCP) -> dict[str, frozenset[str]]:
+    """Every tool registered on the server -> its tags, visibility not applied.
+    Read from the local provider, not FastMCP's tools/list, which would open a
+    telemetry span (KIBANA_MCP_OTEL_ENABLED) before any client asked."""
+    return {t.name: frozenset(t.tags) for t in _run_async(mcp.local_provider.list_tools)}
 
 
 def _tool_catalog(deps: ToolboxDeps) -> dict[str, tuple[str, frozenset[str]]]:
@@ -146,26 +180,18 @@ def _tool_catalog(deps: ToolboxDeps) -> dict[str, tuple[str, frozenset[str]]]:
     return catalog
 
 
-def _select_tools(settings: Settings, deps: ToolboxDeps) -> tuple[list[str], set[str]]:
+def _select_tools(
+    settings: Settings, deps: ToolboxDeps, lists: Mapping[str, tuple[str, ...]]
+) -> tuple[list[str], set[str]]:
     """KIBANA_MCP_TOOLS decides alone: the toolboxes owning the listed tools, and
     the names those toolboxes register that are not listed (to hide). `@name`
     entries expand to a named list's tools first (D41). Listed tools above the
     tier stay hidden by the tier; an unknown name fails startup."""
-    # The only file read in assembly: the operator's list file, when named.
-    selection = expand(settings.tools, available_lists(settings.tool_lists_file))
+    selection = expand(settings.tools, lists)
     catalog = _tool_catalog(deps)
     unknown = [name for name in selection if name not in catalog]
     if unknown:
-        hints = []
-        for name in unknown:
-            close = difflib.get_close_matches(name, catalog, n=1)
-            hint = f"{name!r} (did you mean {close[0]!r}?)" if close else repr(name)
-            origin = selection[name]
-            hints.append(f"{hint} from list '@{origin}'" if origin else hint)
-        raise ValueError(
-            f"unknown tool(s) in KIBANA_MCP_TOOLS: {', '.join(hints)}; "
-            "fix the name(s) — every tool is listed in docs/tools.md"
-        )
+        raise ValueError(_unknown_tools_message(unknown, selection, catalog, settings))
     listed = set(selection)
     if "toolboxes" in settings.model_fields_set:
         _log.warning(
@@ -189,6 +215,34 @@ def _select_tools(settings: Settings, deps: ToolboxDeps) -> tuple[list[str], set
     toolboxes = [box for box in TOOLBOXES if any(catalog[n][0] == box for n in listed)]
     unlisted = {n for n, (box, _) in catalog.items() if box in toolboxes} - listed
     return toolboxes, unlisted
+
+
+def _unknown_tools_message(
+    unknown: list[str],
+    selection: Mapping[str, str | None],
+    catalog: Mapping[str, object],
+    settings: Settings,
+) -> str:
+    """Name each unknown tool, where it came from, and where to fix it: a plain
+    name in KIBANA_MCP_TOOLS, or a list in the operator's file. (A built-in list
+    names only real tools; tests/unit/test_tool_lists.py pins that.)"""
+    hints = []
+    for name in unknown:
+        close = difflib.get_close_matches(name, catalog, n=1)
+        hint = f"{name!r} (did you mean {close[0]!r}?)" if close else repr(name)
+        origin = selection[name]
+        hints.append(f"{hint} from list '@{origin}'" if origin else hint)
+    fixes = []
+    if any(selection[name] is None for name in unknown):
+        fixes.append("fix the name(s) in KIBANA_MCP_TOOLS")
+    in_file = sorted({o for name in unknown if (o := selection[name]) and o not in BUILTIN_LISTS})
+    if in_file:
+        tables = ", ".join(f"[lists.{o}]" for o in in_file)
+        fixes.append(f"edit {tables} in {FILE_SETTING}={settings.tool_lists_file!r}")
+    return (
+        f"unknown tool(s) in KIBANA_MCP_TOOLS: {', '.join(hints)}; "
+        f"{' and '.join(fixes)} — every tool is listed in docs/tools.md"
+    )
 
 
 def _warn_missing_dependencies(published: set[str]) -> None:
@@ -269,9 +323,12 @@ def main() -> None:
 
     gateway_factory = build_gateway_factory(settings)
 
-    # Same rationale as configure_telemetry: the export-dir I/O lives here, not in
-    # build_server, so FakeGateway assembly tests stay side-effect-free.
-    mcp = build_server(settings, gateway_factory, export_dir=_resolve_export_dir(settings))
+    # Same rationale as configure_telemetry: the export-dir and list-file I/O live
+    # here, not in build_server, so FakeGateway assembly tests stay side-effect-free.
+    tool_lists = load_tool_lists(settings)  # first: a bad list file fails before any dir is made
+    mcp = build_server(
+        settings, gateway_factory, export_dir=_resolve_export_dir(settings), tool_lists=tool_lists
+    )
     if settings.transport == "http":
         mcp.run(
             transport="http",

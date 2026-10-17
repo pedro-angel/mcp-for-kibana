@@ -82,7 +82,8 @@ Basic-buildable **toolboxes** that had never been filed. Now filed, in build ord
   name a built-in list (`read-only-explorer`, `dashboards-analyst`) or one
   from the operator's TOML file (`KIBANA_MCP_TOOL_LISTS_FILE`), and a list
   that leaves out a tool a published tool relies on gets one stderr line.
-  **Still open:** fork lifecycles are not in the dependency map — no streams
+  The profiles keep naming toolboxes and a tier; a unit test pins each
+  built-in list to its profile's surface. **Still open:** fork lifecycles are not in the dependency map — no streams
   tool names a partner for an input it takes, so there is no edge to record
   yet.
 - feat: dashboards library loop — **shipped 2026-10-12** (D37):

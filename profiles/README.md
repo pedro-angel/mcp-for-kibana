@@ -13,8 +13,8 @@ A third axis exists for a surface no toolbox set fits: **a hand-picked tool list
 (`KIBANA_MCP_TOOLS`). When set, it replaces the toolbox choice and the server
 publishes exactly the listed tools the tier allows — see
 [Tool selection](../docs/configuration.md#tool-selection). A list can name a
-**named list** with `@`: the server ships the personas below as built-in lists
-(`@read-only-explorer`, `@dashboards-analyst`), and you can keep your own in a
+**named list** with `@`: the server ships two of the personas below as built-in
+lists (`@read-only-explorer`, `@dashboards-analyst`), and you can keep your own in a
 TOML file — see [Named lists](../docs/configuration.md#named-lists). Mix them
 with single tools, e.g. `KIBANA_MCP_TOOLS=@dashboards-analyst,create_alert_rule`.
 
@@ -41,20 +41,22 @@ subscription, which is out of scope, so it will never graduate.
 
 ## 🟩 Live profiles
 
-Each profile picks its surface on whichever axis says it exactly:
-read-only-explorer is a hand-picked list across three toolboxes, so its profile
-names the built-in list; dashboards-analyst is two whole toolboxes at `write`
-(the server's default), so its profile names the toolboxes and the tier — raising
-the tier is how it gains the delete tools; `fleet-admin` is the whole `fleet`
-toolbox at `destructive`. The tools of the two built-in lists are listed once, in
-[Built-in lists](../docs/configuration.md#built-in-lists); a unit test keeps each
-list equal to its profile's surface.
+Each profile is whole toolboxes at a tier, so each names its toolboxes and tier,
+the axes that say it exactly: read-only-explorer is three toolboxes at `read`;
+dashboards-analyst is two at `write` (the server's default) — raising the tier is
+how it gains the delete tools; `fleet-admin` is the whole `fleet` toolbox at
+`destructive`. read-only-explorer and dashboards-analyst are also built-in lists,
+for mixing with tools from other toolboxes; their tools are listed once, in
+[Built-in lists](../docs/configuration.md#built-in-lists), and a unit test keeps
+each list equal to its profile's surface, so a tool added to those toolboxes
+fails the test until the list names it too.
 
 ### [`read-only-explorer.mcp.json`](./read-only-explorer.mcp.json) — 11 tools · `read`
 The small-/local-model reference. Explore existing dashboards, library
-visualizations and data views and check stack health; change nothing. Tools: the
-built-in list `@read-only-explorer` (`KIBANA_MCP_TOOLS=@read-only-explorer`) —
-the read tools of `dashboards` and `data-management` plus `platform-health`.
+visualizations and data views and check stack health; change nothing.
+Toolboxes: `dashboards` + `platform-health` + `data-management` at `read`: their
+read tools. The same 11 tools are the built-in list `@read-only-explorer`, for
+mixing with tools from other toolboxes.
 *Persona:* an analyst or on-device model browsing what's already in Kibana.
 
 ### [`dashboards-analyst.mcp.json`](./dashboards-analyst.mcp.json) — 21 tools · `write`

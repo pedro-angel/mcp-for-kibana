@@ -83,38 +83,61 @@ this ledger stands without them.
   tier; unknown tool fails startup, now with `from list '@<name>'` when a
   list brought it in; above-tier tools logged). An unknown `@name` fails
   startup naming every unknown one, a difflib "did you mean", and the
-  available lists. No `@` entry: byte-identical to before (checked once by
-  comparing full tool dumps at every tier with the pre-change tree; names and
-  order are pinned by a unit test). **Sources** (owner,
+  available lists. **What changes without an `@` entry**: with
+  `KIBANA_MCP_TOOLS` unset, none of this runs — the list file is not opened
+  (one stderr line if it is named) and the server is byte-identical. With a
+  plain list, the published tools — names, order, descriptions, schemas — are
+  unchanged (checked once by comparing full tool dumps at every tier with the
+  pre-change tree; names and order are pinned by a unit test), and so are the
+  instructions, which follow the published set; what is new is on stderr (the
+  coherence warning below) and the list file, which is read and validated
+  whenever `KIBANA_MCP_TOOLS` is set, so a broken file fails startup even when
+  no `@` entry uses it. **Sources** (owner,
   Q10/Q15): built-in lists plus the operator's own file. The built-ins are
-  the shipped personas whose surface is a hand-picked set —
-  `read-only-explorer` (11) and `dashboards-analyst` (21, the default
-  selection at `write`, D39) — held as data in
-  `src/kibana_mcp/tool_lists.py` (`BUILTIN_LISTS`), the one source:
-  `profiles/read-only-explorer.mcp.json` now says
-  `KIBANA_MCP_TOOLS=@read-only-explorer`, and `profiles/README.md` points to
-  the list table in `docs/configuration.md` instead of repeating names.
-  `dashboards-analyst.mcp.json` stays on toolbox + tier, because raising that
-  profile's tier is how it gains the delete tools and a list would freeze
-  them out; a unit test keeps each list equal to its profile's surface.
-  `fleet-admin` is not a list: it is the whole `fleet` toolbox at
-  `destructive`, which the toolbox axis says exactly, and a list would drift
-  from the toolbox as it grows. **File**: `KIBANA_MCP_TOOL_LISTS_FILE` names a
+  two shipped personas as tool names, for mixing with tools from other
+  toolboxes — `read-only-explorer` (11: `dashboards`, `platform-health` and
+  `data-management` at `read`) and `dashboards-analyst` (21: `dashboards` and
+  `data-management` at `write`, the default selection, D39) — held as data in
+  `src/kibana_mcp/tool_lists.py` (`BUILTIN_LISTS`); `profiles/README.md`
+  points to the list table in `docs/configuration.md` instead of repeating
+  names. **Profiles stay on toolbox + tier**, the axes that state each
+  persona exactly; a list is a frozen copy. A unit test keeps each list equal
+  to its profile's toolbox + tier surface, so a tool added to those toolboxes
+  at that tier fails the test until the list names it. A profile that named
+  its own list would break that pin (the test would compare the list with
+  itself) and a new read tool would silently stay out of the persona — the
+  drift that keeps `fleet-admin` from being a list: it is the whole `fleet`
+  toolbox at `destructive`, which the toolbox axis says exactly. For
+  dashboards-analyst, raising the tier is also how the profile gains the
+  delete tools. (The first cut pointed `profiles/read-only-explorer.mcp.json`
+  at `@read-only-explorer`; review found the persona unpinned and it went
+  back to `dashboards,platform-health,data-management` at `read` before any
+  release.) **File**: `KIBANA_MCP_TOOL_LISTS_FILE` names a
   TOML file (stdlib `tomllib`, no new dependency) — `version = 1` and
   `[lists.<name>] tools = [...]`, nothing else — documented in
   `docs/configuration.md` as a compatibility contract (a version-1 file keeps
   working on every release that reads version 1; a breaking change takes a new
-  version). Validation is strict, every error names the fix: unreadable or
-  non-UTF-8 file, bad TOML, missing or other `version` (a TOML boolean is not
-  `1`), unknown keys at either level, empty `tools`, non-string or blank
-  entries, a list name outside `^[a-z0-9][a-z0-9_-]*$`, a nested `@`
-  reference. **Clash rule: a file list named like a built-in is refused**, so
+  version). A leading `~` is expanded; a relative path resolves against the
+  server's working directory, which the MCP client chooses, so an unreadable
+  file's error says what it resolved against and asks for the absolute path
+  of a readable file. Validation is strict, every error names the fix:
+  unreadable or non-UTF-8 file, bad TOML, missing or other `version` (a TOML
+  boolean is not `1`), unknown keys at either level, empty `tools`,
+  non-string or blank entries, a list name outside `[a-z0-9][a-z0-9_-]*`
+  (matched in full, so a quoted name ending in a newline is refused), a
+  nested `@` reference. **Clash rule: a file list named like a built-in is refused**, so
   `@dashboards-analyst` means one surface on every deployment; refusing is
   the safer of the two (overriding would let a file silently redefine a
-  documented persona). The file is read at assembly only when
-  `KIBANA_MCP_TOOLS` is set (otherwise ignored, one stderr line), so the
-  default path never opens it; tool names in a list are checked when the list
-  is used. **Warning rule** (owner, Q11): when `KIBANA_MCP_TOOLS` is set — named
+  documented persona). The file is read by `main()` (`load_tool_lists`), not
+  by `build_server`, which takes the parsed lists and does no I/O; and only
+  when `KIBANA_MCP_TOOLS` is set (otherwise ignored, one stderr line), so the
+  default path never opens it. Tool names in a list are checked when the list
+  is used; an unknown one from the file names the `[lists.<name>]` table and
+  the file to edit. The published set that the instructions and this check
+  read is worked out from the registered tools' tier tags and the allow list —
+  the same two rules as the disables — not from a server-level `tools/list`,
+  which would open a telemetry span at startup when OTEL is on; a unit test
+  keeps it equal to what clients list. **Warning rule** (owner, Q11): when `KIBANA_MCP_TOOLS` is set — named
   or plain — and a published tool relies on a tool that is not published, the
   server logs **one** stderr line naming each missing tool and what relies on
   it, and starts anyway, the posture of a listed tool above the tier (the model

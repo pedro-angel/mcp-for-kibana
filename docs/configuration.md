@@ -138,14 +138,22 @@ like any listed tool. A list name that does not exist fails startup with a
 `ValueError` naming every unknown `@name` (with a "did you mean" where one is
 close) and the lists that do exist. A list is a set of tool names only: it
 carries no tier, so `@dashboards-analyst` at `KIBANA_MCP_TIER=read` publishes
-its read tools. Without any `@` entry nothing changes.
+its read tools. Without any `@` entry the published tools are the same as
+before named lists existed; the only differences are on stderr (the
+[coherence warnings](#coherence-warnings)) and that a list file you name is
+still read and validated whenever `KIBANA_MCP_TOOLS` is set. With
+`KIBANA_MCP_TOOLS` unset, none of this applies and no list file is read.
 
 #### Built-in lists
 
-The server ships one list per persona whose surface is a hand-picked set of
-tools ([profiles](https://github.com/pedro-angel/mcp-for-kibana/tree/main/profiles)).
-The lists live as data in `src/kibana_mcp/tool_lists.py`
-(`BUILTIN_LISTS`); a unit test checks this table against them.
+The server ships two [profiles](https://github.com/pedro-angel/mcp-for-kibana/tree/main/profiles)
+as lists, so their tools can be mixed with tools from other toolboxes. Each
+list holds exactly the tools its profile publishes with toolboxes and a tier:
+`read-only-explorer` is `dashboards`, `platform-health` and `data-management`
+at `read`; `dashboards-analyst` is `dashboards` and `data-management` at
+`write`, the default selection. The lists live as data in
+`src/kibana_mcp/tool_lists.py` (`BUILTIN_LISTS`); unit tests check this table
+against them and each list against its profile.
 
 | List | Tools | Meant for tier |
 |---|---|---|
@@ -160,7 +168,9 @@ The `fleet-admin` persona has no list: it is the whole `fleet` toolbox at
 `KIBANA_MCP_TOOL_LISTS_FILE` names a [TOML](https://toml.io) file of your
 own lists; `@name` then finds them beside the built-in ones. The file is read
 when the server starts, and only when `KIBANA_MCP_TOOLS` is set (otherwise it
-is ignored, with one line on stderr saying so):
+is ignored, with one line on stderr saying so). Give an absolute path: a
+leading `~` is expanded, but a relative path resolves against the directory
+the MCP client starts the server in, which is often not your shell's.
 
 ```toml
 version = 1
@@ -199,7 +209,8 @@ tools or with a tool entry that is not a string, a name outside the grammar,
 and **a list with the name of a built-in list** — refused rather than
 allowed to replace it, so `@dashboards-analyst` means the same surface on
 every deployment. Tool names are checked when a list is used: an unknown
-one fails startup like any unknown name, with `from list '@<name>'` after it.
+one fails startup like any unknown name, with `from list '@<name>'` after it
+and the `[lists.<name>]` table and file to edit.
 
 ### Coherence warnings
 

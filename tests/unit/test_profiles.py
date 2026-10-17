@@ -53,17 +53,19 @@ async def test_shipped_profile_tool_count_matches_readme(profile):
 
 
 # Each persona has one surface: a profile and the built-in list of the same name
-# publish the same tools. read-only-explorer's profile references its list
-# (KIBANA_MCP_TOOLS=@read-only-explorer); dashboards-analyst's profile stays on
-# toolbox + tier because it is the default selection (D39) and raising its tier
-# to destructive is how it gains the delete tools, so its list must keep equal
-# to that surface at write. fleet-admin is the whole fleet toolbox, not a list.
+# publish the same tools. Every profile states its surface on the toolbox + tier
+# axes, the ones that say it exactly (read-only-explorer: three toolboxes at read;
+# dashboards-analyst: two at write, the default selection, D39); the list is the
+# copy for mixing with other tools. So a tool added to those toolboxes at that
+# tier joins the profile and fails this test until the list names it too (D41).
 @pytest.mark.parametrize("profile", sorted(BUILTIN_LISTS))
 async def test_builtin_list_equals_its_profile_surface(profile):
-    assert await published(profile_env(profile)) == set(BUILTIN_LISTS[profile])
+    env = profile_env(profile)
+    assert "KIBANA_MCP_TOOLS" not in env  # else the list would be compared with itself
+    assert await published(env) == set(BUILTIN_LISTS[profile])
 
 
-def test_read_only_explorer_profile_references_its_list():
+def test_read_only_explorer_profile_is_three_toolboxes_at_read():
     env = profile_env("read-only-explorer")
-    assert env["KIBANA_MCP_TOOLS"] == "@read-only-explorer"
-    assert "KIBANA_MCP_TOOLBOXES" not in env  # it would be ignored, with a log line
+    assert env["KIBANA_MCP_TOOLBOXES"] == "dashboards,platform-health,data-management"
+    assert env["KIBANA_MCP_TIER"] == "read"
