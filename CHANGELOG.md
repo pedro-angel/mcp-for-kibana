@@ -151,6 +151,14 @@ version section.
   surface gets a generic text that names no tool. The default selection keeps
   the exact text it had. See
   [Server instructions](docs/configuration.md#server-instructions).
+- **The streams ephemeral certification waits for Kibana's own Streams
+  startup.** `scripts/ephemeral_stack.sh` started the test as soon as
+  `/api/status` answered 200, about 2 s before Kibana's Streams plugin
+  finished creating the wired roots under its lock, so the first call could
+  fail with a 409 ("Could not acquire lock for applying changes") or
+  `no_shard_available_action_exception`. It now waits up to 120 s for Kibana
+  to log `Streams preconfigured successfully`, and fails naming that line if
+  it never appears.
 - **The replay tier no longer inherits an exported tool selection.** The
   harness passed the whole environment to the replayed server, so an exported
   `KIBANA_MCP_TOOLS` (or `KIBANA_MCP_TOOLBOXES`) silently replaced the surface

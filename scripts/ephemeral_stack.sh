@@ -57,6 +57,25 @@ while [ "$i" -lt 60 ]; do
 done
 [ "$code" = "200" ] || { echo "FAIL: ephemeral Kibana not ready ($KB/api/status=$code)" >&2; exit 1; }
 
+# /api/status answers 200 before the Streams plugin has finished its own startup
+# step, which creates the wired roots under the Streams lock and logs "Streams
+# preconfigured successfully" about 2s later. A test call in that window fails:
+# 409 "Could not acquire lock for applying changes", or, while the state index is
+# still being created, no_shard_available_action_exception ("Failed to load
+# current Streams state"). A 200 from GET /api/streams does not mean it is done,
+# so wait, bounded, for that log line. Fail loud on timeout — never an unbounded
+# hang in the gate.
+i=0
+until docker logs "$KIBANA_LOCAL_CONTAINER_NAME" 2>&1 | grep -q 'Streams preconfigured successfully'; do
+  i=$((i + 1))
+  if [ "$i" -ge 60 ]; then
+    echo "FAIL: ephemeral Kibana never logged 'Streams preconfigured successfully' in 120s" >&2
+    echo "      — check: docker logs $KIBANA_LOCAL_CONTAINER_NAME | grep plugins.streams" >&2
+    exit 1
+  fi
+  sleep 2
+done
+
 KEY=$(curl -fsSu "elastic:${ES_LOCAL_PASSWORD}" -X POST "$ES/_security/api_key" \
   -H 'Content-Type: application/json' -d '{"name":"streams-ephemeral"}' \
   | sed -n 's/.*"encoded":"\([^"]*\)".*/\1/p')
