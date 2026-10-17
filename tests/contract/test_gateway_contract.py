@@ -406,8 +406,9 @@ def test_connector_execute_lifecycle_live(gateway):
 
 @contextlib.contextmanager
 def _raw_kibana(space=None):
-    """A raw kibana-py client for reading what the summaries do not return
-    (a rule's params/actions): the assertion side only, never the code path."""
+    """A raw kibana-py client for reading Kibana's stored state (a rule's full
+    body) apart from the mapping under test: the assertion side only, never the
+    code path."""
     client = kibana.Kibana(os.environ["KIBANA_URL"], api_key=os.environ["KIBANA_TEST_API_KEY"])
     try:
         yield client.space(space) if space else client
@@ -1899,6 +1900,53 @@ async def test_alerting_maintenance_tools_scoped_live(gateway):
             gateway.get_connector(conn["id"])
         with pytest.raises(KibanaNotFound):
             gateway.update_alert_rule(rule["id"], "x", None, None, None, None)
+
+
+async def test_get_alert_rule_reads_params_before_and_after_a_threshold_fix_live(gateway):
+    # The read-modify-write pair through the MCP surface: get_alert_rule shows
+    # the stored params (Kibana's defaults included) and actions, update merges
+    # a threshold into them, and get_alert_rule shows the change. The result is
+    # built from named keys: no secret and no bookkeeping key (probed on 9.5.4,
+    # GET returns api_key_owner, never the rule's API key).
+    conn = gateway.create_connector(f"contract-log-{uuid.uuid4().hex[:8]}", ".server-log", None, None)
+    action = {
+        "id": conn.id, "group": "query matched", "params": {"message": "ct {{rule.name}}"},
+        "frequency": {"summary": False, "notify_when": "onActionGroupChange", "throttle": None},
+    }
+    rid = None
+    try:
+        async with Client(_alerting_tool_server()) as client:
+            rid = (await client.call_tool("create_alert_rule", {
+                "name": f"contract-esq-get-{uuid.uuid4().hex[:8]}", "rule_type_id": ".es-query",
+                "consumer": "stackAlerts", "params": {**_ESQ_PARAMS, "threshold": [10000]},
+                "tags": ["contract"],
+            })).data["id"]
+            await client.call_tool("update_alert_rule", {"rule_id": rid, "actions": [action]})
+            await client.call_tool("enable_alert_rule", {"rule_id": rid})
+            before = (await client.call_tool("get_alert_rule", {"rule_id": rid})).data
+            await client.call_tool(
+                "update_alert_rule", {"rule_id": rid, "params": {"threshold": [100]}}
+            )
+            after_call = await client.call_tool("get_alert_rule", {"rule_id": rid})
+        after = after_call.data
+        with _raw_kibana() as raw:
+            stored = raw.alerting.rule.get(id=rid).body
+        assert before["params"]["threshold"] == [10000]
+        assert before["params"]["aggType"] == "count"  # Kibana's default, read back
+        assert before["actions"] == [action] == after["actions"]
+        assert after["params"] == {**before["params"], "threshold": [100]}
+        assert after["params"] == stored["params"]
+        assert after["enabled"] is True and after["tags"] == ["contract"]
+        assert set(after) == {
+            "id", "name", "rule_type_id", "consumer", "enabled", "schedule_interval",
+            "status", "tags", "params", "actions",
+        }
+        assert stored.get("api_key_owner")  # an enabled rule has a key; it never comes back
+        assert os.environ["KIBANA_TEST_API_KEY"] not in str(after_call.content)
+    finally:
+        if rid is not None:
+            gateway.delete_alert_rule(rid)
+        gateway.delete_connector(conn.id)
 
 
 def test_case_scoped_lifecycle_live(gateway):

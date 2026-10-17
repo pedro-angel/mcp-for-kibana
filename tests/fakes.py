@@ -5,7 +5,7 @@ from dataclasses import replace
 
 from kibana_mcp.core.errors import KibanaNotFound, KibanaRejected
 from kibana_mcp.core.models import (
-    AlertingHealth, AlertRule, RuleType, ApiDeprecation, ApmAgentConfig, ApmAnnotation, ApmEnvironment,
+    AlertingHealth, AlertRule, AlertRuleDetail, RuleType, ApiDeprecation, ApmAgentConfig, ApmAnnotation, ApmEnvironment,
     ApmSourcemap, Case, Connector, ConnectorDetail, DashboardDetail, DashboardSummary, DataViewDetail,
     DataViewSummary, DetectionAlert, DetectionRule, EmailDefaults, ExceptionItem, ExceptionList,
     FleetAgent, FleetAgentPolicy, FleetAgentStatus, FleetEnrollmentKey, FleetOutput, FleetOutputHealth,
@@ -56,6 +56,10 @@ class FakeGateway:
         self.connector_configs: dict[str, dict] = {}
         self.connector_secrets: dict[str, dict] = {}
         self.rule_updates: list[dict] = []  # update_alert_rule calls, as passed
+        # A rule's params and actions, beside its summary in alert_rules (a
+        # summary stored directly has none: get_alert_rule then reads {} / []).
+        self.rule_params: dict[str, dict] = {}
+        self.rule_actions: dict[str, list] = {}
         self.cases: dict[str, Case] = {}
         self.alerting_health = AlertingHealth(
             status="ok", has_permanent_encryption_key=True, is_sufficiently_secure=True
@@ -336,10 +340,19 @@ class FakeGateway:
             rules = [r for r in rules if search.lower() in r.name.lower()]
         return rules
 
-    def get_alert_rule(self, rule_id):
+    def _rule(self, rule_id):
         if rule_id not in self.alert_rules:
             raise KibanaNotFound(f"rule '{rule_id}' not found")
         return self.alert_rules[rule_id]
+
+    def get_alert_rule(self, rule_id):
+        r = self._rule(rule_id)
+        return AlertRuleDetail(
+            id=r.id, name=r.name, rule_type_id=r.rule_type_id, consumer=r.consumer,
+            enabled=r.enabled, schedule_interval=r.schedule_interval, status=r.status,
+            tags=r.tags, params=dict(self.rule_params.get(rule_id, {})),
+            actions=tuple(dict(a) for a in self.rule_actions.get(rule_id, [])),
+        )
 
     def get_alerting_health(self):
         return self.alerting_health
@@ -352,10 +365,15 @@ class FakeGateway:
             tags=tuple(tags or []),
         )
         self.alert_rules[new_id] = rule
+        self.rule_params[new_id] = dict(params)
         return rule
 
     def update_alert_rule(self, rule_id, name, tags, schedule_interval, params, actions):
-        cur = self.get_alert_rule(rule_id)
+        cur = self._rule(rule_id)
+        if params is not None:  # merged key by key, as the adapter does
+            self.rule_params[rule_id] = {**self.rule_params.get(rule_id, {}), **params}
+        if actions is not None:
+            self.rule_actions[rule_id] = [dict(a) for a in actions]
         self.rule_updates.append({
             "rule_id": rule_id, "name": name, "tags": tags,
             "schedule_interval": schedule_interval, "params": params, "actions": actions,
@@ -370,14 +388,16 @@ class FakeGateway:
         return self.alert_rules[rule_id]
 
     def enable_alert_rule(self, rule_id):
-        self.alert_rules[rule_id] = replace(self.get_alert_rule(rule_id), enabled=True)
+        self.alert_rules[rule_id] = replace(self._rule(rule_id), enabled=True)
 
     def disable_alert_rule(self, rule_id):
-        self.alert_rules[rule_id] = replace(self.get_alert_rule(rule_id), enabled=False)
+        self.alert_rules[rule_id] = replace(self._rule(rule_id), enabled=False)
 
     def delete_alert_rule(self, rule_id):
-        self.get_alert_rule(rule_id)
+        self._rule(rule_id)
         del self.alert_rules[rule_id]
+        self.rule_params.pop(rule_id, None)
+        self.rule_actions.pop(rule_id, None)
 
     def list_rule_types(self):
         return [

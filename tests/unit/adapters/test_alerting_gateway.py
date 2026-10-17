@@ -1,6 +1,7 @@
 """Adapter unit tests for the alerting methods: raw body -> DTO + kwarg building,
 using SimpleNamespace client stubs. Raw shapes from the probe (A0b/A1/A3)."""
 
+from dataclasses import asdict
 from types import SimpleNamespace
 
 import pytest
@@ -225,6 +226,71 @@ def test_update_alert_rule_passes_caller_actions_verbatim():
     new = [{"id": "c2", "group": "query matched", "params": {"message": "x"}}]
     _rule_rmw_gw(sent).update_alert_rule("r1", None, None, None, None, new)
     assert sent["actions"] == new
+
+
+# --- get_alert_rule: the rule's params and actions, in update_alert_rule's shape ---
+# Body keys from the 9.5.4 probe of GET /api/alerting/rule/{id} (an enabled rule
+# adds scheduled_task_id, api_key_owner as a user name, api_key_created_by_user).
+
+_GET_RULE_BODY = {
+    **_FULL_RULE,
+    "created_by": "elastic", "updated_by": "elastic", "created_at": "t", "updated_at": "t",
+    "api_key_owner": "elastic", "api_key_created_by_user": False, "scheduled_task_id": "t1",
+    "muted_alert_ids": [], "running": False,
+}
+
+
+def _get_gw(body):
+    return _gw(alerting=SimpleNamespace(rule=SimpleNamespace(get=lambda id: FakeResponse(body))))
+
+
+def test_get_alert_rule_returns_params_and_actions_beside_the_summary():
+    r = _get_gw(_GET_RULE_BODY).get_alert_rule("r1")
+    assert (r.id, r.name, r.enabled, r.status, r.tags) == ("r1", "my rule", False, "ok", ("a", "b"))
+    assert r.params == {"index": ["logs-*"], "threshold": [0], "size": 100, "aggType": "count"}
+    assert r.actions == ({
+        "id": "c1", "group": "query matched", "params": {"message": "hi"},
+        "frequency": {"summary": False, "notify_when": "onActionGroupChange", "throttle": None},
+    },)  # connector_type_id (rejected by the PUT) and uuid are not returned
+
+
+def test_get_alert_rule_returns_named_keys_only():
+    body = {**_GET_RULE_BODY, "apiKey": "s3cr3t", "secrets": {"password": "s3cr3t"}}  # hostile
+    out = asdict(_get_gw(body).get_alert_rule("r1"))
+    assert set(out) == {
+        "id", "name", "rule_type_id", "consumer", "enabled", "schedule_interval", "status",
+        "tags", "params", "actions",
+    }
+    assert "s3cr3t" not in repr(out) and "api_key_owner" not in out
+
+
+def test_get_alert_rule_actions_carry_group_and_frequency_only_when_kibana_sent_them():
+    body = {**_RULE_BODY, "actions": [
+        {"id": "c1", "group": "query matched", "params": {"message": "x"},
+         "connector_type_id": ".server-log", "uuid": "u-1"},
+        {"id": "system-connector-.cases", "params": {"subAction": "run"}, "uuid": "u-2"},
+    ]}  # no "params" key on the rule: read as {}
+    r = _get_gw(body).get_alert_rule("r1")
+    assert r.params == {}
+    assert r.actions == (
+        {"id": "c1", "group": "query matched", "params": {"message": "x"}},
+        {"id": "system-connector-.cases", "params": {"subAction": "run"}},
+    )
+
+
+def test_get_alert_rule_actions_pass_back_into_update_alert_rule_unchanged():
+    # Read-modify-write through the tools: what get returns, update accepts.
+    read = _get_gw(_GET_RULE_BODY).get_alert_rule("r1")
+    sent = {}
+    _rule_rmw_gw(sent).update_alert_rule("r1", None, None, None, None, list(read.actions))
+    assert sent["actions"] == list(read.actions)
+    assert all("connector_type_id" not in a for a in sent["actions"])
+
+
+def test_list_alert_rules_stays_a_summary():
+    find = lambda **kw: FakeResponse({"data": [_GET_RULE_BODY], "total": 1})  # noqa: E731
+    rules = _gw(alerting=SimpleNamespace(rule=SimpleNamespace(find=find))).list_alert_rules(None)
+    assert not hasattr(rules[0], "params") and not hasattr(rules[0], "actions")
 
 
 _LEGACY_TIMED_RULE = {**_FULL_RULE, "notify_when": "onActiveAlert", "throttle": "5m", "actions": [{

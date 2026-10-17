@@ -37,6 +37,7 @@ from kibana_mcp.core.models import (
     AlertingHealth,
     RuleType,
     AlertRule,
+    AlertRuleDetail,
     ApiDeprecation,
     ApmAgentConfig,
     ApmAnnotation,
@@ -342,6 +343,35 @@ def _to_alert_rule(body: dict[str, Any]) -> AlertRule:
         schedule_interval=(body.get("schedule") or {}).get("interval", ""),
         status=(body.get("execution_status") or {}).get("status", ""),
         tags=tuple(body.get("tags") or []),
+    )
+
+
+def _to_rule_action(raw: dict[str, Any]) -> dict[str, object]:
+    # The keys update_alert_rule's `actions` take, so a read action can be
+    # edited and passed back. GET's connector_type_id is left out (the PUT
+    # schema rejects it), as are uuid and any other key. A system action has
+    # no group, and an action without per-action timing no frequency: those
+    # keys appear only when Kibana sent them, so a round trip adds nothing.
+    action: dict[str, object] = {"id": raw.get("id", "")}
+    if "group" in raw:
+        action["group"] = raw["group"]
+    action["params"] = dict(raw.get("params") or {})
+    if raw.get("frequency") is not None:
+        action["frequency"] = dict(raw["frequency"])
+    return action
+
+
+def _to_alert_rule_detail(body: dict[str, Any]) -> AlertRuleDetail:
+    # Built from named keys only. The GET-rule body carries no secret (probed
+    # on 9.5.4: the rule's API key is never returned, only api_key_owner);
+    # none of its bookkeeping keys reach the caller either.
+    s = _to_alert_rule(body)
+    return AlertRuleDetail(
+        id=s.id, name=s.name, rule_type_id=s.rule_type_id, consumer=s.consumer,
+        enabled=s.enabled, schedule_interval=s.schedule_interval, status=s.status,
+        tags=s.tags,
+        params=dict(body.get("params") or {}),
+        actions=tuple(_to_rule_action(a) for a in body.get("actions") or []),
     )
 
 
@@ -1151,9 +1181,9 @@ class KibanaPyGateway:
         return rules
 
     @_translate_errors
-    def get_alert_rule(self, rule_id: str) -> AlertRule:
+    def get_alert_rule(self, rule_id: str) -> AlertRuleDetail:
         with _known_id("alert rule", rule_id):
-            return _to_alert_rule(self._client.alerting.rule.get(id=rule_id).body)
+            return _to_alert_rule_detail(self._client.alerting.rule.get(id=rule_id).body)
 
     @_translate_errors
     def list_rule_types(self) -> list[RuleType]:

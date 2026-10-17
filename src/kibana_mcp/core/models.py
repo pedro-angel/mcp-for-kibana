@@ -122,6 +122,24 @@ class AlertRule:
 
 
 @dataclass(frozen=True, slots=True)
+class AlertRuleDetail:
+    # One rule as get_alert_rule returns it: the summary fields plus what
+    # update_alert_rule edits, so a merge can be read before and checked after.
+    # A rule holds no secrets (they live on connectors); an action names its
+    # connector by id only.
+    id: str
+    name: str
+    rule_type_id: str
+    consumer: str
+    enabled: bool
+    schedule_interval: str
+    status: str
+    tags: tuple[str, ...]
+    params: dict[str, object]              # as Kibana stores them, defaults included
+    actions: tuple[dict[str, object], ...]  # id, group, params, frequency: update_alert_rule's shape
+
+
+@dataclass(frozen=True, slots=True)
 class Connector:
     id: str
     name: str

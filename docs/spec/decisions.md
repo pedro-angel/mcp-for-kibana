@@ -1,6 +1,6 @@
 # Decisions ledger
 
-Status: Draft v1.9 (2026-10-17) — regeneration corpus. Consumes
+Status: Draft v1.10 (2026-10-17) — regeneration corpus. Consumes
 [brief.md](brief.md); read alongside [design.md](design.md).
 
 Each entry is a decision a rewrite must not silently re-litigate: what was
@@ -192,6 +192,30 @@ this ledger stands without them.
   the library item would not reach the dashboard, which is what reuse means).
   Kibana 9.4.7 was not probed by hand; the contract tier covers it in CI
   (D30). Contract: [dashboards](toolboxes/dashboards.md).
+- **D40 (2026-10-17, probe on 9.5.4)** — `get_alert_rule` returns the rule's
+  `params` and `actions`; it is the read half of `update_alert_rule` (D35),
+  as `get_dashboard` is `update_panel`'s. Observed: GET
+  `/api/alerting/rule/{id}` carries the `params` Kibana stores (with the
+  defaults it adds, e.g. `aggType`, `groupBy`, `excludeHitsFromPreviousRun`
+  on `.es-query`) and `actions` (`group`, `id`, `params`,
+  `connector_type_id`, `uuid`, and `frequency` when set), plus bookkeeping
+  (`created_by`, `api_key_owner`, `api_key_created_by_user`, `revision`,
+  `running`, ...) and no secret: the rule's API key is never in the body,
+  enabled or not, and connector secrets are not on rules; the `_find` rows
+  have the same keys. kibana-py 0.6.0 returns the raw body, so no client
+  change is needed. Decision: the result adds `params` verbatim and each
+  action in the shape `update_alert_rule` takes (`id`, `group`, `params`,
+  `frequency`, the last two only when sent), built from named keys —
+  `connector_type_id` is dropped because the update rejects it, `uuid` because
+  the tool does not take it. `list_alert_rules` and `update_alert_rule` keep
+  the summary. Why: with params invisible, the first counted Claude block's
+  `fix_rule_threshold` answers all said the model could not see the rule's
+  params (`scripts/experiment/runs/claude-e2e/counted-2026-10-17/`
+  transcripts). Not done here, left open: returning the detail from
+  `update_alert_rule` as well (as `update_connector` returns `get_connector`'s
+  shape); the change keeps to the read tool, and the next counted block shows
+  whether models read the rule back after the edit. Contract:
+  [alerting](toolboxes/alerting.md).
 
 ## Reliability and models (measured)
 

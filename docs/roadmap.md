@@ -50,13 +50,13 @@ As of this page:
   cloud session — no longer holds everywhere; a CI runner would still need a
   credential. Until the owner decides, `e2e_green` stays `n/a` in every gate
   config and the Claude tier runs on demand.
-- **Observed in the Claude tier (2026-10-17):** no alerting tool returns a
-  rule's `params`, so after `update_alert_rule` a model cannot read the new
-  threshold back; in the `fix_rule_threshold` runs Haiku fixed the rule but
-  most final answers say it could not confirm the value
-  (`scripts/experiment/runs/claude-e2e/counted-2026-10-17/`). Candidate: let
-  `get_alert_rule` (or the update's result) carry `params`. Not filed as
-  work yet.
+- **Observed in the Claude tier (2026-10-17), now addressed:** no alerting
+  tool returned a rule's `params`, so after `update_alert_rule` a model could
+  not read the new threshold back; in the `fix_rule_threshold` runs Haiku
+  fixed the rule but its final answers say it could not see the params
+  (`scripts/experiment/runs/claude-e2e/counted-2026-10-17/`). `get_alert_rule`
+  now returns `params` and `actions` (D40); `update_alert_rule`'s result
+  stays the summary.
 
 **Buildable now (Basic license).** The *write-tier* campaign on the
 existing read toolboxes is done, but a 2026-07-16 catalog audit found unbuilt

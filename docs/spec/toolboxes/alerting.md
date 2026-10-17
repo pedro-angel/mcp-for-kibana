@@ -1,6 +1,6 @@
 # alerting — behavior contract
 
-Status: Draft v1.2 (2026-10-12) — regeneration corpus, reconciled to shipped code
+Status: Draft v1.3 (2026-10-17) — regeneration corpus, reconciled to shipped code
 Surface reference: docs/tools.md#alerting-toolbox · Enforcement: named per section below
 
 ## Purpose & persona
@@ -56,13 +56,29 @@ docs/tools.md#alerting-toolbox.
   validation) and requires `name`. `update_alert_rule` and `update_connector`
   therefore fetch the object, re-send every writable field, and overlay only
   the arguments given. `params` (rule) and `config` (connector) merge key by
-  key, because the caller often cannot see the rest (`get_alert_rule` returns
-  a summary without params); `tags` and `actions` replace the whole list, so
+  key, so the caller passes only what changes (`get_alert_rule` and
+  `get_connector` show the rest); `tags` and `actions` replace the whole list, so
   `[]` clears. The rule's `throttle`, `notify_when`, `alert_delay`, `flapping`
   and `artifacts` are re-sent when set — except `notify_when` and `throttle`
   when the caller's `actions` carry a `frequency` (see the caveat below). GET echoes each action's
   `connector_type_id`, which the PUT schema rejects, so it is stripped; the
   action's `uuid` is kept and Kibana preserves it.
+- **`get_alert_rule` is the read half of `update_alert_rule`.** It returns
+  the summary fields plus the rule's `params` as Kibana stores them (defaults
+  it filled in included) and its `actions`, so a caller reads the value
+  before merging into it and reads it again to confirm the edit;
+  `update_alert_rule`'s own result stays the summary, and the two
+  descriptions point to each other. Each action carries the keys
+  `update_alert_rule`'s `actions` take — `id` (the connector id), `group`,
+  `params`, and `frequency` — with `group` and `frequency` present only when
+  Kibana sent them (a system action has no group), and without GET's
+  `connector_type_id` (the update rejects it) or `uuid`, so a read action
+  passes back unchanged. The result is built from named keys: a rule holds no
+  secret (secrets live on connectors), and the GET body (probed on 9.5.4)
+  carries `api_key_owner` and `api_key_created_by_user` but never the rule's
+  API key; neither they nor any other bookkeeping key are returned.
+  `list_alert_rules` stays a summary per row (its description says so and
+  names `get_alert_rule`).
 - **`update_alert_rule` never changes `enabled`.** It has no `enabled`
   argument (Kibana's update schema rejects the key), and an enabled rule is
   still enabled afterwards (probed); `enable_alert_rule` /
@@ -164,6 +180,10 @@ docs/tools.md#alerting-toolbox.
   on Kibana 9.5.5: models pass a rule's name or an empty string as its id.
   `get_connector`/`update_connector` answer the same way for `connector_id`,
   naming `create_connector or list_connectors` and `list_connectors`.
+- MUST return `params` and `actions` from `get_alert_rule`, each action in
+  `update_alert_rule`'s `actions` shape (no `connector_type_id`), built from
+  named keys only; MUST keep `list_alert_rules` rows and `update_alert_rule`'s
+  result the summary.
 - MUST make `update_alert_rule` and `update_connector` read-modify-write:
   an argument not passed leaves that field as it was.
 - MUST NOT change a rule's `enabled` state from `update_alert_rule`.
@@ -284,6 +304,18 @@ docs/tools.md#alerting-toolbox.
   `update_*` tools write-tier; `update_alert_rule` has no `enabled`
   argument; the at-least-one-field guards run before the factory; no secret
   in any result.
+- `tests/unit/adapters/test_alerting_gateway.py` — `get_alert_rule`'s
+  params and actions (no `connector_type_id` or `uuid`; `group` and
+  `frequency` only when sent), named keys only against a hostile body, a read
+  action passing back into `update_alert_rule` unchanged, and
+  `list_alert_rules` staying a summary; `tests/unit/toolboxes/test_alerting.py`
+  — the read before and after an update through the tools, and the
+  descriptions naming each other.
+- `tests/contract/test_gateway_contract.py::test_get_alert_rule_reads_params_before_and_after_a_threshold_fix_live`
+  — live, through the MCP tools: create a rule, read its params (Kibana's
+  defaults included) and actions, merge a new threshold, read it again and
+  match Kibana's stored params; the result keeps to the named keys and an
+  enabled rule's API key never appears.
 - `tests/contract/test_gateway_contract.py` — live:
   `test_update_alert_rule_preserves_what_it_was_not_given_live` (actions keep
   their uuid, tags and params survive a params-only edit, an enabled rule

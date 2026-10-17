@@ -152,7 +152,8 @@ class _Task:
             self.root.get_alert_rule(rule_id)
         except KibanaNotFound:
             return None
-        # The gateway's AlertRule summary carries no params; the scorer needs them.
+        # Scored from Kibana's raw body, not from the get_alert_rule mapping the
+        # model reads: the scorer must not depend on the code under test.
         return self.root._client.alerting.rule.get(id=rule_id).body
 
     def score(self):

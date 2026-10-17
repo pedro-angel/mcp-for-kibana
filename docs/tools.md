@@ -608,7 +608,7 @@ Alerting rules and action connectors.
 | Tool | Tier | Description |
 |---|---|---|
 | `list_alert_rules` | read | List alerting rules (optionally filtered by a name search). |
-| `get_alert_rule` | read | Get one alerting rule's summary by id. |
+| `get_alert_rule` | read | Get one rule by id: the summary fields plus its full `params` and its `actions` (`id` = connector id, `group`, `params`, `frequency` when set). Read it before and after `update_alert_rule`. |
 | `get_alerting_health` | read | Kibana alerting framework health status. |
 | `list_connectors` | read | List configured action connectors (id, name, connector_type_id). |
 | `list_rule_types` | read | List rule types: `id` (the `rule_type_id`), the `consumers` the caller may create it under, licence status. No `params` schema (Kibana's API has none). |
@@ -636,7 +636,10 @@ Notes:
   object, re-send every field, and overlay only the arguments given. `params`
   and `config` merge key by key, so pass only the keys that change
   (`params={"threshold": [10]}`); `tags` and `actions` replace the whole list
-  (`[]` clears it).
+  (`[]` clears it). `get_alert_rule` shows a rule's current `params` and
+  `actions` before the edit and confirms them after it (`update_alert_rule`
+  returns the summary only); its actions are in the shape `actions` takes,
+  so one can be read, changed and passed back.
 - **`update_alert_rule` does not start or stop a rule.** `enabled` is not an
   argument (Kibana rejects it on update); an enabled rule stays enabled. Use
   `enable_alert_rule` / `disable_alert_rule`. `rule_type_id` and `consumer`
@@ -673,10 +676,24 @@ Returns:
  "is_preconfigured": false, "is_system_action": false, "is_deprecated": false,
  "is_missing_secrets": false, "is_connector_type_deprecated": false}
 
-// update_alert_rule  (the same summary get_alert_rule returns)
+// update_alert_rule  (the summary each list_alert_rules row carries)
 {"id": "8b1c...", "name": "Flights over threshold", "rule_type_id": ".es-query",
  "consumer": "stackAlerts", "enabled": true, "schedule_interval": "5m",
  "status": "ok", "tags": ["flights"]}
+
+// get_alert_rule  (the summary + params as Kibana stores them + actions)
+{"id": "8b1c...", "name": "Flights over threshold", "rule_type_id": ".es-query",
+ "consumer": "stackAlerts", "enabled": true, "schedule_interval": "5m",
+ "status": "ok", "tags": ["flights"],
+ "params": {"searchType": "esQuery", "esQuery": "{\"query\":{\"match_all\":{}}}",
+            "index": ["kibana_sample_data_flights"], "timeField": "timestamp",
+            "threshold": [100], "thresholdComparator": ">", "timeWindowSize": 5,
+            "timeWindowUnit": "m", "size": 100, "aggType": "count", "groupBy": "all",
+            "excludeHitsFromPreviousRun": true},
+ "actions": [{"id": "032a5771-...", "group": "query matched",
+              "params": {"message": "{{rule.name}} matched"},
+              "frequency": {"summary": false, "notify_when": "onActionGroupChange",
+                            "throttle": null}}]}
 ```
 
 ## cases toolbox

@@ -7,6 +7,7 @@ from kibana_mcp.core.models import (
     AlertingHealth,
     RuleType,
     AlertRule,
+    AlertRuleDetail,
     ApmAgentConfig,
     ApmAnnotation,
     ApmEnvironment,
@@ -124,7 +125,7 @@ class KibanaGateway(Protocol):
 
     def list_alert_rules(self, search: str | None) -> list[AlertRule]: ...
 
-    def get_alert_rule(self, rule_id: str) -> AlertRule: ...
+    def get_alert_rule(self, rule_id: str) -> AlertRuleDetail: ...
 
     def get_alerting_health(self) -> AlertingHealth: ...
 

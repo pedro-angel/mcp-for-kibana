@@ -74,6 +74,21 @@ version section.
 
 ### Changed
 
+- **`get_alert_rule` now returns the rule's `params` and `actions`** beside
+  its summary fields, so an agent can read a rule before `update_alert_rule`
+  merges into its params and read it again to confirm the edit. `params` are
+  what Kibana stores, defaults included; each action is `id` (the connector
+  id), `group`, `params` and `frequency` when set — the shape
+  `update_alert_rule` takes, so an action can be read, edited and passed back
+  (Kibana's `connector_type_id`, which the update rejects, and `uuid` are left
+  out). Nothing secret comes back: a rule holds none (secrets live on
+  connectors), and the GET response carries no API key, only
+  `api_key_owner`, which is not returned either (probed on 9.5.4).
+  `list_alert_rules` and `update_alert_rule` still return the summary; the two
+  descriptions point to `get_alert_rule`. Decision D40. Why: in the first
+  counted Claude block every `fix_rule_threshold` final answer said the
+  model could not see the rule's params
+  (`scripts/experiment/runs/claude-e2e/counted-2026-10-17/`).
 - **`make test-e2e` is now the live-model tier driven by Claude; the LM Studio
   tests moved to `make test-e2e-local`, unchanged.** `make test-e2e` runs
   headless Claude Code (`claude -p`) with this server's tools and nothing

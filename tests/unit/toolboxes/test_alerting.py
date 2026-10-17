@@ -152,6 +152,33 @@ async def test_update_alert_rule_changes_only_passed_fields(mcp, gateway):
     }]
 
 
+async def test_get_alert_rule_reads_params_and_actions_before_and_after_an_update(mcp):
+    params = {"index": ["logs-*"], "threshold": [10000], "thresholdComparator": ">"}
+    action = {"id": "c1", "group": "query matched", "params": {"message": "hi"}}
+    async with Client(mcp) as client:
+        rid = (await client.call_tool("create_alert_rule", {**RULE, "params": params})).data["id"]
+        before = await client.call_tool("get_alert_rule", {"rule_id": rid})
+        await client.call_tool("update_alert_rule", {
+            "rule_id": rid, "params": {"threshold": [100]}, "actions": [action],
+        })
+        after = await client.call_tool("get_alert_rule", {"rule_id": rid, "space": "sales"})
+        listed = (await client.call_tool("list_alert_rules", {})).structured_content["result"]
+    assert before.data["params"] == params and before.data["actions"] == []
+    assert after.data["params"] == {**params, "threshold": [100]}  # merged, the rest kept
+    assert after.data["actions"] == [action]
+    assert after.data["name"] == "r" and after.data["space"] == "sales"
+    assert "params" not in listed[0] and "actions" not in listed[0]  # the list stays concise
+
+
+async def test_get_and_update_alert_rule_descriptions_point_to_each_other(mcp):
+    async with Client(mcp) as client:
+        tools = {t.name: t.description for t in await client.list_tools()}
+    assert "update_alert_rule" in tools["get_alert_rule"]
+    assert "`params`" in tools["get_alert_rule"] and "`actions`" in tools["get_alert_rule"]
+    assert "get_alert_rule" in tools["update_alert_rule"]
+    assert "get_alert_rule" in tools["list_alert_rules"]
+
+
 async def test_update_alert_rule_has_no_enabled_parameter(mcp):
     async with Client(mcp) as client:
         tools = {t.name: t for t in await client.list_tools()}

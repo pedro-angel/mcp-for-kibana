@@ -47,7 +47,8 @@ class AlertingToolbox:
         ) -> list[dict[str, Any]]:
             """List alerting rules (optionally filtered by a name search). Returns
             concise summaries (id, name, rule_type_id, consumer, enabled, schedule,
-            status, tags) — not the full rule params.
+            status, tags) — not the rule's params or actions (get_alert_rule
+            returns those).
 
             `space` targets a Kibana space by id (default: the default space)."""
             with gateway_errors(), deps.gateway_factory(space) as gw:
@@ -58,7 +59,13 @@ class AlertingToolbox:
             rule_id: Annotated[str, Field(min_length=1)],
             space: Annotated[str, Field(pattern=SPACE_ID_PATTERN)] | None = None,
         ) -> dict[str, Any]:
-            """Get one alerting rule's summary by id.
+            """Get one alerting rule by id: the summary fields list_alert_rules
+            returns plus the rule's full `params` (as Kibana stores them,
+            defaults included) and its `actions`, each {"id": <connector id>,
+            "group", "params", "frequency" (when set)} — the shapes
+            update_alert_rule takes. Read a rule here before update_alert_rule
+            merges into its params, and again afterwards to confirm the change.
+            Rules hold no secrets (connectors do; see get_connector).
 
             `space` targets a Kibana space by id (default: the default space)."""
             with gateway_errors(), deps.gateway_factory(space) as gw:
@@ -160,7 +167,9 @@ class AlertingToolbox:
             """Edit an existing alerting rule in place, by id. Only the fields
             you pass change; everything else is kept (read-modify-write).
             `params` is MERGED key-by-key into the rule's current params, so pass
-            only the keys you change (e.g. {"threshold": [10]}). `tags` and
+            only the keys you change (e.g. {"threshold": [10]}); get_alert_rule
+            shows the current params and actions before the edit, and confirms
+            them after it (this tool returns the summary only). `tags` and
             `actions` replace the whole list (pass [] to clear). An action is
             {"id": <connector id>, "group": <action group, e.g. "query matched">,
              "params": {...type-specific, e.g. {"message": "..."}},
