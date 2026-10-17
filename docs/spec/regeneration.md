@@ -58,9 +58,11 @@ trust the observation, and **reconcile the contract in the same change**
 - Fast gates: `make check`. Full certification: `KIBANA_MCP_DOD_CYCLE_STACK=1
   make dod` → must print `VERDICT: GO`. Criteria in `dod.config`; the gate,
   not the author, certifies completion.
-- Live-model tier: LM Studio setup in [e2e-setup.md](../e2e-setup.md);
-  `LMSTUDIO_MODEL` is required and no model is privileged
-  ([decisions.md](decisions.md) D33).
+- Live-model tiers ([e2e-setup.md](../e2e-setup.md)): `make test-e2e` drives
+  Claude via `claude -p` with only this server's tools through the
+  pre-registered tasks, model `CLAUDE_E2E_MODEL` (default `haiku`, D38);
+  `make test-e2e-local` drives LM Studio, where `LMSTUDIO_MODEL` is required
+  and no model is privileged (D33).
 
 ## Rules of engagement
 

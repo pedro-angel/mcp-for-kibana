@@ -1,6 +1,6 @@
 # Decisions ledger
 
-Status: Draft v1.8 (2026-10-12) — regeneration corpus. Consumes
+Status: Draft v1.9 (2026-10-17) — regeneration corpus. Consumes
 [brief.md](brief.md); read alongside [design.md](design.md).
 
 Each entry is a decision a rewrite must not silently re-litigate: what was
@@ -233,7 +233,9 @@ this ledger stands without them.
   space-dashboard sequence) has a hand-chosen call ORDER over real
   recorded wire bytes — its order carries no evidence about model behavior
   and each transcript's `recorded` block says which kind it is.
-- **D31 (2026-10-04)** — The Definition of Done needs no LLM: `e2e_green` is
+- **D31 (2026-10-04)** — *The on-demand rule below now runs `make test-e2e`,
+  the Claude tier, superseded by D38; the gate decision stands.* The
+  Definition of Done needs no LLM: `e2e_green` is
   `n/a` in `dod.config` as in every `.github/dod` config. Why: the gate must
   reach GO wherever the project is worked on — CI runners and Claude Code
   cloud sessions have no LM Studio runtime — and a live-model pass certifies
@@ -270,6 +272,45 @@ this ledger stands without them.
   on 2026-08-19 kept a default role because it had once been named, not
   because a later measurement chose it again. D18's numbers remain evidence
   about the models it measured; which model to drive is the caller's choice.
+- **D38 (2026-10-16, owner)** — The live-model tier is driven by Claude.
+  `make test-e2e` runs headless Claude Code (`claude -p`) with this server's
+  tools and nothing else — `--tools ""` (no shell, files or web),
+  `--strict-mcp-config`, `--permission-mode dontAsk` with the allow list
+  `mcp__mcp-for-kibana` — through four tasks, five runs each, pre-registered in
+  `scripts/experiment/CLAUDE_E2E.md` before any counted run: the three
+  LM Studio tasks with their prompts and state-based scoring
+  (`tests/_live_tasks.py`, shared by both tiers), and `fix_rule_threshold`,
+  where the harness seeds a rule with a wrong threshold and the model must fix
+  it in place with the update tools (D35). The model is a parameter,
+  `CLAUDE_E2E_MODEL`, defaulting to `haiku` — the alias, not a dated id, so the
+  default follows the current Haiku instead of keeping a model because it was
+  once named (D33's concern), and every run record names the model the CLI
+  reports. The Kibana API key reaches only the MCP server's environment (its
+  entry in a mode-0600 config file); the model's environment drops every
+  `KIBANA*` variable, and each transcript is searched for the key, a hit being
+  redacted on disk and failing the run. The LM Studio tests move unchanged to
+  `make test-e2e-local`, for testing small local models; D33 governs that tier
+  (`LMSTUDIO_MODEL` required, no default). Why: a Claude run needs only a
+  Claude sign-in, so it runs in a cloud session where LM Studio cannot, at
+  under a cent per run in the four dry runs
+  (`scripts/experiment/runs/claude-e2e/dryrun/`).
+  Owner's answer to Q13: a Claude run is enough live-model evidence for merging
+  PR #25. **Supersedes D31 in part**: D31's on-demand rule — run the live-model
+  tests when a change touches tool names, descriptions or schemas — now means
+  `make test-e2e` (Claude), not the LM Studio tests. D31's gate decision stands:
+  `e2e_green` stays `n/a` in every DoD config; whether the gate should require
+  the Claude run is open (Q16, [roadmap](../roadmap.md)). Off by default and
+  outside every gate.
+- **D39 (2026-10-16, owner)** — The default surface may exceed the ~20-tool
+  heuristic. The default selection (`dashboards,data-management` at `write`)
+  grew from 16 tools to 21 with the update and library tools of D36–D37, past
+  the ~20 tools that brief Goal 1 and D2 name as a working heuristic. Accepted
+  (owner's answer to Q14). Why: the heuristic is recorded, not measured (D2);
+  each added tool replaces a destructive delete-and-recreate that the default
+  tier hides; and an operator who wants fewer tools lists them with
+  `KIBANA_MCP_TOOLS` (D34). Evidence: the count is checked against a live
+  listing by `tests/unit/test_profiles.py` (the `dashboards-analyst` profile,
+  which is the default selection at `write`, lists 21).
 
 ## Scope and licensing (probed on Basic)
 
@@ -343,6 +384,11 @@ this ledger stands without them.
 
 - ~~D18's reference-model status (`gemma-4-12b-qat` as the `LMSTUDIO_MODEL`
   fallback)~~ — superseded by D33; D18's measurements stand.
+
+- ~~D31's on-demand live-model rule as the LM Studio tests (`make test-e2e` =
+  the three LM Studio tests)~~ — superseded by D38: `make test-e2e` is the
+  Claude tier and the LM Studio tests are `make test-e2e-local`. D31's
+  `e2e_green = n/a` stands.
 
 - ~~D29 (2026-09-21): track the newest 9.4 patch and defer Kibana 9.5~~ —
   deferred 9.5 until kibana-py released its supported-set module, and on the

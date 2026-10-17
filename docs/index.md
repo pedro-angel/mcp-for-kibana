@@ -92,7 +92,7 @@ payload and cleaned up — three consecutive runs (16s/9s/7s wall). See
 | Set every environment variable | [Configuration](configuration.md) |
 | Run it in Docker / over HTTP | [Deployment](deployment.md) |
 | Understand the hexagonal layers and VizSpec→Lens translation | [Architecture](architecture.md) |
-| Run the test matrix, including the LM Studio E2E gate | [Testing & E2E](e2e-setup.md) |
+| Run the test matrix, including the live-model tiers (Claude, LM Studio) | [Testing & E2E](e2e-setup.md) |
 | Understand why it is built this way | [Architecture](architecture.md) |
 
 ## Quick start

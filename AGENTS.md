@@ -23,15 +23,20 @@ make setup        # uv sync + git hooks (run once)
 make check        # content gates: hooks + lint + audit + sast + unit + docs
 scripts/stack.sh up && scripts/stack.sh seed   # live dev stack (seed after EVERY start)
 make test-contract / test-e2e-replay           # live tiers
+make test-e2e                                  # live model: Claude via claude -p (needs sign-in)
+make test-e2e-local                            # live model: LM Studio (small local models)
 KIBANA_MCP_DOD_CYCLE_STACK=1 make dod          # full Definition-of-Done → VERDICT: GO
 ```
 
-`make dod` needs no LLM: the live-model tier (`e2e_green`) is `n/a` in
+`make dod` needs no LLM: the live-model criterion (`e2e_green`) is `n/a` in
 `dod.config` as in CI's configs (D31), so the gate can reach GO on CI and in a
-cloud session. The live-model tests run on demand with `make test-e2e` — a
-local LM Studio runtime with a tool-use model loaded and named in
-`LMSTUDIO_MODEL` ([docs/e2e-setup.md](docs/e2e-setup.md)) — when a change touches tool names,
-descriptions or schemas.
+cloud session. The live-model tier runs on demand with `make test-e2e` when a
+change touches tool names, descriptions or schemas: headless Claude Code
+(`claude -p`) with only this server's tools runs the pre-registered tasks
+(`scripts/experiment/CLAUDE_E2E.md`). It needs a Claude sign-in, no API key;
+the model is `CLAUDE_E2E_MODEL`, default `haiku` (D38). `make test-e2e-local`
+runs the LM Studio tests for small local models — a tool-use model loaded and
+named in `LMSTUDIO_MODEL` ([docs/e2e-setup.md](docs/e2e-setup.md)).
 
 ## House rules
 

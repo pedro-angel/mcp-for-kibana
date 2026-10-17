@@ -72,6 +72,28 @@ version section.
   lists 21 tools, `read-only-explorer` 11, and the local study's server
   entry 33; `local_study.json` and its runbook follow.
 
+### Changed
+
+- **`make test-e2e` is now the live-model tier driven by Claude; the LM Studio
+  tests moved to `make test-e2e-local`, unchanged.** `make test-e2e` runs
+  headless Claude Code (`claude -p`) with this server's tools and nothing
+  else — no shell, files or web; `--strict-mcp-config`; `--permission-mode
+  dontAsk` with only `mcp__mcp-for-kibana` allowed — through four tasks, five
+  runs each: the three LM Studio tasks, whose prompts and scoring now live in
+  one shared module, and `fix_rule_threshold`, where a seeded alert rule has a
+  wrong threshold and the model must fix it in place. Scoring reads Kibana's
+  state, never the model's text. The model is `CLAUDE_E2E_MODEL`, default
+  `haiku`; `CLAUDE_E2E_RUNS`, `CLAUDE_E2E_BUDGET_USD` (default $5 per session)
+  and `CLAUDE_E2E_OUT` set the rest. The Kibana API key reaches only the MCP
+  server's environment, and every transcript is searched for it: a hit is
+  redacted on disk and fails the run. Each run commits its prompt, transcript
+  and record; `scripts/experiment/claude_e2e_report.py` summarises a block.
+  Tasks, criteria and N are pre-registered in
+  `scripts/experiment/CLAUDE_E2E.md`. Needs a Claude sign-in, no API key; off
+  by default and outside the DoD gate (`e2e_green` stays `n/a`). Decisions D38
+  (supersedes D31's on-demand rule in part) and D39 (the default `write`
+  surface of 21 tools, past the ~20-tool heuristic, is accepted).
+
 ### Fixed
 
 - **The replay tier no longer inherits an exported tool selection.** The

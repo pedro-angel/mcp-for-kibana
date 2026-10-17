@@ -35,7 +35,8 @@ from tests._alerting_space_ladder import (
     score_alerting_space_run,
     sweep_default_space_marker_rules,
 )
-from tests._space_ladder import FLIGHTS_INDEX, append_jsonl
+from tests._live_tasks import alerting_space_prompt
+from tests._space_ladder import append_jsonl
 from tests._stack_env import lmstudio_model
 
 pytestmark = pytest.mark.e2e
@@ -80,17 +81,9 @@ def _git_sha() -> str:
 def test_model_creates_alert_rule_in_its_own_space(lmstudio, root_gateway):
     marker = f"E2E {uuid.uuid4().hex[:8]}"
     space_id = f"e2e-{_model_slug(lmstudio['model'])}-{uuid.uuid4().hex[:8]}"
-    # The pre-registered prompt (frozen in the runbook before any run) with
-    # the local arm's "Using the kibana tools" opener. The chain, the rule
-    # type, the consumer, the index, and the time field are stated
-    # deliberately: the gate measures execution, not derivation.
-    prompt = (
-        f"Using the kibana tools, create a new Kibana space with id '{space_id}'. "
-        f"Inside that space, create an '.es-query' alert rule named "
-        f"'{marker} flight watch' with consumer 'stackAlerts' that fires when "
-        f"more than 0 documents match in the index '{FLIGHTS_INDEX}' (time "
-        f"field 'timestamp') over the last 5 minutes, then enable that rule."
-    )
+    # The pre-registered prompt (frozen in the runbook before any run), shared
+    # with the Claude tier through tests/_live_tasks.py.
+    prompt = alerting_space_prompt(space_id, marker)
     started = time.monotonic()
     ts_start = datetime.now(UTC).isoformat()
     record = {

@@ -145,6 +145,7 @@ mode enables host/origin protection on loopback binds.
 - Layering and purity: import-linter contracts (`pyproject.toml`), CI job.
 - Invariants: `tests/unit/` (fakes; auth, tiers, space threading, guards),
   `tests/contract/` (live Kibana), `tests/e2e_replay/` (recorded turns,
-  guidance strings, schema-rejection pins), `tests/e2e/` (live local model),
+  guidance strings, schema-rejection pins), `tests/e2e/` (live models:
+  Claude via `claude -p`, and a local model in LM Studio),
   `tests/ephemeral/` (destructive paths on throwaway stacks).
 - The whole: `make dod` → `VERDICT: GO` (see [brief.md](brief.md)).

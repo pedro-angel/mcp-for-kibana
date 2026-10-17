@@ -218,18 +218,20 @@ CI discipline comes from
 
 ### Test matrix
 
-Six tiers, from fastest/most-isolated to slowest/most-real:
+Seven tiers, from fastest/most-isolated to slowest/most-real:
 
 ```bash
 make test              # unit — fakes only, no network; the default selection
 make test-contract     # starts + seeds the docker Kibana stack itself, then -m contract
 make test-e2e-replay   # replays a RECORDED model turn through a real MCP client
-make test-e2e          # a REAL local model in LM Studio — see docs/e2e-setup.md
+make test-e2e          # REAL Claude (claude -p, default haiku) with only this server's tools
+make test-e2e-local    # a REAL local model in LM Studio — see docs/e2e-setup.md
 make streams-ephemeral # destructive streams path on its own throwaway stack
 make fleet-ephemeral   # agent lifecycle on a throwaway 2-agent fleet stack
 ```
 
-Everything except `test-e2e` runs in CI. The two ephemeral tiers own their
+Everything except the two live-model tiers (`test-e2e`, `test-e2e-local`)
+runs in CI. The two ephemeral tiers own their
 stack's whole lifecycle (up → test → down) because their paths are destructive:
 they delete every wired stream, or mutate real enrolled agents, so they cannot
 share the dev stack. They also cannot run *beside* it — see
@@ -238,11 +240,11 @@ share the dev stack. They also cannot run *beside* it — see
 **On the two e2e tiers.** They are not redundant, and one is not a substitute
 for the other:
 
-| | `test-e2e` | `test-e2e-replay` |
+| | `test-e2e` / `test-e2e-local` | `test-e2e-replay` |
 |---|---|---|
-| Who picks the tool calls | a real local LLM | a recorded transcript |
+| Who picks the tool calls | a real LLM (Claude / a local model) | a recorded transcript |
 | Server, MCP transport, Kibana, ES | real | real |
-| Runs in CI | no — needs a GPU + loaded model | **yes** |
+| Runs in CI | no — needs a Claude sign-in / a GPU + loaded model | **yes** |
 | Proves a model can *reason* to the calls | **yes** | no |
 | Proves the model-facing surface still works | yes | **yes, per-PR** |
 
@@ -256,7 +258,7 @@ your data's field names, and degrading `"field 'price' does not exist … did yo
 mean 'Carrier'?"` to a bare 400 breaks self-correction for every LLM using this
 server. Four mutation tests confirm the tier fails when each guard is broken.
 
-(Raw commands underneath: `uv run pytest [-m contract|-m e2e|-m e2e_replay]` —
+(Raw commands underneath: `uv run pytest [-m contract|-m e2e_claude|-m e2e|-m e2e_replay]` —
 the suites load `elastic-start-local/.env.seed` + `.env.local` in-process; the
 Makefile is a thin facade.)
 
@@ -292,8 +294,10 @@ KIBANA_MCP_DOD_CYCLE_STACK=1 make dod
 
 `e2e_green` — a real model choosing the calls — is `n/a` in `dod.config` as in
 every `.github/dod` tier (D31): the DoD reaches GO without an LLM, and a pass
-would certify only the model that ran. Run the live-model tests on demand with
-`make test-e2e` when a change touches tool names, descriptions or schemas.
+would certify only the model that ran. Run the live-model tier on demand with
+`make test-e2e` (Claude via `claude -p`, D38) when a change touches tool names,
+descriptions or schemas; `make test-e2e-local` runs the same tasks' LM Studio
+tests on a small local model.
 
 ## License
 

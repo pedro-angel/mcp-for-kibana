@@ -29,6 +29,7 @@ import pytest
 
 from kibana_mcp.adapters.kibana.gateway import KibanaPyGateway
 from tests._dashboard_assertion import assert_model_built_dashboard
+from tests._live_tasks import flights_dashboard_prompt
 from tests._stack_env import lmstudio_model
 
 pytestmark = pytest.mark.e2e
@@ -60,11 +61,8 @@ def gateway():
 
 def test_model_creates_dashboard_from_description(lmstudio, gateway):
     marker = f"E2E {uuid.uuid4().hex[:8]}"
-    prompt = (
-        f"Using the kibana tools, create a dashboard titled '{marker} flight prices' "
-        "with a bar chart of the average ticket price by carrier over the last 7 days, "
-        "using the flights sample data. Make exactly one create-dashboard call, then stop."
-    )
+    # The task text lives in tests/_live_tasks.py, shared with the Claude tier.
+    prompt = flights_dashboard_prompt(marker)
     try:
         headers = {}
         if lmstudio["token"]:

@@ -21,10 +21,11 @@ under *Open work*; everything else still open is gated on infrastructure this
 project does not run, or on a decision that has not been taken. Subscription-gated
 work is not open work at all — it is out of scope (below).
 
-Six test tiers back that claim: unit (fakes), contract (live stack), e2e-replay
-(a recorded model turn through a real MCP client), e2e (a real local model),
+Seven test tiers back that claim: unit (fakes), contract (live stack), e2e-replay
+(a recorded model turn through a real MCP client), two live-model tiers — e2e
+(Claude via `claude -p`, D38) and e2e-local (a local model in LM Studio) —
 plus two ephemeral tiers that stand up throwaway stacks for the destructive
-paths. Everything except the live-model tier runs in CI.
+paths. Everything except the live-model tiers runs in CI.
 
 The command that certifies completion is the Definition-of-Done gate — `make dod`,
 criteria declared in `dod.config`. Nothing is "done" because its author says so.
@@ -42,6 +43,13 @@ release claim, `make help` for the rest.
 ## Open work
 
 As of this page:
+
+- **Open decision (Q16, filed 2026-10-16): should the DoD gate require the
+  Claude live-model run?** `make test-e2e` (D38) needs only a Claude sign-in,
+  so the reason D31 gave for `e2e_green = n/a` — no LLM runtime on CI or in a
+  cloud session — no longer holds everywhere; a CI runner would still need a
+  credential. Until the owner decides, `e2e_green` stays `n/a` in every gate
+  config and the Claude tier runs on demand.
 
 **Buildable now (Basic license).** The *write-tier* campaign on the
 existing read toolboxes is done, but a 2026-07-16 catalog audit found unbuilt
@@ -217,3 +225,4 @@ A session on a fresh machine recreates all of this from the docs:
 - `~/.lmstudio/mcp.json` — the mcp-for-kibana stdio entry
   ([example](examples/mcp.json)).
 - The running docker test stack and loaded LM Studio model.
+- The `claude` CLI's sign-in, for `make test-e2e` (no API key is needed).
