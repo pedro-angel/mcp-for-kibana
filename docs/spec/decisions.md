@@ -300,7 +300,10 @@ this ledger stands without them.
   `make test-e2e` (Claude), not the LM Studio tests. D31's gate decision stands:
   `e2e_green` stays `n/a` in every DoD config; whether the gate should require
   the Claude run is open (Q16, [roadmap](../roadmap.md)). Off by default and
-  outside every gate.
+  outside every gate. Evidence (2026-10-17, Kibana 9.5.4, `claude-haiku-5-5`):
+  the pre-registered 20 counted runs all passed and were all valid, none with
+  the key in its output (`scripts/experiment/runs/claude-e2e/counted-2026-10-17/`,
+  `SUMMARY.md` generated from its `runs.jsonl`).
 - **D39 (2026-10-16, owner)** — The default surface may exceed the ~20-tool
   heuristic. The default selection (`dashboards,data-management` at `write`)
   grew from 16 tools to 21 with the update and library tools of D36–D37, past

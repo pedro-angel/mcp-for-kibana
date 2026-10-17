@@ -88,6 +88,12 @@ after counted runs start, the block is kept as it is, the bug is fixed, the
 fix and the reason are stated here, and all 20 runs start again in a new
 block.
 
+## Result
+
+The counted block ran on 2026-10-17 at commit `d26a172` with no change to
+this file's tasks, criteria or N. Its summary, generated from the records, is
+`runs/claude-e2e/counted-2026-10-17/SUMMARY.md`.
+
 ## Before registration
 
 Four uncounted dry runs (one per task, same harness, same prompts) shook the

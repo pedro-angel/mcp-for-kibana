@@ -92,7 +92,9 @@ version section.
   `scripts/experiment/CLAUDE_E2E.md`. Needs a Claude sign-in, no API key; off
   by default and outside the DoD gate (`e2e_green` stays `n/a`). Decisions D38
   (supersedes D31's on-demand rule in part) and D39 (the default `write`
-  surface of 21 tools, past the ~20-tool heuristic, is accepted).
+  surface of 21 tools, past the ~20-tool heuristic, is accepted). The first
+  counted block (Haiku, Kibana 9.5.4) is committed with its generated summary
+  in `scripts/experiment/runs/claude-e2e/counted-2026-10-17/`.
 
 ### Fixed
 
