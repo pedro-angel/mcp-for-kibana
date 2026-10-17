@@ -152,6 +152,13 @@ class DataManagementToolbox:
         ) -> dict[str, Any]:
             """Create a Kibana data view over an index pattern (e.g. 'logs-*').
             Optionally set a display name and a time field (for time-series data).
+            The time field must be a date field of the indices the pattern
+            matches: a field they do not have, or one that is not a date, is
+            refused with the pattern's date fields listed, and no data view is
+            created. A pattern that matches no index yet is accepted, but its
+            time field cannot be checked. The name (it defaults to the index
+            pattern) must be unused; to change an existing view, call
+            update_data_view.
 
             `space` targets a Kibana space by id (default: the default space)."""
             with gateway_errors(), deps.gateway_factory(space) as gw:

@@ -1,6 +1,6 @@
 # Decisions ledger
 
-Status: Draft v1.12 (2026-10-17) — regeneration corpus. Consumes
+Status: Draft v1.13 (2026-10-17) — regeneration corpus. Consumes
 [brief.md](brief.md); read alongside [design.md](design.md).
 
 Each entry is a decision a rewrite must not silently re-litigate: what was
@@ -262,6 +262,30 @@ this ledger stands without them.
   route (internal, and absent from kibana-py). An empty field list skips the
   check, matching `create_data_view`'s acceptance of a pattern for data not
   yet ingested. Contract: [data-management](toolboxes/data-management.md).
+- **D43 (2026-10-17, probes on 9.5.4)** — Creating a data view checks its time
+  field as D36 checks an edit, and a refused create leaves no view. Observed:
+  the data-view create stores any string as the time field (`@timestamp` over
+  `kibana_sample_data_flights`, whose only date field is `timestamp`; reported
+  by study run `20261017T110643Z-b089-claude-haiku-5-5-with-mcp-996208`, where
+  `create_dashboard` later refused the view's time field and the `write` tier of
+  0.3.0 had no repair); its response carries the view's `fields`, where a
+  `date_nanos` mapping is typed `date` (`esTypes` keeps `date_nanos`); a
+  pattern matching no index returns no fields; and there is no public route
+  that lists a pattern's fields without creating a view
+  (`/api/index_patterns/_fields_for_wildcard` is 404 and
+  `/api/data_views/_fields_for_wildcard` answers 400 "not available with the
+  current configuration", as any unknown `/api/data_views/` path does). So
+  `create_data_view` creates, checks the time field against the returned
+  fields, and on a mismatch deletes the new view and fails; when that delete
+  fails, the error names the view's id and the `update_data_view` /
+  `delete_data_view` call that fixes or removes it. Kibana refuses a second
+  view under a used name (the name defaults to the pattern) with a 400
+  `Duplicate data view: <name>`, while a second view over the same pattern
+  under another name is accepted; the error now adds the holding view's id
+  (one list call, best effort) and names `update_data_view`. Rejected
+  alternative: checking before the write through the internal
+  fields-for-wildcard route (internal, as D36 records). Contract:
+  [data-management](toolboxes/data-management.md).
 - **D37 (2026-10-12, probes on 9.5.4)** — Library visualizations are placed
   on dashboards by reference, and every dashboards tool keeps working on a
   dashboard that holds one. Observed: the public Dashboards API stores a panel

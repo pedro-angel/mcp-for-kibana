@@ -545,11 +545,37 @@ export/import/overwrite tools are also part of this toolbox — see
 | `list_data_views` | read | List Kibana data views (the datasets you can visualize). |
 | `describe_data_view` | read | Get a data view's fields and types. |
 | `resolve_short_url` | read | Resolve a Kibana short-URL slug to its locator and target app path. |
-| `create_data_view` | write | Create a Kibana data view over an index pattern (e.g. `logs-*`). |
+| `create_data_view` | write | Create a Kibana data view over an index pattern (e.g. `logs-*`). The time field must be a date field of the pattern; a refused call creates nothing. |
 | `update_data_view` | write | Edit a data view in place by id: `name`, `index_pattern` and/or `time_field`. Only the fields passed change; the time field must be a date field of the view. |
 | `create_short_url` | write | Create a Kibana short URL for a locator + app path. |
 | `delete_data_view` | destructive | Permanently delete a data view by id. This cannot be recovered. |
 | `delete_short_url` | destructive | Permanently delete a short URL by id. |
+
+Notes on `create_data_view`:
+
+- **The time field is checked, because Kibana does not check it.** Kibana
+  stores any string as a new view's time field — `@timestamp` over
+  `kibana_sample_data_flights`, whose date field is `timestamp`, is accepted —
+  and `create_dashboard` then refuses the view. Kibana's public API cannot list
+  a pattern's fields without creating a view, so the tool creates it, checks
+  the time field against the view's fields, and on a mismatch deletes the view
+  again: `time field '@timestamp' is not a field of 'kibana_sample_data_flights'
+  — pass time_field as one of its date fields: timestamp (no data view was
+  created)`. A `date_nanos` field counts as a date field. On a pattern with no
+  date fields the error says to omit `time_field`.
+- **A failed cleanup says what is left.** If deleting the just-created view
+  fails, the error keeps the rejection and the delete's error, and ends `so
+  data view '<id>' exists with time field '<field>' — fix it with
+  update_data_view (view_id='<id>', time_field=<a date field>), or remove it
+  with delete_data_view (view_id='<id>')`.
+- **A pattern that matches no index yet** has no fields, so its time field is
+  accepted unchecked (as for `update_data_view`).
+- **A used name is refused at create.** Kibana refuses a second view under a
+  name already used — the name defaults to the index pattern — with
+  `Duplicate data view: <name>`; the error adds `a data view named '<name>' (id '<id>') already
+  exists: use it, change it in place with update_data_view(view_id='<id>'), or
+  pass a different name` (the id when exactly one view holds the name). A
+  second view over the same pattern under another `name` is accepted.
 
 Notes on `update_data_view`:
 

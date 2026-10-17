@@ -281,10 +281,20 @@ class FakeGateway:
         raise KibanaNotFound(f"data view '{name_or_id}' not found")
 
     def create_data_view(self, index_pattern, name, time_field):
+        # Mirrors the adapter's contract: the pattern's fields (here: those of a
+        # view already over it, else none) must hold the time field as a date.
+        fields = next(
+            (v.fields for v in self.data_views.values() if v.index_pattern == index_pattern), {}
+        )
+        if time_field is not None and fields and fields.get(time_field) != "date":
+            raise KibanaRejected(
+                f"time field '{time_field}' is not a date field of '{index_pattern}' "
+                "(no data view was created)"
+            )
         new_id = f"dv-{next(self._ids)}"
         self.data_views[new_id] = DataViewDetail(
             id=new_id, name=name or index_pattern, index_pattern=index_pattern,
-            time_field=time_field, fields={},
+            time_field=time_field, fields=dict(fields),
         )
         return DataViewSummary(id=new_id, name=name or index_pattern, index_pattern=index_pattern)
 

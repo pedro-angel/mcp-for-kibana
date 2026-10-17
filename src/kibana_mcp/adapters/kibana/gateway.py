@@ -1066,14 +1066,65 @@ class KibanaPyGateway:
     def create_data_view(
         self, index_pattern: str, name: str | None, time_field: str | None
     ) -> DataViewSummary:
+        # Kibana stores any string as the time field (probed on 9.5.4) and has
+        # no public route that lists a pattern's fields without creating a view
+        # (D43), so the view is created and its time field checked against the
+        # fields the create returns; on a mismatch the view is deleted again,
+        # so a refused call leaves nothing behind.
         spec: dict[str, Any] = {"title": index_pattern}
         if name is not None:
             spec["name"] = name
         if time_field is not None:
             spec["timeFieldName"] = time_field
-        raw = self._client.data_views.create(data_view=spec).body["data_view"]
+        try:
+            raw = self._client.data_views.create(data_view=spec).body["data_view"]
+        except BadRequestError as e:
+            duplicate = self._duplicate_data_view(e, name or index_pattern)
+            if duplicate is None:
+                raise
+            raise duplicate from e
+        view_id = raw["id"]
+        if time_field is not None:
+            problem = _time_field_problem(
+                time_field, _normalize_fields(raw.get("fields", {})), index_pattern
+            )
+            if problem:
+                try:
+                    self._client.data_views.delete(view_id=view_id)
+                except Exception as e:
+                    # The cleanup failed: the view exists with the bad time field.
+                    raise KibanaRejected(
+                        f"{problem}. Deleting the data view this call created then failed "
+                        f"({_cause_text(e, self._space)}), so data view '{view_id}' exists "
+                        f"with time field '{time_field}' — fix it with update_data_view "
+                        f"(view_id='{view_id}', time_field=<a date field>), or remove it with "
+                        f"delete_data_view (view_id='{view_id}')"
+                    ) from e
+                raise KibanaRejected(f"{problem} (no data view was created)")
         return DataViewSummary(
-            id=raw["id"], name=raw.get("name") or raw["title"], index_pattern=raw["title"]
+            id=view_id, name=raw.get("name") or raw["title"], index_pattern=raw["title"]
+        )
+
+    def _duplicate_data_view(self, e: BadRequestError, name: str) -> KibanaRejected | None:
+        """Kibana's 400 for a data view whose NAME is taken (the name defaults
+        to the pattern; probed on 9.5.4: "Duplicate data view: <name>"), as an
+        error naming the view that holds it and update_data_view. None for any
+        other 400."""
+        message = str(e.message)
+        if not message.startswith("Duplicate data view"):
+            return None
+        holder: str | None = None
+        with contextlib.suppress(Exception):  # the id is a courtesy, not required
+            ids = [v.id for v in self.list_data_views() if v.name == name]
+            holder = ids[0] if len(ids) == 1 else None
+        held = f" (id '{holder}')" if holder else ""
+        edit = f"update_data_view(view_id='{holder}')" if holder else "update_data_view"
+        return KibanaRejected(
+            "Kibana rejected the payload",
+            detail=(
+                f"{message} — a data view named '{name}'{held} already exists: use it, "
+                f"change it in place with {edit}, or pass a different name"
+            ),
         )
 
     def _post_data_view(
