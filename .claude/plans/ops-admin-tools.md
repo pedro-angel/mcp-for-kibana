@@ -113,6 +113,23 @@ Prompt: *"Continúa el plan `.claude/plans/ops-admin-tools.md` en la rama
    `make check` yourself before marking the batch `[x]`.
 5. Keep main-loop context small: read workflow results, not diffs.
 
+## Child sessions (cloud env `mcp-for-kibana-authorized`)
+
+Owner-authorized (2026-10-24): child sessions there run without permission
+prompts. `environment_id` = `env_01Q9Nd8PNwPhKgVNBAd468jM`
+(`create_session`, `source_url` = repo, `source_revision` = this branch,
+`outcome_branch` = `claude/ops-admin-tools`, `permission_mode` never `plan`).
+
+- **One writer at a time** on this branch: a child owns a batch end to end
+  (same prompt as the workflow's implement step) while the parent does not
+  push. Never two batches in parallel — they share port/adapter/fakes/docs.
+- **Independent final check (B9)**: a child on a fresh clone of the final head
+  runs `KIBANA_MCP_DOD_CYCLE_STACK=1 make dod` and `make test-e2e` and reports
+  the verdict lines — a clean-container confirmation, not a self-certification.
+- A child that finishes cleanly does not report back: check it with
+  `get_session` (`status_bucket`) and `list_events` (kinds `assistant`,
+  `result`), then `git fetch` the branch.
+
 ## Log
 
 - 2026-10-24: plan written; branch created from `main` @ `a628515`.
