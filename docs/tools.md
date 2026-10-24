@@ -648,8 +648,8 @@ Alerting rules and action connectors.
 | `disable_alert_rule` | write | Disable (stop running) an alerting rule; `untrack=True` (default off) also marks its active alerts untracked. |
 | `create_connector` | write | Create an action connector (e.g. `.index`, `.webhook`). |
 | `update_connector` | write | Edit a connector in place by id: `name`, `config` (merged key-by-key), and `secrets` only when passed. Refuses preconfigured connectors. |
-| `mute_alert_rule` | write | Mute a whole rule: it keeps running, no action fires, no end time. Clears per-alert mutes. |
-| `unmute_alert_rule` | write | Undo `mute_alert_rule`; also clears every per-alert mute. |
+| `mute_alert_rule` | write | Mute a whole rule: it keeps running, no action fires, no end time. Clears per-alert mutes and returns them in `cleared_alert_ids`. |
+| `unmute_alert_rule` | write | Undo `mute_alert_rule`; also clears every per-alert mute, even on a rule not muted as a whole, and returns them in `cleared_alert_ids` (`mute_alert` on each restores them). |
 | `mute_alert` | write | Mute one alert (`alert_id`) of a rule; refused on a rule muted as a whole. |
 | `unmute_alert` | write | Undo `mute_alert` for one alert (an id from `muted_alert_ids`). |
 | `snooze_alert_rule` | write | Silence a rule's actions for a window: `duration` (`30m`, `2h`, `1d`), `start` (ISO-8601, default now), optional `recurring`. Returns the `schedule_id`. |
@@ -702,9 +702,11 @@ Notes:
   definition.** All three leave the rule's params and actions as they are.
   `mute_alert_rule` stops every action until `unmute_alert_rule`, with no end
   time; the rule keeps running and tracking alerts. Kibana's rule-wide mute and
-  unmute both clear the per-alert mutes, and on a rule muted as a whole it
-  accepts a per-alert mute but records nothing, so `mute_alert` refuses that
-  case and says to unmute the rule first. `mute_alert` takes the id of an alert
+  unmute both clear the per-alert mutes (the unmute even on a rule that is not
+  muted), so both return the cleared ids in `cleared_alert_ids` — no tool lists
+  a rule's alert ids, and `mute_alert` on each puts them back. On a rule muted
+  as a whole Kibana accepts a per-alert mute but records nothing, so
+  `mute_alert` refuses that case and says to unmute the rule first. `mute_alert` takes the id of an alert
   the rule has raised — the group's value for a rule grouped by a field (e.g.
   a host name), `query matched` for an ungrouped `.es-query` rule; Kibana
   refuses an id the rule has not raised, and unmuting an alert that is not
@@ -748,7 +750,7 @@ Returns:
 
 // mute_alert_rule / unmute_alert_rule · mute_alert / unmute_alert ·
 // unsnooze_alert_rule · update_alert_rule_api_key · disable_alert_rule
-{"id": "8b1c...", "muted": true}
+{"id": "8b1c...", "muted": false, "cleared_alert_ids": ["host-a", "host-b"]}
 {"rule_id": "8b1c...", "alert_id": "query matched", "muted": true}
 {"rule_id": "8b1c...", "schedule_id": "f828e368-...", "unsnoozed": true}
 {"id": "8b1c...", "api_key_updated": true}

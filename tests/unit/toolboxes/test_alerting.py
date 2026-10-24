@@ -337,17 +337,34 @@ async def test_mutes_show_in_get_alert_rule_and_unmutes_clear_them(mcp, gateway)
         assert (await client.call_tool(
             "unmute_alert", {"rule_id": rid, "alert_id": "JetBeats"})).data == {
             "rule_id": rid, "alert_id": "JetBeats", "muted": False}
+        await client.call_tool("mute_alert", {"rule_id": rid, "alert_id": "ES-Air"})
+        # the rule-wide mute clears the per-alert mutes and names them
         assert (await client.call_tool("mute_alert_rule", {"rule_id": rid})).data == {
-            "id": rid, "muted": True}
+            "id": rid, "muted": True, "cleared_alert_ids": ["ES-Air"]}
         got = (await client.call_tool("get_alert_rule", {"rule_id": rid})).data
         assert got["muted"] is True and got["muted_alert_ids"] == []
         with pytest.raises(ToolError, match=r"muted as a whole"):
             await client.call_tool("mute_alert", {"rule_id": rid, "alert_id": "JetBeats"})
         assert (await client.call_tool("unmute_alert_rule", {"rule_id": rid})).data == {
-            "id": rid, "muted": False}
+            "id": rid, "muted": False, "cleared_alert_ids": []}
         got = (await client.call_tool("get_alert_rule", {"rule_id": rid})).data
     assert got["muted"] is False and got["muted_alert_ids"] == []
     assert gateway.alert_rules[rid].enabled is False  # muting never starts or stops a rule
+
+
+async def test_unmute_alert_rule_on_an_unmuted_rule_names_the_alerts_it_unmuted(mcp):
+    # Kibana's rule-wide unmute clears per-alert mutes even on a rule that is
+    # not muted as a whole; the ids come back so mute_alert can restore them.
+    async with Client(mcp) as client:
+        rid = (await client.call_tool("create_alert_rule", RULE)).data["id"]
+        for alert_id in ("host-a", "host-b"):
+            await client.call_tool("mute_alert", {"rule_id": rid, "alert_id": alert_id})
+        cleared = (await client.call_tool("unmute_alert_rule", {"rule_id": rid})).data
+        assert cleared == {"id": rid, "muted": False, "cleared_alert_ids": ["host-a", "host-b"]}
+        for alert_id in cleared["cleared_alert_ids"]:
+            await client.call_tool("mute_alert", {"rule_id": rid, "alert_id": alert_id})
+        got = (await client.call_tool("get_alert_rule", {"rule_id": rid})).data
+    assert got["muted_alert_ids"] == ["host-a", "host-b"]  # restored
 
 
 async def test_snooze_returns_the_schedule_id_unsnooze_takes(mcp, gateway):
@@ -438,6 +455,8 @@ async def test_lifecycle_tool_descriptions_name_their_partners(mcp):
     assert "at most 5" in d["snooze_alert_rule"] and "schedule_id" in d["snooze_alert_rule"]
     assert "snooze_alert_rule" in d["unsnooze_alert_rule"]
     assert "unmute_alert_rule" in d["mute_alert_rule"] and "snooze_alert_rule" in d["mute_alert_rule"]
+    for name in ("mute_alert_rule", "unmute_alert_rule"):  # the cleared mutes can be restored
+        assert "cleared_alert_ids" in d[name] and "mute_alert on each" in d[name], name
     assert "get_alert_rule" in d["mute_alert"] and "muted_alert_ids" in d["unmute_alert"]
     assert "mute_alert_rule" in d["get_alert_rule"]  # the read half shows the mute state
     assert "untrack" in d["disable_alert_rule"]

@@ -414,12 +414,29 @@ def _recording_rule_gw(calls, **fns):
 
 def test_rule_wide_mute_and_api_key_calls_send_only_the_rule_id():
     calls = []
-    gw = _recording_rule_gw(calls)
+    gw = _recording_rule_gw(calls, get=lambda id: FakeResponse(_RULE_BODY))
     gw.mute_alert_rule("r1")
     gw.unmute_alert_rule("r1")
     gw.update_alert_rule_api_key("r1")
     assert calls == [("mute_all", {"id": "r1"}), ("unmute_all", {"id": "r1"}),
                      ("update_api_key", {"id": "r1"})]
+
+
+@pytest.mark.parametrize("method", ["mute_alert_rule", "unmute_alert_rule"])
+def test_rule_wide_mute_and_unmute_return_the_per_alert_mutes_they_clear(method):
+    # Kibana resets muted_alert_ids on both calls (probed) and no public route
+    # lists a rule's alert ids: they are read before the call and returned.
+    order = []
+    body = {**_RULE_BODY, "muted_alert_ids": ["host-a", "host-b"]}
+
+    def get(id):
+        order.append(("get", {"id": id}))
+        return FakeResponse(body)
+    gw = _recording_rule_gw(order, get=get)
+    assert getattr(gw, method)("r1") == ("host-a", "host-b")
+    assert order[0] == ("get", {"id": "r1"}) and len(order) == 2  # read, then the mute
+    gw = _recording_rule_gw([], get=lambda id: FakeResponse(_RULE_BODY))
+    assert getattr(gw, method)("r1") == ()  # no muted_alert_ids key: nothing cleared
 
 
 def test_mute_alert_sends_rule_and_alert_ids_and_keeps_kibana_existence_check():

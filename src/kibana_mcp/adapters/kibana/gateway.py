@@ -1401,15 +1401,26 @@ class KibanaPyGateway:
         with _known_id("alert rule", rule_id):
             self._client.alerting.rule.disable(**kwargs)
 
-    @_translate_errors
-    def mute_alert_rule(self, rule_id: str) -> None:
-        with _known_id("alert rule", rule_id):
-            self._client.alerting.rule.mute_all(id=rule_id)
+    # Kibana's rule-wide mute and unmute both reset muted_alert_ids to [] (probed
+    # on 9.5.4), and no public route lists a rule's alert ids: the per-alert
+    # mutes are read first and returned, so the caller can restore them.
+    def _muted_alert_ids(self, rule_id: str) -> tuple[str, ...]:
+        body = self._client.alerting.rule.get(id=rule_id).body
+        return tuple(str(a) for a in body.get("muted_alert_ids") or [])
 
     @_translate_errors
-    def unmute_alert_rule(self, rule_id: str) -> None:
+    def mute_alert_rule(self, rule_id: str) -> tuple[str, ...]:
         with _known_id("alert rule", rule_id):
+            cleared = self._muted_alert_ids(rule_id)
+            self._client.alerting.rule.mute_all(id=rule_id)
+        return cleared
+
+    @_translate_errors
+    def unmute_alert_rule(self, rule_id: str) -> tuple[str, ...]:
+        with _known_id("alert rule", rule_id):
+            cleared = self._muted_alert_ids(rule_id)
             self._client.alerting.rule.unmute_all(id=rule_id)
+        return cleared
 
     @_translate_errors
     def mute_alert(self, rule_id: str, alert_id: str) -> None:

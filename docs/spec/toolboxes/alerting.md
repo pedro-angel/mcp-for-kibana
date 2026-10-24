@@ -1,6 +1,6 @@
 # alerting — behavior contract
 
-Status: Draft v1.5 (2026-10-24) — regeneration corpus, reconciled to shipped code
+Status: Draft v1.6 (2026-10-24) — regeneration corpus, reconciled to shipped code
 Surface reference: docs/tools.md#alerting-toolbox · Enforcement: named per section below
 
 ## Purpose & persona
@@ -116,7 +116,11 @@ docs/tools.md#alerting-toolbox.
   schedule); none changes params, actions, tags or `enabled`.
   `mute_alert_rule`/`unmute_alert_rule` set the rule-wide mute — the rule
   runs and tracks alerts, no action fires, no end time — and Kibana clears
-  the per-alert mutes on both calls. `mute_alert`/`unmute_alert` mute one
+  the per-alert mutes on both calls, the unmute even on a rule that is not
+  muted as a whole. No public route lists a rule's alert ids, so both tools
+  read `muted_alert_ids` first and return them as `cleared_alert_ids`;
+  `mute_alert` on each restores them, which is what keeps the pair
+  reversible. `mute_alert`/`unmute_alert` mute one
   alert by the id the rule raised it under (the group's value for a grouped
   rule; `query matched` for an ungrouped `.es-query` rule, observed); Kibana's
   `validate_alerts_existence` default stays on, so an id the rule has not
@@ -253,6 +257,8 @@ docs/tools.md#alerting-toolbox.
   `YYYY-MM-DDTHH:mm:ss.sssZ`, refuse a `duration` outside `[1-9][0-9]*[smhd]`
   before the gateway, and return the `schedule_id`.
 - MUST refuse `mute_alert` on a rule muted as a whole, before the mute.
+- MUST return, from `mute_alert_rule` and `unmute_alert_rule`, the per-alert
+  mutes the call cleared (`cleared_alert_ids`, read before the call).
 - MUST answer an unknown alert id, an unknown snooze `schedule_id` and the
   five-snooze limit with guidance naming where the id comes from or the tool
   that frees a slot, and any other 404 on these routes with the rule's
@@ -401,7 +407,9 @@ docs/tools.md#alerting-toolbox.
   (rule id only for mute/unmute/key refresh; no `validate_alerts_existence`;
   no `untrack` unless asked), the strict UTC `start`/`end` form, the snooze
   result, the five-snooze, unknown-alert and unknown-schedule guidance, the
-  refusal of `mute_alert` on a muted rule sending nothing, and the mute state
+  refusal of `mute_alert` on a muted rule sending nothing, the rule-wide mute
+  and unmute reading `muted_alert_ids` before the call and returning them, and
+  the mute state
   on `get_alert_rule`; `tests/unit/adapters/test_id_guidance.py` — the
   empty and unknown `rule_id` guidance on every lifecycle call.
 - `tests/unit/toolboxes/test_alerting.py` — the lifecycle tools' write tier
@@ -410,8 +418,9 @@ docs/tools.md#alerting-toolbox.
   with the echo only when on, and the descriptions naming their partners.
 - `tests/contract/test_gateway_contract.py` — live, through the MCP tools:
   `test_mute_tools_through_mcp_live` (a firing rule's `query matched` alert
-  muted and read back, the rule-wide mute and unmute clearing per-alert mutes,
-  the refusal on a muted rule, an unknown alert id answered with guidance),
+  muted and read back, the rule-wide mute and unmute clearing per-alert mutes
+  and naming them in `cleared_alert_ids`, the cleared mute restored from that
+  result, the refusal on a muted rule, an unknown alert id answered with guidance),
   `test_snooze_tools_through_mcp_live` (an offset `start` stored as UTC
   milliseconds, a recurring snooze, the five-snooze limit with an expired one
   counting, a freed slot reused, a stale `schedule_id`),

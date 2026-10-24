@@ -362,7 +362,14 @@ this ledger stands without them.
   **Tiers, by the repo rule (irreversible or data-losing → destructive):**
   none deletes or loses data and each has an inverse — unmute, unsnooze, a
   second key refresh by a caller with the right privileges, re-enable — so
-  all are `write`. `untrack` was weighed for destructive and kept on `write`:
+  all are `write`. (Amended after review, same day: Kibana's rule-wide mute
+  and unmute wipe the per-alert mutes, and no public route lists a rule's
+  alert ids, so as first built those two lost state. Both now read the rule
+  first and return the wiped ids as `cleared_alert_ids`, which `mute_alert`
+  takes back. That keeps them on `write`. Moving them to destructive was
+  rejected: an unmute is the inverse of a mute and belongs at the same tier.
+  Refusing an unmute on a rule that is not muted was rejected too: Kibana's
+  call is also the one way to clear every per-alert mute at once.) `untrack` was weighed for destructive and kept on `write`:
   the alert documents stay in the index (status `untracked`), and re-enabling
   the rule raises alerts afresh; it ends the alerts' lifecycle, which is what
   disabling a rule is for. The key refresh changes who the rule runs as (the
@@ -374,7 +381,8 @@ this ledger stands without them.
   snooze, whose every call adds a schedule); a missing rule is a 404 "Saved
   object [alert/<id>] not found" everywhere, answered with D17's rule
   guidance. Kibana's rule-wide mute and unmute both reset `muted_alert_ids`
-  to `[]`, and a per-alert mute on a rule muted as a whole answers 204 and
+  to `[]` (the unmute does so even on a rule not muted as a whole), so both
+  tools return the ids they cleared, and a per-alert mute on a rule muted as a whole answers 204 and
   records nothing — so `mute_alert` reads the rule first and refuses that
   case, naming `unmute_alert_rule` then `mute_alert`, rather than reporting a
   mute Kibana discarded. A per-alert mute of an id the rule has not raised is

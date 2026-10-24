@@ -322,12 +322,16 @@ class AlertingToolbox:
             until unmute_alert_rule. A mute has no end time; for a time window use
             snooze_alert_rule. It does not enable or disable the rule. Kibana
             drops the rule's per-alert mutes (mute_alert) when it mutes the whole
-            rule. get_alert_rule shows it as `muted`.
+            rule; the result lists them in `cleared_alert_ids` — keep them: no
+            tool lists a rule's alert ids, so after unmute_alert_rule they are
+            restored only by mute_alert on each. get_alert_rule shows `muted`.
 
             `space` targets a Kibana space by id (default: the default space)."""
             with gateway_errors(), deps.gateway_factory(space) as gw:
-                gw.mute_alert_rule(rule_id)
-            return with_space({"id": rule_id, "muted": True}, space)
+                cleared = gw.mute_alert_rule(rule_id)
+            return with_space(
+                {"id": rule_id, "muted": True, "cleared_alert_ids": list(cleared)}, space
+            )
 
         @mcp.tool(tags={self.name, "write"}, annotations=_WRITE_IDEMPOTENT)
         def unmute_alert_rule(
@@ -335,13 +339,19 @@ class AlertingToolbox:
             space: Annotated[str, Field(pattern=SPACE_ID_PATTERN)] | None = None,
         ) -> dict[str, Any]:
             """Undo mute_alert_rule: the rule's actions fire again. Kibana also
-            clears every per-alert mute (mute_alert) on this call, so afterwards
-            no alert of the rule is muted; snoozes stay (unsnooze_alert_rule).
+            clears every per-alert mute (mute_alert) on this call, even on a rule
+            that is not muted as a whole, so afterwards no alert of the rule is
+            muted; snoozes stay (unsnooze_alert_rule). The result lists the
+            alerts it unmuted in `cleared_alert_ids`; to keep any of them muted,
+            call mute_alert on each (no tool lists a rule's alert ids). To unmute
+            one alert only, use unmute_alert.
 
             `space` targets a Kibana space by id (default: the default space)."""
             with gateway_errors(), deps.gateway_factory(space) as gw:
-                gw.unmute_alert_rule(rule_id)
-            return with_space({"id": rule_id, "muted": False}, space)
+                cleared = gw.unmute_alert_rule(rule_id)
+            return with_space(
+                {"id": rule_id, "muted": False, "cleared_alert_ids": list(cleared)}, space
+            )
 
         @mcp.tool(tags={self.name, "write"}, annotations=_WRITE_IDEMPOTENT)
         def mute_alert(

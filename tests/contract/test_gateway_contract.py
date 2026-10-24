@@ -2139,8 +2139,12 @@ async def test_mute_tools_through_mcp_live(gateway):
                 await client.call_tool("mute_alert", {"rule_id": rid, "alert_id": "query matched"})
             unmuted_all = (await client.call_tool("unmute_alert_rule", {"rule_id": rid})).data
             await client.call_tool("mute_alert", {"rule_id": rid, "alert_id": "query matched"})
-            await client.call_tool("unmute_alert_rule", {"rule_id": rid})
+            # on a rule NOT muted as a whole: still clears, and names what it cleared
+            unmuted_none = (await client.call_tool("unmute_alert_rule", {"rule_id": rid})).data
             got_none = (await client.call_tool("get_alert_rule", {"rule_id": rid})).data
+            for alert_id in unmuted_none["cleared_alert_ids"]:  # restore from the result
+                await client.call_tool("mute_alert", {"rule_id": rid, "alert_id": alert_id})
+            got_restored = (await client.call_tool("get_alert_rule", {"rule_id": rid})).data
             with pytest.raises(ToolError) as missing:
                 await client.call_tool("mute_alert_rule", {"rule_id": "no-such-rule"})
         assert "alert 'no-such-alert' not found on alert rule" in str(typo.value)
@@ -2148,16 +2152,19 @@ async def test_mute_tools_through_mcp_live(gateway):
         assert muted_one == {"rule_id": rid, "alert_id": "query matched", "muted": True}
         assert got_one["muted"] is False and got_one["muted_alert_ids"] == ["query matched"]
         assert unmuted_one == {"rule_id": rid, "alert_id": "query matched", "muted": False}
-        assert muted_all == {"id": rid, "muted": True}
+        # the rule-wide mute names the per-alert mute it dropped
+        assert muted_all == {"id": rid, "muted": True, "cleared_alert_ids": ["query matched"]}
         assert got_all["muted"] is True and got_all["enabled"] is True  # still running
         # Kibana dropped the per-alert mute when it muted the whole rule
         assert got_all["muted_alert_ids"] == [] and stored["muted_alert_ids"] == []
         assert stored["mute_all"] is True
         assert "is muted as a whole" in str(on_muted.value)
         assert "call unmute_alert_rule first" in str(on_muted.value)
-        assert unmuted_all == {"id": rid, "muted": False}
-        # ...and the rule-wide unmute clears a per-alert mute set after it
+        assert unmuted_all == {"id": rid, "muted": False, "cleared_alert_ids": []}
+        # ...and the rule-wide unmute clears a per-alert mute set after it, naming it
+        assert unmuted_none == {"id": rid, "muted": False, "cleared_alert_ids": ["query matched"]}
         assert got_none["muted"] is False and got_none["muted_alert_ids"] == []
+        assert got_restored["muted_alert_ids"] == ["query matched"]  # restorable
         assert "alert rule 'no-such-rule' not found" in str(missing.value)
         assert "call list_alert_rules to find it" in str(missing.value)
     finally:

@@ -413,16 +413,17 @@ class FakeGateway:
         self.alert_rules[rule_id] = replace(self._rule(rule_id), enabled=False)
         self.disable_untracks.append(untrack)
 
-    # Kibana's rule-wide mute and unmute both clear the per-alert mutes (probed).
+    # Kibana's rule-wide mute and unmute both clear the per-alert mutes (probed);
+    # the gateway returns the ids it cleared.
     def mute_alert_rule(self, rule_id):
         self._rule(rule_id)
         self.rule_muted[rule_id] = True
-        self.rule_muted_alerts[rule_id] = []
+        return tuple(self.rule_muted_alerts.pop(rule_id, []))
 
     def unmute_alert_rule(self, rule_id):
         self._rule(rule_id)
         self.rule_muted[rule_id] = False
-        self.rule_muted_alerts[rule_id] = []
+        return tuple(self.rule_muted_alerts.pop(rule_id, []))
 
     def mute_alert(self, rule_id, alert_id):
         self._rule(rule_id)

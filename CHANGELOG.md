@@ -23,7 +23,9 @@ version section.
   `muted_alert_ids`. Kibana never lists a rule's snoozes and keeps at most 5
   (expired ones count), so keep the `schedule_id` the snooze returns.
   `mute_alert` refuses a rule muted as a whole, where Kibana would accept the
-  mute and record nothing. Decision D45.
+  mute and record nothing. Kibana's rule-wide mute and unmute clear every
+  per-alert mute, so both return the cleared alert ids in `cleared_alert_ids`;
+  pass each to `mute_alert` to restore it. Decision D45.
 - **`disable_alert_rule` takes `untrack`** (default off). `untrack=True` also
   marks the rule's active alerts untracked; without it the request and the
   result are unchanged. Decision D45.
