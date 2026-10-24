@@ -41,6 +41,11 @@ _MISSING_SDK_HINT = (
 # still reading the result, so a fast teardown does not take it with it.
 _EXPORT_DELAY_MS = 500
 
+# Longest the SIGTERM handler waits for the exit flush before the process dies.
+# A reachable collector takes well under this; a dead one would otherwise hold
+# the exit for the exporter's 10 s timeout and retries.
+_EXIT_FLUSH_S = 2.0
+
 
 def _traces_endpoint(settings: Settings) -> str:
     """The OTLP/HTTP traces URL: the configured base with `/v1/traces` appended.
@@ -93,20 +98,28 @@ def install_exit_flush(provider: TracerProvider) -> None:
     A normal exit (SIGINT included) already flushes through the provider's own
     ``atexit`` shutdown. SIGTERM's default action kills the process without
     running ``atexit``, so a handler here shuts the provider down (exporting
-    what is queued) and then re-raises SIGTERM with its default action, so the
-    exit status is unchanged. A SIGTERM that lands while an exit flush is
-    already running is ignored, so that flush can finish. Installed only from
-    the main thread (``signal.signal`` refuses any other); uvicorn's own
-    handlers replace it on the HTTP transport, which then exits through
-    ``atexit``."""
+    what is queued) for at most ``_EXIT_FLUSH_S`` seconds, then re-raises
+    SIGTERM with its default action, so the exit status is unchanged and an
+    unreachable collector cannot hold the exit up for the exporter's own
+    timeout. The handler puts the default action back before it flushes: a
+    second SIGTERM ends the process at once. A SIGTERM that lands while an
+    ``atexit`` flush is already running starts no flush of its own, so that
+    flush can go on; the next SIGTERM ends it. Installed only from the main
+    thread (``signal.signal`` refuses any other). On the HTTP transport uvicorn
+    saves this handler, restores it after its graceful shutdown and re-raises
+    the SIGTERM it caught, so that exit goes through the handler too."""
     exiting = threading.Event()
 
     def _on_sigterm(signum: int, _frame: object) -> None:
+        signal.signal(signum, signal.SIG_DFL)
         if exiting.is_set():
             return
         exiting.set()
-        provider.shutdown()
-        signal.signal(signum, signal.SIG_DFL)
+        # The SDK exports in the calling thread with no deadline of its own;
+        # a daemon thread bounds the wait and dies with the process.
+        flusher = threading.Thread(target=provider.shutdown, name="otel-exit-flush", daemon=True)
+        flusher.start()
+        flusher.join(_EXIT_FLUSH_S)
         os.kill(os.getpid(), signum)
 
     # atexit runs last-registered first: this marks the exit before the

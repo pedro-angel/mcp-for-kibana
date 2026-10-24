@@ -34,7 +34,7 @@ Status: `[ ]` todo · `[~]` in progress · `[x]` committed + pushed (add sha).
 
 | # | Status | Toolbox | Tools (tier) | kibana-py |
 |---|---|---|---|---|
-| B0 | [x] | infra | OTel → Honeycomb wiring for live tiers; baseline run on `main` code | — |
+| B0 | [x] `f354eda` `bb469f8` | infra | OTel → Honeycomb wiring for live tiers; baseline run on `main` code | — |
 | B1 | [ ] | alerting | `snooze_alert_rule`, `unsnooze_alert_rule`, `mute_alert_rule`, `unmute_alert_rule` (rule-wide), `mute_alert`, `unmute_alert`, `update_alert_rule_api_key` (all write); `disable_alert_rule` gains optional `untrack: bool = False` (additive, default off) | `alerting.snooze/unsnooze/mute_all/unmute_all/mute_alert/unmute_alert/update_api_key/disable(untrack=)` |
 | B2 | [ ] | observability (Synthetics write tier) | `create_synthetic_monitor`, `update_synthetic_monitor`, `create_synthetic_param`, `update_synthetic_param`, `create_private_location`, `update_private_location` (write); `delete_synthetic_monitor`, `delete_synthetic_param`, `delete_private_location` (destructive); `test_synthetic_monitor` (write) **only if** it executes live | `synthetics.*` |
 | B3 | [ ] | observability (APM config) | `upsert_apm_agent_config`, `create_apm_annotation` (write); `delete_apm_agent_config` (destructive) | `apm.create_or_update_agent_configuration/create_annotation/delete_agent_configuration` |
@@ -135,3 +135,4 @@ prompts. `environment_id` = `env_01Q9Nd8PNwPhKgVNBAd468jM`
 - 2026-10-24: plan written; branch created from `main` @ `a628515`.
 - 2026-10-24: B0 done — e2e telemetry pass-through (D44); baseline 20/20 on `a628515` server code → Honeycomb `mcp-for-kibana-roadmap` (`mcp.run=b0-baseline`, query `po-w3GY92re2`); contract tier sends no spans.
 - 2026-10-24: B0 review fix — first baseline lost 8 of 80 spans (final calls: 5 s batch delay vs Claude's SIGINT→SIGTERM→SIGKILL in ~0.5 s). Server now exports at 500 ms and flushes on SIGTERM; re-recorded baseline 20/20, 78/78 spans (`mcp.run=b0-baseline-flush`, query `Cf-Hue16ykFq`) — **this** is the B9 comparison reference; check span count per tool == runs.jsonl tool calls.
+- 2026-10-24: B0 review round 2 (minor, fixed by the orchestrator): SIGTERM flush now bounded at 2 s in a daemon thread (SDK `force_flush` has no deadline; a dead collector held exit ~10 s) and a second SIGTERM ends the process at once; docstring corrected for uvicorn (it restores and re-raises into our handler). The `b0-baseline-flush` reference ran on fastmcp 4.1.3 (lock bump in `f354eda`), same as the branch — no dependency confound for B9.

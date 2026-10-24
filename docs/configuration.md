@@ -391,7 +391,10 @@ set `OTEL_BSP_SCHEDULE_DELAY` to choose another delay), and the queue is
 flushed when the server exits, on SIGTERM too. A stdio client can stop its
 server within half a second of the last call (Claude Code sends SIGINT, then
 SIGTERM, then SIGKILL), and the 5 s delay lost the last spans of a session
-(D44).
+(D44). The SIGTERM flush waits at most 2 s, so an unreachable collector delays
+the exit by that much rather than by the exporter's 10 s timeout, and a second
+SIGTERM ends the process at once. The HTTP transport exits through the same
+flush: uvicorn re-raises the SIGTERM it caught after its graceful shutdown.
 
 A stdio server has no request headers to carry trace context, and Claude Code
 puts none in the MCP request `_meta`; its child processes inherit only a

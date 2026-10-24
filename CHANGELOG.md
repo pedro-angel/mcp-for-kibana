@@ -30,8 +30,10 @@ version section.
   well as on a normal exit. Claude Code stops a stdio server within about
   half a second (SIGINT, SIGTERM, SIGKILL), and a 20-run `make test-e2e`
   block had sent 72 spans for 80 tool calls, the missing ones its runs' final
-  calls. A second block sent 78 of 78. Only affects
-  `KIBANA_MCP_OTEL_ENABLED=1`; decision D44.
+  calls. A second block sent 78 of 78. The SIGTERM flush waits at most 2 s,
+  so an unreachable collector cannot hold the exit up, and a second SIGTERM
+  ends the process at once. Only affects `KIBANA_MCP_OTEL_ENABLED=1`;
+  decision D44.
 
 ### Security
 

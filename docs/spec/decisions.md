@@ -538,7 +538,14 @@ this ledger stands without them.
   the batch processor exports 500 ms after a span ends, not after the SDK's
   5 s, unless `OTEL_BSP_SCHEDULE_DELAY` is set, and SIGTERM flushes the queue
   before the process dies (a normal exit, SIGINT included, already flushes
-  through `atexit`). Why: Claude Code stops a stdio server with SIGINT, then
+  through `atexit`). The SIGTERM flush runs in a daemon thread and the
+  handler waits for it at most 2 s (the SDK's `force_flush` exports in the
+  caller with no deadline, so an unreachable collector held the exit for the
+  exporter's 10 s timeout); the handler restores SIGTERM's default action
+  before flushing, so a second SIGTERM, also one that lands during an
+  `atexit` flush after the first, ends the process at once. On the HTTP
+  transport uvicorn restores this handler after its graceful shutdown and
+  re-raises the SIGTERM, so that exit takes the same path. Why: Claude Code stops a stdio server with SIGINT, then
   SIGTERM about 100 ms later, then SIGKILL about 400 ms after that (probed
   with a signal-logging server under `claude -p`, Claude Code 2.1.310), and
   SIGTERM's default action skips `atexit`. The first 20-run block, with the

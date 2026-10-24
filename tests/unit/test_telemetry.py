@@ -11,6 +11,7 @@ import signal
 import subprocess
 import sys
 import textwrap
+import time
 
 import pytest
 
@@ -175,6 +176,70 @@ def test_sigterm_flushes_queued_spans_then_dies_by_sigterm(tmp_path):
         child.kill()
         child.stdout.close()
     assert out.read_text().splitlines() == ["tools/call last"]
+
+
+_HANGING_CHILD = textwrap.dedent(
+    """
+    import sys, threading, time
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import BatchSpanProcessor, SpanExporter
+    from kibana_mcp import telemetry
+
+    telemetry._EXIT_FLUSH_S = float(sys.argv[1])
+
+    class DeadCollector(SpanExporter):
+        def export(self, spans):
+            time.sleep(600)
+
+    provider = TracerProvider()
+    provider.add_span_processor(BatchSpanProcessor(DeadCollector(), schedule_delay_millis=600_000))
+    telemetry.install_exit_flush(provider)
+    with provider.get_tracer("t").start_as_current_span("tools/call last"):
+        pass
+    print("ready", flush=True)
+    time.sleep(60)
+    """
+)
+
+
+def _hanging_child(bound_s: float) -> subprocess.Popen:
+    return subprocess.Popen(
+        [sys.executable, "-c", _HANGING_CHILD, str(bound_s)],
+        stdout=subprocess.PIPE,
+        text=True,
+        env={**os.environ, "PYTHONPATH": os.pathsep.join(sys.path)},
+    )
+
+
+def test_sigterm_flush_is_bounded_when_the_collector_hangs():
+    pytest.importorskip("opentelemetry.sdk")
+    # An unreachable collector must not hold the exit for the exporter's timeout.
+    child = _hanging_child(0.5)
+    try:
+        assert child.stdout.readline().strip() == "ready"
+        started = time.monotonic()
+        child.send_signal(signal.SIGTERM)
+        assert child.wait(timeout=20) == -signal.SIGTERM
+        assert time.monotonic() - started < 5
+    finally:
+        child.kill()
+        child.stdout.close()
+
+
+def test_second_sigterm_ends_a_flush_at_once():
+    pytest.importorskip("opentelemetry.sdk")
+    child = _hanging_child(600)
+    try:
+        assert child.stdout.readline().strip() == "ready"
+        child.send_signal(signal.SIGTERM)
+        time.sleep(0.5)
+        started = time.monotonic()
+        child.send_signal(signal.SIGTERM)
+        assert child.wait(timeout=20) == -signal.SIGTERM
+        assert time.monotonic() - started < 5
+    finally:
+        child.kill()
+        child.stdout.close()
 
 
 # --- TRACEPARENT from the environment (additive, default-off) ---------------
