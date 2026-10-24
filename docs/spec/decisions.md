@@ -527,21 +527,39 @@ this ledger stands without them.
   never adopts the runs. While the switch is on, the model's environment also
   drops `OTEL_*` and `HONEYCOMB_*`, so the exporter's credentials sit in the
   server entry only, as the Kibana key does. With the switch unset, the config
-  and the model's environment are unchanged. The server itself is unchanged:
-  with no `KIBANA_MCP_OTEL_SECRET_TOKEN` the OTLP exporter reads its headers
-  from `OTEL_EXPORTER_OTLP_HEADERS`, which is how a Honeycomb team key
+  and the model's environment are unchanged. With no
+  `KIBANA_MCP_OTEL_SECRET_TOKEN` the OTLP exporter reads its headers from
+  `OTEL_EXPORTER_OTLP_HEADERS`, which is how a Honeycomb team key
   (`x-honeycomb-team`) is supplied. Coverage by tier: the Claude tier and the
   replay tier start the server through `main()`, the only place telemetry is
   configured (replay passes the runner's whole environment to its stdio
   server, so it needs nothing new). The contract tier runs tools in-process
-  and sends no spans. Evidence: a 20-run block with the switch on, over server
-  code identical to `main` at `a628515`, passed 20 of 20 with every run valid
-  (`scripts/experiment/runs/claude-e2e/baseline-2026-10-24-otel/SUMMARY.md`).
-  Its spans reached Honeycomb dataset `mcp-for-kibana-roadmap` (environment
-  `test`), one `tools/call <tool>` span per call, tagged with resource
-  attribute `mcp.run=b0-baseline`. That baseline is the reference for the
-  ops-admin-tools branch's error-rate and latency comparison:
-  [query](https://ui.eu1.honeycomb.io/pedro-angel/environments/test/datasets/mcp-for-kibana-roadmap/result/po-w3GY92re2).
+  and sends no spans. Span delivery on exit (`src/kibana_mcp/telemetry.py`):
+  the batch processor exports 500 ms after a span ends, not after the SDK's
+  5 s, unless `OTEL_BSP_SCHEDULE_DELAY` is set, and SIGTERM flushes the queue
+  before the process dies (a normal exit, SIGINT included, already flushes
+  through `atexit`). Why: Claude Code stops a stdio server with SIGINT, then
+  SIGTERM about 100 ms later, then SIGKILL about 400 ms after that (probed
+  with a signal-logging server under `claude -p`, Claude Code 2.1.310), and
+  SIGTERM's default action skips `atexit`. The first 20-run block, with the
+  5 s default and no SIGTERM flush, recorded 80 server tool calls but sent 72
+  spans. The 8 lost were final calls of their runs (`create_dashboard` 5 of
+  10, `get_alert_rule` 3 of 15); every other tool matched
+  (`scripts/experiment/runs/claude-e2e/baseline-2026-10-24-otel/`,
+  `mcp.run=b0-baseline`,
+  [query](https://ui.eu1.honeycomb.io/pedro-angel/environments/test/datasets/mcp-for-kibana-roadmap/result/po-w3GY92re2)).
+  Evidence for the fix: a second 20-run block with the switch on, over server
+  code identical to `main` at `a628515` except for this change to
+  `telemetry.py` (its records name `f354eda` with src dirty, because the
+  block ran before the change was committed), passed 20 of 20 with every run
+  valid and recorded 78 tool calls. Honeycomb dataset `mcp-for-kibana-roadmap`
+  (environment `test`, resource attribute `mcp.run=b0-baseline-flush`) holds
+  78 `tools/call <tool>` spans, the same count as the records for each of the
+  12 tools, none with an error status
+  (`scripts/experiment/runs/claude-e2e/baseline-2026-10-24-otel-flush/SUMMARY.md`).
+  That block, not the first, is the reference for the ops-admin-tools
+  branch's error-rate and latency comparison:
+  [query](https://ui.eu1.honeycomb.io/pedro-angel/environments/test/datasets/mcp-for-kibana-roadmap/result/Cf-Hue16ykFq).
   Rejected alternative: the efficiency study's relay
   (`scripts/experiment/live_telemetry.py`), which keeps the key out of the
   server too. It brings a per-run HTTP relay into the gate's path, and the

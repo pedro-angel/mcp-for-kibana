@@ -96,7 +96,12 @@ make test-e2e
 
 With no `KIBANA_MCP_OTEL_SECRET_TOKEN`, the exporter takes its headers from
 `OTEL_EXPORTER_OTLP_HEADERS`. Each tool call is a span named
-`tools/call <tool>`.
+`tools/call <tool>`, and a run's last call arrives too: the server exports
+500 ms after a span ends and flushes on SIGTERM, inside the half second
+Claude Code gives a stdio server before SIGKILL. To compare blocks, tag each
+one with a resource attribute of your own (for example
+`OTEL_RESOURCE_ATTRIBUTES=...,mcp.run=<block>`) and check that the span count
+per tool equals the tool calls in its `runs.jsonl`.
 
 Two other tiers start the server and can export too:
 

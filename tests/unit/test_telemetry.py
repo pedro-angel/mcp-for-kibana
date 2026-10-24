@@ -6,7 +6,11 @@ actionable hint, and the secret token is never logged.
 """
 
 import logging
+import os
+import signal
+import subprocess
 import sys
+import textwrap
 
 import pytest
 
@@ -86,14 +90,91 @@ def test_configure_telemetry_logs_endpoint_never_token(caplog):
         otel_secret_token="super-secret-token",
         otel_service_name="mcp-for-kibana",
     )
+    previous_sigterm = signal.getsignal(signal.SIGTERM)
     try:
         with caplog.at_level(logging.INFO, logger="kibana_mcp.telemetry"):
             assert configure_telemetry(s) is True
         logged = "\n".join(r.getMessage() for r in caplog.records)
         assert "http://otel.invalid:4318/v1/traces" in logged
         assert "super-secret-token" not in logged
+        # configure_telemetry also installs the SIGTERM flush.
+        assert signal.getsignal(signal.SIGTERM) is not previous_sigterm
     finally:
+        signal.signal(signal.SIGTERM, previous_sigterm)
         trace.get_tracer_provider().shutdown()
+
+
+def _schedule_delay_ms(provider) -> float:
+    (bsp,) = provider._active_span_processor._span_processors
+    return bsp._batch_processor._schedule_delay_millis
+
+
+def test_spans_are_exported_within_half_a_second_by_default(monkeypatch):
+    pytest.importorskip("opentelemetry.sdk")
+    # The SDK's 5 s default outlived a stdio client's teardown (SIGINT, SIGTERM
+    # ~100 ms later, SIGKILL ~400 ms after that), losing a session's last spans.
+    monkeypatch.delenv("OTEL_BSP_SCHEDULE_DELAY", raising=False)
+    provider = build_tracer_provider(Settings(otel_enabled=True, otel_endpoint="http://otel.invalid"))
+    try:
+        assert _schedule_delay_ms(provider) == 500
+    finally:
+        provider.shutdown()
+
+
+def test_explicit_bsp_schedule_delay_wins(monkeypatch):
+    pytest.importorskip("opentelemetry.sdk")
+    monkeypatch.setenv("OTEL_BSP_SCHEDULE_DELAY", "2500")
+    provider = build_tracer_provider(Settings(otel_enabled=True, otel_endpoint="http://otel.invalid"))
+    try:
+        assert _schedule_delay_ms(provider) == 2500
+    finally:
+        provider.shutdown()
+
+
+_SIGTERM_CHILD = textwrap.dedent(
+    """
+    import sys, time
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import BatchSpanProcessor, SpanExportResult, SpanExporter
+    from kibana_mcp.telemetry import install_exit_flush
+
+    out = sys.argv[1]
+
+    class FileExporter(SpanExporter):
+        def export(self, spans):
+            with open(out, "a") as f:
+                f.writelines(s.name + "\\n" for s in spans)
+            return SpanExportResult.SUCCESS
+
+    provider = TracerProvider()
+    # A delay no test outlives: the span can only leave through the flush.
+    provider.add_span_processor(BatchSpanProcessor(FileExporter(), schedule_delay_millis=600_000))
+    install_exit_flush(provider)
+    with provider.get_tracer("t").start_as_current_span("tools/call last"):
+        pass
+    print("ready", flush=True)
+    time.sleep(60)
+    """
+)
+
+
+def test_sigterm_flushes_queued_spans_then_dies_by_sigterm(tmp_path):
+    pytest.importorskip("opentelemetry.sdk")
+    out = tmp_path / "spans.txt"
+    child = subprocess.Popen(
+        [sys.executable, "-c", _SIGTERM_CHILD, str(out)],
+        stdout=subprocess.PIPE,
+        text=True,
+        env={**os.environ, "PYTHONPATH": os.pathsep.join(sys.path)},
+    )
+    try:
+        assert child.stdout.readline().strip() == "ready"
+        child.send_signal(signal.SIGTERM)
+        assert child.wait(timeout=20) == -signal.SIGTERM
+    finally:
+        child.kill()
+        child.stdout.close()
+    assert out.read_text().splitlines() == ["tools/call last"]
 
 
 # --- TRACEPARENT from the environment (additive, default-off) ---------------

@@ -386,6 +386,13 @@ so a local run needs only the enable flag and the token. Point
 Standard `OTEL_*` env vars (e.g. `OTEL_RESOURCE_ATTRIBUTES`) are also honored by
 the SDK. The `.env.otel.example` template documents the full set.
 
+Spans leave the process 500 ms after they end (the SDK's own default is 5 s;
+set `OTEL_BSP_SCHEDULE_DELAY` to choose another delay), and the queue is
+flushed when the server exits, on SIGTERM too. A stdio client can stop its
+server within half a second of the last call (Claude Code sends SIGINT, then
+SIGTERM, then SIGKILL), and the 5 s delay lost the last spans of a session
+(D44).
+
 A stdio server has no request headers to carry trace context, and Claude Code
 puts none in the MCP request `_meta`; its child processes inherit only a
 `TRACEPARENT` environment variable. With `KIBANA_MCP_OTEL_TRACEPARENT_FROM_ENV=1`

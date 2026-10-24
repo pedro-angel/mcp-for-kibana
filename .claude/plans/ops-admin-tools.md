@@ -134,3 +134,4 @@ prompts. `environment_id` = `env_01Q9Nd8PNwPhKgVNBAd468jM`
 
 - 2026-10-24: plan written; branch created from `main` @ `a628515`.
 - 2026-10-24: B0 done — e2e telemetry pass-through (D44); baseline 20/20 on `a628515` server code → Honeycomb `mcp-for-kibana-roadmap` (`mcp.run=b0-baseline`, query `po-w3GY92re2`); contract tier sends no spans.
+- 2026-10-24: B0 review fix — first baseline lost 8 of 80 spans (final calls: 5 s batch delay vs Claude's SIGINT→SIGTERM→SIGKILL in ~0.5 s). Server now exports at 500 ms and flushes on SIGTERM; re-recorded baseline 20/20, 78/78 spans (`mcp.run=b0-baseline-flush`, query `Cf-Hue16ykFq`) — **this** is the B9 comparison reference; check span count per tool == runs.jsonl tool calls.

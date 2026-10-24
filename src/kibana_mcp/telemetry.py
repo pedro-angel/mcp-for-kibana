@@ -6,12 +6,20 @@ server pays nothing and imports no OpenTelemetry SDK. `configure_telemetry()`
 installs an SDK provider + OTLP/HTTP exporter ONLY when `settings.otel_enabled`,
 pointing at the OTLP/APM backend (the local stack's apm-server by default).
 Requires the `otel` extra: ``pip install 'mcp-for-kibana[otel]'``.
+
+Spans leave the process soon after they end and are flushed on exit, SIGTERM
+included: a stdio client tears its server down within about half a second
+(Claude Code sends SIGINT, then SIGTERM about 100 ms later, then SIGKILL), and
+the SDK's default 5 s batch delay lost the spans of a session's last calls.
 """
 
 from __future__ import annotations
 
+import atexit
 import logging
 import os
+import signal
+import threading
 from collections.abc import Mapping
 from typing import TYPE_CHECKING
 
@@ -26,6 +34,12 @@ _MISSING_SDK_HINT = (
     "KIBANA_MCP_OTEL_ENABLED is set but the OpenTelemetry SDK is not installed — "
     "install the extra: pip install 'mcp-for-kibana[otel]'"
 )
+
+
+# Batch delay when OTEL_BSP_SCHEDULE_DELAY is unset (the SDK's own default is
+# 5000 ms). Short enough that a call's span is exported while the client is
+# still reading the result, so a fast teardown does not take it with it.
+_EXPORT_DELAY_MS = 500
 
 
 def _traces_endpoint(settings: Settings) -> str:
@@ -62,10 +76,44 @@ def build_tracer_provider(settings: Settings) -> TracerProvider | None:
     # Resource.create also merges standard OTEL_RESOURCE_ATTRIBUTES from the env.
     resource = Resource.create({"service.name": settings.otel_service_name})
     provider = TracerProvider(resource=resource)
+    # An explicit OTEL_BSP_SCHEDULE_DELAY wins: None lets the SDK read it.
+    delay = None if os.environ.get("OTEL_BSP_SCHEDULE_DELAY") else _EXPORT_DELAY_MS
     provider.add_span_processor(
-        BatchSpanProcessor(OTLPSpanExporter(endpoint=endpoint, headers=headers))
+        BatchSpanProcessor(
+            OTLPSpanExporter(endpoint=endpoint, headers=headers),
+            schedule_delay_millis=delay,
+        )
     )
     return provider
+
+
+def install_exit_flush(provider: TracerProvider) -> None:
+    """Flush the provider's queued spans when the process is told to stop.
+
+    A normal exit (SIGINT included) already flushes through the provider's own
+    ``atexit`` shutdown. SIGTERM's default action kills the process without
+    running ``atexit``, so a handler here shuts the provider down (exporting
+    what is queued) and then re-raises SIGTERM with its default action, so the
+    exit status is unchanged. A SIGTERM that lands while an exit flush is
+    already running is ignored, so that flush can finish. Installed only from
+    the main thread (``signal.signal`` refuses any other); uvicorn's own
+    handlers replace it on the HTTP transport, which then exits through
+    ``atexit``."""
+    exiting = threading.Event()
+
+    def _on_sigterm(signum: int, _frame: object) -> None:
+        if exiting.is_set():
+            return
+        exiting.set()
+        provider.shutdown()
+        signal.signal(signum, signal.SIG_DFL)
+        os.kill(os.getpid(), signum)
+
+    # atexit runs last-registered first: this marks the exit before the
+    # provider's own shutdown (registered when it was built) starts flushing.
+    atexit.register(exiting.set)
+    if threading.current_thread() is threading.main_thread():
+        signal.signal(signal.SIGTERM, _on_sigterm)
 
 
 def attach_env_parent(settings: Settings, environ: Mapping[str, str] | None = None) -> object | None:
@@ -106,6 +154,7 @@ def configure_telemetry(settings: Settings) -> bool:
     from opentelemetry import trace  # always available (fastmcp pulls the api)
 
     trace.set_tracer_provider(provider)
+    install_exit_flush(provider)
     logger.info(
         "OpenTelemetry span export enabled: endpoint=%s service=%s",
         _traces_endpoint(settings),

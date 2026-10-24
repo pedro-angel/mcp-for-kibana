@@ -22,6 +22,17 @@ version section.
   [docs/e2e-setup.md](docs/e2e-setup.md#exporting-the-servers-spans-from-the-claude-tier-default-off);
   decision D44.
 
+### Fixed
+
+- **OpenTelemetry export no longer loses the last spans of a stdio session.**
+  The server now exports 500 ms after a span ends instead of the SDK's 5 s
+  (`OTEL_BSP_SCHEDULE_DELAY` still wins), and flushes its queue on SIGTERM as
+  well as on a normal exit. Claude Code stops a stdio server within about
+  half a second (SIGINT, SIGTERM, SIGKILL), and a 20-run `make test-e2e`
+  block had sent 72 spans for 80 tool calls, the missing ones its runs' final
+  calls. A second block sent 78 of 78. Only affects
+  `KIBANA_MCP_OTEL_ENABLED=1`; decision D44.
+
 ### Security
 
 - Locked dependencies moved past advisories `pip-audit` now reports:
