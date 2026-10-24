@@ -69,6 +69,43 @@ Each run writes `prompt.txt`, `transcript.jsonl` (stream-json),
 appends its record to `runs.jsonl`. Summarise a directory with
 `uv run python scripts/experiment/claude_e2e_report.py <dir>`.
 
+### Exporting the server's spans from the Claude tier (default off)
+
+The server writes one span per tool call when `KIBANA_MCP_OTEL_ENABLED` is on
+([Configuration › OpenTelemetry](configuration.md#opentelemetry)). The harness
+builds the server's environment from its MCP entry, so a plain `export` does
+not reach it on its own. Set `KIBANA_MCP_OTEL_ENABLED` in the shell that runs
+`make test-e2e` and the harness copies every `KIBANA_MCP_OTEL_*` and `OTEL_*`
+variable into the server's `env` block, which sits in the same mode-0600
+file as the Kibana key. They can never replace the URL, the key, the
+toolboxes or the tier. While the switch is on, the model's environment loses
+every `OTEL_*` and `HONEYCOMB_*` variable, so only the server holds the
+exporter's credentials. With the switch unset, the config and the model's
+environment are the same as before (D44).
+
+To send the spans to Honeycomb, for example:
+
+```bash
+export KIBANA_MCP_OTEL_ENABLED=1
+export KIBANA_MCP_OTEL_ENDPOINT=https://api.eu1.honeycomb.io   # your team's region; a key from another region gets 401
+export OTEL_EXPORTER_OTLP_HEADERS="x-honeycomb-team=$HONEYCOMB_API_KEY"  # leave KIBANA_MCP_OTEL_SECRET_TOKEN unset
+export KIBANA_MCP_OTEL_SERVICE_NAME=mcp-for-kibana-roadmap      # service.name, so the Honeycomb dataset
+export OTEL_RESOURCE_ATTRIBUTES="vcs.ref.head.revision=$(git rev-parse HEAD),deployment.environment=dev"
+make test-e2e
+```
+
+With no `KIBANA_MCP_OTEL_SECRET_TOKEN`, the exporter takes its headers from
+`OTEL_EXPORTER_OTLP_HEADERS`. Each tool call is a span named
+`tools/call <tool>`.
+
+Two other tiers start the server and can export too:
+
+- **Replay** (`make test-e2e-replay`) starts the server over stdio and passes
+  the runner's whole environment, so the same exports work there unchanged.
+- **Contract** (`make test-contract`) runs the tools in-process and never
+  calls `main()`, which is where telemetry is set up, so that tier sends no
+  spans.
+
 ## The LM Studio tier (`make test-e2e-local`): one-time setup
 
 `tests/e2e/test_lmstudio*.py` drive a local model in LM Studio, for testing

@@ -1,6 +1,6 @@
 # Decisions ledger
 
-Status: Draft v1.13 (2026-10-17) — regeneration corpus. Consumes
+Status: Draft v1.14 (2026-10-24) — regeneration corpus. Consumes
 [brief.md](brief.md); read alongside [design.md](design.md).
 
 Each entry is a decision a rewrite must not silently re-litigate: what was
@@ -512,6 +512,41 @@ this ledger stands without them.
   restatement of it). D31's replay tiers stand, and so does the on-demand
   rule: re-run `make test-e2e` when a change touches tool names, descriptions
   or schemas, without waiting for the gate.
+
+- **D44 (2026-10-24, live run on 9.5.4)** — The Claude tier can export the
+  server's per-tool spans, behind a default-off switch. Observed: the harness
+  (`tests/_claude_cli.py`) builds the server's `env` block from four fixed
+  variables and drops every `KIBANA*` variable from the model's environment,
+  so an exported `KIBANA_MCP_OTEL_ENABLED` never reached the server and
+  `make test-e2e` sent no spans. Now, with `KIBANA_MCP_OTEL_ENABLED` truthy in
+  the runner's environment (the spellings pydantic accepts for
+  `otel_enabled`), every `KIBANA_MCP_OTEL_*` and `OTEL_*` variable is copied
+  into the server's `env` block, in the same mode-0600 file as the Kibana key,
+  ahead of the four fixed keys, so it can never change the URL, the key, the
+  toolboxes or the tier. `TRACEPARENT` is not copied: a parent session's trace
+  never adopts the runs. While the switch is on, the model's environment also
+  drops `OTEL_*` and `HONEYCOMB_*`, so the exporter's credentials sit in the
+  server entry only, as the Kibana key does. With the switch unset, the config
+  and the model's environment are unchanged. The server itself is unchanged:
+  with no `KIBANA_MCP_OTEL_SECRET_TOKEN` the OTLP exporter reads its headers
+  from `OTEL_EXPORTER_OTLP_HEADERS`, which is how a Honeycomb team key
+  (`x-honeycomb-team`) is supplied. Coverage by tier: the Claude tier and the
+  replay tier start the server through `main()`, the only place telemetry is
+  configured (replay passes the runner's whole environment to its stdio
+  server, so it needs nothing new). The contract tier runs tools in-process
+  and sends no spans. Evidence: a 20-run block with the switch on, over server
+  code identical to `main` at `a628515`, passed 20 of 20 with every run valid
+  (`scripts/experiment/runs/claude-e2e/baseline-2026-10-24-otel/SUMMARY.md`).
+  Its spans reached Honeycomb dataset `mcp-for-kibana-roadmap` (environment
+  `test`), one `tools/call <tool>` span per call, tagged with resource
+  attribute `mcp.run=b0-baseline`. That baseline is the reference for the
+  ops-admin-tools branch's error-rate and latency comparison:
+  [query](https://ui.eu1.honeycomb.io/pedro-angel/environments/test/datasets/mcp-for-kibana-roadmap/result/po-w3GY92re2).
+  Rejected alternative: the efficiency study's relay
+  (`scripts/experiment/live_telemetry.py`), which keeps the key out of the
+  server too. It brings a per-run HTTP relay into the gate's path, and the
+  e2e tier needs only the server's spans. Telemetry is never a DoD criterion.
+  Docs: [e2e-setup](../e2e-setup.md#exporting-the-servers-spans-from-the-claude-tier-default-off).
 
 ## Scope and licensing (probed on Basic)
 

@@ -16,6 +16,12 @@ test-e2e`). The command line follows the efficiency study's runner
   whose value holds the key, and the prompt never names it. After the run the
   transcript is searched for the key (`key_in_transcript`); a hit is redacted
   before anything is written and fails the run. The key is never printed.
+- Telemetry (additive, default-off): with `KIBANA_MCP_OTEL_ENABLED` truthy in
+  the runner's environment, every `KIBANA_MCP_OTEL_*` and `OTEL_*` variable is
+  copied into the server's `env` block (the same private file), so the
+  server's per-tool spans export where the operator points them; the model's
+  environment then drops `OTEL_*` and `HONEYCOMB_*`, so the exporter's
+  credentials live in the server entry only. Unset, nothing changes.
 
 The model is a parameter: `CLAUDE_E2E_MODEL`, default `haiku` (the alias, so
 the default follows the current Haiku; each record names the exact model the
@@ -77,27 +83,57 @@ def budget_usd(environ=os.environ):
     return value
 
 
+# The server's span export (src/kibana_mcp/telemetry.py) reads these; the
+# truthy spellings are the ones pydantic accepts for Settings.otel_enabled.
+_OTEL_SWITCH = "KIBANA_MCP_OTEL_ENABLED"
+_TRUTHY = {"1", "true", "yes", "on", "t", "y"}
+_SERVER_TELEMETRY_PREFIXES = ("KIBANA_MCP_OTEL_", "OTEL_")
+# Held by the server entry, never by the model, while telemetry is passed through.
+_MODEL_TELEMETRY_PREFIXES = ("OTEL_", "HONEYCOMB_")
+
+
+def telemetry_enabled(environ=os.environ):
+    return environ.get(_OTEL_SWITCH, "").strip().lower() in _TRUTHY
+
+
+def server_telemetry_env(environ=os.environ):
+    """The server `env` additions that make it export its spans: every
+    KIBANA_MCP_OTEL_* and OTEL_* variable of the runner, when the switch is
+    on; {} otherwise (the default: the server entry is unchanged)."""
+    if not telemetry_enabled(environ):
+        return {}
+    return {
+        k: v for k, v in environ.items() if k.upper().startswith(_SERVER_TELEMETRY_PREFIXES)
+    }
+
+
 def model_env(environ, api_key):
     """The environment `claude` (and so the model) runs with: no KIBANA*
     variable — the server's configuration comes from its MCP entry alone, so
     an exported KIBANA_MCP_TOOLS cannot change the surface either — no value
-    holding the key, and no parent-session variables."""
+    holding the key, and no parent-session variables. While telemetry is
+    passed through to the server, no OTEL_* or HONEYCOMB_* variable either."""
+    tele = telemetry_enabled(environ)
     return {
         k: v
         for k, v in environ.items()
         if not k.upper().startswith("KIBANA")
         and k not in _PARENT_SESSION_VARS
         and not (api_key and api_key in v)
+        and not (tele and k.upper().startswith(_MODEL_TELEMETRY_PREFIXES))
     }
 
 
-def write_mcp_config(path, repo_root, kibana_url, api_key, toolboxes):
+def write_mcp_config(path, repo_root, kibana_url, api_key, toolboxes, telemetry_env=None):
+    """The private MCP config. `telemetry_env` (server_telemetry_env()) is
+    merged first, so it can never override the URL, key, toolboxes or tier."""
     cfg = {
         "mcpServers": {
             MCP_SERVER: {
                 "command": "uv",
                 "args": ["--directory", str(repo_root), "run", "mcp-for-kibana"],
                 "env": {
+                    **(telemetry_env or {}),
                     "KIBANA_URL": kibana_url,
                     "KIBANA_API_KEY": api_key,
                     "KIBANA_MCP_TOOLBOXES": toolboxes,

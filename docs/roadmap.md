@@ -214,6 +214,13 @@ alerting, cases and security-detections on 2026-08-19.)
   the dev stack alone is ~4.9GB (ES 3.2, Kibana 1.2, fleet-server 0.4). The guard
   in `fleet_ephemeral.sh` is sized by *headroom*, not by VM total — re-measure
   before relaxing it, and note the VM is shared with whatever else is running.
+- **Honeycomb from the live tiers (D44):** the team key is EU1, so
+  `KIBANA_MCP_OTEL_ENDPOINT=https://api.eu1.honeycomb.io` (the US endpoint
+  answers 401). Leave `KIBANA_MCP_OTEL_SECRET_TOKEN` unset and pass the key in
+  `OTEL_EXPORTER_OTLP_HEADERS=x-honeycomb-team=…`. `service.name` names the
+  dataset. The key has `queries: false`, so read results through the
+  Honeycomb MCP. The contract tier runs tools in-process and sends no spans;
+  the Claude and replay tiers do.
 - **`uv sync` replaces `.venv`** and with it any bootstrap-installed git
   hooks — pre-commit is a dev dependency for exactly this reason; if hooks
   ever go quiet, `uv run pre-commit install --hook-type pre-commit

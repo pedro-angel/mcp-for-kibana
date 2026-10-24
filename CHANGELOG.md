@@ -10,6 +10,25 @@ version section.
 
 ## [Unreleased]
 
+### Added
+
+- **The Claude live-model tier can export the server's spans** (default off).
+  With `KIBANA_MCP_OTEL_ENABLED` set in the shell that runs `make test-e2e`,
+  the harness copies every `KIBANA_MCP_OTEL_*` and `OTEL_*` variable into the
+  server's private MCP config. One span per tool call then goes to the OTLP
+  endpoint you name, Honeycomb included through `OTEL_EXPORTER_OTLP_HEADERS`.
+  While it is on, the model's environment drops `OTEL_*` and `HONEYCOMB_*`.
+  Unset, nothing changes. Setup in
+  [docs/e2e-setup.md](docs/e2e-setup.md#exporting-the-servers-spans-from-the-claude-tier-default-off);
+  decision D44.
+
+### Security
+
+- Locked dependencies moved past advisories `pip-audit` now reports:
+  aiohttp 3.14.5, certifi 2026.10.23, fastmcp 4.1.3, filelock 4.2.4 and
+  virtualenv 21.14.13 (with yarl, packaging and openapi-pydantic as resolved).
+  `make check`'s audit step fails without them.
+
 ## [0.4.0] - 2026-10-17
 
 ### Added
