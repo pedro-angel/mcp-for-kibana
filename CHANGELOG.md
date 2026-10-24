@@ -12,6 +12,22 @@ version section.
 
 ### Added
 
+- **Alerting: mute, snooze and re-key a rule** (seven `write` tools, 150 tools
+  in all). `mute_alert_rule` / `unmute_alert_rule` silence a whole rule with no
+  end time, `mute_alert` / `unmute_alert` one of its alerts,
+  `snooze_alert_rule` / `unsnooze_alert_rule` a time window (any ISO-8601
+  `start`, default now; `duration` such as `30m`, `2h`, `1d`; optional
+  `recurring`), and `update_alert_rule_api_key` regenerates the rule's key
+  from the server's credentials. None changes the rule's definition or
+  whether it runs. `get_alert_rule` now also returns `muted` and
+  `muted_alert_ids`. Kibana never lists a rule's snoozes and keeps at most 5
+  (expired ones count), so keep the `schedule_id` the snooze returns.
+  `mute_alert` refuses a rule muted as a whole, where Kibana would accept the
+  mute and record nothing. Decision D45.
+- **`disable_alert_rule` takes `untrack`** (default off). `untrack=True` also
+  marks the rule's active alerts untracked; without it the request and the
+  result are unchanged. Decision D45.
+
 - **The Claude live-model tier can export the server's spans** (default off).
   With `KIBANA_MCP_OTEL_ENABLED` set in the shell that runs `make test-e2e`,
   the harness copies every `KIBANA_MCP_OTEL_*` and `OTEL_*` variable into the

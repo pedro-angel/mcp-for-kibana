@@ -137,6 +137,20 @@ class AlertRuleDetail:
     tags: tuple[str, ...]
     params: dict[str, object]              # as Kibana stores them, defaults included
     actions: tuple[dict[str, object], ...]  # id, group, params, frequency: update_alert_rule's shape
+    muted: bool                            # rule-wide mute (mute_alert_rule): no action fires
+    muted_alert_ids: tuple[str, ...]       # alerts muted one by one (mute_alert)
+
+
+@dataclass(frozen=True, slots=True)
+class RuleSnooze:
+    # One snooze schedule as Kibana stored it. schedule_id is the only handle
+    # unsnooze_alert_rule takes: Kibana's public API never lists a rule's snoozes.
+    rule_id: str
+    schedule_id: str
+    duration: str                          # e.g. "2h", as sent
+    start: str                             # UTC, Kibana's YYYY-MM-DDTHH:mm:ss.sssZ
+    timezone: str                          # Kibana's recurrence zone ("UTC" unless set)
+    recurring: dict[str, object] | None    # every / end / occurrences / onWeekDay / ...
 
 
 @dataclass(frozen=True, slots=True)

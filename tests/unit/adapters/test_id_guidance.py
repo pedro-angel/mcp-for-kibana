@@ -3,6 +3,7 @@ the fix (D17) — where a valid id comes from — instead of kibana-py's bare
 "Parameter 'id' is required" (unmapped, so the caller saw only "Error calling
 tool") or Kibana's "Saved object [alert/<name>] not found"."""
 
+from datetime import UTC, datetime
 from types import SimpleNamespace
 
 import pytest
@@ -26,7 +27,10 @@ def _dash_gw(fn):
 
 
 def _rule_gw(fn):
-    rule = SimpleNamespace(get=fn, enable=fn, disable=fn, delete=fn, update=fn)
+    rule = SimpleNamespace(
+        get=fn, enable=fn, disable=fn, delete=fn, update=fn, mute_all=fn, unmute_all=fn,
+        mute_alert=fn, unmute_alert=fn, snooze=fn, unsnooze=fn, update_api_key=fn,
+    )
     return KibanaPyGateway(make_fake_client(alerting=SimpleNamespace(rule=rule)))
 
 
@@ -51,6 +55,14 @@ _RULE_CALLS = [
     lambda gw, i: gw.disable_alert_rule(i),
     lambda gw, i: gw.delete_alert_rule(i),
     lambda gw, i: gw.update_alert_rule(i, "renamed", None, None, None, None),
+    lambda gw, i: gw.disable_alert_rule(i, untrack=True),
+    lambda gw, i: gw.mute_alert_rule(i),
+    lambda gw, i: gw.unmute_alert_rule(i),
+    lambda gw, i: gw.mute_alert(i, "host-1"),
+    lambda gw, i: gw.unmute_alert(i, "host-1"),
+    lambda gw, i: gw.snooze_alert_rule(i, "1h", datetime(2026, 10, 25, tzinfo=UTC), None),
+    lambda gw, i: gw.unsnooze_alert_rule(i, "s-1"),
+    lambda gw, i: gw.update_alert_rule_api_key(i),
 ]
 _CONN_CALLS = [
     lambda gw, i: gw.get_connector(i),

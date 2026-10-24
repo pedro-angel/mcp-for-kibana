@@ -2,6 +2,7 @@
 by a real Kibana on each supported line. If a test here fails while unit goldens pass, fix
 translate.py AND the golden test together."""
 
+import asyncio
 import contextlib
 import os
 import uuid
@@ -1985,7 +1986,7 @@ async def test_get_alert_rule_reads_params_before_and_after_a_threshold_fix_live
         assert after["enabled"] is True and after["tags"] == ["contract"]
         assert set(after) == {
             "id", "name", "rule_type_id", "consumer", "enabled", "schedule_interval",
-            "status", "tags", "params", "actions",
+            "status", "tags", "params", "actions", "muted", "muted_alert_ids",
         }
         assert stored.get("api_key_owner")  # an enabled rule has a key; it never comes back
         assert os.environ["KIBANA_TEST_API_KEY"] not in str(after_call.content)
@@ -2078,3 +2079,207 @@ async def test_update_data_view_tool_scoped_live(gateway, tmp_path):
         assert "call list_data_views to find it" in str(miss.value)
         assert str(miss.value).endswith(f" (in space '{space_id}')")
         assert str(miss.value).count("(in space") == 1
+
+
+# --- alerting rule lifecycle: mute, snooze, API key, untrack (B1, probed on 9.5.4) ---
+
+# An ungrouped .es-query rule over every flight in ten years: its first run
+# (right after enable) raises the one alert such a rule has, "query matched".
+_ESQ_FIRING = {**_ESQ_PARAMS, "timeWindowSize": 3650, "timeWindowUnit": "d"}
+
+
+async def _wait_for_alert(client, rule_id, alert_id, space=None, timeout=120.0):
+    """Mute `alert_id` as soon as the rule has raised it: Kibana answers 404
+    for an alert the rule has not raised (yet), so the first success is the
+    alert existing. Polls, never sleeps a fixed time."""
+    args = {"rule_id": rule_id, "alert_id": alert_id, **({"space": space} if space else {})}
+    deadline = asyncio.get_running_loop().time() + timeout
+    while True:
+        try:
+            return (await client.call_tool("mute_alert", args)).data
+        except ToolError as e:
+            if "not found on alert rule" not in str(e) or (
+                asyncio.get_running_loop().time() > deadline
+            ):
+                raise
+            await asyncio.sleep(2)
+
+
+async def test_mute_tools_through_mcp_live(gateway):
+    # The per-alert mute and the rule-wide mute land on the rule Kibana stores
+    # and get_alert_rule reads both back. Kibana's rule-wide mute and unmute
+    # both clear the per-alert mutes, and on a muted rule it answers a per-alert
+    # mute with 204 but records nothing — so mute_alert refuses that case. An
+    # alert id the rule never raised is refused with guidance
+    # (validate_alerts_existence stays at Kibana's default).
+    rid = None
+    try:
+        async with Client(_alerting_tool_server()) as client:
+            rid = (await client.call_tool("create_alert_rule", {
+                "name": f"contract-mute-{uuid.uuid4().hex[:8]}", "rule_type_id": ".es-query",
+                "consumer": "stackAlerts", "params": _ESQ_FIRING, "enabled": True,
+            })).data["id"]
+            with pytest.raises(ToolError) as typo:
+                await client.call_tool("mute_alert", {"rule_id": rid, "alert_id": "no-such-alert"})
+            muted_one = await _wait_for_alert(client, rid, "query matched")
+            await client.call_tool(  # repeat: no error, still one entry
+                "mute_alert", {"rule_id": rid, "alert_id": "query matched"})
+            got_one = (await client.call_tool("get_alert_rule", {"rule_id": rid})).data
+            unmuted_one = (await client.call_tool(
+                "unmute_alert", {"rule_id": rid, "alert_id": "query matched"})).data
+            await client.call_tool(  # an alert that is not muted: 204, nothing changes
+                "unmute_alert", {"rule_id": rid, "alert_id": "never-muted"})
+            await client.call_tool("mute_alert", {"rule_id": rid, "alert_id": "query matched"})
+            muted_all = (await client.call_tool("mute_alert_rule", {"rule_id": rid})).data
+            await client.call_tool("mute_alert_rule", {"rule_id": rid})  # repeat: no error
+            got_all = (await client.call_tool("get_alert_rule", {"rule_id": rid})).data
+            with _raw_kibana() as raw:
+                stored = raw.alerting.rule.get(id=rid).body
+            with pytest.raises(ToolError) as on_muted:
+                await client.call_tool("mute_alert", {"rule_id": rid, "alert_id": "query matched"})
+            unmuted_all = (await client.call_tool("unmute_alert_rule", {"rule_id": rid})).data
+            await client.call_tool("mute_alert", {"rule_id": rid, "alert_id": "query matched"})
+            await client.call_tool("unmute_alert_rule", {"rule_id": rid})
+            got_none = (await client.call_tool("get_alert_rule", {"rule_id": rid})).data
+            with pytest.raises(ToolError) as missing:
+                await client.call_tool("mute_alert_rule", {"rule_id": "no-such-rule"})
+        assert "alert 'no-such-alert' not found on alert rule" in str(typo.value)
+        assert "'query matched'" in str(typo.value)  # the guidance names the real id
+        assert muted_one == {"rule_id": rid, "alert_id": "query matched", "muted": True}
+        assert got_one["muted"] is False and got_one["muted_alert_ids"] == ["query matched"]
+        assert unmuted_one == {"rule_id": rid, "alert_id": "query matched", "muted": False}
+        assert muted_all == {"id": rid, "muted": True}
+        assert got_all["muted"] is True and got_all["enabled"] is True  # still running
+        # Kibana dropped the per-alert mute when it muted the whole rule
+        assert got_all["muted_alert_ids"] == [] and stored["muted_alert_ids"] == []
+        assert stored["mute_all"] is True
+        assert "is muted as a whole" in str(on_muted.value)
+        assert "call unmute_alert_rule first" in str(on_muted.value)
+        assert unmuted_all == {"id": rid, "muted": False}
+        # ...and the rule-wide unmute clears a per-alert mute set after it
+        assert got_none["muted"] is False and got_none["muted_alert_ids"] == []
+        assert "alert rule 'no-such-rule' not found" in str(missing.value)
+        assert "call list_alert_rules to find it" in str(missing.value)
+    finally:
+        if rid is not None:
+            gateway.delete_alert_rule(rid)
+
+
+async def test_snooze_tools_through_mcp_live(gateway):
+    # snooze_alert_rule turns any ISO-8601 instant into the one format Kibana
+    # takes, returns the schedule_id unsnooze_alert_rule needs, and the limit of
+    # five snoozes (expired ones count) is refused naming the fix.
+    rid = None
+    try:
+        async with Client(_alerting_tool_server()) as client:
+            rid = (await client.call_tool("create_alert_rule", {
+                "name": f"contract-snooze-{uuid.uuid4().hex[:8]}", "rule_type_id": ".es-query",
+                "consumer": "stackAlerts", "params": _ESQ_PARAMS,
+            })).data["id"]
+            offset = (await client.call_tool("snooze_alert_rule", {
+                "rule_id": rid, "duration": "2h", "start": "2030-01-01T02:00:00+02:00",
+                "recurring": {"every": "1w", "onWeekDay": ["SA"], "end": "2030-03-01T00:00:00Z"},
+            })).data
+            now = (await client.call_tool(
+                "snooze_alert_rule", {"rule_id": rid, "duration": "30m"})).data
+            past = (await client.call_tool(  # an expired window is stored, and counts
+                "snooze_alert_rule", {"rule_id": rid, "duration": "1h", "start": "2020-01-01"})).data
+            for _ in range(2):
+                await client.call_tool("snooze_alert_rule", {"rule_id": rid, "duration": "1d"})
+            with pytest.raises(ToolError) as limit:
+                await client.call_tool("snooze_alert_rule", {"rule_id": rid, "duration": "1h"})
+            gone = (await client.call_tool(
+                "unsnooze_alert_rule", {"rule_id": rid, "schedule_id": past["schedule_id"]})).data
+            again = (await client.call_tool(  # the freed slot takes a new snooze
+                "snooze_alert_rule", {"rule_id": rid, "duration": "1h"})).data
+            with pytest.raises(ToolError) as stale:
+                await client.call_tool(
+                    "unsnooze_alert_rule", {"rule_id": rid, "schedule_id": past["schedule_id"]})
+            with pytest.raises(ToolError) as bad_every:
+                await client.call_tool("snooze_alert_rule", {
+                    "rule_id": rid, "duration": "1h", "recurring": {"every": "1x"}})
+            with pytest.raises(ToolError) as bad_unit:
+                await client.call_tool("snooze_alert_rule", {"rule_id": rid, "duration": "1w"})
+        assert offset["rule_id"] == rid and offset["schedule_id"]
+        assert offset["start"] == "2030-01-01T00:00:00.000Z" and offset["timezone"] == "UTC"
+        assert offset["recurring"] == {
+            "every": "1w", "onWeekDay": ["SA"], "end": "2030-03-01T00:00:00.000Z"}
+        assert now["duration"] == "30m" and now["start"].endswith("Z") and now["recurring"] is None
+        assert past["start"] == "2020-01-01T00:00:00.000Z"
+        assert "already has 5 snooze schedules" in str(limit.value)
+        assert "unsnooze_alert_rule" in str(limit.value)
+        assert gone == {"rule_id": rid, "schedule_id": past["schedule_id"], "unsnoozed": True}
+        assert again["schedule_id"] not in {offset["schedule_id"], past["schedule_id"]}
+        assert f"snooze schedule '{past['schedule_id']}' not found on alert rule" in str(stale.value)
+        assert "Kibana rejected the payload" in str(bad_every.value)  # Kibana's own check
+        assert "'1x'" not in str(bad_unit.value) and "is not a snooze duration" in str(bad_unit.value)
+    finally:
+        if rid is not None:
+            gateway.delete_alert_rule(rid)
+
+
+async def test_update_alert_rule_api_key_and_untrack_live(gateway):
+    # The key refresh keeps the rule as it was (definition, enabled) and returns
+    # no key material; disable with untrack=True is accepted and disables, and
+    # the default disable request is unchanged (no body).
+    rid = None
+    try:
+        async with Client(_alerting_tool_server()) as client:
+            rid = (await client.call_tool("create_alert_rule", {
+                "name": f"contract-key-{uuid.uuid4().hex[:8]}", "rule_type_id": ".es-query",
+                "consumer": "stackAlerts", "params": _ESQ_PARAMS, "enabled": True,
+                "tags": ["contract"],
+            })).data["id"]
+            with _raw_kibana() as raw:
+                before = raw.alerting.rule.get(id=rid).body
+            refreshed = await client.call_tool("update_alert_rule_api_key", {"rule_id": rid})
+            with _raw_kibana() as raw:
+                after = raw.alerting.rule.get(id=rid).body
+            disabled = (await client.call_tool(
+                "disable_alert_rule", {"rule_id": rid, "untrack": True})).data
+            got = (await client.call_tool("get_alert_rule", {"rule_id": rid})).data
+            with pytest.raises(ToolError) as missing:
+                await client.call_tool("update_alert_rule_api_key", {"rule_id": "no-such-rule"})
+        assert refreshed.data == {"id": rid, "api_key_updated": True}
+        assert os.environ["KIBANA_TEST_API_KEY"] not in str(refreshed.content)
+        assert after["enabled"] is True and after["api_key_owner"]
+        assert after["updated_at"] > before["updated_at"]  # Kibana recorded the refresh
+        for key in ("name", "params", "tags", "schedule", "actions"):
+            assert after[key] == before[key], key
+        assert disabled == {"id": rid, "enabled": False, "untracked": True}
+        assert got["enabled"] is False
+        assert "alert rule 'no-such-rule' not found" in str(missing.value)
+    finally:
+        if rid is not None:
+            gateway.delete_alert_rule(rid)
+
+
+async def test_lifecycle_tools_scoped_live(gateway):
+    # In a space: every lifecycle tool lands there and echoes it, the rule is
+    # invisible from the root space, and a miss carries the suffix once.
+    with _temp_space(gateway, "mcp-for-kibana-ct-alrt-life") as space_id:
+        async with Client(_alerting_tool_server()) as client:
+            rid = (await client.call_tool("create_alert_rule", {
+                "name": "contract scoped lifecycle", "rule_type_id": ".es-query",
+                "consumer": "stackAlerts", "params": _ESQ_PARAMS, "space": space_id,
+            })).data["id"]
+            scoped = {"rule_id": rid, "space": space_id}
+            muted = (await client.call_tool("mute_alert_rule", scoped)).data
+            unmuted = (await client.call_tool("unmute_alert_rule", scoped)).data
+            snoozed = (await client.call_tool(
+                "snooze_alert_rule", {**scoped, "duration": "1h"})).data
+            unsnoozed = (await client.call_tool(
+                "unsnooze_alert_rule", {**scoped, "schedule_id": snoozed["schedule_id"]})).data
+            unmuted_alert = (await client.call_tool(
+                "unmute_alert", {**scoped, "alert_id": "query matched"})).data
+            keyed = (await client.call_tool("update_alert_rule_api_key", scoped)).data
+            with pytest.raises(ToolError) as miss:
+                await client.call_tool(
+                    "unsnooze_alert_rule", {**scoped, "schedule_id": snoozed["schedule_id"]})
+            with pytest.raises(ToolError) as root:  # invisible from the root space
+                await client.call_tool("mute_alert_rule", {"rule_id": rid})
+        for result in (muted, unmuted, snoozed, unsnoozed, unmuted_alert, keyed):
+            assert result["space"] == space_id
+        assert str(miss.value).endswith(f" (in space '{space_id}')")
+        assert str(miss.value).count("(in space") == 1
+        assert f"alert rule '{rid}' not found" in str(root.value)

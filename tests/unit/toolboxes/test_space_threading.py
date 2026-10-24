@@ -59,6 +59,7 @@ class Seed:
     case_id: str
     value_list_item_id: str
     visualization_id: str
+    snooze_schedule_id: str
 
 
 def _seed(gateway: FakeGateway, export_dir: Path) -> Seed:
@@ -90,6 +91,7 @@ def _seed(gateway: FakeGateway, export_dir: Path) -> Seed:
         enabled=False, schedule_interval="1m", status="pending", tags=(),
     )
     gateway.alert_rules[rule.id] = rule
+    gateway.rule_snoozes[rule.id] = {"snooze-seed": {"duration": "1h"}}
     conn = Connector(
         id="conn-seed", name="Seed log", connector_type_id=".server-log",
         is_missing_secrets=False, is_preconfigured=False,
@@ -116,6 +118,7 @@ def _seed(gateway: FakeGateway, export_dir: Path) -> Seed:
         short_url_id=su.id, short_url_slug=su.slug,
         rule_id=rule.id, connector_id=conn.id, case_id=case.id,
         value_list_item_id=vli.id, visualization_id="viz-seed",
+        snooze_schedule_id="snooze-seed",
     )
 
 
@@ -129,8 +132,8 @@ def _seed(gateway: FakeGateway, export_dir: Path) -> Seed:
 #   resolve_short_url, export_saved_objects, import_saved_objects,
 #   create_data_view, update_data_view, create_short_url, delete_data_view,
 #   delete_short_url, overwrite_saved_objects
-# alerting (15), cases (6), security-detections (25): the extension rows
-#   below — 73 space-aware tools in all
+# alerting (22), cases (6), security-detections (25): the extension rows
+#   below — 80 space-aware tools in all
 _TOOLS: list[tuple[str, Callable[[Seed], dict[str, Any]], str]] = [
     ("search_dashboards", lambda s: {}, "list"),
     ("get_dashboard", lambda s: {"dashboard_id": s.dashboard_id}, "dict"),
@@ -194,7 +197,7 @@ _TOOLS: list[tuple[str, Callable[[Seed], dict[str, Any]], str]] = [
     ("delete_data_view", lambda s: {"view_id": "dv1"}, "dict"),
     ("delete_short_url", lambda s: {"short_url_id": s.short_url_id}, "dict"),
     ("overwrite_saved_objects", lambda s: {"handle": s.handle}, "dict"),
-    # alerting (15): list_alert_rules, list_connectors, list_rule_types (list), the rest dict
+    # alerting (22): list_alert_rules, list_connectors, list_rule_types (list), the rest dict
     ("list_alert_rules", lambda s: {}, "list"),
     ("get_alert_rule", lambda s: {"rule_id": s.rule_id}, "dict"),
     ("get_alerting_health", lambda s: {}, "dict"),
@@ -218,6 +221,17 @@ _TOOLS: list[tuple[str, Callable[[Seed], dict[str, Any]], str]] = [
         "dict",
     ),
     ("update_connector", lambda s: {"connector_id": s.connector_id, "name": "renamed"}, "dict"),
+    ("mute_alert_rule", lambda s: {"rule_id": s.rule_id}, "dict"),
+    ("unmute_alert_rule", lambda s: {"rule_id": s.rule_id}, "dict"),
+    ("mute_alert", lambda s: {"rule_id": s.rule_id, "alert_id": "host-1"}, "dict"),
+    ("unmute_alert", lambda s: {"rule_id": s.rule_id, "alert_id": "host-1"}, "dict"),
+    ("snooze_alert_rule", lambda s: {"rule_id": s.rule_id, "duration": "1h"}, "dict"),
+    (
+        "unsnooze_alert_rule",
+        lambda s: {"rule_id": s.rule_id, "schedule_id": s.snooze_schedule_id},
+        "dict",
+    ),
+    ("update_alert_rule_api_key", lambda s: {"rule_id": s.rule_id}, "dict"),
     ("delete_alert_rule", lambda s: {"rule_id": s.rule_id}, "dict"),
     ("delete_connector", lambda s: {"connector_id": s.connector_id}, "dict"),
     (
@@ -278,7 +292,7 @@ _TOOLS: list[tuple[str, Callable[[Seed], dict[str, Any]], str]] = [
     ("delete_value_list_item", lambda s: {"item_id": s.value_list_item_id}, "dict"),
 ]
 
-assert len(_TOOLS) == 73
+assert len(_TOOLS) == 80
 
 
 def _make_server(gateway_factory: Any, export_dir: Path, *, with_platform_admin: bool = False) -> FastMCP:
@@ -319,10 +333,10 @@ async def test_space_threads_to_the_factory(tmp_path, name, args_builder, kind, 
     assert calls == [space]
 
 
-# --- Group 2: schema — exactly the 73 tools expose `space`, correctly shaped ---
+# --- Group 2: schema — exactly the 80 tools expose `space`, correctly shaped ---
 
 
-async def test_schema_exactly_73_tools_expose_space(tmp_path):
+async def test_schema_exactly_80_tools_expose_space(tmp_path):
     gateway = FakeGateway()
     server = _make_server(lambda space=None: gateway, tmp_path, with_platform_admin=True)
     async with Client(server) as client:
@@ -341,7 +355,7 @@ async def test_schema_exactly_73_tools_expose_space(tmp_path):
         t.name for t in all_tools
         if "space" in t.inputSchema.get("properties", {})
     } - {name for name, _, _ in _TOOLS}
-    assert not outsiders, f"tools outside the 73 gained a space param: {sorted(outsiders)}"
+    assert not outsiders, f"tools outside the 80 gained a space param: {sorted(outsiders)}"
     for tool in with_space.values():
         prop = tool.inputSchema["properties"]["space"]
         # Annotated[str, Field(pattern=...)] | None renders as an anyOf of

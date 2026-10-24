@@ -12,7 +12,7 @@ from kibana_mcp.core.models import (
     FleetPackage, FleetPackageCategory, FleetPackagePolicy, FleetPermissions, FleetServerHost,
     FleetSettings, FleetUninstallToken,
     ImportedObject, KibanaStats, KibanaStatus, PanelSummary, PrepackagedRulesStatus, Role,
-    RoleIndexPrivilege, RoleKibanaPrivilege, SavedObjectImportResult, ShortUrl, Space, Stream,
+    RoleIndexPrivilege, RoleKibanaPrivilege, RuleSnooze, SavedObjectImportResult, ShortUrl, Space, Stream,
     StreamIngest, StreamSummary, StreamWriteResult, SyntheticMonitor, SyntheticParam, SyntheticPrivateLocation,
     TaskManagerHealth, Timeline, UpgradeReadiness, UptimeSettings, ValueList, ValueListItem,
     VisualizationDetail, VisualizationSummary,
@@ -60,6 +60,13 @@ class FakeGateway:
         # summary stored directly has none: get_alert_rule then reads {} / []).
         self.rule_params: dict[str, dict] = {}
         self.rule_actions: dict[str, list] = {}
+        # Rule lifecycle state: rule-wide mute, per-alert mutes, snoozes by
+        # schedule id (the arguments as passed), API-key refreshes, untrack flags.
+        self.rule_muted: dict[str, bool] = {}
+        self.rule_muted_alerts: dict[str, list[str]] = {}
+        self.rule_snoozes: dict[str, dict[str, dict]] = {}
+        self.api_key_updates: list[str] = []
+        self.disable_untracks: list[bool] = []
         self.cases: dict[str, Case] = {}
         self.alerting_health = AlertingHealth(
             status="ok", has_permanent_encryption_key=True, is_sufficiently_secure=True
@@ -362,6 +369,8 @@ class FakeGateway:
             enabled=r.enabled, schedule_interval=r.schedule_interval, status=r.status,
             tags=r.tags, params=dict(self.rule_params.get(rule_id, {})),
             actions=tuple(dict(a) for a in self.rule_actions.get(rule_id, [])),
+            muted=self.rule_muted.get(rule_id, False),
+            muted_alert_ids=tuple(self.rule_muted_alerts.get(rule_id, [])),
         )
 
     def get_alerting_health(self):
@@ -400,8 +409,59 @@ class FakeGateway:
     def enable_alert_rule(self, rule_id):
         self.alert_rules[rule_id] = replace(self._rule(rule_id), enabled=True)
 
-    def disable_alert_rule(self, rule_id):
+    def disable_alert_rule(self, rule_id, untrack=False):
         self.alert_rules[rule_id] = replace(self._rule(rule_id), enabled=False)
+        self.disable_untracks.append(untrack)
+
+    # Kibana's rule-wide mute and unmute both clear the per-alert mutes (probed).
+    def mute_alert_rule(self, rule_id):
+        self._rule(rule_id)
+        self.rule_muted[rule_id] = True
+        self.rule_muted_alerts[rule_id] = []
+
+    def unmute_alert_rule(self, rule_id):
+        self._rule(rule_id)
+        self.rule_muted[rule_id] = False
+        self.rule_muted_alerts[rule_id] = []
+
+    def mute_alert(self, rule_id, alert_id):
+        self._rule(rule_id)
+        if self.rule_muted.get(rule_id):
+            raise KibanaRejected(f"alert rule '{rule_id}' is muted as a whole (mute_alert_rule)")
+        muted = self.rule_muted_alerts.setdefault(rule_id, [])
+        if alert_id not in muted:
+            muted.append(alert_id)
+
+    def unmute_alert(self, rule_id, alert_id):
+        self._rule(rule_id)
+        muted = self.rule_muted_alerts.get(rule_id, [])
+        if alert_id in muted:
+            muted.remove(alert_id)
+
+    def snooze_alert_rule(self, rule_id, duration, start, recurring):
+        self._rule(rule_id)
+        schedule_id = f"snooze-{next(self._ids)}"
+        self.rule_snoozes.setdefault(rule_id, {})[schedule_id] = {
+            "duration": duration, "start": start, "recurring": recurring,
+        }
+        return RuleSnooze(
+            rule_id=rule_id, schedule_id=schedule_id, duration=duration,
+            start=start.isoformat(), timezone="UTC",
+            recurring=None if recurring is None else {
+                k: v.isoformat() if hasattr(v, "isoformat") else v for k, v in recurring.items()
+            },
+        )
+
+    def unsnooze_alert_rule(self, rule_id, schedule_id):
+        self._rule(rule_id)
+        snoozes = self.rule_snoozes.get(rule_id, {})
+        if schedule_id not in snoozes:
+            raise KibanaNotFound(f"snooze schedule '{schedule_id}' not found")
+        del snoozes[schedule_id]
+
+    def update_alert_rule_api_key(self, rule_id):
+        self._rule(rule_id)
+        self.api_key_updates.append(rule_id)
 
     def delete_alert_rule(self, rule_id):
         self._rule(rule_id)

@@ -1,6 +1,6 @@
 # alerting — behavior contract
 
-Status: Draft v1.4 (2026-10-17) — regeneration corpus, reconciled to shipped code
+Status: Draft v1.5 (2026-10-24) — regeneration corpus, reconciled to shipped code
 Surface reference: docs/tools.md#alerting-toolbox · Enforcement: named per section below
 
 ## Purpose & persona
@@ -13,27 +13,31 @@ track) has both halves; it is the alerting half of the withdrawn
 `observability-sre` profile (paired with `observability` + `cases`; that persona is
 withdrawn because its SLO reads are Platinum-gated and out of scope, not because of
 anything in this toolbox). It also stands alone: any deployment wanting rule/connector
-CRUD, in-place edits of both, and the ability to test-fire a connector can
-enable just `alerting`.
+CRUD, in-place edits of both, a rule's notification lifecycle (mute,
+snooze, API key) and the ability to test-fire a connector can enable just
+`alerting`.
 
 ## Surface
 
-15 tools: 6 `read`, 6 `write`, 3 `destructive` — one Kibana object per
+22 tools: 6 `read`, 13 `write`, 3 `destructive` — one Kibana object per
 tool, no batch or bulk form (the two `update_*` tools read the object before
 writing it). `read`: `list_alert_rules`, `get_alert_rule`,
 `get_alerting_health`, `list_connectors`, `list_rule_types`, `get_connector`.
 `write`: `create_alert_rule`, `update_alert_rule`, `enable_alert_rule`,
-`disable_alert_rule`, `create_connector`, `update_connector`.
+`disable_alert_rule`, `create_connector`, `update_connector`, and the rule
+lifecycle — `mute_alert_rule`, `unmute_alert_rule`, `mute_alert`,
+`unmute_alert`, `snooze_alert_rule`, `unsnooze_alert_rule`,
+`update_alert_rule_api_key`.
 `destructive`: `delete_alert_rule`, `delete_connector`, `execute_connector`.
 The tier cap hides the destructive three at the default `write` tier and all
-nine non-read tools at `read` tier — a rewrite must keep `execute_connector`
+sixteen non-read tools at `read` tier — a rewrite must keep `execute_connector`
 in the destructive group even though it deletes nothing (see Behavioral
 guarantees). Full per-tool arguments, return shapes, and examples:
 docs/tools.md#alerting-toolbox.
 
 ## Behavioral guarantees
 
-- **Space targeting follows the shared 73-tool contract**
+- **Space targeting follows the shared 80-tool contract**
   (docs/tools.md#space-targeting): optional `space` on every tool; omitted
   means the default space, byte-identical to before the parameter existed;
   a nonexistent `space` fails closed before any other work; every
@@ -106,6 +110,51 @@ docs/tools.md#alerting-toolbox.
   defines no preconfigured connector. System connectors
   (`system-connector-.cases`, ...) 404 on GET, so they surface as not-found
   (Kibana's own PUT answers "System action ... can not be updated", probed).
+- **The rule lifecycle tools quiet a rule without touching its
+  definition, and every one is reversible** (D45, probed on 9.5.4). Each is
+  one POST or DELETE answering 204 (the snooze answers 200 with its
+  schedule); none changes params, actions, tags or `enabled`.
+  `mute_alert_rule`/`unmute_alert_rule` set the rule-wide mute — the rule
+  runs and tracks alerts, no action fires, no end time — and Kibana clears
+  the per-alert mutes on both calls. `mute_alert`/`unmute_alert` mute one
+  alert by the id the rule raised it under (the group's value for a grouped
+  rule; `query matched` for an ungrouped `.es-query` rule, observed); Kibana's
+  `validate_alerts_existence` default stays on, so an id the rule has not
+  raised is a 404, answered with guidance; unmuting an alert that is not
+  muted is a 204. On a rule muted as a whole Kibana answers a per-alert mute
+  with 204 and records nothing, so `mute_alert` reads the rule first and
+  refuses, naming `unmute_alert_rule` (it clears every per-alert mute) then
+  `mute_alert`. `get_alert_rule` returns `muted` (Kibana's `mute_all`) and
+  `muted_alert_ids`. Repeats are safe: the mutes, unmutes, the unsnooze and
+  the key refresh carry `idempotentHint=true`; the snooze does not (each call
+  adds a schedule).
+- **A snooze is identified only by the `schedule_id` it returns.**
+  `snooze_alert_rule` takes `duration` (a whole number and `s`/`m`/`h`/`d`,
+  checked before the gateway — Kibana 400s `1w`, `1M`, `1y`, `1.5h`, `2H`,
+  `-1`), `start` (any ISO-8601 instant, default now, no offset read as UTC)
+  and an optional `recurring` passed to Kibana (`every` takes `h`/`d`/`w`/`M`/`y`
+  and must exceed `duration`; `end` is converted like `start`). Kibana accepts
+  only `YYYY-MM-DDTHH:mm:ss.sssZ` for `start` and `end` (a `Z` without
+  milliseconds or an offset is a 400), so the adapter sends that form in UTC.
+  The result is the stored schedule: `rule_id`, `schedule_id`, `duration`,
+  `start`, `timezone`, `recurring`. Kibana's public API never returns a
+  rule's snoozes (not on GET, not in `_find`, not with `fields`; only an
+  internal route the UI uses does), so the description says to keep the id;
+  a rule holds at most 5 snoozes and expired ones count — the sixth is
+  refused with guidance naming `unsnooze_alert_rule` and Kibana's Rules page.
+  An unknown `schedule_id` (Kibana: 404 when the rule has other snoozes, 400
+  "Rule has no snooze schedules." when it has none) is a not-found naming
+  `snooze_alert_rule`.
+- **`update_alert_rule_api_key` changes the identity a rule runs as.**
+  Kibana regenerates the key from the caller's credentials — this server's
+  API key — and bumps `updated_at`; definition and `enabled` are unchanged
+  (probed). No key material comes back.
+- **`disable_alert_rule`'s `untrack` is additive and default off.** Omitted
+  or `false`, the request is the one sent before the parameter existed (no
+  body) and the rule's active alerts stay `active`; `true` sends
+  `{"untrack": true}` and Kibana marks them `untracked` in the alerts index
+  (observed: 3 active → 3 untracked). The result gains `"untracked": true`
+  only when it was asked for.
 - **Rules are created disabled by default.** `create_alert_rule`'s `enabled`
   parameter defaults to `False`; a rule exists inert until an explicit
   `enable_alert_rule` call. This is a deliberate safety default, not an
@@ -150,7 +199,7 @@ docs/tools.md#alerting-toolbox.
 
 ## Invariants
 
-- MUST register exactly 15 tools, split 6 read / 6 write / 3 destructive, as
+- MUST register exactly 22 tools, split 6 read / 13 write / 3 destructive, as
   listed under Surface.
 - MUST default `create_alert_rule`'s `enabled` to `False`.
 - MUST NOT echo `space` on `list_alert_rules`, `list_connectors` or
@@ -197,6 +246,17 @@ docs/tools.md#alerting-toolbox.
 - MUST refuse `update_connector` without `secrets` on any connector type
   other than `.index` and `.server-log`, and on any preconfigured connector,
   before writing anything.
+- MUST NOT change a rule's definition or `enabled` state from any lifecycle
+  tool, and MUST NOT send `untrack` from `disable_alert_rule` unless the caller
+  passed `untrack=true`.
+- MUST send a snooze's `start` and `recurring.end` as UTC
+  `YYYY-MM-DDTHH:mm:ss.sssZ`, refuse a `duration` outside `[1-9][0-9]*[smhd]`
+  before the gateway, and return the `schedule_id`.
+- MUST refuse `mute_alert` on a rule muted as a whole, before the mute.
+- MUST answer an unknown alert id, an unknown snooze `schedule_id` and the
+  five-snooze limit with guidance naming where the id comes from or the tool
+  that frees a slot, and any other 404 on these routes with the rule's
+  not-found guidance.
 
 ## Deliberate exclusions & caveats
 
@@ -207,12 +267,18 @@ docs/tools.md#alerting-toolbox.
   current connector API only — never a deprecated legacy alias naming the
   same objects — so there is one path to create/list/get/update/delete/execute
   a connector, not two views of the same store.
-- **Rule-lifecycle depth deferred** (recorded 2026-08-19, ordered as this
-  toolbox's next work): mute/unmute (per-alert and rule-wide),
-  snooze/unsnooze, and `update_api_key`. The `rule_types` read shipped
+- **Rule lifecycle shipped 2026-10-24** (D45): mute/unmute (per-alert and
+  rule-wide), snooze/unsnooze, `update_api_key`, and `untrack` on disable —
+  the depth recorded as deferred on 2026-08-19. The `rule_types` read shipped
   2026-10-12 as `list_rule_types`, and in-place rule `update` shipped
   2026-10-12 as `update_alert_rule` (with `get_connector`/`update_connector`
-  for connectors).
+  for connectors). Not built: `alerting.backfill` (scheduling past runs).
+- **No read of a rule's snoozes or alert ids.** Kibana's public API has
+  neither, so a lost `schedule_id` can be cancelled only in Kibana's Rules
+  page, and `mute_alert`'s id comes from the user or the rule's grouping
+  (the alerts-as-data index holds them; no tool reads it). The snooze's
+  `timezone` is not an argument: Kibana stores `UTC`, so a recurring snooze
+  repeats at the same UTC time across daylight-saving changes.
 - **`update_alert_rule` leaves out the rule-level `notify_when` and
   `throttle`.** Kibana 9.5 refuses them beside any action carrying a
   per-action `frequency` ("Cannot specify per-action frequency params when
@@ -252,7 +318,7 @@ docs/tools.md#alerting-toolbox.
 
 ## Enforcement
 
-- `tests/unit/toolboxes/test_alerting.py` — the exact 15-tool set;
+- `tests/unit/toolboxes/test_alerting.py` — the exact 22-tool set;
   `create_alert_rule` defaulting to disabled; a full rule lifecycle
   (create → enable → get → list → delete); a connector lifecycle including
   `execute_connector`'s `status: "ok"` path; `get_alerting_health`'s
@@ -260,9 +326,9 @@ docs/tools.md#alerting-toolbox.
   distinct destructive/non-idempotent/open-world triple; space threading
   and echo for a representative call; the no-`space` call keeping the
   pre-space result shape byte-identical.
-- `tests/unit/toolboxes/test_space_threading.py` — the shared 73-tool space
+- `tests/unit/toolboxes/test_space_threading.py` — the shared 80-tool space
   contract (factory threading, schema shape, echo-only-when-set, scoped
-  not-found suffix) parametrized over all 15 alerting tools alongside the
+  not-found suffix) parametrized over all 22 alerting tools alongside the
   other space-aware toolboxes.
 - `tests/contract/test_gateway_contract.py` — live-Kibana pins:
   `get_alerting_health`'s status enum and encryption-key flag; a full
@@ -331,3 +397,24 @@ docs/tools.md#alerting-toolbox.
   config; config merges; secrets on `.index` are rejected) and
   `test_alerting_maintenance_tools_scoped_live` (the three tools through MCP
   in a space: echo, scoped suffix, invisible from the root space).
+- `tests/unit/adapters/test_alerting_gateway.py` — the lifecycle requests
+  (rule id only for mute/unmute/key refresh; no `validate_alerts_existence`;
+  no `untrack` unless asked), the strict UTC `start`/`end` form, the snooze
+  result, the five-snooze, unknown-alert and unknown-schedule guidance, the
+  refusal of `mute_alert` on a muted rule sending nothing, and the mute state
+  on `get_alert_rule`; `tests/unit/adapters/test_id_guidance.py` — the
+  empty and unknown `rule_id` guidance on every lifecycle call.
+- `tests/unit/toolboxes/test_alerting.py` — the lifecycle tools' write tier
+  and idempotency hints, the duration/start/`recurring.end` guards before the
+  factory, ISO-8601 inputs reaching the gateway as UTC, `untrack` default off
+  with the echo only when on, and the descriptions naming their partners.
+- `tests/contract/test_gateway_contract.py` — live, through the MCP tools:
+  `test_mute_tools_through_mcp_live` (a firing rule's `query matched` alert
+  muted and read back, the rule-wide mute and unmute clearing per-alert mutes,
+  the refusal on a muted rule, an unknown alert id answered with guidance),
+  `test_snooze_tools_through_mcp_live` (an offset `start` stored as UTC
+  milliseconds, a recurring snooze, the five-snooze limit with an expired one
+  counting, a freed slot reused, a stale `schedule_id`),
+  `test_update_alert_rule_api_key_and_untrack_live` and
+  `test_lifecycle_tools_scoped_live` (echo, scoped suffix once, invisible
+  from the root space).

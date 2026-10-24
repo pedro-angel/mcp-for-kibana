@@ -1,6 +1,6 @@
 # Decisions ledger
 
-Status: Draft v1.14 (2026-10-24) — regeneration corpus. Consumes
+Status: Draft v1.15 (2026-10-24) — regeneration corpus. Consumes
 [brief.md](brief.md); read alongside [design.md](design.md).
 
 Each entry is a decision a rewrite must not silently re-litigate: what was
@@ -144,7 +144,7 @@ this ledger stands without them.
   may get the input elsewhere, e.g. an id the user pastes). Dependencies are
   followed transitively; tools hidden by the tier are not checked; toolbox
   selections are not checked. **Dependency map**: one owner, data —
-  `DEPENDENCIES` in `src/kibana_mcp/tool_lists.py`, 34 edges from 30 tools.
+  `DEPENDENCIES` in `src/kibana_mcp/tool_lists.py`, 41 edges from 37 tools.
   An edge A → B means A takes an input only B shows the model and A's own
   description or error guidance sends the model there: an index or field name
   (`update_panel`/`delete_panel` → `get_dashboard`; every VizSpec tool →
@@ -353,6 +353,65 @@ this ledger stands without them.
   assertions in
   `tests/contract/test_gateway_contract.py::test_get_alert_rule_reads_params_before_and_after_a_threshold_fix_live`
   (round trip keeps the uuids, an action sent without one gets a new uuid).
+- **D45 (2026-10-24, probes on 9.5.4, Basic)** — A rule's notification
+  lifecycle ships as seven `write` tools plus an additive, default-off
+  `untrack` on `disable_alert_rule`: `mute_alert_rule`, `unmute_alert_rule`,
+  `mute_alert`, `unmute_alert`, `snooze_alert_rule`, `unsnooze_alert_rule`,
+  `update_alert_rule_api_key` (the plan's names kept: verb_noun, the
+  toolbox's `_alert_rule` suffix; `mute_alert` names the per-alert object).
+  **Tiers, by the repo rule (irreversible or data-losing → destructive):**
+  none deletes or loses data and each has an inverse — unmute, unsnooze, a
+  second key refresh by a caller with the right privileges, re-enable — so
+  all are `write`. `untrack` was weighed for destructive and kept on `write`:
+  the alert documents stay in the index (status `untracked`), and re-enabling
+  the rule raises alerts afresh; it ends the alerts' lifecycle, which is what
+  disabling a rule is for. The key refresh changes who the rule runs as (the
+  server's API key); it is `write` because nothing is lost and its
+  description says so. **Observed** (rule `.es-query` over
+  `kibana_sample_data_flights`): `_mute_all`, `_unmute_all`, `_mute`,
+  `_unmute`, `_update_api_key`, `_disable` and the snooze DELETE answer 204
+  with no body, and repeat with 204 (hence `idempotentHint=true`, except the
+  snooze, whose every call adds a schedule); a missing rule is a 404 "Saved
+  object [alert/<id>] not found" everywhere, answered with D17's rule
+  guidance. Kibana's rule-wide mute and unmute both reset `muted_alert_ids`
+  to `[]`, and a per-alert mute on a rule muted as a whole answers 204 and
+  records nothing — so `mute_alert` reads the rule first and refuses that
+  case, naming `unmute_alert_rule` then `mute_alert`, rather than reporting a
+  mute Kibana discarded. A per-alert mute of an id the rule has not raised is
+  a 404 ("Alert instance with id ... does not exist") under Kibana's
+  `validate_alerts_existence` default, which the tool keeps (a typo is
+  refused, not silently stored; `false` stored it, observed); an ungrouped
+  `.es-query` rule's alert id is `query matched`, a grouped one's the term
+  value (`JetBeats`); unmuting an alert that is not muted is a 204. The GET
+  carries `mute_all` and `muted_alert_ids`, so `get_alert_rule` returns them
+  as `muted` and `muted_alert_ids`, the read half of the mute tools (D40's
+  pattern). **Snoozes are invisible on the public API**: absent from the
+  GET, from `_find` and from `_find?fields=snooze_schedule`; only
+  `/internal/alerting/rule/{id}` (internal, the UI's route) returns them. A
+  rule holds at most 5 and expired ones count (a 2020 window blocked a sixth,
+  "Rule cannot have more than 5 snooze schedules"). So `snooze_alert_rule`
+  returns the stored schedule with its `schedule_id`, its description says to
+  keep it, the limit's error names `unsnooze_alert_rule` and Kibana's Rules
+  page, and an unknown id (404 "Rule has no snooze schedule with id <id>."
+  while others exist, 400 "Rule has no snooze schedules." with none) names
+  `snooze_alert_rule`. Kibana takes `start`/`recurring.end` only as
+  `YYYY-MM-DDTHH:mm:ss.sssZ` (`...:00Z` and `+02:00` are 400s; a past start is
+  accepted) and `duration` only as a whole number of `s`/`m`/`h`/`d` (`1w`,
+  `1M`, `1y`, `1.5h`, `2H`, `-1` are 400s; `0h` is accepted and refused here
+  as meaningless); `recurring.every` takes `h`/`d`/`w`/`M`/`y` and must exceed
+  `duration`. So the tool takes any ISO-8601 instant (no offset read as UTC,
+  default now) and the adapter sends the strict UTC form; the duration is
+  checked before the gateway with an error naming the fix. `timezone` is not
+  an argument (Kibana stores `UTC`). The key refresh bumped `updated_at` and
+  left the definition and `enabled` as they were. `untrack`: a default
+  disable left the rule's 3 alerts `active` in `.alerts-stack.alerts-default`;
+  `{"untrack": true}` turned them `untracked`; so the request without the
+  argument stays the pre-existing one (no body), and the result gains
+  `"untracked": true` only when asked. Rejected alternatives: reading snoozes
+  or alert ids through internal routes or the alerts index (internal, as D36
+  and D43 record; the alerts index is not a Kibana API); exposing
+  `validate_alerts_existence` (no task needs pre-muting an alert, and the
+  default catches typos). Contract: [alerting](toolboxes/alerting.md).
 
 ## Reliability and models (measured)
 

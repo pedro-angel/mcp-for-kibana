@@ -234,7 +234,7 @@ and docs/tools.md#saved-objects-exportimport-data-management.
   Kibana's duplicate-name 400 into guidance naming the existing view's id
   and `update_data_view` (other 400s unchanged).
 - **Unit — `tests/unit/toolboxes/test_space_threading.py`.** All 11 tools
-  inside the shared 73-tool cross-toolbox matrix: threading (the factory
+  inside the shared 80-tool cross-toolbox matrix: threading (the factory
   sees exactly the caller's space), schema (space present, optional,
   correctly patterned), echo (dict rows only, only when set), and the two
   shared error-path cases (space-not-found guidance, auth-error passthrough).

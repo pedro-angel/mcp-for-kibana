@@ -67,6 +67,8 @@ ALERTING_TOOLS = {
     "list_alert_rules", "get_alert_rule", "get_alerting_health", "list_connectors",
     "list_rule_types", "get_connector", "create_alert_rule", "update_alert_rule",
     "enable_alert_rule", "disable_alert_rule", "create_connector", "update_connector",
+    "mute_alert_rule", "unmute_alert_rule", "mute_alert", "unmute_alert",
+    "snooze_alert_rule", "unsnooze_alert_rule", "update_alert_rule_api_key",
     "delete_alert_rule", "delete_connector", "execute_connector",
 }
 ALERTING_READ = {

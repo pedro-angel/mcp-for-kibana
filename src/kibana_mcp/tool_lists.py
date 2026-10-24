@@ -70,6 +70,13 @@ DEPENDENCIES: Mapping[str, tuple[str, ...]] = MappingProxyType({
     "enable_alert_rule": ("list_alert_rules",),
     "disable_alert_rule": ("list_alert_rules",),
     "delete_alert_rule": ("list_alert_rules",),
+    "mute_alert_rule": ("list_alert_rules",),
+    "unmute_alert_rule": ("list_alert_rules",),
+    "mute_alert": ("list_alert_rules",),
+    "unmute_alert": ("get_alert_rule",),  # muted_alert_ids
+    "snooze_alert_rule": ("list_alert_rules",),
+    "unsnooze_alert_rule": ("snooze_alert_rule",),  # the only source of a schedule_id
+    "update_alert_rule_api_key": ("list_alert_rules",),
     "get_connector": ("list_connectors",),
     "update_connector": ("get_connector",),
     # observability, platform-admin, fleet

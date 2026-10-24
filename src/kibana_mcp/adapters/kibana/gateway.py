@@ -7,6 +7,7 @@ import inspect
 import re
 import urllib.parse
 from collections.abc import Callable, Iterator
+from datetime import UTC, datetime
 from types import TracebackType
 from typing import Any
 
@@ -74,6 +75,7 @@ from kibana_mcp.core.models import (
     PanelSummary,
     PrepackagedRulesStatus,
     Role,
+    RuleSnooze,
     RoleIndexPrivilege,
     RoleKibanaPrivilege,
     SavedObjectImportResult,
@@ -377,7 +379,68 @@ def _to_alert_rule_detail(body: dict[str, Any]) -> AlertRuleDetail:
         tags=s.tags,
         params=dict(body.get("params") or {}),
         actions=tuple(_to_rule_action(a) for a in body.get("actions") or []),
+        # mute_all / muted_alert_ids are on every GET (probed on 9.5.4); the
+        # rule's snoozes are not, on any public route, so none is returned.
+        muted=bool(body.get("mute_all", False)),
+        muted_alert_ids=tuple(str(a) for a in body.get("muted_alert_ids") or []),
     )
+
+
+def _kibana_instant(value: datetime) -> str:
+    """An aware datetime in the only form the snooze API accepts:
+    YYYY-MM-DDTHH:mm:ss.sssZ (probed on 9.5.4: '...:00Z' and '+02:00' are 400s)."""
+    utc = value.astimezone(UTC)
+    return utc.strftime("%Y-%m-%dT%H:%M:%S.") + f"{utc.microsecond // 1000:03d}Z"
+
+
+def _to_rule_snooze(rule_id: str, body: dict[str, Any]) -> RuleSnooze:
+    schedule = body.get("schedule") or {}
+    custom = schedule.get("custom") or {}
+    recurring = custom.get("recurring")
+    return RuleSnooze(
+        rule_id=rule_id,
+        schedule_id=str(schedule.get("id", "")),
+        duration=str(custom.get("duration", "")),
+        start=str(custom.get("start", "")),
+        timezone=str(custom.get("timezone", "")),
+        recurring=dict(recurring) if isinstance(recurring, dict) else None,
+    )
+
+
+# Kibana's 404 bodies for a part of a rule that is missing while the rule
+# itself exists (probed on 9.5.4). Any other 404 on these routes — "Saved
+# object [alert/<id>] not found" — is the rule, so it gets the rule guidance.
+_MISSING_ALERT_MARK = "Alert instance with id"
+_MISSING_SNOOZE_MARKS = ("has no snooze schedule",)
+_SNOOZE_LIMIT_MARK = "cannot have more than 5 snooze schedules"
+_ALERT_ID_FIX = (
+    "pass the id of an alert the rule has raised (get_alert_rule lists the muted ones "
+    "in muted_alert_ids)"
+)
+
+
+def _alert_not_found(rule_id: str, alert_id: str) -> KibanaNotFound:
+    return KibanaNotFound(
+        f"alert '{alert_id}' not found on alert rule '{rule_id}' — alert_id is the id of an "
+        "alert the rule has raised (for a rule grouped by a field, the group's value, e.g. "
+        "a host name; for an ungrouped .es-query rule, 'query matched'), not the rule's "
+        "name; an alert can be muted only once the rule has raised it — to silence the "
+        "whole rule use mute_alert_rule"
+    )
+
+
+def _snooze_not_found(rule_id: str, schedule_id: str) -> KibanaNotFound:
+    return KibanaNotFound(
+        f"snooze schedule '{schedule_id}' not found on alert rule '{rule_id}' — schedule_id "
+        "is the schedule_id that snooze_alert_rule returned (Kibana's public API does not "
+        "list a rule's snoozes); it may already have been removed"
+    )
+
+
+def _blank(param: str, value: str, fix: str) -> None:
+    """Refuse an empty id before kibana-py does (its bare ValueError is unmapped)."""
+    if not value.strip():
+        raise KibanaRejected(f"{param} is empty — {fix}")
 
 
 def _to_connector(body: dict[str, Any]) -> Connector:
@@ -1328,9 +1391,107 @@ class KibanaPyGateway:
             self._client.alerting.rule.enable(id=rule_id)
 
     @_translate_errors
-    def disable_alert_rule(self, rule_id: str) -> None:
+    def disable_alert_rule(self, rule_id: str, untrack: bool = False) -> None:
+        # untrack is sent only when asked: without it the request is the one
+        # disable_alert_rule always sent, and the rule's active alerts stay
+        # active; with it Kibana marks them untracked (probed on 9.5.4).
+        kwargs: dict[str, Any] = {"id": rule_id}
+        if untrack:
+            kwargs["untrack"] = True
         with _known_id("alert rule", rule_id):
-            self._client.alerting.rule.disable(id=rule_id)
+            self._client.alerting.rule.disable(**kwargs)
+
+    @_translate_errors
+    def mute_alert_rule(self, rule_id: str) -> None:
+        with _known_id("alert rule", rule_id):
+            self._client.alerting.rule.mute_all(id=rule_id)
+
+    @_translate_errors
+    def unmute_alert_rule(self, rule_id: str) -> None:
+        with _known_id("alert rule", rule_id):
+            self._client.alerting.rule.unmute_all(id=rule_id)
+
+    @_translate_errors
+    def mute_alert(self, rule_id: str, alert_id: str) -> None:
+        _blank("alert_id", alert_id, _ALERT_ID_FIX)
+        with _known_id("alert rule", rule_id):
+            # On a rule muted as a whole Kibana answers 204 but records no
+            # per-alert mute, and unmuting the rule clears every per-alert mute
+            # (probed on 9.5.4), so this mute would vanish unseen: refuse it.
+            if self._client.alerting.rule.get(id=rule_id).body.get("mute_all"):
+                raise KibanaRejected(
+                    f"alert rule '{rule_id}' is muted as a whole (mute_alert_rule), and Kibana "
+                    "records no per-alert mute on a muted rule — its alerts are already "
+                    "silent; to keep only this alert muted, call unmute_alert_rule first "
+                    "(it clears every per-alert mute), then mute_alert"
+                )
+            # validate_alerts_existence is left to Kibana's default (true): an alert
+            # id the rule has never raised is a 404, not a silent mute of a typo.
+            try:
+                self._client.alerting.rule.mute_alert(rule_id=rule_id, alert_id=alert_id)
+            except SpaceNotFoundError:
+                raise
+            except NotFoundError as e:
+                if _MISSING_ALERT_MARK in str(e.message):
+                    raise _alert_not_found(rule_id, alert_id) from e
+                raise
+
+    @_translate_errors
+    def unmute_alert(self, rule_id: str, alert_id: str) -> None:
+        # Kibana answers 204 for an alert that is not muted, or never existed
+        # (probed): unmuting is idempotent, so there is no alert-level 404 here.
+        _blank("alert_id", alert_id, _ALERT_ID_FIX)
+        with _known_id("alert rule", rule_id):
+            self._client.alerting.rule.unmute_alert(rule_id=rule_id, alert_id=alert_id)
+
+    @_translate_errors
+    def snooze_alert_rule(
+        self, rule_id: str, duration: str, start: datetime, recurring: dict[str, Any] | None
+    ) -> RuleSnooze:
+        custom: dict[str, Any] = {"duration": duration, "start": _kibana_instant(start)}
+        if recurring is not None:
+            custom["recurring"] = {
+                k: _kibana_instant(v) if isinstance(v, datetime) else v
+                for k, v in recurring.items()
+            }
+        with _known_id("alert rule", rule_id):
+            try:
+                body = self._client.alerting.rule.snooze(
+                    id=rule_id, schedule={"custom": custom}
+                ).body
+            except BadRequestError as e:
+                if _SNOOZE_LIMIT_MARK in str(e.message):
+                    raise KibanaRejected(
+                        f"alert rule '{rule_id}' already has 5 snooze schedules, Kibana's limit "
+                        "(expired ones count) — remove one with unsnooze_alert_rule and a "
+                        "schedule_id that snooze_alert_rule returned (Kibana's public API does "
+                        "not list a rule's snoozes); if those ids are lost, cancel the snoozes "
+                        "on the rule in Kibana's Rules page"
+                    ) from e
+                raise
+        return _to_rule_snooze(rule_id, body or {})
+
+    @_translate_errors
+    def unsnooze_alert_rule(self, rule_id: str, schedule_id: str) -> None:
+        _blank("schedule_id", schedule_id, "pass the schedule_id that snooze_alert_rule returned")
+        with _known_id("alert rule", rule_id):
+            try:
+                self._client.alerting.rule.unsnooze(rule_id=rule_id, schedule_id=schedule_id)
+            except SpaceNotFoundError:
+                raise
+            except (NotFoundError, BadRequestError) as e:
+                # 404 "Rule has no snooze schedule with id <id>." when the rule has
+                # others, 400 "Rule has no snooze schedules." when it has none.
+                if any(m in str(e.message) for m in _MISSING_SNOOZE_MARKS):
+                    raise _snooze_not_found(rule_id, schedule_id) from e
+                raise
+
+    @_translate_errors
+    def update_alert_rule_api_key(self, rule_id: str) -> None:
+        # Kibana regenerates the rule's API key from the caller's credentials:
+        # the rule then runs with this server's API key's privileges. 204, no body.
+        with _known_id("alert rule", rule_id):
+            self._client.alerting.rule.update_api_key(id=rule_id)
 
     @_translate_errors
     def delete_alert_rule(self, rule_id: str) -> None:

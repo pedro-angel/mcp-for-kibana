@@ -1,5 +1,6 @@
 """The driven-side port: everything the domain needs from Kibana."""
 
+from datetime import datetime
 from types import TracebackType
 from typing import Any, Protocol
 
@@ -40,6 +41,7 @@ from kibana_mcp.core.models import (
     KibanaStatus,
     PrepackagedRulesStatus,
     Role,
+    RuleSnooze,
     SavedObjectImportResult,
     ShortUrl,
     Space,
@@ -154,7 +156,23 @@ class KibanaGateway(Protocol):
 
     def enable_alert_rule(self, rule_id: str) -> None: ...
 
-    def disable_alert_rule(self, rule_id: str) -> None: ...
+    def disable_alert_rule(self, rule_id: str, untrack: bool = False) -> None: ...
+
+    def mute_alert_rule(self, rule_id: str) -> None: ...
+
+    def unmute_alert_rule(self, rule_id: str) -> None: ...
+
+    def mute_alert(self, rule_id: str, alert_id: str) -> None: ...
+
+    def unmute_alert(self, rule_id: str, alert_id: str) -> None: ...
+
+    def snooze_alert_rule(
+        self, rule_id: str, duration: str, start: datetime, recurring: dict[str, Any] | None
+    ) -> RuleSnooze: ...
+
+    def unsnooze_alert_rule(self, rule_id: str, schedule_id: str) -> None: ...
+
+    def update_alert_rule_api_key(self, rule_id: str) -> None: ...
 
     def delete_alert_rule(self, rule_id: str) -> None: ...
 

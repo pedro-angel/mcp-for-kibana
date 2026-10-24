@@ -9,7 +9,7 @@ via [`KIBANA_MCP_TOOLS`](configuration.md#tool-selection): **dashboards**,
 **[observability](#observability-toolbox)**,
 **[security-detections](#security-detections-toolbox)**,
 **[platform-admin](#platform-admin-toolbox)**,
-**[streams](#streams-toolbox)**, and **[fleet](#fleet-toolbox)** — 143 tools in
+**[streams](#streams-toolbox)**, and **[fleet](#fleet-toolbox)** — 150 tools in
 all. This reference details every toolbox in full. A drift-guard test
 (`tests/unit/test_docs_tool_reference.py`) asserts that every registered tool
 name appears on this page, so it cannot silently fall behind the code.
@@ -450,7 +450,7 @@ This is a deliberate fail-closed guard — see
 
 ## Space targeting
 
-Every one of the 73 tools in the **dashboards**, **data-management**,
+Every one of the 80 tools in the **dashboards**, **data-management**,
 **alerting**, **cases**, and **security-detections** toolboxes — including
 the 15 destructive-tier ones — accepts an optional `space` parameter that
 targets a Kibana space by id:
@@ -637,7 +637,7 @@ Alerting rules and action connectors.
 | Tool | Tier | Description |
 |---|---|---|
 | `list_alert_rules` | read | List alerting rules (optionally filtered by a name search). |
-| `get_alert_rule` | read | Get one rule by id: the summary fields plus its full `params` and its `actions` (`id` = connector id, `uuid`, `group`, `params`, `frequency` when set). Read it before and after `update_alert_rule`. |
+| `get_alert_rule` | read | Get one rule by id: the summary fields plus its full `params`, its `actions` (`id` = connector id, `uuid`, `group`, `params`, `frequency` when set), `muted` and `muted_alert_ids`. Read it before and after `update_alert_rule`. |
 | `get_alerting_health` | read | Kibana alerting framework health status. |
 | `list_connectors` | read | List configured action connectors (id, name, connector_type_id). |
 | `list_rule_types` | read | List rule types: `id` (the `rule_type_id`), the `consumers` the caller may create it under, licence status. No `params` schema (Kibana's API has none). |
@@ -645,15 +645,22 @@ Alerting rules and action connectors.
 | `create_alert_rule` | write | Create an alerting rule (e.g. `rule_type_id` `.es-query`). |
 | `update_alert_rule` | write | Edit a rule in place by id (read-modify-write): `name`, `tags`, `schedule_interval`, `params` (merged key-by-key), `actions`. Never toggles `enabled`. |
 | `enable_alert_rule` | write | Enable (start running) an alerting rule. |
-| `disable_alert_rule` | write | Disable (stop running) an alerting rule. |
+| `disable_alert_rule` | write | Disable (stop running) an alerting rule; `untrack=True` (default off) also marks its active alerts untracked. |
 | `create_connector` | write | Create an action connector (e.g. `.index`, `.webhook`). |
 | `update_connector` | write | Edit a connector in place by id: `name`, `config` (merged key-by-key), and `secrets` only when passed. Refuses preconfigured connectors. |
+| `mute_alert_rule` | write | Mute a whole rule: it keeps running, no action fires, no end time. Clears per-alert mutes. |
+| `unmute_alert_rule` | write | Undo `mute_alert_rule`; also clears every per-alert mute. |
+| `mute_alert` | write | Mute one alert (`alert_id`) of a rule; refused on a rule muted as a whole. |
+| `unmute_alert` | write | Undo `mute_alert` for one alert (an id from `muted_alert_ids`). |
+| `snooze_alert_rule` | write | Silence a rule's actions for a window: `duration` (`30m`, `2h`, `1d`), `start` (ISO-8601, default now), optional `recurring`. Returns the `schedule_id`. |
+| `unsnooze_alert_rule` | write | Cancel one snooze by the `schedule_id` `snooze_alert_rule` returned. |
+| `update_alert_rule_api_key` | write | Regenerate a rule's API key from this server's credentials (the rule then runs with its privileges). |
 | `delete_alert_rule` | destructive | Permanently delete an alerting rule. |
 | `delete_connector` | destructive | Permanently delete an action connector. This cannot be undone. |
 | `execute_connector` | destructive | Run a connector now with the given type-specific params. |
 
 A tier includes everything below it: `write` (the default) shows the 6 reads +
-6 writes; `destructive` adds the 2 deletes and `execute_connector`; `read`
+13 writes; `destructive` adds the 2 deletes and `execute_connector`; `read`
 shows only the 6 reads.
 
 Notes:
@@ -691,6 +698,33 @@ Notes:
 - **Preconfigured connectors cannot be edited.** A connector defined in
   `kibana.yml` (`is_preconfigured: true`) is refused before any write, with a
   pointer to `kibana.yml` or `create_connector`.
+- **Mute, snooze, or untrack — three ways to quiet a rule that keeps its
+  definition.** All three leave the rule's params and actions as they are.
+  `mute_alert_rule` stops every action until `unmute_alert_rule`, with no end
+  time; the rule keeps running and tracking alerts. Kibana's rule-wide mute and
+  unmute both clear the per-alert mutes, and on a rule muted as a whole it
+  accepts a per-alert mute but records nothing, so `mute_alert` refuses that
+  case and says to unmute the rule first. `mute_alert` takes the id of an alert
+  the rule has raised — the group's value for a rule grouped by a field (e.g.
+  a host name), `query matched` for an ungrouped `.es-query` rule; Kibana
+  refuses an id the rule has not raised, and unmuting an alert that is not
+  muted succeeds. `snooze_alert_rule` stops actions for a window: `duration`
+  is a whole number and `s`, `m`, `h` or `d` (Kibana has no week unit here),
+  `start` any ISO-8601 instant (no offset means UTC; sent to Kibana as
+  `YYYY-MM-DDTHH:mm:ss.sssZ`, the only form it takes), and `recurring`
+  (`every` such as `1d`/`2w`/`1M`, bounded by `end` or `occurrences`,
+  narrowed by `onWeekDay`/`onMonthDay`/`onMonth`) repeats it.
+  **Keep the `schedule_id`**: Kibana's public API never lists a rule's
+  snoozes, so `unsnooze_alert_rule` has no other source, and a rule holds at
+  most 5 snoozes, expired ones included (a sixth is refused, naming
+  `unsnooze_alert_rule`; lost ids are cancelled in Kibana's Rules page).
+  `disable_alert_rule(untrack=True)` stops the rule and marks its active
+  alerts untracked; without it they stay active.
+- **`update_alert_rule_api_key` changes who the rule runs as.** Kibana
+  regenerates the rule's API key from the caller's credentials — this
+  server's API key — so the rule's queries and actions then run with that
+  key's privileges. Use it when a rule fails because its key was revoked; no
+  key material is returned.
 - **A wrong id names its source.** An id that matches nothing fails with
   `connector '<id>' not found — connector_id is the id that create_connector
   or list_connectors returns, not the connector's name; call list_connectors
@@ -707,12 +741,25 @@ Returns:
  "is_preconfigured": false, "is_system_action": false, "is_deprecated": false,
  "is_missing_secrets": false, "is_connector_type_deprecated": false}
 
+// snooze_alert_rule  (+ "space" when the caller passed one)
+{"rule_id": "8b1c...", "schedule_id": "f828e368-...", "duration": "2h",
+ "start": "2026-10-25T07:00:00.000Z", "timezone": "UTC",
+ "recurring": {"every": "1w", "onWeekDay": ["SA"], "end": "2026-12-31T00:00:00.000Z"}}
+
+// mute_alert_rule / unmute_alert_rule · mute_alert / unmute_alert ·
+// unsnooze_alert_rule · update_alert_rule_api_key · disable_alert_rule
+{"id": "8b1c...", "muted": true}
+{"rule_id": "8b1c...", "alert_id": "query matched", "muted": true}
+{"rule_id": "8b1c...", "schedule_id": "f828e368-...", "unsnoozed": true}
+{"id": "8b1c...", "api_key_updated": true}
+{"id": "8b1c...", "enabled": false, "untracked": true}   // "untracked" only with untrack=true
+
 // update_alert_rule  (the summary each list_alert_rules row carries)
 {"id": "8b1c...", "name": "Flights over threshold", "rule_type_id": ".es-query",
  "consumer": "stackAlerts", "enabled": true, "schedule_interval": "5m",
  "status": "ok", "tags": ["flights"]}
 
-// get_alert_rule  (the summary + params as Kibana stores them + actions)
+// get_alert_rule  (the summary + params as Kibana stores them + actions + mute state)
 {"id": "8b1c...", "name": "Flights over threshold", "rule_type_id": ".es-query",
  "consumer": "stackAlerts", "enabled": true, "schedule_interval": "5m",
  "status": "ok", "tags": ["flights"],
@@ -724,7 +771,8 @@ Returns:
  "actions": [{"id": "032a5771-...", "uuid": "5f0e...", "group": "query matched",
               "params": {"message": "{{rule.name}} matched"},
               "frequency": {"summary": false, "notify_when": "onActionGroupChange",
-                            "throttle": null}}]}
+                            "throttle": null}}],
+ "muted": false, "muted_alert_ids": ["JetBeats"]}
 ```
 
 ## cases toolbox
