@@ -10,6 +10,7 @@ from kibana_mcp.core.space_sharing import (
     objects_not_found_message,
     self_target_message,
     sharing_refusal,
+    source_fixed_reason,
     space_failure_fix,
     unshare_refusal,
 )
@@ -40,7 +41,7 @@ def test_copy_fix_per_error(error, overwrite, needle):
 
 
 @pytest.mark.parametrize(("status", "error", "message", "needle"), [
-    (403, "Forbidden", "Unable to bulk_create index-pattern", "cannot write saved objects there"),
+    (403, "Forbidden", "Unable to bulk_create index-pattern", "configure a new KIBANA_API_KEY"),
     (500, "Internal Server Error", "", "then copy into that space again"),
     (None, "", "", "(no detail)"),
 ])
@@ -53,13 +54,24 @@ def test_space_failure_fix_names_the_space_kibanas_error_and_the_fix(
 
 
 def test_guidance_offers_source_space_only_where_it_is_accepted():
+    assert source_fixed_reason(False, False) is None
     assert "pass source_space" in self_target_message("default")
-    assert "source_space" not in self_target_message("team-a", source_fixed=True)
     assert "pass source_space" in objects_not_found_message(["index-pattern/x"])
-    fixed = objects_not_found_message(["index-pattern/x"], source_fixed=True)
-    assert "source_space" not in fixed and "find_saved_objects" in fixed
-    missing = [_state([], id="nope", missing=True)]
-    assert "source_space" not in (sharing_refusal(missing, source_fixed=True) or "")
+    # Each refusing deployment names the URL that fixes the source, never
+    # KIBANA_URL when only the public URL is pinned.
+    for reason, url, other in (
+        (source_fixed_reason(True, False), "KIBANA_URL pins", "KIBANA_PUBLIC_URL"),
+        (source_fixed_reason(True, True), "KIBANA_URL pins", "KIBANA_PUBLIC_URL"),
+        (source_fixed_reason(False, True), "KIBANA_PUBLIC_URL", "KIBANA_URL"),
+    ):
+        target = self_target_message("default", source_fixed=reason)
+        fixed = objects_not_found_message(["index-pattern/x"], source_fixed=reason)
+        missing = [_state([], id="nope", missing=True)]
+        shared = sharing_refusal(missing, source_fixed=reason) or ""
+        for text in (target, fixed, shared):
+            assert "source_space" not in text and url in text and other not in text
+        assert "find_saved_objects" in fixed
+    assert "default space" in self_target_message("default", source_fixed_reason(False, True))
 
 
 def test_sharing_refusal_missing_first_then_one_space_types():

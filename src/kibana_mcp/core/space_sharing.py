@@ -42,13 +42,28 @@ def missing_spaces_message(missing: Sequence[str]) -> str:
     )
 
 
-def self_target_message(space: str, source_fixed: bool = False) -> str:
-    """`source_fixed`: this deployment refuses source_space (a space-pinned
-    Kibana or public URL), so the text must not offer it."""
+def source_fixed_reason(kibana_url_pinned: bool, public_url_pinned: bool) -> str | None:
+    """Why this deployment refuses source_space (D8), naming the URL that
+    does it: a '/s/<id>' KIBANA_URL fixes the source to that space (it wins
+    when both are pinned); a pinned KIBANA_PUBLIC_URL alone fixes it to the
+    default space. None when source_space is accepted."""
+    if kibana_url_pinned:
+        return "KIBANA_URL pins it with a '/s/<id>' base path"
+    if public_url_pinned:
+        return (
+            "KIBANA_PUBLIC_URL has a '/s/<id>' base path, which fixes the source to the "
+            "default space"
+        )
+    return None
+
+
+def self_target_message(space: str, source_fixed: str | None = None) -> str:
+    """`source_fixed`: why this deployment refuses source_space
+    (source_fixed_reason), so the text names that instead of offering it."""
     if source_fixed:
         return (
-            f"the objects are already in space '{space}', the source space (this "
-            "deployment's Kibana URL fixes it) — name other target spaces"
+            f"the objects are already in space '{space}', the source space "
+            f"({source_fixed}) — name other target spaces"
         )
     return (
         f"the objects are already in space '{space}', the source space — name other "
@@ -56,15 +71,15 @@ def self_target_message(space: str, source_fixed: bool = False) -> str:
     )
 
 
-def objects_not_found_message(refs: Iterable[str], source_fixed: bool = False) -> str:
+def objects_not_found_message(refs: Iterable[str], source_fixed: str | None = None) -> str:
     head = (
         f"saved object(s) not found in the source space: {', '.join(refs)} — `type` and "
         "`id` are what find_saved_objects returns for the source space"
     )
     if source_fixed:
         return (
-            f"{head}; this deployment's Kibana URL fixes the source space, so objects in "
-            "another space cannot be named here"
+            f"{head}; the source space is fixed on this deployment ({source_fixed}), so "
+            "objects in another space cannot be named here"
         )
     return f"{head}; pass source_space when the objects are in another space"
 
@@ -77,9 +92,11 @@ def space_failure_fix(space: str, status: object, error: str, message: str) -> s
     said = f"{what}: {message}" if message else what
     if str(status) == "403":
         cause = (
-            "the API key cannot write saved objects there: use a key whose role grants "
-            "the saved objects' features in that space (create_or_update_role), or "
-            "leave it out of target_spaces"
+            "the API key cannot write saved objects there. A key keeps the privileges "
+            "its owner had when it was created, so changing a role does not change this "
+            "one: configure a new KIBANA_API_KEY, created by a user whose role grants the "
+            "saved objects' features in that space (create_or_update_role), or leave the "
+            "space out of target_spaces"
         )
     else:
         cause = "fix what Kibana names, then copy into that space again"
@@ -119,7 +136,9 @@ def copy_fix(error: str, overwrite: bool) -> str:
     return f"Kibana did not copy it ({error}), so nothing was written for it"
 
 
-def sharing_refusal(states: Sequence[ObjectSpaces], source_fixed: bool = False) -> str | None:
+def sharing_refusal(
+    states: Sequence[ObjectSpaces], source_fixed: str | None = None
+) -> str | None:
     """Refuse objects the source space does not hold and types that cannot be
     shared, before any write; None when every object can be shared."""
     missing = [_ref(s.type, s.id) for s in states if s.missing]

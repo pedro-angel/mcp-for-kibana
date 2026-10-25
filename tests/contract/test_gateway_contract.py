@@ -969,15 +969,16 @@ def test_create_or_update_role_refuses_reserved_live(gateway):
         gateway.create_or_update_role("kibana_system", ["monitor"], [], None, None, None, False)
 
 
-def _platform_admin_tool_server():
+def _platform_admin_tool_server(api_key=None):
     # Registers ALL tiers (register() bypasses tier gating) so the destructive
-    # delete_* tools are reachable for self-cleanup.
+    # delete_* tools are reachable for self-cleanup. `api_key`: a key other
+    # than the stack's superuser one (a restricted key's refusals).
     server = FastMCP("contract-platform-admin")
     PlatformAdminToolbox().register(
         server,
         ToolboxDeps(
             gateway_factory=lambda space=None: KibanaPyGateway.connect(
-                os.environ["KIBANA_URL"], os.environ["KIBANA_TEST_API_KEY"], space
+                os.environ["KIBANA_URL"], api_key or os.environ["KIBANA_TEST_API_KEY"], space
             ),
             public_kibana_url="http://kb:5601",
         ),
@@ -3008,6 +3009,87 @@ async def test_copy_and_overwrite_saved_objects_between_spaces_live(gateway):
     assert replaced["overwritten"] is True
     assert replaced["destination_id"] == made["destination_id"]
     assert restored["data_view"]["name"] == "ct copy source"
+
+
+# Kibana's internal security routes (the ones its UI calls) want this header.
+_INTERNAL = {"x-elastic-internal-origin": "Kibana"}
+
+
+@contextlib.contextmanager
+def _restricted_key(kibana_privileges):
+    """A throwaway role, user and API key the user creates for itself (the
+    superuser key cannot: Elasticsearch gives a key made by a key no
+    privileges), so the key holds a snapshot of the role's privileges; yields
+    (encoded key, role name). Everything is removed afterwards."""
+    tag = uuid.uuid4().hex[:8]
+    role, user, password = f"mcp-for-kibana-ct-role-{tag}", f"mcp-for-kibana-ct-user-{tag}", uuid.uuid4().hex
+    key_id = None
+    with _raw_kibana() as raw:
+        try:
+            raw.security.create_or_update_role(
+                name=role, elasticsearch={"cluster": ["manage_own_api_key"]},
+                kibana=kibana_privileges)
+            raw.perform_request("POST", f"/internal/security/users/{user}", headers=_INTERNAL,
+                                body={"username": user, "password": password, "roles": [role]})
+            with contextlib.closing(
+                    kibana.Kibana(os.environ["KIBANA_URL"], basic_auth=(user, password))) as own:
+                made = own.perform_request(
+                    "POST", "/internal/security/api_key", headers=_INTERNAL,
+                    body={"name": f"mcp-for-kibana-ct-key-{tag}", "role_descriptors": {}}).body
+            key_id = made["id"]
+            yield made["encoded"], role
+        finally:
+            if key_id is not None:
+                raw.perform_request(
+                    "POST", "/internal/security/api_key/invalidate", headers=_INTERNAL,
+                    body={"apiKeys": [{"id": key_id, "name": "ct"}], "isAdmin": True})
+            with contextlib.suppress(kibana.NotFoundError):
+                raw.perform_request("DELETE", f"/internal/security/users/{user}", headers=_INTERNAL)
+            with contextlib.suppress(kibana.NotFoundError):
+                raw.security.delete_role(name=role)
+
+
+async def test_copy_reports_a_target_space_kibana_refuses_whole_live(gateway):
+    # A key with `all` in one target space and `read` in the other: Kibana
+    # answers the copy 200, the first space copied, the second a bare
+    # {statusCode, error, message} with no object (9.5.4). That space's object
+    # fails with `space_error`, the other keeps its destination_id. Granting the
+    # role `all` there afterwards does not change the key (a key keeps the
+    # privileges its owner had when it was made), as the fix says.
+    view_id = f"mcp-for-kibana-ct-denied-{uuid.uuid4().hex[:8]}"
+    with _raw_kibana() as raw:
+        raw.data_views.create(data_view={"title": FLIGHTS, "name": "ct denied", "id": view_id})
+    try:
+        with _temp_space(gateway, "mcp-for-kibana-ct-ok") as ok, \
+                _temp_space(gateway, "mcp-for-kibana-ct-ro") as ro:
+            grants = [{"base": ["all"], "spaces": [ok]}, {"base": ["read"], "spaces": ["default", ro]}]
+            with _restricted_key(grants) as (key, role):
+                args = {"objects": [{"type": "index-pattern", "id": view_id}],
+                        "target_spaces": [ro, ok]}
+                async with Client(_platform_admin_tool_server(key)) as client:
+                    out = (await client.call_tool("copy_saved_objects_to_spaces", args)).data
+                    with _raw_kibana() as raw:
+                        raw.security.create_or_update_role(
+                            name=role, elasticsearch={"cluster": ["manage_own_api_key"]},
+                            kibana=[{"base": ["all"], "spaces": ["default", ok, ro]}])
+                    again = (await client.call_tool("copy_saved_objects_to_spaces", args)).data
+            with _raw_kibana(ro) as raw:
+                in_ro = raw.saved_objects.find(type=["index-pattern"]).body
+    finally:
+        with _raw_kibana() as raw, contextlib.suppress(kibana.NotFoundError):
+            raw.data_views.delete(view_id=view_id)
+    denied, copied = out["results"]
+    assert [denied["space"], copied["space"]] == [ro, ok]  # in the order given
+    assert denied["success"] is False and denied["copied"] == [] and denied["unchanged"] == []
+    (failed,) = denied["failed"]
+    assert failed["error"] == "space_error" and failed["id"] == view_id
+    assert f"Kibana refused the whole copy into space '{ro}'" in failed["fix"]
+    assert "403 Forbidden: Unable to bulk_create index-pattern" in failed["fix"]
+    assert "configure a new KIBANA_API_KEY" in failed["fix"]
+    (made,) = copied["copied"]
+    assert copied["success"] is True and made["id"] == view_id and made["destination_id"]
+    assert again["results"][0]["failed"][0]["error"] == "space_error"  # the role change did not reach the key
+    assert in_ro["total"] == 0  # nothing was written into the refused space
 
 
 async def test_share_and_unshare_saved_objects_live(gateway):

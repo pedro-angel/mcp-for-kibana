@@ -1363,10 +1363,13 @@ Notes:
   appear in a space created later with that id, probed), so the tools check
   `target_spaces`/`spaces` against `list_spaces` first; `*` needs no check. A
   removal is not checked (it writes nothing, and can clean such a space id).
-- **`source_space` is where the objects are read.** Omitted, it is the default space
-  (or the space a `/s/<id>` `KIBANA_URL` pins, where `source_space` is refused). The
-  source space is refused as a copy target; the result echoes `source_space` only
-  when it was passed (D7).
+- **`source_space` is where the objects are read.** Omitted, it is the default space,
+  or the space a `/s/<id>` `KIBANA_URL` pins. `source_space` is refused where either
+  `KIBANA_URL` or `KIBANA_PUBLIC_URL` is space-pinned (with only the public URL
+  pinned, the source is the default space), and the guidance then names the URL
+  that fixes the source instead of offering `source_space`. The source space is
+  refused as a copy target; the result echoes `source_space` only when it was
+  passed (D7).
 - **Not atomic.** The share and unshare read each object's spaces, then write; a
   change another client makes between them is not seen (the last-space check reads
   the state before the write).
@@ -1385,7 +1388,9 @@ Returns:
   object in the target came from this one, listed in `destinations`), or
   `space_error` (Kibana refused the whole copy into that space, e.g. the key cannot
   write saved objects there; `fix` carries Kibana's status and message, and the other
-  target spaces keep their results); nothing was written for a failed object.
+  target spaces keep their results; on a 403 it says a new `KIBANA_API_KEY` is
+  needed, since a key keeps the privileges its owner had when it was created and a
+  role change does not reach it); nothing was written for a failed object.
   `unchanged` lists requested objects Kibana neither copied nor failed: already in
   that space by sharing.
 - `share_saved_objects_to_spaces` / `unshare_saved_objects_from_spaces` —

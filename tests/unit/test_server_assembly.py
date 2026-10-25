@@ -391,10 +391,10 @@ def test_factory_neither_pinned_builds_scoped_gateway(monkeypatch):
 
 
 @pytest.mark.parametrize(("kibana_url", "public_url", "fixed"), [
-    ("http://kb:5601", None, False),
-    ("http://kb:5601/s/team-a", None, True),
-    ("http://kb:5601", "https://pub.example.com/s/team-a", True),
-    ("http://kb:5601", "https://pub.example.com", False),
+    ("http://kb:5601", None, None),
+    ("http://kb:5601/s/team-a", None, "KIBANA_URL pins"),
+    ("http://kb:5601", "https://pub.example.com/s/team-a", "KIBANA_PUBLIC_URL"),
+    ("http://kb:5601", "https://pub.example.com", None),
 ])
 def test_factory_tells_the_gateway_when_source_space_is_refused(
     monkeypatch, kibana_url, public_url, fixed
@@ -405,7 +405,10 @@ def test_factory_tells_the_gateway_when_source_space_is_refused(
     monkeypatch.setattr(gateway_mod.kibana, "Kibana", lambda url, api_key: object())
     gw = build_gateway_factory(
         _settings(kibana_url=kibana_url, public_kibana_url=public_url))()
-    assert gw._source_fixed is fixed
+    if fixed is None:
+        assert gw._source_fixed is None
+    else:
+        assert fixed in gw._source_fixed
 
 
 def test_with_space_echo_helper():

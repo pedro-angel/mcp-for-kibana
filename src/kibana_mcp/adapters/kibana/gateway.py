@@ -119,6 +119,7 @@ from kibana_mcp.core.space_sharing import (
     objects_not_found_message,
     self_target_message,
     sharing_refusal,
+    source_fixed_reason,
     space_failure_fix,
     unshare_refusal,
 )
@@ -1367,9 +1368,10 @@ class KibanaPyGateway:
         # The space a '/s/<id>' KIBANA_URL pins (connect sets it): the source
         # space of the copy and share calls when no `space` scopes the gateway.
         self._pinned_space = pinned_space
-        # True when this deployment refuses source_space (either URL pinned, D8):
-        # the copy and share guidance then never offers it.
-        self._source_fixed = pinned_space is not None or public_url_pinned
+        # Why this deployment refuses source_space (either URL pinned, D8),
+        # None when it accepts it: the copy and share guidance names the URL
+        # that fixes the source instead of offering source_space.
+        self._source_fixed = source_fixed_reason(pinned_space is not None, public_url_pinned)
 
     @classmethod
     def connect(

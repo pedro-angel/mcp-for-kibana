@@ -837,11 +837,20 @@ this ledger stands without them.
   grants `all` in one target and `read` in the other: 200, the first space
   copied, the second `{success: false, successCount: 0, errors: [{statusCode:
   403, error: "Forbidden", message: "Unable to bulk_create index-pattern"}]}`;
-  unit-pinned with that body (the live tiers run with a superuser key). The guidance never offers `source_space` on a
+  unit-pinned with that body, and live-pinned by a contract test that makes
+  such a key (a throwaway role, a user, and a key that user makes for itself:
+  Elasticsearch gives a key made by another key no privileges). The guidance never offers `source_space` on a
   deployment that refuses it (a pinned `KIBANA_URL` or public URL: the
   factory tells the adapter), and the refusal of `source_space` names both
   sources — the space `KIBANA_URL` pins, or the default space when only the
-  public URL is pinned.
+  public URL is pinned. **Amended (2026-10-25, B5 review round 2):** the
+  copy and share guidance on such a deployment names the URL that fixes the
+  source (`KIBANA_URL`, or `KIBANA_PUBLIC_URL` with the source the default
+  space), never "the Kibana URL" when only the public URL is pinned; the 403
+  `space_error` fix asks for a new `KIBANA_API_KEY`, not only a role change:
+  a key keeps the privileges its owner had when it was created (probed live
+  in that contract test: the role granted `all` in the refused space, the
+  same key still answers 403 there).
 
 ## Reliability and models (measured)
 

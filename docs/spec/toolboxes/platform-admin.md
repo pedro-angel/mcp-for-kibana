@@ -1,6 +1,6 @@
 # platform-admin — behavior contract
 
-Status: Draft v1.4 (2026-10-25) — regeneration corpus, reconciled to shipped code
+Status: Draft v1.5 (2026-10-25) — regeneration corpus, reconciled to shipped code
 Surface reference: docs/tools.md#platform-admin-toolbox · Enforcement: named per section below
 
 ## Purpose & persona
@@ -39,7 +39,8 @@ at call time. Full per-tool arguments and return shapes:
   as arguments of the operation instead — `source_space` (where the objects are read; default the
   default space, or the space a `/s/<id>` `KIBANA_URL` pins, where `source_space` is refused; it is
   refused too when only the public URL is pinned, and the source is then the default space — so
-  no guidance offers it on either deployment),
+  no guidance offers it on either deployment, and the guidance names the URL that fixes the
+  source instead),
   `target_spaces` (copy, overwrite) and `spaces` (share, unshare) — validated by the same id
   grammar (`*` allowed in `spaces`), and echo `source_space` only when it was passed (D7's rule).
 - **Copy makes new objects; overwrite replaces earlier copies; share adds; unshare removes (D49).**
@@ -65,7 +66,8 @@ at call time. Full per-tool arguments and return shapes:
   and a `fix`; nothing written for it) and `unchanged` (requested, neither copied nor failed:
   already in that space by sharing); a target space Kibana refused as a whole (one bare error, no
   object) fails every requested object not otherwise reported there with `space_error`, while the
-  other targets keep their results; the sharing tools return each object's `spaces` after the
+  other targets keep their results (on a 403 the fix asks for a new `KIBANA_API_KEY`: a key keeps
+  its owner's privileges from when it was created, so a role change does not reach it); the sharing tools return each object's `spaces` after the
   call with `added`/`removed`/`deleted`, and Kibana's per-object `error` when one object failed
   while the others were updated.
 - **The source space is refused as a copy target.** Copying into it would duplicate the objects
@@ -159,7 +161,8 @@ at call time. Full per-tool arguments and return shapes:
   shareable references read and the update; the existence check before any write; the
   source-space refusal with a pinned base path, and no `source_space` in the guidance there; the routing of the spaces routes under `/s/<source>` (kibana-py
   serves `spaces` unscoped on a space-scoped client). `tests/unit/test_space_sharing_core.py`:
-  the refusals and fix texts.
+  the refusals and fix texts, and that each refusing deployment names the URL that fixes the
+  source (never `KIBANA_URL` when only the public URL is pinned).
 - **Unit negative control** — `tests/unit/toolboxes/test_space_threading.py` registers
   platform-admin alongside the five space-aware toolboxes and asserts none of its 14 tools gained
   a `space` property in their input schema — the deliberate "outside" half of that contract.
@@ -173,7 +176,11 @@ at call time. Full per-tool arguments and return shapes:
   MCP-tool-level (not just gateway-level) `IndexPrivilege` mapping round-trip via a live client;
   the flights dashboard copied with its references into a throwaway space and refused or failed
   without them, a space that does not exist (nothing written there), the source space, a missing
-  object, an uncopyable Fleet output, an overwrite that restores an edited copy; a throwaway data
+  object, an uncopyable Fleet output, an overwrite that restores an edited copy; a copy with a
+  throwaway key (role `all` in one throwaway target, `read` in the other; the key made by its
+  user, since a key a key makes has no privileges) that copies into the first and fails the
+  second with `space_error`, nothing written there, and still fails it after the role gains `all`
+  there (a key keeps its creation-time privileges); a throwaway data
   view shared from a throwaway space to the default and another space (the same id there), the
   share's repeat, an overwrite onto a shared object (`unchanged`), the one-space-type, missing-space
   and missing-object refusals, a removal that removes nothing, the last-space refusal and the
