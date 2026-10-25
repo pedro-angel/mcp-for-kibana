@@ -4,6 +4,7 @@ translate.py AND the golden test together."""
 
 import asyncio
 import contextlib
+import json
 import os
 import uuid
 
@@ -690,8 +691,11 @@ def test_get_exception_list_missing_raises_live(gateway):
 
 
 def test_find_exception_items_missing_list_raises_live(gateway):
-    with pytest.raises(KibanaNotFound):
+    with pytest.raises(KibanaNotFound) as e:
         gateway.find_exception_items("does-not-exist-list-xyz")
+    assert "list_id 'does-not-exist-list-xyz' not found" in e.value.message
+    assert "find_exception_lists" in e.value.message
+    assert "namespace_type='agnostic'" in e.value.message
 
 
 def test_value_lists_empty_live(gateway):
@@ -3222,11 +3226,21 @@ def test_exception_list_import_premises_live(gateway):
             onto = [{**line, "list_id": other} for line in body[:-1]]
             onto[1]["item_id"] = f"{other}-fresh"
             plain = raw.exception_lists.import_lists(file=onto).body
+            assert plain["success"] is False  # what import_exception_list reports on its race
             assert plain["success_count_exception_lists"] == 0
+            assert len(plain["errors"]) == 1
             assert plain["errors"][0]["error"]["status_code"] == 409
-            # ...and its items land in that other list anyway
+            # ...and its items land in that other list anyway, and are counted
+            assert plain["success_count_exception_list_items"] == 1
             assert [i["item_id"] for i in raw.exception_lists.find_items(
                 list_id=other).body["data"]] == [f"{other}-fresh"]
+            # the gateway maps that body to the import result the tool returns
+            again = [{**line, "list_id": other} for line in body[:-1]]
+            again[1]["item_id"] = f"{other}-again"
+            mapped = gateway.import_exception_list(
+                "\n".join(json.dumps(x) for x in again).encode(), False)
+            assert (mapped.success, mapped.list_count, mapped.item_count) == (False, 0, 1)
+            assert mapped.errors == (f"{other}: 409 already exists",)
             # the update PUT ignores os_types and 409s a stale _version
             put = raw.exception_lists.update(
                 list_id=other, name="n", description="d", type="detection",
@@ -3381,6 +3395,8 @@ async def test_exception_list_endpoint_and_agnostic_tools_live(gateway, tmp_path
                     "namespace_type": "agnostic"})
                 with pytest.raises(ToolError, match="namespace_type='agnostic'"):
                     await client.call_tool("get_exception_list", {"list_id": ag})
+                with pytest.raises(ToolError, match="find_exception_lists.*namespace_type='agnostic'"):
+                    await client.call_tool("find_exception_items", {"list_id": ag})
                 upd = (await client.call_tool("update_exception_list", {
                     "list_id": ag, "namespace_type": "agnostic", "description": "d2"})).data
                 assert upd["description"] == "d2" and upd["namespace_type"] == "agnostic"

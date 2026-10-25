@@ -1,6 +1,6 @@
 # security-detections — behavior contract
 
-Status: Draft v1.3 (2026-10-25) — regeneration corpus, reconciled to shipped code
+Status: Draft v1.4 (2026-10-25) — regeneration corpus, reconciled to shipped code
 Surface reference: docs/tools.md#security-detections-toolbox · Enforcement: named per section below
 
 ## Purpose & persona
@@ -168,7 +168,9 @@ wording, not incidental phrasing.
   two calls, so a list created between them under the same `list_id`
   receives the items: the result then has `success: false`, the list's 409
   in `errors`, `id: null`, and an `imported_item_count` that counts the
-  items added to that other list.
+  items added to that other list (Kibana's own body for that import,
+  `success: false` with the items counted, is pinned live; the tool's
+  result is pinned by a unit test that creates the list between the two).
 - `update_exception_list` writes nothing when the list changed after its
   read (409 on the read's `_version`), and never changes the type or
   os_types.
@@ -215,7 +217,8 @@ wording, not incidental phrasing.
 - **Unit** — `tests/unit/toolboxes/test_security_detections.py`: exact
   30-tool set and tier annotations; exception-entry match-type mapping;
   the exception-list edit/copy/export/import tools (fields, guards, the
-  endpoint refusal, the existing-list_id refusal, removed items, the
+  endpoint refusal, the existing-list_id refusal, the result when a list
+  appears between the import's check and its import, removed items, the
   content-free import error);
   every identifier/field guard; value-list-item type inheritance; space
   threading/echo pair; guard-before-gateway ordering; a missing `el-`
@@ -226,7 +229,9 @@ wording, not incidental phrasing.
   replace/enable/disable RMW's `from`→`from_` translation and echoed-
   identifier stripping; the immutable-guard asymmetry itself (enable/disable
   tests deliberately fetch an `immutable=true` rule to prove they don't
-  refuse it).
+  refuse it); the exception-list not-found text of `get_exception_list`
+  and `find_exception_items` (ids, `find_exception_lists`, the other
+  namespace).
 - **Unit, cross-cutting** — `tests/unit/toolboxes/test_space_threading.py`,
   the 30 `security-detections` rows of the shared 91-tool table: threading,
   schema shape, dict-vs-list echo, not-found-as-guidance, and auth-passthrough
@@ -239,8 +244,10 @@ wording, not incidental phrasing.
   backing-index auto-creation on first write; uninitialized-space alerts
   search returning empty; scoped-space rule isolation with suffixed
   not-found; the D50 premises (as_new_list keeps item ids, a plain import
-  onto an existing list adds its items, the PUT ignores os_types and 409s a
-  stale `_version`) and the edit/duplicate/export/import/overwrite tools
+  onto an existing list adds and counts its items with `success: false` and
+  one 409, which the gateway maps to that import result; the PUT ignores
+  os_types and 409s a stale `_version`); `find_exception_items`' not-found
+  text, for a missing list and for an agnostic list read as `"single"`; and the edit/duplicate/export/import/overwrite tools
   end to end, including a cross-space import, an endpoint list and an
   agnostic list (read, update, export, duplicate, and an import and an
   overwrite routed through another space that stay agnostic).

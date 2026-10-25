@@ -495,6 +495,24 @@ async def test_import_exception_list_refuses_an_existing_list_id(mcp, gateway):
     assert gateway.last_exception_import is None  # nothing sent
 
 
+async def test_import_exception_list_reports_losing_the_race(mcp, gateway):
+    # A list created under the same list_id between the check and the import:
+    # Kibana skips the list (409) and adds the items to it (probed, D50).
+    gateway.exception_list_created_before_import = ExceptionList(
+        id="other-el", list_id="raced", name="other", type="detection",
+        namespace_type="single", tags=(), os_types=(), description="",
+    )
+    async with Client(mcp) as client:
+        handle = await _export(client)
+        result = await client.call_tool("import_exception_list", {
+            "handle": handle, "list_id": "raced"})
+    data = result.data
+    assert data["success"] is False and data["id"] is None
+    assert data["errors"] == ["raced: 409 already exists"]
+    assert data["imported_item_count"] == 1
+    assert [i.list_id for i in gateway.exception_items["raced"]] == ["raced"]
+
+
 async def test_import_exception_list_rejection_is_content_free(mcp, gateway):
     gateway.exception_import_rejected = True
     async with Client(mcp) as client:

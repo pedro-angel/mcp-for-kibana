@@ -682,6 +682,17 @@ def test_find_exception_items_sends_namespace():
     assert seen["namespace_type"] == "agnostic"
 
 
+def test_find_exception_items_miss_names_ids_and_namespace():
+    def find_items(**kw):
+        raise NotFoundError("missing", meta=SimpleNamespace(status=404), body=None)
+
+    with pytest.raises(KibanaNotFound) as e:
+        _gw(exception_lists=SimpleNamespace(find_items=find_items)).find_exception_items("nope")
+    assert "list_id 'nope'" in e.value.message
+    assert "find_exception_lists" in e.value.message
+    assert "namespace_type='agnostic'" in e.value.message
+
+
 def test_update_exception_list_resends_stored_fields_with_version():
     sent = {}
 

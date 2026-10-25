@@ -144,7 +144,7 @@ this ledger stands without them.
   may get the input elsewhere, e.g. an id the user pastes). Dependencies are
   followed transitively; tools hidden by the tier are not checked; toolbox
   selections are not checked. **Dependency map**: one owner, data —
-  `DEPENDENCIES` in `src/kibana_mcp/tool_lists.py`, 71 edges from 62 tools.
+  `DEPENDENCIES` in `src/kibana_mcp/tool_lists.py`, 72 edges from 63 tools.
   An edge A → B means A takes an input only B shows the model and A's own
   description or error guidance sends the model there: an index or field name
   (`update_panel`/`delete_panel` → `get_dashboard`; every VizSpec tool →
@@ -161,7 +161,7 @@ this ledger stands without them.
   runtime-field and default-data-view writes → `list_data_views`,
   `get_saved_object` → `find_saved_objects`; D49, the four tools that move saved
   objects between spaces → `find_saved_objects` and `list_spaces`; D50, the
-  exception-list update, duplicate and export → `find_exception_lists`), plus ids and values descriptions name
+  exception-list get, item find, update, duplicate and export → `find_exception_lists`), plus ids and values descriptions name
   (`get_space` → `list_spaces`, `get_synthetic_monitor` →
   `list_synthetic_monitors`, `create_synthetic_monitor` →
   `list_synthetic_private_locations`, `create_synthetic_private_location` →
@@ -926,9 +926,10 @@ this ledger stands without them.
   echoes the values it refused (`Invalid value "index-pattern" supplied to
   "type"`), so errors are returned as `"list_id[/item_id]: <status> <kind>"`
   and a rejected import names a fresh export, never Kibana's text (#37's
-  rule). Dependency map: the get, update, duplicate and export →
-  `find_exception_lists` (the get's not-found now names it), the import and
-  overwrite → `export_exception_list` (6 edges; 71 from 62 tools). Rejected: Kibana's `as_new_list` (above);
+  rule). Dependency map: the get, `find_exception_items`, update, duplicate
+  and export → `find_exception_lists` (the get's and the item find's
+  not-found name it), the import and overwrite → `export_exception_list`
+  (7 edges; 72 from 63 tools). Rejected: Kibana's `as_new_list` (above);
   sending both `overwrite` and `as_new_list` (accepted by Kibana, meaning
   unclear); editing `os_types` (Kibana ignores it) or the type (it would
   change which engine reads the list, for no task); listing agnostic lists

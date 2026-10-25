@@ -2740,13 +2740,19 @@ class KibanaPyGateway:
     def find_exception_items(
         self, list_id: str, namespace_type: str = "single"
     ) -> list[ExceptionItem]:
-        # list_id required; a bogus one 404s -> KibanaNotFound.
+        # list_id required; a bogus one (or one in the other namespace) 404s ->
+        # the same not-found text get_exception_list gives.
         items: list[ExceptionItem] = []
         page = 1
         while True:
-            body = self._client.exception_lists.find_items(
-                list_id=list_id, namespace_type=namespace_type, page=page, per_page=100
-            ).body
+            try:
+                body = self._client.exception_lists.find_items(
+                    list_id=list_id, namespace_type=namespace_type, page=page, per_page=100
+                ).body
+            except SpaceNotFoundError:
+                raise
+            except NotFoundError as e:
+                raise _unknown_exception_list(None, list_id, namespace_type) from e
             batch = body.get("data", [])
             items.extend(_to_exception_item(x) for x in batch)
             total = body.get("total")

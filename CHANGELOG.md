@@ -31,9 +31,10 @@ version section.
   descriptions say so), and an expired or unknown `el-` handle is refused
   with the fix (export again), also on a server that masks error details.
   `get_exception_list` and `find_exception_items` take an optional
-  `namespace_type` so agnostic lists can be read; `get_exception_list`'s
-  not-found names `find_exception_lists`, so a `KIBANA_MCP_TOOLS` list that
-  leaves that tool out gets the dependency warning. Import errors come back
+  `namespace_type` so agnostic lists can be read; their not-found names
+  `find_exception_lists` and the namespace a list made with the other
+  `namespace_type` is found in, so a `KIBANA_MCP_TOOLS` list that leaves
+  `find_exception_lists` out gets the dependency warning. Import errors come back
   per object as ids and status only. Kibana neither edits nor imports a
   list's `os_types`. Decision D50.
 - **Platform admin: copy and share saved objects between spaces** (two

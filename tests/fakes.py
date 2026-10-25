@@ -321,6 +321,9 @@ class FakeGateway:
         self.exception_list_conflict = False
         self.exception_import_rejected = False
         self.last_exception_import: tuple[bytes, bool] | None = None
+        # a list another caller creates between import_exception_list's
+        # check and its import (the race the spec's import invariant names)
+        self.exception_list_created_before_import: ExceptionList | None = None
         self.last_duplicate_include_expired: bool | None = None
         self.last_export_include_expired: bool | None = None
         self.closed = False
@@ -1056,7 +1059,10 @@ class FakeGateway:
 
     def find_exception_items(self, list_id, namespace_type="single"):
         if list_id not in self.exception_items:
-            raise KibanaNotFound(f"exception list '{list_id}' not found")
+            raise KibanaNotFound(
+                f"exception list list_id '{list_id}' not found (namespace_type "
+                f"'{namespace_type}') — find_exception_lists returns the ids"
+            )
         return list(self.exception_items[list_id])
 
     # --- exception-list edit, copy, export and import (D50): models the
@@ -1122,6 +1128,9 @@ class FakeGateway:
         if self.exception_import_rejected:
             raise KibanaRejected("Kibana rejected the payload", detail='value "secret-host"')
         self.last_exception_import = (content, overwrite)
+        if self.exception_list_created_before_import is not None:
+            self.exception_lists.append(self.exception_list_created_before_import)
+            self.exception_list_created_before_import = None
         lines = [json.loads(x) for x in content.decode().splitlines() if x.strip()]
         containers = [o for o in lines if "list_id" in o and "item_id" not in o
                       and "exported_exception_list_count" not in o]
