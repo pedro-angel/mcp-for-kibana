@@ -652,6 +652,12 @@ async def test_get_saved_object_refuses_a_type_outside_the_allowlist_before_the_
     ("synthetics-param", "list_synthetic_params", "export_saved_objects"),
     ("action", "list_connectors", "find_saved_objects"),
     ("alert", "list_alert_rules", "find_saved_objects"),
+    ("ingest-agent-policies", "list_agent_policies", "export_saved_objects"),
+    ("ingest-package-policies", "list_package_policies", "export_saved_objects"),
+    ("fleet-fleet-server-host", "list_fleet_server_hosts", "export_saved_objects"),
+    ("synthetics-monitor", "get_synthetic_monitor", "export_saved_objects"),
+    ("synthetics-monitor-multi-space", "get_synthetic_monitor", "export_saved_objects"),
+    ("synthetics-private-location", "list_synthetic_private_locations", "export_saved_objects"),
 ])
 def test_unreadable_type_message_names_only_ways_that_work_for_the_type(
     type_, named, not_named
@@ -670,6 +676,28 @@ def test_unreadable_type_message_states_when_find_and_export_apply_to_another_ty
     message = unreadable_type_message("some-plugin-type")
     assert "unless the type is hidden" in message
     assert "if Kibana exports the type" in message
+    assert "no tool of this server reads" in message and "type's own tools" not in message
+
+
+@pytest.mark.parametrize(("type_", "toolbox"), [
+    ("action", "alerting"), ("alert", "alerting"), ("ingest-outputs", "fleet"),
+    ("fleet-agent-policies", "fleet"), ("synthetics-param", "observability"),
+])
+def test_unreadable_type_message_names_the_toolbox_of_the_tools_it_names(type_, toolbox):
+    # The profiles that ship get_saved_object (read-only-explorer, dashboards-analyst)
+    # publish none of these tools, so the refusal says how to get them.
+    from kibana_mcp.core.saved_objects import unreadable_type_message
+
+    message = unreadable_type_message(type_)
+    assert f"in the {toolbox} toolbox" in message
+    assert "KIBANA_MCP_TOOLBOXES" in message and "KIBANA_MCP_TOOLS" in message
+
+
+@pytest.mark.parametrize("type_", ["fleet-proxy", "some-plugin-type"])
+def test_unreadable_type_message_names_no_toolbox_when_it_names_no_tool(type_):
+    from kibana_mcp.core.saved_objects import unreadable_type_message
+
+    assert "toolbox" not in unreadable_type_message(type_)
 
 
 async def test_get_saved_object_description_lists_every_readable_type(mcp):

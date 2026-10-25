@@ -714,7 +714,15 @@ this ledger stands without them.
   reads `fleet-proxy`): `list_outputs`, `list_connectors`,
   `list_alert_rules`, `list_synthetic_params`, agent/package-policy tools,
   or "no tool reads" per known type, and for any other type find and export
-  each with the condition under which it holds. Without `search_fields`
+  each with the condition under which it holds. (Second review, same day:
+  the per-type list also covers the legacy `ingest-agent-policies`/
+  `ingest-package-policies`, `fleet-fleet-server-host`, the Synthetics
+  monitor and private-location types, each 400 on export, probed; the text
+  names the toolbox of the tools it names and how to enable it
+  (`KIBANA_MCP_TOOLBOXES`/`KIBANA_MCP_TOOLS`), because `read-only-explorer`
+  and `dashboards-analyst` ship `get_saved_object` without them; the
+  fallback says no tool reads the type instead of "the type's own tools";
+  the live test refuses `config` too, so the fallback's export runs.) Without `search_fields`
   the find matches `search` against every attribute (`JetBeats`, only in
   the flights dashboard's description, found it), so it sends
   `search_fields=[title, name]`, the attributes a hit shows (review fix:

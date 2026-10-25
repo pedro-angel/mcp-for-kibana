@@ -737,8 +737,11 @@ Notes on `find_saved_objects` and `get_saved_object`:
   only ways forward that work for that type: `list_outputs` for
   `ingest-outputs`, `list_connectors`/`list_alert_rules` for the hidden
   `action`/`alert` (which `find_saved_objects` answers with an empty page),
-  `list_synthetic_params` for `synthetics-param`, and for `fleet-proxy` that
-  no tool reads it. Kibana refuses to export Fleet's and Synthetics' types
+  `list_synthetic_params` for `synthetics-param`, the agent and package
+  policy, Fleet Server host, Synthetics monitor and private location tools
+  for their types, and for `fleet-proxy` that no tool reads it. It names the
+  toolbox of each tool it names and how to enable it, because the profiles
+  that ship `get_saved_object` publish none of them. Kibana refuses to export Fleet's and Synthetics' types
   (400 "Trying to export non-exportable type(s)"), so `export_saved_objects`
   is offered only for other types, and only if Kibana exports them.
   Kibana strips only the attributes a plugin registers as encrypted, and

@@ -2854,6 +2854,7 @@ async def test_find_and_get_saved_objects_live(gateway, tmp_path):
         refused = {}
         for type_, id_ in [("ingest-outputs", o["id"]) for o in outputs["saved_objects"]] + [
             ("fleet-proxy", "x"), ("synthetics-param", "x"), ("action", "x"), ("alert", "x"),
+            ("config", "x"),  # not analytics, but Kibana exports it: the fallback text
         ]:
             with pytest.raises(ToolError) as exc:
                 await client.call_tool("get_saved_object", {"type": type_, "id": id_})
@@ -2883,7 +2884,9 @@ async def test_find_and_get_saved_objects_live(gateway, tmp_path):
     assert len(got["references"]) == len({(r["type"], r["id"]) for r in got["references"]})
     assert view["attributes"]["title"] == FLIGHTS
     assert outputs["total"] >= 1  # the stack's default Fleet output exists, and is refused
-    assert set(refused) == {"ingest-outputs", "fleet-proxy", "synthetics-param", "action", "alert"}
+    assert set(refused) == {
+        "ingest-outputs", "fleet-proxy", "synthetics-param", "action", "alert", "config"}
+    exported = []
     for type_, message in refused.items():
         assert f"does not read '{type_}' objects" in message
         assert "config_yaml" not in message and "service_token" not in message
@@ -2892,6 +2895,8 @@ async def test_find_and_get_saved_objects_live(gateway, tmp_path):
         # where the type is not hidden (find answers action/alert an empty page).
         if "export_saved_objects" in message:
             gateway.export_saved_objects([type_], None, False)
+            exported.append(type_)
+    assert exported == ["config"]  # the fallback's export path ran live
     for type_ in ("ingest-outputs", "fleet-proxy", "synthetics-param"):
         assert "export_saved_objects" not in refused[type_]
         with pytest.raises(KibanaRejected):  # 400 "Trying to export non-exportable type(s)"

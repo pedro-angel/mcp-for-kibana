@@ -1,6 +1,6 @@
 # data-management — behavior contract
 
-Status: Draft v1.5 (2026-10-25) — regeneration corpus, reconciled to shipped code
+Status: Draft v1.6 (2026-10-25) — regeneration corpus, reconciled to shipped code
 Surface reference: docs/tools.md#data-management-toolbox · Enforcement: named per section below
 
 ## Purpose & persona
@@ -170,7 +170,10 @@ and docs/tools.md#saved-objects-exportimport-data-management.
   Canvas, Graph, links and annotation groups) and refuses any other type
   before calling Kibana, naming only ways forward that work for that type
   (`_UNREADABLE_WAYS`: no export for Fleet's and Synthetics' types, which
-  Kibana does not export; no find for hidden ones): Kibana strips only attributes registered as
+  Kibana does not export; no find for hidden ones; the toolbox serving each
+  named tool, with how to enable it, since the profiles that ship
+  `get_saved_object` publish none of them; for an unknown type, that no
+  tool reads it, plus find and export each with its condition): Kibana strips only attributes registered as
   encrypted, and Fleet's `fleet-proxy` and `ingest-outputs` keep
   certificate keys, proxy headers, `config_yaml` and service tokens in
   plain attributes (the fleet contract's field-allowlist rule). It leaves out

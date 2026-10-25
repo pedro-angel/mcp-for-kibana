@@ -154,29 +154,46 @@ READABLE_TYPES: tuple[str, ...] = (
 
 
 # What the get_saved_object refusal names for a type it knows: only ways that
-# work for that type on 9.5.4. Kibana refuses to export Fleet's and Synthetics'
-# types (400 "Trying to export non-exportable type(s): ...", probed for each
-# below) and its find answers an empty page for hidden types (action, alert),
-# so neither is offered where it fails.
-_UNREADABLE_WAYS: dict[str, str] = {
-    "action": "list_connectors and get_connector read connectors",
-    "alert": "list_alert_rules and get_alert_rule read rules",
-    "fleet-agent-policies": "list_agent_policies and get_agent_policy read agent policies",
-    "fleet-package-policies": (
-        "list_package_policies and get_package_policy read package policies"
-    ),
+# work for that type on 9.5.4, and the toolbox the named tools live in (a
+# profile or KIBANA_MCP_TOOLBOXES selection may leave it out). Kibana refuses
+# to export Fleet's and Synthetics' types (400 "Trying to export non-exportable
+# type(s): ...", probed for each below) and its find answers an empty page for
+# hidden types (action, alert), so neither is offered where it fails.
+_AGENT_POLICIES = ("list_agent_policies and get_agent_policy read agent policies", "fleet")
+_PACKAGE_POLICIES = (
+    "list_package_policies and get_package_policy read package policies", "fleet")
+_MONITORS = (
+    "list_synthetic_monitors and get_synthetic_monitor read Synthetics monitors",
+    "observability",
+)
+_LOCATIONS = ("list_synthetic_private_locations reads private locations", "observability")
+_UNREADABLE_WAYS: dict[str, tuple[str, str | None]] = {
+    "action": ("list_connectors and get_connector read connectors", "alerting"),
+    "alert": ("list_alert_rules and get_alert_rule read rules", "alerting"),
+    "fleet-agent-policies": _AGENT_POLICIES,
+    "ingest-agent-policies": _AGENT_POLICIES,
+    "fleet-package-policies": _PACKAGE_POLICIES,
+    "ingest-package-policies": _PACKAGE_POLICIES,
+    "fleet-fleet-server-host": ("list_fleet_server_hosts reads Fleet Server hosts", "fleet"),
     "fleet-proxy": (
         "find_saved_objects lists Fleet proxies by name, but no tool reads their "
-        "settings and Kibana does not export them"
+        "settings and Kibana does not export them",
+        None,
     ),
-    "ingest-outputs": "list_outputs reads Fleet outputs with a fixed field set",
-    "synthetics-param": "list_synthetic_params lists parameters without their values",
+    "ingest-outputs": ("list_outputs reads Fleet outputs with a fixed field set", "fleet"),
+    "synthetics-monitor": _MONITORS,
+    "synthetics-monitor-multi-space": _MONITORS,
+    "synthetics-private-location": _LOCATIONS,
+    "synthetics-privates-locations": _LOCATIONS,
+    "synthetics-param": (
+        "list_synthetic_params lists parameters without their values", "observability"),
 }
 
-# Any other type: each way holds only conditionally, and the text says when.
+# Any other type: no tool of this server reads it as an object, and each way
+# holds only conditionally, so the text says when.
 _UNREADABLE_FALLBACK = (
-    "read it with the type's own tools; find_saved_objects lists it by title and name "
-    "unless the type is hidden (then it answers an empty page), and "
+    "no tool of this server reads this type's attributes; find_saved_objects lists it "
+    "by title and name unless the type is hidden (then it answers an empty page), and "
     "export_saved_objects moves it without its content reaching the model if Kibana "
     "exports the type (it refuses Fleet's and Synthetics' types)"
 )
@@ -184,12 +201,16 @@ _UNREADABLE_FALLBACK = (
 
 def unreadable_type_message(type: str) -> str:
     """The refusal for a get_saved_object `type` outside READABLE_TYPES,
-    naming only the ways forward that work for that type."""
+    naming only the ways forward that work for that type, and the toolbox
+    that serves the tools it names."""
+    way, toolbox = _UNREADABLE_WAYS.get(type, (_UNREADABLE_FALLBACK, None))
+    if toolbox is not None:
+        way += (f" (in the {toolbox} toolbox: if they are not listed, add it to "
+                "KIBANA_MCP_TOOLBOXES, or the tools to KIBANA_MCP_TOOLS)")
     return (
         f"get_saved_object does not read '{type}' objects: it returns attributes only for "
         f"{', '.join(READABLE_TYPES)}, because other types can keep credentials in plain "
-        "attributes (Fleet outputs and proxies do) — "
-        + _UNREADABLE_WAYS.get(type, _UNREADABLE_FALLBACK)
+        "attributes (Fleet outputs and proxies do) — " + way
     )
 
 

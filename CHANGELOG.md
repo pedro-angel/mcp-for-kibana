@@ -44,8 +44,9 @@ version section.
   proxy headers, `config_yaml` and service tokens in plain ones; the refusal
   names only what works for the type (`list_outputs` for Fleet outputs,
   `list_connectors`/`list_alert_rules` for connectors and rules, no tool for
-  Fleet proxies), never an export Kibana refuses or a find that answers a
-  hidden type empty. The `read-only-explorer` and `dashboards-analyst` profiles and
+  Fleet proxies, the Fleet policy, Fleet Server host and Synthetics tools
+  for their types, each with the toolbox to enable), never an export Kibana
+  refuses or a find that answers a hidden type empty. The `read-only-explorer` and `dashboards-analyst` profiles and
   built-in lists grow to 14 and 26 tools. Decision D48.
 - **Observability: create, replace and delete APM agent configurations**
   (one `write` and one `destructive` tool, 162 tools in all).
