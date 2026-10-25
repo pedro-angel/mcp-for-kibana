@@ -13,6 +13,7 @@ object: they assert Kibana/the guard rejects the call and the object survives.
 """
 
 import contextlib
+import time
 import uuid
 from dataclasses import asdict
 
@@ -273,17 +274,21 @@ def _await_bundle(gateway, agent_id, action_id, seconds):
 
 def test_agent_diagnostics_live(gateway):
     # The agent rate-limits diagnostics to one per minute (a second request
-    # within it FAILED "rate limit exceeded", probed), so the CPU bundle comes
-    # first: it adds a CPU profile and took ~66 s on the demo agent, after which
-    # the plain one (~6 s) is outside the window. additional_metrics=["CPU"] is
-    # the only value Kibana accepts (400 "expected value to equal [CPU]", probed).
+    # within it FAILED "rate limit exceeded", probed), so the second request is
+    # sent at least 65 s after the first. The CPU bundle took ~66 s on the dev
+    # stack's demo agent but less on a GitHub runner, where a second request
+    # timed by the first bundle alone landed inside the window and FAILED.
+    # additional_metrics=["CPU"] is the only value Kibana accepts (400
+    # "expected value to equal [CPU]", probed).
     agent = _demo_agent(gateway)
+    first_sent = time.monotonic()
     cpu = gateway.request_agent_diagnostics(agent_id=agent.id, include_cpu_metrics=True)
     assert cpu.action_id and cpu.agent_id == agent.id and cpu.agent_status == "online"
     action_ids = [cpu.action_id]
     try:
         bundle = _await_bundle(gateway, agent.id, cpu.action_id, 150)
         assert bundle.status == "READY" and bundle.name.endswith(".zip") and bundle.created_at
+        time.sleep(max(0.0, 65 - (time.monotonic() - first_sent)))  # past the rate limit
         req = gateway.request_agent_diagnostics(agent_id=agent.id)
         action_ids.append(req.action_id)
         assert req.action_id != cpu.action_id and req.agent_status == "online"
