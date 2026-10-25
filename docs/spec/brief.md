@@ -19,7 +19,8 @@ tier-gated tool surface — instead of ~610 raw HTTP endpoints. Tools are
 grouped into composable **toolboxes** enabled per deployment; **profiles**
 (`profiles/`) package toolbox + tier choices per persona. The flagship job:
 a user describes a chart, the server translates a declarative spec into real
-Kibana Lens visualizations and dashboards. Around it: data management,
+Kibana Lens visualizations and dashboards. Around it: data management
+(data views and their runtime fields, saved objects),
 alerting, cases, security detections, fleet, streams, observability
 (Synthetics monitoring, APM agent configuration), and platform admin/health.
 

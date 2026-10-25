@@ -95,8 +95,8 @@ this ledger stands without them.
   no `@` entry uses it. **Sources** (owner,
   Q10/Q15): built-in lists plus the operator's own file. The built-ins are
   two shipped personas as tool names, for mixing with tools from other
-  toolboxes — `read-only-explorer` (11: `dashboards`, `platform-health` and
-  `data-management` at `read`) and `dashboards-analyst` (21: `dashboards` and
+  toolboxes — `read-only-explorer` (14: `dashboards`, `platform-health` and
+  `data-management` at `read`) and `dashboards-analyst` (26: `dashboards` and
   `data-management` at `write`, the default selection, D39) — held as data in
   `src/kibana_mcp/tool_lists.py` (`BUILTIN_LISTS`); `profiles/README.md`
   points to the list table in `docs/configuration.md` instead of repeating
@@ -144,7 +144,7 @@ this ledger stands without them.
   may get the input elsewhere, e.g. an id the user pastes). Dependencies are
   followed transitively; tools hidden by the tier are not checked; toolbox
   selections are not checked. **Dependency map**: one owner, data —
-  `DEPENDENCIES` in `src/kibana_mcp/tool_lists.py`, 53 edges from 48 tools.
+  `DEPENDENCIES` in `src/kibana_mcp/tool_lists.py`, 57 edges from 52 tools.
   An edge A → B means A takes an input only B shows the model and A's own
   description or error guidance sends the model there: an index or field name
   (`update_panel`/`delete_panel` → `get_dashboard`; every VizSpec tool →
@@ -156,7 +156,9 @@ this ledger stands without them.
   `export_saved_objects`), or an existing object's id that the not-found
   guidance says to look up ("call search_dashboards to find it": dashboards,
   visualizations, data views, alert rules, connectors, Synthetics monitors,
-  parameters and private locations, APM agent configurations), plus ids and values descriptions name
+  parameters and private locations, APM agent configurations; and, D48, the
+  runtime-field and default-data-view writes → `list_data_views`,
+  `get_saved_object` → `find_saved_objects`), plus ids and values descriptions name
   (`get_space` → `list_spaces`, `get_synthetic_monitor` →
   `list_synthetic_monitors`, `create_synthetic_monitor` →
   `list_synthetic_private_locations`, `create_synthetic_private_location` →
@@ -612,6 +614,97 @@ this ledger stands without them.
   literal `ALL_OPTION_VALUE`}.) **No `space`** (D10: APM
   configuration is cluster-global, the toolbox keeps its mixed-axis
   exclusion). Contract: [observability](toolboxes/observability.md).
+- **D48 (2026-10-25, probes on 9.5.4, Basic)** — The data-management toolbox
+  gains three `read` tools (`find_saved_objects`, `get_saved_object`,
+  `get_default_data_view`), two `write` ones (`upsert_runtime_field`,
+  `set_default_data_view`, both `idempotentHint=true`) and one `destructive`
+  one (`delete_runtime_field`); the plan's names kept (verb_noun; "upsert"
+  because Kibana's runtime-field PUT creates or replaces). All six take
+  `space` (D10: the toolbox is space-aware; the default data view is a
+  per-space setting, and the saved-objects routes are space-scoped), so 86
+  tools are space-aware. Nothing was dropped: every route is Basic and
+  worked live. **Tiers, by the repo rule (irreversible or data-losing →
+  destructive):** the runtime-field upsert loses nothing — it reads the view,
+  returns the definition it replaces as `previous` (a second call with its
+  type and script puts it back), re-sends the stored custom label and
+  description that Kibana's PUT drops unless sent again (probed: a PUT
+  without them left `fieldAttrs` empty; so did the partial POST), and refuses
+  what it could not put back, a stored composite field — so it is `write`.
+  Its read and write are not atomic (D45/D47 precedent): a create uses the
+  POST, which 400s "Field [name = x] already exists." for a name added in
+  between, answered "call upsert_runtime_field again"; a replacement uses the
+  PUT, so a change stored in between is replaced and `previous` is what the
+  call read. The default-data-view set returns `previous_id`, and a second
+  call restores it (`view_id=null` restores none), so it is `write`; the
+  runtime-field delete is `destructive` like every delete here, returning
+  the deleted definition as a recovery path. **Observed, and what each
+  shaped:** Kibana's runtime-field routes store any script without compiling
+  it (`this is not painless(((` answered 200), and Elasticsearch fails a
+  whole search whose `runtime_mappings` carry a script that does not
+  compile, even when the search does not use the field (`script_exception:
+  compile error`, probed against the flights index), so a broken script
+  breaks the searches Kibana runs on the view; no public Kibana route
+  compiles a script (`/api/console/proxy` answered 400 "not available with
+  the current configuration"; field preview is internal), so the
+  description warns and names the way back instead of checking. The type
+  list is Kibana's (`keyword`, `long`, `double`, `date`, `ip`, `boolean`,
+  `geo_point`, `composite`, from its 400); `composite` needs subfields
+  ("Can't add composite runtime field … without subfields") and Kibana keeps
+  labels per subfield, so it is deleted but not created or replaced here
+  (roadmap). A name the view maps is a 400 "Only runtime fields can be
+  updated" on the PUT and "Field [name = Carrier] already exists." on the
+  POST — refused before the write with the fix. A field without a script
+  is stored (it reads the `_source` value of its name), so `script` is
+  optional. The DELETE answers 404 "Field [index_pattern = <id>, field =
+  <name>] not found." for a missing name, a mapped field and a composite's
+  subfield alike, so the delete reads the view first and says which; Kibana
+  keeps the field's count and format in `fieldAttrs`/`fieldFormats` after a
+  delete. **The default data view:** `POST /api/data_views/default` stores
+  any id (`bogus-id` answered 200, and so did another space's view id), so
+  the set reads the view first and a miss is D17's data-view guidance;
+  without `force` it answers 200 `{"acknowledged": true}` and keeps a
+  default already set, so the tool always sends `force: true`; `null` with
+  `force` clears it (`{"data_view_id": ""}`). Kibana makes the first data
+  view created in a space with no default its default (observed in a fresh
+  space), and keeps the id of a deleted default (the shared stack's default
+  space held one, `de4dee2d-…`, of a view since deleted), so the get
+  returns `exists: false` for it rather than a not-found. **The saved-objects
+  reads** use `GET /api/saved_objects/_find` and `GET
+  /api/saved_objects/{type}/{id}`, which Kibana 9.5.4 serves with `warning:
+  299 Kibana-9.5.4 "This endpoint is deprecated"` and kibana-py marks
+  deprecated. They are built anyway, superseding the data-management
+  contract's earlier "granular find/get deferred" line on this evidence: no
+  public route replaces a cross-type find or a `has_reference` search (the
+  one open on the roadmap since D37 for `delete_visualization`), and the
+  contract tier catches a removal; raw saved-objects writes stay out
+  (deprecated, and the type-specific tools cover them). The find answers
+  200 with no hits for an unknown type (`bogus`), for `*` and for hidden
+  types (`action`, `alert`), so an empty result carries a `note` and `*` is
+  refused (`export_saved_objects` takes it); it 400s past
+  `index.max_result_window` ("Result window is too large … 10000") and on
+  `page=0` ("[from] parameter cannot be negative"), so `page ≥ 1`,
+  `per_page ≤ 100` and `page * per_page ≤ 10,000` are checked first; it
+  400s sorting by a text field (`sort_field=title`: "Fielddata is
+  disabled"), so no sort is offered; `fields=title&fields=name` keeps each
+  hit's attributes small (the flights dashboard's are about 35 KB). The get
+  answers 404 "Saved object [action/x] not found" for hidden types as for
+  missing ids, so the miss names `find_saved_objects` and the hidden types;
+  it strips encrypted attributes (a Synthetics parameter's `value` is
+  absent, probed), and a dashboard's `panelsJSON` (33,809 characters on the
+  flights sample) would fill the context, so attributes over 4,000
+  characters are listed by size in `omitted_attributes` and references are
+  returned as the distinct `{type, id}` pairs (27 references, 4 objects).
+  **The profiles grow:** `read-only-explorer` and `dashboards-analyst` are
+  whole toolboxes at a tier (D39, D41), so they gain the new tools (14 and
+  26 tools; the dependency map 57 edges from 52 tools); the 26 passes the
+  ~20-tool heuristic, which the ops-admin plan's final batch reviews with
+  the owner rather than this batch moving tools out of their toolbox.
+  Rejected: validating scripts against Elasticsearch (the server reaches
+  Kibana only); `composite` in the upsert (subfield labels and their
+  carry-over, for no task yet); a `sort_field` argument (text fields 400);
+  returning whole attributes from `get_saved_object` (size), or only an
+  allow-list of attributes (it would differ per type and drift). Contract:
+  [data-management](toolboxes/data-management.md).
 
 ## Reliability and models (measured)
 

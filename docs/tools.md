@@ -9,7 +9,7 @@ via [`KIBANA_MCP_TOOLS`](configuration.md#tool-selection): **dashboards**,
 **[observability](#observability-toolbox)**,
 **[security-detections](#security-detections-toolbox)**,
 **[platform-admin](#platform-admin-toolbox)**,
-**[streams](#streams-toolbox)**, and **[fleet](#fleet-toolbox)** — 162 tools in
+**[streams](#streams-toolbox)**, and **[fleet](#fleet-toolbox)** — 168 tools in
 all. This reference details every toolbox in full. A drift-guard test
 (`tests/unit/test_docs_tool_reference.py`) asserts that every registered tool
 name appears on this page, so it cannot silently fall behind the code.
@@ -452,9 +452,9 @@ This is a deliberate fail-closed guard — see
 
 ## Space targeting
 
-Every one of the 80 tools in the **dashboards**, **data-management**,
+Every one of the 86 tools in the **dashboards**, **data-management**,
 **alerting**, **cases**, and **security-detections** toolboxes — including
-the 15 destructive-tier ones — accepts an optional `space` parameter that
+the 16 destructive-tier ones — accepts an optional `space` parameter that
 targets a Kibana space by id:
 
 ```
@@ -539,7 +539,8 @@ APM agent-config writes follow the toolbox and take no `space` either, D10).
 
 ## data-management toolbox
 
-Data views (the datasets you visualize) and short URLs. The saved-objects
+Data views (the datasets you visualize) with their runtime fields and the
+space's default, short URLs, and saved-objects reads. The saved-objects
 export/import/overwrite tools are also part of this toolbox — see
 [saved-objects export/import](#saved-objects-exportimport-data-management) below.
 
@@ -547,12 +548,21 @@ export/import/overwrite tools are also part of this toolbox — see
 |---|---|---|
 | `list_data_views` | read | List Kibana data views (the datasets you can visualize). |
 | `describe_data_view` | read | Get a data view's fields and types. |
+| `get_default_data_view` | read | Get the space's default data view (the one Discover opens with): id, name, index pattern, and whether the stored id still names a data view. |
 | `resolve_short_url` | read | Resolve a Kibana short-URL slug to its locator and target app path. |
+| `find_saved_objects` | read | Find saved objects of given `types`, optionally by `search` words and/or `has_reference` (the objects that reference one object); one page of summaries plus the total. |
+| `get_saved_object` | read | Get one saved object by `type` and `id`: attributes (long ones listed by size instead), the distinct objects it references, namespaces and timestamps. |
 | `create_data_view` | write | Create a Kibana data view over an index pattern (e.g. `logs-*`). The time field must be a date field of the pattern; a refused call creates nothing. |
 | `update_data_view` | write | Edit a data view in place by id: `name`, `index_pattern` and/or `time_field`. Only the fields passed change; the time field must be a date field of the view. |
+| `upsert_runtime_field` | write (upsert) | Create or replace a single-value runtime field on a data view (`type`, optional Painless `script`); returns the definition it replaced as `previous`. |
+| `set_default_data_view` | write (upsert) | Make a data view the space's default by id, or clear the default with `view_id=null`; returns `previous_id`. |
 | `create_short_url` | write | Create a Kibana short URL for a locator + app path. |
 | `delete_data_view` | destructive | Permanently delete a data view by id. This cannot be recovered. |
+| `delete_runtime_field` | destructive | Permanently delete a runtime field from a data view; returns its definition. |
 | `delete_short_url` | destructive | Permanently delete a short URL by id. |
+
+The two upserts set `idempotentHint=true`: a repeat with the same arguments
+stores the same definition, or the same default.
 
 Notes on `create_data_view`:
 
@@ -625,12 +635,132 @@ Notes on `update_data_view`:
   `(in space '<id>')` suffix when `space` is set. Kibana validation failures
   keep the `Kibana rejected the payload:` prefix.
 
+Notes on `upsert_runtime_field` and `delete_runtime_field`:
+
+- **Kibana does not compile the script.** It stores any Painless source and
+  any type it emits (probed on 9.5.4: `this is not painless(((` was stored),
+  while Elasticsearch fails a whole search whose runtime mappings hold a
+  script that does not compile, even when the search does not use the field
+  (probed: `script_exception: compile error`). Kibana's apps send a data
+  view's runtime fields with their searches, so a broken script breaks
+  Discover and the visualizations that use the view until the field is fixed
+  or deleted. The description says so; no public Kibana route compiles a
+  script to check it first. Dashboard panels this server builds carry the
+  index pattern inline, not the view, so they do not see runtime fields.
+- **Single-value types only.** `type` is one of `keyword`, `long`, `double`,
+  `date`, `ip`, `boolean`, `geo_point` (Kibana's list, less `composite`).
+  Without `script` the field reads the `_source` value of the same name.
+- **What it reads first, and why.** The upsert reads the view: a name the
+  view already has as a mapped (or scripted) field is refused before any
+  write (Kibana's PUT 400s "Only runtime fields can be updated"), and so is
+  a stored composite field or one of its subfields (`comp.a`), which this
+  surface could not put back. A create uses Kibana's POST, so a field added
+  between the read and the write is a 400 "Field [name = x] already
+  exists." answered with "call upsert_runtime_field again"; a replacement
+  uses the PUT and returns the replaced definition as `previous` — pass its
+  `type` and `script` back to undo. Kibana's PUT (and its partial POST)
+  drops the field's custom label and description unless they are sent
+  again, so a replacement re-sends the stored ones. The read and the
+  replacement are not atomic: a change another client stores between them
+  is replaced, and `previous` is what this call read.
+- **Delete returns what it removed.** `delete_runtime_field` reads the view
+  first, because Kibana's DELETE answers 404 `Field [index_pattern = <id>,
+  field = <name>] not found.` alike for a missing name, a mapped field and a
+  composite's subfield: the tool says which, and lists the view's runtime
+  fields (`data view '<id>' has no runtime field 'zz' — its runtime fields:
+  comp, hour`). A composite field is deleted by its own name and comes back
+  with its `fields`. Kibana keeps the field's popularity count and format
+  after a delete (observed); they apply again if the name returns.
+- **A wrong view id** gets the data-view guidance `update_data_view` uses
+  (`... call list_data_views to find it`), plus the `(in space '<id>')`
+  suffix when `space` is set.
+
+Notes on `get_default_data_view` and `set_default_data_view`:
+
+- **The default is per space** (Kibana's `defaultIndex` advanced setting).
+  Kibana makes the first data view created in a space with no default its
+  default (probed on 9.5.4), and keeps the id when that view is deleted, so
+  the get reports `exists: false` for an id that names no data view in the
+  space; `id` is `null` when none is set.
+- **The set always replaces.** Without `force`, Kibana answers 200
+  `{"acknowledged": true}` and keeps a default that is already set (probed),
+  so the tool always sends `force: true`. Kibana stores any id as the
+  default (`bogus-id` answered 200), so the tool reads the view first and a
+  wrong id is the data-view guidance; `view_id=null` clears the default.
+  `previous_id` is the default before the call, so a second call undoes it.
+
+Notes on `find_saved_objects` and `get_saved_object`:
+
+- **Kibana's deprecated saved-objects API.** Both call
+  `GET /api/saved_objects/_find` and `GET /api/saved_objects/{type}/{id}`,
+  which Kibana 9.5.4 still serves with a `warning: 299 ... This endpoint is
+  deprecated` header. No other public route finds objects across types or
+  by reference; the type-specific tools stay the way to read and change a
+  dashboard, a visualization or a data view.
+- **An empty page proves little.** Kibana answers 200 with no hits for a
+  type name it does not know (`bogus`), for `*`, and for the types it hides
+  from this API (`action`, `alert`), so a result with `total: 0` carries a
+  `note` saying to check the type names, and `types` refuses `*` (use
+  `export_saved_objects(types=["*"])` for a whole space). A page past the
+  last one carries a note too.
+- **Search and references.** `search` is Elasticsearch's
+  `simple_query_string` over the type's default search field (the title):
+  words match (`flight`), `flight*` matches a prefix. `has_reference`
+  (`{"type": "index-pattern", "id": "<id>"}`) keeps the objects that
+  reference that object — for example the dashboards and visualizations
+  that use a data view, or the dashboards that place a library
+  visualization by reference.
+- **Paging.** `per_page` is at most 100 and `page * per_page` at most
+  10,000, which Kibana's find does not serve past (`Result window is too
+  large`, probed); the tool refuses it first, naming `search` and
+  `has_reference`. Each hit's attributes are fetched as `title` and `name`
+  only, so a summary stays small.
+- **Long attributes stay out of `get_saved_object`.** An attribute longer
+  than 4,000 characters (its JSON text for a non-string value) is left out
+  of `attributes` and listed in `omitted_attributes` with its size — the
+  flights sample dashboard's `panelsJSON` is 33,809. Encrypted
+  attributes never come back (Kibana strips them: a Synthetics parameter's
+  `value` is absent, probed). References are the distinct `{type, id}`
+  pairs, in first-seen order (the flights dashboard holds 27 references to
+  4 objects). A miss names `find_saved_objects` and says that hidden types
+  answer not found too.
+
 Returns:
 
 ```jsonc
 // update_data_view  (+ "space" when the caller passed one)
 {"id": "7902514d-...", "name": "Flights", "index_pattern": "kibana_sample_data_flights",
  "time_field": "timestamp", "field_count": 32}
+
+// upsert_runtime_field  (+ "space" when the caller passed one)
+{"view_id": "7902514d-...", "created": false,
+ "field": {"name": "hour", "type": "keyword", "script": "emit('x')"},
+ "previous": {"name": "hour", "type": "long",
+              "script": "emit(doc['timestamp'].value.getHour())"}}   // null on a create
+
+// delete_runtime_field  ("fields" only for a composite)
+{"view_id": "7902514d-...", "deleted": true,
+ "field": {"name": "comp", "type": "composite", "script": "emit(['a': 'x'])",
+           "fields": {"a": "keyword"}}}
+
+// get_default_data_view  (set_default_data_view adds "previous_id")
+{"id": "d3d7af60-...", "name": "Kibana Sample Data Flights",
+ "index_pattern": "kibana_sample_data_flights", "exists": true}
+
+// find_saved_objects  ("note" only on an empty result or a page past the end)
+{"total": 1, "page": 1, "per_page": 20,
+ "saved_objects": [{"type": "dashboard", "id": "7adfa750-...",
+                    "title": "[Flights] Global Flight Dashboard", "name": null,
+                    "updated_at": "2026-10-25T03:03:32.348Z", "namespaces": ["default"],
+                    "managed": false}]}
+
+// get_saved_object  ("omitted_attributes" only when one was left out)
+{"type": "dashboard", "id": "7adfa750-...", "namespaces": ["default"],
+ "created_at": "2026-10-25T03:03:32.348Z", "updated_at": "2026-10-25T03:03:32.348Z",
+ "managed": false, "attributes": {"title": "[Flights] Global Flight Dashboard", "...": "..."},
+ "references": [{"type": "search", "id": "571aaf70-..."},
+                {"type": "index-pattern", "id": "d3d7af60-..."}],
+ "omitted_attributes": {"panelsJSON": 33809}}
 ```
 
 ## alerting toolbox

@@ -12,6 +12,30 @@ version section.
 
 ### Added
 
+- **Data management: runtime fields, the default data view, and saved-objects
+  reads** (three `read`, two `write` and one `destructive` tool, 168 tools in
+  all; every one takes `space`). `upsert_runtime_field` creates or replaces a
+  single-value runtime field (`keyword`, `long`, `double`, `date`, `ip`,
+  `boolean`, `geo_point`, with an optional Painless `script`) and returns the
+  definition it replaced as `previous`; it refuses a name the view maps and a
+  composite field before any write, keeps a replaced field's custom label and
+  description (Kibana's PUT drops them), and its description warns that
+  Kibana stores a script without compiling it, so a broken one fails the
+  view's searches until it is fixed or deleted. `delete_runtime_field`
+  returns the deleted definition, and its miss lists the view's runtime
+  fields. `get_default_data_view` reads the space's default data view and
+  says when its stored id names no view (Kibana keeps a deleted one's);
+  `set_default_data_view` sets it (always replacing: without `force` Kibana
+  keeps the old one and still answers 200) or clears it with `view_id=null`,
+  refuses an id that names no view, and returns `previous_id`.
+  `find_saved_objects` finds objects of given types by title words and/or by
+  reference (`has_reference`: e.g. the dashboards that use a visualization)
+  and returns one page of summaries with a `note` when the page is empty
+  (Kibana also answers empty for unknown and hidden types);
+  `get_saved_object` returns one object with attributes over 4,000
+  characters listed by size instead (`omitted_attributes`) and its distinct
+  references. The `read-only-explorer` and `dashboards-analyst` profiles and
+  built-in lists grow to 14 and 26 tools. Decision D48.
 - **Observability: create, replace and delete APM agent configurations**
   (one `write` and one `destructive` tool, 162 tools in all).
   `upsert_apm_agent_config` creates or replaces the central configuration of a

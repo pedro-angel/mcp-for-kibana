@@ -138,3 +138,27 @@ def summarize_export(
         excluded_count=int(details.get("excludedObjectsCount", 0) or 0),
         byte_size=byte_size,
     )
+
+
+# get_saved_object (D48): an attribute longer than this, as JSON text, is left
+# out of the result and only its size reported — a dashboard's panelsJSON (the
+# flights sample's is 33,809 characters) or a data view's field list would
+# otherwise fill the model's context with what the type's own tools summarize.
+ATTRIBUTE_CHARS_SHOWN = 4_000
+
+
+def cap_attributes(attributes: dict[str, Any]) -> tuple[dict[str, Any], dict[str, int]]:
+    """Split `attributes` into the ones shown and {name: size} for the ones
+    left out. A string's size is its length; any other value's is the length
+    of its compact JSON text."""
+    shown: dict[str, Any] = {}
+    omitted: dict[str, int] = {}
+    for key, value in attributes.items():
+        size = len(value) if isinstance(value, str) else len(
+            json.dumps(value, separators=(",", ":"), default=str)
+        )
+        if size > ATTRIBUTE_CHARS_SHOWN:
+            omitted[key] = size
+        else:
+            shown[key] = value
+    return shown, omitted

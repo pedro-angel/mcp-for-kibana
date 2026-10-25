@@ -2664,3 +2664,200 @@ async def test_apm_agent_config_both_sentinels_live(gateway):
         assert not any(c.service_name == literal for c in gateway.list_apm_agent_configs())
     finally:
         _apm_cleanup((None, literal), (literal, literal))
+
+
+# --- data-management: runtime fields, the default data view, saved-objects reads (D48) ---
+
+
+def _flights_view_id(gateway):
+    # The seeded sample's view (other tests add views over the same pattern).
+    (view,) = [v for v in gateway.list_data_views()
+               if v.index_pattern == FLIGHTS and v.name == "Kibana Sample Data Flights"]
+    return view.id
+
+
+async def test_runtime_field_lifecycle_live(gateway, tmp_path):
+    # Through the MCP surface on a throwaway view over the flights fields: a
+    # create (the POST), a replacement that returns what it replaced and keeps
+    # the custom label Kibana's PUT drops, the refusals that name the fix, a
+    # script Kibana stores without compiling it, and the delete with its miss.
+    view = gateway.create_data_view(_dv_pattern(), f"ct-rt-{uuid.uuid4().hex[:6]}", "timestamp")
+    try:
+        async with Client(_dm_tool_server(tmp_path)) as client:
+            created = (await client.call_tool("upsert_runtime_field", {
+                "view_id": view.id, "name": "hour", "type": "long",
+                "script": "emit(doc['timestamp'].value.getHour())",
+            })).data
+            with _raw_kibana() as raw:  # a label set the way Kibana's UI does
+                raw.data_views.create_or_update_runtime_field(
+                    view_id=view.id, name="hour",
+                    runtime_field={**{"type": "long", "script": {"source": "emit(1)"}},
+                                   "customLabel": "Hour", "customDescription": "UTC hour"},
+                )
+            replaced = (await client.call_tool("upsert_runtime_field", {
+                "view_id": view.id, "name": "hour", "type": "keyword", "script": "emit('x')",
+            })).data
+            broken = (await client.call_tool("upsert_runtime_field", {
+                "view_id": view.id, "name": "broken", "type": "long",
+                "script": "this is not painless(((",
+            })).data
+            plain = (await client.call_tool("upsert_runtime_field", {
+                "view_id": view.id, "name": "Dest_rt", "type": "keyword",
+            })).data
+            with pytest.raises(ToolError) as mapped:
+                await client.call_tool("upsert_runtime_field", {
+                    "view_id": view.id, "name": "Carrier", "type": "keyword",
+                })
+            with _raw_kibana() as raw:
+                raw.data_views.create_or_update_runtime_field(
+                    view_id=view.id, name="comp",
+                    runtime_field={"type": "composite", "script": {"source": "emit(['a': 'x'])"},
+                                   "fields": {"a": {"type": "keyword"}}},
+                )
+                stored = raw.data_views.get(view_id=view.id).body["data_view"]
+            with pytest.raises(ToolError, match=r"is a composite field, which this tool does "
+                                                r"not replace"):
+                await client.call_tool("upsert_runtime_field", {
+                    "view_id": view.id, "name": "comp", "type": "keyword",
+                })
+            with pytest.raises(ToolError, match=r"delete 'comp' to remove it with its subfields"):
+                await client.call_tool("delete_runtime_field", {"view_id": view.id, "name": "comp.a"})
+            with pytest.raises(ToolError, match=r"only runtime fields can be deleted"):
+                await client.call_tool("delete_runtime_field", {"view_id": view.id, "name": "Carrier"})
+            comp = (await client.call_tool(
+                "delete_runtime_field", {"view_id": view.id, "name": "comp"})).data
+            for name in ("broken", "Dest_rt"):
+                await client.call_tool("delete_runtime_field", {"view_id": view.id, "name": name})
+            deleted = (await client.call_tool(
+                "delete_runtime_field", {"view_id": view.id, "name": "hour"})).data
+            with pytest.raises(ToolError) as gone:
+                await client.call_tool("delete_runtime_field", {"view_id": view.id, "name": "hour"})
+            with pytest.raises(ToolError, match=r"call list_data_views to find it$"):
+                await client.call_tool("upsert_runtime_field", {
+                    "view_id": "no-such-dv-xyz", "name": "h", "type": "long",
+                })
+            with _raw_kibana() as raw:
+                after = raw.data_views.get(view_id=view.id).body["data_view"]
+        assert created == {
+            "view_id": view.id, "created": True, "previous": None,
+            "field": {"name": "hour", "type": "long",
+                      "script": "emit(doc['timestamp'].value.getHour())"},
+        }
+        assert replaced["created"] is False
+        assert replaced["previous"] == {"name": "hour", "type": "long", "script": "emit(1)"}
+        assert replaced["field"] == {"name": "hour", "type": "keyword", "script": "emit('x')"}
+        # Kibana compiles nothing: the broken script is stored as sent.
+        assert broken["field"]["script"] == "this is not painless((("
+        assert plain["field"] == {"name": "Dest_rt", "type": "keyword", "script": None}
+        assert "'Carrier' is already a field of data view" in str(mapped.value)
+        assert stored["fieldAttrs"]["hour"] == {"customLabel": "Hour", "customDescription": "UTC hour"}
+        assert stored["runtimeFieldMap"]["hour"]["type"] == "keyword"
+        assert comp["field"] == {"name": "comp", "type": "composite",
+                                 "script": "emit(['a': 'x'])", "fields": {"a": "keyword"}}
+        assert deleted == {"view_id": view.id, "deleted": True, "field": replaced["field"]}
+        assert str(gone.value) == (
+            f"data view '{view.id}' has no runtime field 'hour' — it has no runtime fields"
+        )
+        assert after["runtimeFieldMap"] == {}
+    finally:
+        gateway.delete_data_view(view.id)
+
+
+async def test_default_data_view_set_get_and_clear_scoped_live(gateway, tmp_path):
+    # In a throwaway space, so the shared default space's default is untouched:
+    # unset → Kibana makes the space's first data view its default (probed on
+    # 9.5.4) → a set replaces it (force) → a refused unknown id leaves it → a
+    # deleted default reads as not existing → clear, with previous_id each time.
+    with _temp_space(gateway, "mcp-for-kibana-ct-default-dv") as space_id:
+        async with Client(_dm_tool_server(tmp_path)) as client:
+            unset = (await client.call_tool("get_default_data_view", {"space": space_id})).data
+            first = (await client.call_tool("create_data_view", {
+                "index_pattern": FLIGHTS, "name": "ct default a", "space": space_id})).data
+            auto = (await client.call_tool("get_default_data_view", {"space": space_id})).data
+            second = (await client.call_tool("create_data_view", {
+                "index_pattern": FLIGHTS, "name": "ct default b", "space": space_id})).data
+            set_a = (await client.call_tool("set_default_data_view", {
+                "view_id": first["id"], "space": space_id})).data
+            set_b = (await client.call_tool("set_default_data_view", {
+                "view_id": second["id"], "space": space_id})).data
+            with pytest.raises(ToolError) as bogus:
+                await client.call_tool("set_default_data_view", {
+                    "view_id": "no-such-dv-xyz", "space": space_id})
+            kept = (await client.call_tool("get_default_data_view", {"space": space_id})).data
+            await client.call_tool("delete_data_view", {"view_id": second["id"], "space": space_id})
+            dangling = (await client.call_tool("get_default_data_view", {"space": space_id})).data
+            cleared = (await client.call_tool("set_default_data_view", {
+                "view_id": None, "space": space_id})).data
+            with _raw_kibana(space_id) as raw:
+                stored = raw.data_views.get_default().body
+    assert unset == {"id": None, "name": None, "index_pattern": None, "exists": False,
+                     "space": space_id}
+    assert auto == {"id": first["id"], "name": "ct default a", "index_pattern": FLIGHTS,
+                    "exists": True, "space": space_id}
+    assert set_a == {**auto, "previous_id": first["id"]}  # a repeat changes nothing
+    assert set_b["id"] == second["id"] and set_b["previous_id"] == first["id"]
+    assert "call list_data_views to find it" in str(bogus.value)
+    assert str(bogus.value).endswith(f" (in space '{space_id}')")
+    assert kept["id"] == second["id"] and kept["exists"] is True
+    assert dangling == {"id": second["id"], "name": None, "index_pattern": None,
+                        "exists": False, "space": space_id}
+    assert cleared["id"] is None and cleared["previous_id"] == second["id"]
+    assert stored == {"data_view_id": ""}
+
+
+async def test_find_and_get_saved_objects_live(gateway, tmp_path):
+    # The seeded flights sample: its dashboard references the flights data view,
+    # carries a panelsJSON over the cap, and is invisible from another space;
+    # a hidden type answers an empty page or not-found; an encrypted attribute
+    # (a Synthetics parameter's value) never comes back.
+    flights_id = _flights_view_id(gateway)
+    with _raw_kibana() as raw:
+        param = raw.synthetics.create_param(key=f"ct-so-{uuid.uuid4().hex[:6]}", value="s3cret-ct").body
+    try:
+        async with Client(_dm_tool_server(tmp_path)) as client:
+            by_ref = (await client.call_tool("find_saved_objects", {
+                "types": ["dashboard"], "has_reference": {"type": "index-pattern", "id": flights_id},
+            })).data
+            by_word = (await client.call_tool("find_saved_objects", {
+                "types": ["dashboard", "index-pattern"], "search": "flight*", "per_page": 100,
+            })).data
+            hidden = (await client.call_tool("find_saved_objects", {"types": ["action"]})).data
+            (dash,) = [o for o in by_ref["saved_objects"]
+                       if o["title"] == "[Flights] Global Flight Dashboard"]
+            got = (await client.call_tool("get_saved_object", {
+                "type": "dashboard", "id": dash["id"]})).data
+            view = (await client.call_tool("get_saved_object", {
+                "type": "index-pattern", "id": flights_id})).data
+            secret = (await client.call_tool("get_saved_object", {
+                "type": "synthetics-param", "id": param["id"]})).data
+            with pytest.raises(ToolError) as hidden_get:
+                await client.call_tool("get_saved_object", {"type": "action", "id": "x"})
+            with pytest.raises(ToolError, match=r"past the first 10,000 results"):
+                await client.call_tool("find_saved_objects", {
+                    "types": ["dashboard"], "page": 101, "per_page": 100})
+        with _temp_space(gateway, "mcp-for-kibana-ct-so") as space_id:
+            async with Client(_dm_tool_server(tmp_path)) as client:
+                elsewhere = (await client.call_tool("find_saved_objects", {
+                    "types": ["dashboard"], "space": space_id})).data
+                with pytest.raises(ToolError) as scoped_miss:
+                    await client.call_tool("get_saved_object", {
+                        "type": "dashboard", "id": dash["id"], "space": space_id})
+    finally:
+        with _raw_kibana() as raw:
+            raw.synthetics.delete_param(id=param["id"])
+    assert by_ref["total"] >= 1 and dash["namespaces"] == ["default"]
+    assert set(dash) == {"type", "id", "title", "name", "updated_at", "namespaces", "managed"}
+    found = {(o["type"], o["id"]) for o in by_word["saved_objects"]}
+    assert ("dashboard", dash["id"]) in found and ("index-pattern", flights_id) in found
+    assert hidden["total"] == 0 and "check the type names" in hidden["note"]
+    assert got["attributes"]["title"] == "[Flights] Global Flight Dashboard"
+    assert got["omitted_attributes"]["panelsJSON"] > 4000
+    assert "panelsJSON" not in got["attributes"]
+    assert {"type": "index-pattern", "id": flights_id} in got["references"]
+    assert len(got["references"]) == len({(r["type"], r["id"]) for r in got["references"]})
+    assert view["attributes"]["title"] == FLIGHTS
+    assert secret["attributes"]["key"] == param["key"] and "value" not in secret["attributes"]
+    assert "s3cret-ct" not in str(secret)
+    assert "a type Kibana hides from the saved-objects API" in str(hidden_get.value)
+    assert elsewhere["total"] == 0 and "space" in elsewhere
+    assert str(scoped_miss.value).endswith(f" (in space '{space_id}')")

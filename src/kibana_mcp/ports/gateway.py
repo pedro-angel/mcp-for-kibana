@@ -20,6 +20,8 @@ from kibana_mcp.core.models import (
     DashboardSummary,
     DataViewDetail,
     DataViewSummary,
+    DefaultDataView,
+    DefaultDataViewChange,
     DetectionAlert,
     DetectionRule,
     ExceptionItem,
@@ -42,7 +44,11 @@ from kibana_mcp.core.models import (
     PrepackagedRulesStatus,
     Role,
     RuleSnooze,
+    RuntimeField,
+    RuntimeFieldUpsert,
+    SavedObjectDetail,
     SavedObjectImportResult,
+    SavedObjectPage,
     ShortUrl,
     Space,
     Stream,
@@ -118,6 +124,25 @@ class KibanaGateway(Protocol):
     ) -> DataViewDetail: ...
 
     def delete_data_view(self, view_id: str) -> None: ...
+
+    def upsert_runtime_field(self, view_id: str, field: RuntimeField) -> RuntimeFieldUpsert:
+        """Create or replace one single-value runtime field (D48). Must refuse a
+        name the view maps or a stored composite field before any write, and
+        return the definition it replaced."""
+        ...
+
+    def delete_runtime_field(self, view_id: str, name: str) -> RuntimeField:
+        """Delete one runtime field and return its definition. A name that is
+        not a runtime field of the view is KibanaNotFound naming the view's
+        runtime fields."""
+        ...
+
+    def get_default_data_view(self) -> DefaultDataView: ...
+
+    def set_default_data_view(self, view_id: str | None) -> DefaultDataViewChange:
+        """Replace the space's default data view (None clears it). Must refuse an
+        id that names no data view in the space (Kibana stores any id)."""
+        ...
 
     def create_short_url(self, locator_id: str, params: dict[str, Any]) -> ShortUrl: ...
 
@@ -408,6 +433,17 @@ class KibanaGateway(Protocol):
     def import_saved_objects(
         self, content: bytes, overwrite: bool
     ) -> SavedObjectImportResult: ...
+
+    def find_saved_objects(
+        self,
+        types: list[str],
+        search: str | None,
+        has_reference: dict[str, str] | None,
+        page: int,
+        per_page: int,
+    ) -> SavedObjectPage: ...
+
+    def get_saved_object(self, type: str, id: str) -> SavedObjectDetail: ...
 
     def list_spaces(self) -> list[Space]: ...
 

@@ -27,12 +27,20 @@ DATA_MGMT_TOOLS = {
     "list_data_views", "describe_data_view", "resolve_short_url", "export_saved_objects",
     "create_data_view", "update_data_view", "create_short_url", "import_saved_objects",
     "delete_data_view", "delete_short_url", "overwrite_saved_objects",
+    "find_saved_objects", "get_saved_object", "get_default_data_view",
+    "upsert_runtime_field", "set_default_data_view", "delete_runtime_field",
 }
-DATA_MGMT_READ = {"list_data_views", "describe_data_view", "resolve_short_url", "export_saved_objects"}
+DATA_MGMT_READ = {
+    "list_data_views", "describe_data_view", "resolve_short_url", "export_saved_objects",
+    "find_saved_objects", "get_saved_object", "get_default_data_view",
+}
 DATA_MGMT_WRITE = {
     "create_data_view", "update_data_view", "create_short_url", "import_saved_objects",
+    "upsert_runtime_field", "set_default_data_view",
 }
-DATA_MGMT_DESTRUCTIVE = {"delete_data_view", "delete_short_url", "overwrite_saved_objects"}
+DATA_MGMT_DESTRUCTIVE = {
+    "delete_data_view", "delete_short_url", "overwrite_saved_objects", "delete_runtime_field",
+}
 
 PLATFORM_HEALTH_TOOLS = {"get_kibana_status", "get_kibana_stats", "get_task_manager_health"}
 
@@ -267,10 +275,11 @@ async def test_platform_health_combines_with_dashboards():
     assert names == DASHBOARDS_TOOLS | PLATFORM_HEALTH_TOOLS
 
 
-async def test_read_only_explorer_profile_is_eleven_read_tools():
+async def test_read_only_explorer_profile_is_fourteen_read_tools():
     # read-only-explorer: dashboards + platform-health + data-management at read tier
-    # (data-management read grew by export_saved_objects with #37; dashboards read by
-    # search_visualizations + get_visualization, D37).
+    # (data-management read grew by export_saved_objects with #37, and by
+    # find_saved_objects, get_saved_object and get_default_data_view with D48;
+    # dashboards read by search_visualizations + get_visualization, D37).
     names = await visible_tools(
         Settings(
             toolboxes=["dashboards", "platform-health", "data-management"], tier=Tier.READ
@@ -280,7 +289,7 @@ async def test_read_only_explorer_profile_is_eleven_read_tools():
         "search_dashboards", "get_dashboard", "search_visualizations", "get_visualization",
     }
     assert names == dashboards_read | PLATFORM_HEALTH_TOOLS | DATA_MGMT_READ
-    assert len(names) == 11
+    assert len(names) == 14
 
 
 def _probe_toolbox(box_name, retval):

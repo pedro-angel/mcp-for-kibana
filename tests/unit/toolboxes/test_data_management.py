@@ -27,6 +27,8 @@ async def test_exposes_exactly_the_expected_tools(mcp):
         "list_data_views", "describe_data_view", "resolve_short_url", "export_saved_objects",
         "create_data_view", "update_data_view", "create_short_url", "import_saved_objects",
         "delete_data_view", "delete_short_url", "overwrite_saved_objects",
+        "find_saved_objects", "get_saved_object", "get_default_data_view",
+        "upsert_runtime_field", "set_default_data_view", "delete_runtime_field",
     }
 
 
@@ -365,3 +367,243 @@ async def test_update_data_view_in_space_threads_and_echoes(gateway):
     assert calls == ["sales", None]
     assert scoped.data["space"] == "sales"
     assert "space" not in unscoped.data
+
+
+# --- runtime fields, the default data view, saved-objects find/get (D48) ---
+
+
+def _recording(gateway):
+    calls = []
+
+    def factory(space=None):
+        calls.append(space)
+        return gateway
+
+    server = FastMCP("test")
+    DataManagementToolbox().register(
+        server, ToolboxDeps(gateway_factory=factory, public_kibana_url="http://kb:5601")
+    )
+    return server, calls
+
+
+async def test_new_tools_tiers_and_hints(mcp):
+    async with Client(mcp) as client:
+        tools = {t.name: t for t in await client.list_tools()}
+    for name in ("find_saved_objects", "get_saved_object", "get_default_data_view"):
+        assert tools[name].annotations.readOnlyHint is True, name
+    for name in ("upsert_runtime_field", "set_default_data_view"):
+        hints = tools[name].annotations
+        assert (hints.readOnlyHint, hints.destructiveHint, hints.idempotentHint) == (
+            False, False, True,
+        ), name
+    hints = tools["delete_runtime_field"].annotations
+    assert (hints.readOnlyHint, hints.destructiveHint) == (False, True)
+
+
+async def test_upsert_runtime_field_creates_then_replaces_and_returns_previous(mcp, gateway):
+    async with Client(mcp) as client:
+        created = await client.call_tool("upsert_runtime_field", {
+            "view_id": "dv1", "name": "hour", "type": "long",
+            "script": "emit(doc['timestamp'].value.getHour())",
+        })
+        replaced = await client.call_tool("upsert_runtime_field", {
+            "view_id": "dv1", "name": "hour", "type": "keyword", "script": "emit('x')",
+        })
+    assert created.data == {
+        "view_id": "dv1", "created": True, "previous": None,
+        "field": {"name": "hour", "type": "long",
+                  "script": "emit(doc['timestamp'].value.getHour())"},
+    }
+    assert replaced.data["created"] is False
+    assert replaced.data["previous"] == created.data["field"]
+    assert replaced.data["field"] == {"name": "hour", "type": "keyword", "script": "emit('x')"}
+    assert gateway.runtime_fields["dv1"]["hour"].type == "keyword"
+
+
+async def test_upsert_runtime_field_type_is_an_enum_without_composite(mcp):
+    async with Client(mcp) as client:
+        tools = {t.name: t for t in await client.list_tools()}
+        schema = tools["upsert_runtime_field"].inputSchema["properties"]["type"]
+        assert schema["enum"] == ["keyword", "long", "double", "date", "ip", "boolean", "geo_point"]
+        with pytest.raises(ToolError):
+            await client.call_tool("upsert_runtime_field", {
+                "view_id": "dv1", "name": "c", "type": "composite",
+            })
+
+
+async def test_upsert_runtime_field_blank_script_or_name_is_refused_before_the_gateway(gateway):
+    server, calls = _recording(gateway)
+    async with Client(server) as client:
+        with pytest.raises(ToolError, match=r"`script` is blank — pass Painless source, or omit"):
+            await client.call_tool("upsert_runtime_field", {
+                "view_id": "dv1", "name": "h", "type": "long", "script": "  ", "space": "x",
+            })
+        with pytest.raises(ToolError, match=r"`name` is blank"):
+            await client.call_tool("upsert_runtime_field", {
+                "view_id": "dv1", "name": " ", "type": "long",
+            })
+    assert calls == [] and gateway.runtime_fields == {}
+
+
+async def test_upsert_runtime_field_description_warns_kibana_does_not_compile(mcp):
+    async with Client(mcp) as client:
+        tools = {t.name: t for t in await client.list_tools()}
+    flat = " ".join(tools["upsert_runtime_field"].description.split())
+    assert "Kibana does NOT compile the script" in flat
+    assert "delete_runtime_field" in flat and "previous" in flat and "custom label" in flat
+
+
+async def test_upsert_runtime_field_mapped_name_is_a_tool_error(mcp, gateway):
+    async with Client(mcp) as client:
+        with pytest.raises(ToolError, match=r"'Carrier' is already a field of data view 'dv1'"):
+            await client.call_tool("upsert_runtime_field", {
+                "view_id": "dv1", "name": "Carrier", "type": "keyword",
+            })
+    assert gateway.runtime_fields.get("dv1", {}) == {}
+
+
+async def test_delete_runtime_field_returns_the_definition_and_misses_are_errors(mcp, gateway):
+    async with Client(mcp) as client:
+        await client.call_tool("upsert_runtime_field", {
+            "view_id": "dv1", "name": "hour", "type": "long", "script": "emit(1)",
+        })
+        deleted = await client.call_tool("delete_runtime_field", {"view_id": "dv1", "name": "hour"})
+        with pytest.raises(ToolError, match=r"data view 'dv1' has no runtime field 'hour'"):
+            await client.call_tool("delete_runtime_field", {"view_id": "dv1", "name": "hour"})
+        with pytest.raises(ToolError, match=r"call list_data_views to find it"):
+            await client.call_tool("delete_runtime_field", {"view_id": "flights", "name": "h"})
+    assert deleted.data == {
+        "view_id": "dv1", "deleted": True,
+        "field": {"name": "hour", "type": "long", "script": "emit(1)"},
+    }
+
+
+async def test_delete_runtime_field_returns_a_composites_fields(mcp, gateway):
+    from kibana_mcp.core.models import RuntimeField
+
+    gateway.runtime_fields["dv1"] = {
+        "comp": RuntimeField(name="comp", type="composite", script="emit(1)", fields={"a": "keyword"})
+    }
+    async with Client(mcp) as client:
+        deleted = await client.call_tool("delete_runtime_field", {"view_id": "dv1", "name": "comp"})
+    assert deleted.data["field"]["fields"] == {"a": "keyword"}
+
+
+async def test_get_and_set_default_data_view_round_trip(mcp, gateway):
+    async with Client(mcp) as client:
+        unset = await client.call_tool("get_default_data_view", {})
+        changed = await client.call_tool("set_default_data_view", {"view_id": "dv1"})
+        now = await client.call_tool("get_default_data_view", {})
+        cleared = await client.call_tool("set_default_data_view", {"view_id": None})
+        with pytest.raises(ToolError, match=r"data view 'bogus' not found .*list_data_views"):
+            await client.call_tool("set_default_data_view", {"view_id": "bogus"})
+    assert unset.data == {"id": None, "name": None, "index_pattern": None, "exists": False}
+    assert changed.data == {
+        "id": "dv1", "name": "flights", "index_pattern": "kibana_sample_data_flights",
+        "exists": True, "previous_id": None,
+    }
+    assert now.data == {k: v for k, v in changed.data.items() if k != "previous_id"}
+    assert cleared.data == {
+        "id": None, "name": None, "index_pattern": None, "exists": False, "previous_id": "dv1",
+    }
+    assert gateway.default_data_view_id is None
+
+
+async def test_get_default_data_view_reports_a_dangling_id(mcp, gateway):
+    gateway.default_data_view_id = "deleted-1"
+    async with Client(mcp) as client:
+        got = await client.call_tool("get_default_data_view", {})
+    assert got.data == {"id": "deleted-1", "name": None, "index_pattern": None, "exists": False}
+
+
+async def test_set_default_data_view_requires_view_id_but_accepts_null(mcp):
+    async with Client(mcp) as client:
+        tools = {t.name: t for t in await client.list_tools()}
+        assert tools["set_default_data_view"].inputSchema["required"] == ["view_id"]
+        with pytest.raises(ToolError):
+            await client.call_tool("set_default_data_view", {})
+
+
+async def test_find_saved_objects_returns_summaries_and_passes_the_filters(mcp, gateway):
+    async with Client(mcp) as client:
+        found = await client.call_tool("find_saved_objects", {
+            "types": ["dashboard"], "search": "global*",
+            "has_reference": {"type": "index-pattern", "id": "dv1"}, "page": 1, "per_page": 5,
+        })
+    assert found.data == {
+        "total": 1, "page": 1, "per_page": 5,
+        "saved_objects": [{
+            "type": "dashboard", "id": "dash-1", "title": "[Flights] Global Flight Dashboard",
+            "name": None, "updated_at": "2026-10-25T00:00:00.000Z", "namespaces": ["default"],
+            "managed": False,
+        }],
+    }
+    assert gateway.saved_object_finds == [{
+        "types": ["dashboard"], "search": "global*",
+        "has_reference": {"type": "index-pattern", "id": "dv1"}, "page": 1, "per_page": 5,
+    }]
+
+
+async def test_find_saved_objects_empty_and_past_the_end_carry_a_note(mcp):
+    async with Client(mcp) as client:
+        empty = await client.call_tool("find_saved_objects", {"types": ["action"]})
+        past = await client.call_tool("find_saved_objects", {"types": ["dashboard"], "page": 3})
+    assert empty.data["total"] == 0 and "check the type names" in empty.data["note"]
+    assert past.data["saved_objects"] == []
+    assert past.data["note"] == "page 3 is past the last page (1 results, 20 per page)"
+
+
+@pytest.mark.parametrize(("args", "message"), [
+    ({"types": ["*"]}, r"not blank and not '\*'"),
+    ({"types": [" "]}, r"not blank and not '\*'"),
+    ({"types": ["dashboard"], "search": "  "}, r"`search` is blank"),
+    ({"types": ["dashboard"], "has_reference": {"id": "x"}}, r"must be exactly"),
+    ({"types": ["dashboard"], "has_reference": {"type": "lens", "id": " "}}, r"must be exactly"),
+    ({"types": ["dashboard"], "page": 101, "per_page": 100}, r"past the first 10,000 results"),
+])
+async def test_find_saved_objects_guards_run_before_the_gateway(gateway, args, message):
+    server, calls = _recording(gateway)
+    async with Client(server) as client:
+        with pytest.raises(ToolError, match=message):
+            await client.call_tool("find_saved_objects", {**args, "space": "x"})
+    assert calls == [] and gateway.saved_object_finds == []
+
+
+async def test_find_saved_objects_schema_bounds(mcp):
+    async with Client(mcp) as client:
+        for bad in ({"types": []}, {"types": ["dashboard"], "per_page": 101},
+                    {"types": ["dashboard"], "page": 0}):
+            with pytest.raises(ToolError):
+                await client.call_tool("find_saved_objects", bad)
+
+
+async def test_get_saved_object_caps_long_attributes_and_lists_references(mcp):
+    async with Client(mcp) as client:
+        got = await client.call_tool("get_saved_object", {"type": "dashboard", "id": "dash-1"})
+        small = await client.call_tool("get_saved_object", {"type": "index-pattern", "id": "dv1"})
+    assert got.data == {
+        "type": "dashboard", "id": "dash-1", "namespaces": ["default"],
+        "created_at": "2026-10-25T00:00:00.000Z", "updated_at": "2026-10-25T00:00:00.000Z",
+        "managed": False, "attributes": {"title": "[Flights] Global Flight Dashboard"},
+        "references": [{"type": "index-pattern", "id": "dv1"}],
+        "omitted_attributes": {"panelsJSON": 5000},
+    }
+    assert "omitted_attributes" not in small.data
+
+
+async def test_get_saved_object_description_states_the_cap(mcp):
+    from kibana_mcp.core.saved_objects import ATTRIBUTE_CHARS_SHOWN
+
+    async with Client(mcp) as client:
+        tools = {t.name: t for t in await client.list_tools()}
+    assert f"{ATTRIBUTE_CHARS_SHOWN:,} characters" in tools["get_saved_object"].description
+
+
+async def test_get_saved_object_miss_and_blank_args(gateway):
+    server, calls = _recording(gateway)
+    async with Client(server) as client:
+        with pytest.raises(ToolError, match=r"find_saved_objects\(types=\['dashboard'\]\)"):
+            await client.call_tool("get_saved_object", {"type": "dashboard", "id": "nope"})
+        with pytest.raises(ToolError, match=r"must not be blank"):
+            await client.call_tool("get_saved_object", {"type": " ", "id": "x", "space": "x"})
+    assert calls == [None]  # the blank call never reached the factory

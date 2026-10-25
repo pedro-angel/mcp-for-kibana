@@ -51,6 +51,8 @@ from kibana_mcp.core.models import (
     DashboardSummary,
     DataViewDetail,
     DataViewSummary,
+    DefaultDataView,
+    DefaultDataViewChange,
     DetectionAlert,
     DetectionRule,
     EmailDefaults,
@@ -78,7 +80,12 @@ from kibana_mcp.core.models import (
     RuleSnooze,
     RoleIndexPrivilege,
     RoleKibanaPrivilege,
+    RuntimeField,
+    RuntimeFieldUpsert,
+    SavedObjectDetail,
     SavedObjectImportResult,
+    SavedObjectPage,
+    SavedObjectSummary,
     ServiceHealth,
     ShortUrl,
     Space,
@@ -326,6 +333,83 @@ def _with_state(e: BaseException, space: str | None, state: str) -> BaseExceptio
             return KibanaRejected(d.message, detail=f"{d.detail} — {state}")
         return KibanaRejected(f"{d.message} — {state}")
     return type(d)(f"{d.message} — {state}")
+
+
+def _to_runtime_field(name: str, raw: dict[str, Any]) -> RuntimeField:
+    sub = raw.get("fields")
+    return RuntimeField(
+        name=name,
+        type=str(raw.get("type", "")),
+        script=(raw.get("script") or {}).get("source"),
+        fields=(
+            {k: str((v or {}).get("type", "")) for k, v in sub.items()}
+            if isinstance(sub, dict) else None
+        ),
+    )
+
+
+def _composite_parent(name: str, stored: dict[str, Any]) -> str | None:
+    """The composite runtime field `name` is a subfield of ('comp' for
+    'comp.a'), or None. Kibana lists a composite's subfields among the view's
+    fields under '<parent>.<sub>' (probed on 9.5.4)."""
+    for parent, raw in stored.items():
+        subfields = (raw or {}).get("fields") or {}
+        if (raw or {}).get("type") == "composite" and name.startswith(f"{parent}."):
+            if name[len(parent) + 1:] in subfields:
+                return parent
+    return None
+
+
+# How many runtime-field names a not-found error lists before eliding the rest.
+_RUNTIME_NAMES_SHOWN = 20
+
+
+def _runtime_names(stored: dict[str, Any]) -> str:
+    names = sorted(stored)
+    if not names:
+        return "it has no runtime fields"
+    shown = ", ".join(names[:_RUNTIME_NAMES_SHOWN])
+    return f"its runtime fields: {shown}" + (", …" if len(names) > _RUNTIME_NAMES_SHOWN else "")
+
+
+def _to_saved_object_summary(body: dict[str, Any]) -> SavedObjectSummary:
+    attributes = body.get("attributes") or {}
+    title, name = attributes.get("title"), attributes.get("name")
+    return SavedObjectSummary(
+        type=body["type"],
+        id=body["id"],
+        title=title if isinstance(title, str) else None,
+        name=name if isinstance(name, str) else None,
+        updated_at=body.get("updated_at"),
+        namespaces=tuple(body.get("namespaces") or ()),
+        managed=bool(body.get("managed", False)),
+    )
+
+
+def _to_saved_object_detail(body: dict[str, Any]) -> SavedObjectDetail:
+    # A dashboard holds one reference per panel layer (the flights sample: 27
+    # references to 4 objects), so the distinct objects are what is returned.
+    seen: dict[tuple[str, str], None] = {}
+    for ref in body.get("references") or ():
+        seen.setdefault((str(ref.get("type", "")), str(ref.get("id", ""))), None)
+    return SavedObjectDetail(
+        type=body["type"],
+        id=body["id"],
+        namespaces=tuple(body.get("namespaces") or ()),
+        created_at=body.get("created_at"),
+        updated_at=body.get("updated_at"),
+        managed=bool(body.get("managed", False)),
+        attributes=dict(body.get("attributes") or {}),
+        references=tuple({"type": t, "id": i} for t, i in seen),
+    )
+
+
+def _saved_object_miss(type: str, id: str) -> KibanaNotFound:
+    return KibanaNotFound(
+        f"saved object '{type}/{id}' not found — check the type and id with "
+        f"find_saved_objects(types=['{type}']); a type Kibana hides from the saved-objects "
+        "API (action, alert, …) also answers not found: read those with their own tools"
+    )
 
 
 def _to_short_url(body: dict[str, Any]) -> ShortUrl:
@@ -1362,6 +1446,154 @@ class KibanaPyGateway:
     @_translate_errors
     def delete_data_view(self, view_id: str) -> None:
         self._client.data_views.delete(view_id=view_id)
+
+    def _read_view(self, view_id: str) -> dict[str, Any]:
+        with _known_id("data view", view_id):
+            return dict(self._client.data_views.get(view_id=view_id).body["data_view"])
+
+    @_translate_errors
+    def upsert_runtime_field(self, view_id: str, field: RuntimeField) -> RuntimeFieldUpsert:
+        # Kibana's PUT .../runtime_field creates or replaces, and stores any
+        # script: it compiles nothing (probed on 9.5.4), so the read here is for
+        # what it does not report — the definition a replacement loses, the
+        # custom label and description its PUT drops unless re-sent, a mapped
+        # name (its PUT 400s "Only runtime fields can be updated"), and a stored
+        # composite field, which this single-value surface cannot put back.
+        cur = self._read_view(view_id)
+        stored = dict(cur.get("runtimeFieldMap") or {})
+        name = field.name
+        prev_raw = stored.get(name)
+        if prev_raw is None:
+            parent = _composite_parent(name, stored)
+            if parent is not None:
+                raise KibanaRejected(
+                    f"'{name}' is a subfield of the composite runtime field '{parent}' of data "
+                    f"view '{view_id}', which this tool does not manage — pick another name"
+                )
+            if name in (cur.get("fields") or {}):
+                raise KibanaRejected(
+                    f"'{name}' is already a field of data view '{view_id}' "
+                    f"('{cur.get('title', '')}') and not a runtime field (a mapped or scripted "
+                    "field) — pick a name the view does not have; describe_data_view lists "
+                    "its fields"
+                )
+        elif prev_raw.get("type") == "composite":
+            raise KibanaRejected(
+                f"runtime field '{name}' of data view '{view_id}' is a composite field, which "
+                "this tool does not replace — remove it with delete_runtime_field first, or "
+                "pick another name"
+            )
+        spec: dict[str, Any] = {"type": field.type}
+        if field.script is not None:
+            spec["script"] = {"source": field.script}
+        if prev_raw is None:
+            # A create uses the POST, which refuses a name taken in the meantime
+            # ("Field [name = x] already exists.", probed) instead of replacing
+            # a definition this call never read.
+            try:
+                with _known_id("data view", view_id):
+                    body = self._client.data_views.create_runtime_field(
+                        view_id=view_id, name=name, runtime_field=spec
+                    ).body
+            except BadRequestError as e:
+                if "already exists" not in str(e.message):
+                    raise
+                raise KibanaRejected(
+                    "Kibana rejected the payload",
+                    detail=(
+                        f"{e.message} — a field '{name}' was added to data view '{view_id}' "
+                        "after this call read it; call upsert_runtime_field again (a runtime "
+                        "field is then replaced and returned as `previous`)"
+                    ),
+                ) from e
+        else:
+            attrs = (cur.get("fieldAttrs") or {}).get(name) or {}
+            for key in ("customLabel", "customDescription"):
+                if attrs.get(key):
+                    spec[key] = attrs[key]
+            with _known_id("data view", view_id):
+                body = self._client.data_views.create_or_update_runtime_field(
+                    view_id=view_id, name=name, runtime_field=spec
+                ).body
+        written = ((body.get("data_view") or {}).get("runtimeFieldMap") or {}).get(name)
+        return RuntimeFieldUpsert(
+            view_id=view_id,
+            field=_to_runtime_field(name, written) if written else field,
+            previous=_to_runtime_field(name, prev_raw) if prev_raw is not None else None,
+        )
+
+    @_translate_errors
+    def delete_runtime_field(self, view_id: str, name: str) -> RuntimeField:
+        # Read first: the DELETE answers 200 with no body, and its 404 says only
+        # "Field [index_pattern = <id>, field = <name>] not found." for a
+        # missing name, a mapped field and a composite's subfield alike (probed).
+        cur = self._read_view(view_id)
+        stored = dict(cur.get("runtimeFieldMap") or {})
+        raw = stored.get(name)
+        if raw is None:
+            parent = _composite_parent(name, stored)
+            if parent is not None:
+                raise KibanaRejected(
+                    f"'{name}' is a subfield of the composite runtime field '{parent}' of data "
+                    f"view '{view_id}' — delete '{parent}' to remove it with its subfields"
+                )
+            if name in (cur.get("fields") or {}):
+                raise KibanaRejected(
+                    f"'{name}' is a field of data view '{view_id}' but not a runtime field — "
+                    f"only runtime fields can be deleted ({_runtime_names(stored)})"
+                )
+            raise KibanaNotFound(
+                f"data view '{view_id}' has no runtime field '{name}' — {_runtime_names(stored)}"
+            )
+        try:
+            self._client.data_views.delete_runtime_field(view_id=view_id, name=name)
+        except SpaceNotFoundError:
+            raise
+        except NotFoundError as e:
+            raise KibanaNotFound(
+                f"runtime field '{name}' of data view '{view_id}' (or the view) was deleted "
+                "after this call read it — this call deleted nothing; call list_data_views "
+                "to see what exists"
+            ) from e
+        return _to_runtime_field(name, raw)
+
+    def _default_view(self, view_id: str | None) -> DefaultDataView:
+        if not view_id:
+            return DefaultDataView(id=None, name=None, index_pattern=None, exists=False)
+        try:
+            raw = self._client.data_views.get(view_id=view_id).body["data_view"]
+        except SpaceNotFoundError:
+            raise
+        except NotFoundError:
+            # Kibana keeps the id of a default view that was deleted (probed).
+            return DefaultDataView(id=view_id, name=None, index_pattern=None, exists=False)
+        return DefaultDataView(
+            id=view_id, name=raw.get("name") or raw["title"], index_pattern=raw["title"],
+            exists=True,
+        )
+
+    @_translate_errors
+    def get_default_data_view(self) -> DefaultDataView:
+        # GET /api/data_views/default answers {"data_view_id": ""} when none is set.
+        return self._default_view(self._client.data_views.get_default().body.get("data_view_id"))
+
+    @_translate_errors
+    def set_default_data_view(self, view_id: str | None) -> DefaultDataViewChange:
+        previous = self._client.data_views.get_default().body.get("data_view_id") or None
+        if view_id is None:
+            current = DefaultDataView(id=None, name=None, index_pattern=None, exists=False)
+        else:
+            # Kibana stores any id as the default (probed: "bogus-id" answered 200),
+            # so the view is read first; a miss is D17's guidance.
+            raw = self._read_view(view_id)
+            current = DefaultDataView(
+                id=view_id, name=raw.get("name") or raw["title"], index_pattern=raw["title"],
+                exists=True,
+            )
+        # force=True: without it Kibana answers 200 {"acknowledged": true} and
+        # keeps a default that is already set (probed on 9.5.4).
+        self._client.data_views.set_default(data_view_id=view_id, force=True)
+        return DefaultDataViewChange(current=current, previous_id=previous)
 
     @_translate_errors
     def create_short_url(self, locator_id: str, params: dict[str, Any]) -> ShortUrl:
@@ -2584,6 +2816,47 @@ class KibanaPyGateway:
         mode: dict[str, Any] = {"overwrite": True} if overwrite else {"create_new_copies": True}
         body = self._client.saved_objects.import_objects(file=content, **mode).body
         return _to_import_result(body)
+
+    @_translate_errors
+    def find_saved_objects(
+        self,
+        types: list[str],
+        search: str | None,
+        has_reference: dict[str, str] | None,
+        page: int,
+        per_page: int,
+    ) -> SavedObjectPage:
+        # GET /api/saved_objects/_find (deprecated, still served by 9.5.4 with a
+        # `warning: 299 ... This endpoint is deprecated` header). `fields` keeps
+        # each hit's attributes to its title and name: a dashboard's are ~40 KB.
+        kwargs: dict[str, Any] = {
+            "type": list(types), "fields": ["title", "name"], "page": page, "per_page": per_page,
+        }
+        if search is not None:
+            kwargs["search"] = search
+        if has_reference is not None:
+            kwargs["has_reference"] = dict(has_reference)
+        body = self._client.saved_objects.find(**kwargs).body
+        return SavedObjectPage(
+            total=int(body.get("total", 0)),
+            page=int(body.get("page", page)),
+            per_page=int(body.get("per_page", per_page)),
+            saved_objects=tuple(_to_saved_object_summary(o) for o in body.get("saved_objects", [])),
+        )
+
+    @_translate_errors
+    def get_saved_object(self, type: str, id: str) -> SavedObjectDetail:
+        if not type.strip() or not id.strip():
+            raise KibanaRejected(
+                "type and id must not be blank — pass the ones find_saved_objects returns"
+            )
+        try:
+            body = self._client.saved_objects.get(type=type, id=id).body
+        except SpaceNotFoundError:
+            raise
+        except NotFoundError as e:
+            raise _saved_object_miss(type, id) from e
+        return _to_saved_object_detail(body)
 
     # --- platform-admin: spaces + roles + upgrade reads (read-first) ---
 

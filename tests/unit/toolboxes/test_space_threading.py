@@ -3,7 +3,8 @@
 One row per tool. args_builder returns minimal valid arguments; seed()
 prepares FakeGateway state (a dashboard with a vis panel at index 0 whose
 entry has a grid key; an export handle in a tmp export_dir; a short URL;
-an alert rule + connector, a case, and a value-list item — the stores
+an alert rule + connector, a case, a value-list item and a runtime field on
+dv1 — the stores
 FakeGateway starts empty; detections fixtures come pre-seeded).
 """
 
@@ -23,6 +24,7 @@ from kibana_mcp.core.models import (
     Case,
     Connector,
     DetectionAlert,
+    RuntimeField,
     ShortUrl,
     ValueListItem,
 )
@@ -107,6 +109,9 @@ def _seed(gateway: FakeGateway, export_dir: Path) -> Seed:
         timestamp="2026-07-18T00:00:00Z",
     )
     gateway.value_list_items[vli.id] = vli
+    gateway.runtime_fields["dv1"] = {
+        "seed_rt": RuntimeField(name="seed_rt", type="long", script="emit(1)")
+    }
     gateway.detection_alerts.append(
         DetectionAlert(
             id="al-seed", rule_name="Seed rule", severity="low", status="open",
@@ -128,12 +133,14 @@ def _seed(gateway: FakeGateway, export_dir: Path) -> Seed:
 #   create_visualization, update_visualization, add_library_panel, add_panel,
 #   add_esql_metric_panel, add_esql_table_panel, add_esql_xy_panel,
 #   update_panel, delete_dashboard, delete_visualization, delete_panel
-# data-management (11): list_data_views(list), describe_data_view,
+# data-management (17): list_data_views(list), describe_data_view,
 #   resolve_short_url, export_saved_objects, import_saved_objects,
 #   create_data_view, update_data_view, create_short_url, delete_data_view,
-#   delete_short_url, overwrite_saved_objects
+#   delete_short_url, overwrite_saved_objects, find_saved_objects,
+#   get_saved_object, get_default_data_view, upsert_runtime_field,
+#   set_default_data_view, delete_runtime_field (D48)
 # alerting (22), cases (6), security-detections (25): the extension rows
-#   below — 80 space-aware tools in all
+#   below — 86 space-aware tools in all
 _TOOLS: list[tuple[str, Callable[[Seed], dict[str, Any]], str]] = [
     ("search_dashboards", lambda s: {}, "list"),
     ("get_dashboard", lambda s: {"dashboard_id": s.dashboard_id}, "dict"),
@@ -197,6 +204,16 @@ _TOOLS: list[tuple[str, Callable[[Seed], dict[str, Any]], str]] = [
     ("delete_data_view", lambda s: {"view_id": "dv1"}, "dict"),
     ("delete_short_url", lambda s: {"short_url_id": s.short_url_id}, "dict"),
     ("overwrite_saved_objects", lambda s: {"handle": s.handle}, "dict"),
+    ("find_saved_objects", lambda s: {"types": ["dashboard"]}, "dict"),
+    ("get_saved_object", lambda s: {"type": "index-pattern", "id": "dv1"}, "dict"),
+    ("get_default_data_view", lambda s: {}, "dict"),
+    (
+        "upsert_runtime_field",
+        lambda s: {"view_id": "dv1", "name": "hour", "type": "long", "script": "emit(1)"},
+        "dict",
+    ),
+    ("set_default_data_view", lambda s: {"view_id": "dv1"}, "dict"),
+    ("delete_runtime_field", lambda s: {"view_id": "dv1", "name": "seed_rt"}, "dict"),
     # alerting (22): list_alert_rules, list_connectors, list_rule_types (list), the rest dict
     ("list_alert_rules", lambda s: {}, "list"),
     ("get_alert_rule", lambda s: {"rule_id": s.rule_id}, "dict"),
@@ -292,7 +309,7 @@ _TOOLS: list[tuple[str, Callable[[Seed], dict[str, Any]], str]] = [
     ("delete_value_list_item", lambda s: {"item_id": s.value_list_item_id}, "dict"),
 ]
 
-assert len(_TOOLS) == 80
+assert len(_TOOLS) == 86
 
 
 def _make_server(gateway_factory: Any, export_dir: Path, *, with_platform_admin: bool = False) -> FastMCP:
@@ -333,10 +350,10 @@ async def test_space_threads_to_the_factory(tmp_path, name, args_builder, kind, 
     assert calls == [space]
 
 
-# --- Group 2: schema — exactly the 80 tools expose `space`, correctly shaped ---
+# --- Group 2: schema — exactly the 86 tools expose `space`, correctly shaped ---
 
 
-async def test_schema_exactly_80_tools_expose_space(tmp_path):
+async def test_schema_exactly_86_tools_expose_space(tmp_path):
     gateway = FakeGateway()
     server = _make_server(lambda space=None: gateway, tmp_path, with_platform_admin=True)
     async with Client(server) as client:
@@ -355,7 +372,7 @@ async def test_schema_exactly_80_tools_expose_space(tmp_path):
         t.name for t in all_tools
         if "space" in t.inputSchema.get("properties", {})
     } - {name for name, _, _ in _TOOLS}
-    assert not outsiders, f"tools outside the 80 gained a space param: {sorted(outsiders)}"
+    assert not outsiders, f"tools outside the 86 gained a space param: {sorted(outsiders)}"
     for tool in with_space.values():
         prop = tool.inputSchema["properties"]["space"]
         # Annotated[str, Field(pattern=...)] | None renders as an anyOf of

@@ -7,12 +7,14 @@ from kibana_mcp.core.errors import KibanaNotFound, KibanaRejected
 from kibana_mcp.core.models import (
     AlertingHealth, AlertRule, AlertRuleDetail, RuleType, ApiDeprecation, ApmAgentConfig, ApmAnnotation, ApmEnvironment,
     ApmSourcemap, Case, Connector, ConnectorDetail, DashboardDetail, DashboardSummary, DataViewDetail,
-    DataViewSummary, DetectionAlert, DetectionRule, EmailDefaults, ExceptionItem, ExceptionList,
+    DataViewSummary, DefaultDataView, DefaultDataViewChange, DetectionAlert, DetectionRule, EmailDefaults, ExceptionItem, ExceptionList,
     FleetAgent, FleetAgentPolicy, FleetAgentStatus, FleetEnrollmentKey, FleetOutput, FleetOutputHealth,
     FleetPackage, FleetPackageCategory, FleetPackagePolicy, FleetPermissions, FleetServerHost,
     FleetSettings, FleetUninstallToken,
     ImportedObject, KibanaStats, KibanaStatus, PanelSummary, PrepackagedRulesStatus, Role,
-    RoleIndexPrivilege, RoleKibanaPrivilege, RuleSnooze, SavedObjectImportResult, ShortUrl, Space, Stream,
+    RoleIndexPrivilege, RoleKibanaPrivilege, RuleSnooze, RuntimeField, RuntimeFieldUpsert,
+    SavedObjectDetail, SavedObjectImportResult, SavedObjectPage, SavedObjectSummary, ShortUrl, Space,
+    Stream,
     StreamIngest, StreamSummary, StreamWriteResult, SyntheticMonitor, SyntheticParam, SyntheticPrivateLocation,
     TaskManagerHealth, Timeline, UpgradeReadiness, UptimeSettings, ValueList, ValueListItem,
     VisualizationDetail, VisualizationSummary,
@@ -46,6 +48,28 @@ class FakeGateway:
     def __init__(self):
         self.data_views = {FLIGHTS_DV.id: FLIGHTS_DV}
         self.data_view_updates: list[dict] = []  # update_data_view calls, as passed
+        # view id -> {name -> RuntimeField} (D48); dv1 starts with none.
+        self.runtime_fields: dict[str, dict[str, RuntimeField]] = {}
+        self.default_data_view_id: str | None = None  # the space's defaultIndex
+        # Saved objects find/get serve (D48): one data view and one dashboard
+        # that references it, with a long attribute to exercise the cap.
+        self.saved_objects: list[SavedObjectDetail] = [
+            SavedObjectDetail(
+                type="index-pattern", id="dv1", namespaces=("default",),
+                created_at="2026-10-25T00:00:00.000Z", updated_at="2026-10-25T00:00:00.000Z",
+                managed=False,
+                attributes={"title": "kibana_sample_data_flights", "name": "flights"},
+                references=(),
+            ),
+            SavedObjectDetail(
+                type="dashboard", id="dash-1", namespaces=("default",),
+                created_at="2026-10-25T00:00:00.000Z", updated_at="2026-10-25T00:00:00.000Z",
+                managed=False,
+                attributes={"title": "[Flights] Global Flight Dashboard", "panelsJSON": "x" * 5000},
+                references=({"type": "index-pattern", "id": "dv1"},),
+            ),
+        ]
+        self.saved_object_finds: list[dict] = []  # find_saved_objects calls, as passed
         self.dashboards: dict[str, dict] = {}
         self.visualizations: dict[str, dict] = {}
         self.short_urls: dict[str, ShortUrl] = {}
@@ -341,6 +365,90 @@ class FakeGateway:
         if view_id not in self.data_views:
             raise KibanaNotFound(f"data view '{view_id}' not found")
         del self.data_views[view_id]
+
+    def _view(self, view_id):
+        if view_id not in self.data_views:
+            raise KibanaNotFound(
+                f"data view '{view_id}' not found — view_id is the id that create_data_view "
+                "or list_data_views returns, not the view's name or index pattern; "
+                "call list_data_views to find it"
+            )
+        return self.data_views[view_id]
+
+    def upsert_runtime_field(self, view_id, field):
+        # Mirrors the adapter's contract: a mapped name and a stored composite
+        # field are refused before any write; the replaced definition returns.
+        view = self._view(view_id)
+        stored = self.runtime_fields.setdefault(view_id, {})
+        previous = stored.get(field.name)
+        if previous is None and field.name in view.fields:
+            raise KibanaRejected(
+                f"'{field.name}' is already a field of data view '{view_id}' and not a runtime field"
+            )
+        if previous is not None and previous.type == "composite":
+            raise KibanaRejected(f"runtime field '{field.name}' is a composite field")
+        stored[field.name] = field
+        return RuntimeFieldUpsert(view_id=view_id, field=field, previous=previous)
+
+    def delete_runtime_field(self, view_id, name):
+        self._view(view_id)
+        stored = self.runtime_fields.get(view_id, {})
+        if name not in stored:
+            raise KibanaNotFound(f"data view '{view_id}' has no runtime field '{name}'")
+        return stored.pop(name)
+
+    def _default(self, view_id):
+        if view_id is None:
+            return DefaultDataView(id=None, name=None, index_pattern=None, exists=False)
+        view = self.data_views.get(view_id)
+        if view is None:
+            return DefaultDataView(id=view_id, name=None, index_pattern=None, exists=False)
+        return DefaultDataView(
+            id=view_id, name=view.name, index_pattern=view.index_pattern, exists=True
+        )
+
+    def get_default_data_view(self):
+        return self._default(self.default_data_view_id)
+
+    def set_default_data_view(self, view_id):
+        if view_id is not None:
+            self._view(view_id)
+        previous, self.default_data_view_id = self.default_data_view_id, view_id
+        return DefaultDataViewChange(current=self._default(view_id), previous_id=previous)
+
+    def find_saved_objects(self, types, search, has_reference, page, per_page):
+        self.saved_object_finds.append({
+            "types": list(types), "search": search, "has_reference": has_reference,
+            "page": page, "per_page": per_page,
+        })
+        hits = [
+            o for o in self.saved_objects
+            if o.type in types
+            and (search is None or search.lower().rstrip("*") in
+                 str(o.attributes.get("title", "")).lower())
+            and (has_reference is None or has_reference in o.references)
+        ]
+        start = (page - 1) * per_page
+        return SavedObjectPage(
+            total=len(hits), page=page, per_page=per_page,
+            saved_objects=tuple(
+                SavedObjectSummary(
+                    type=o.type, id=o.id, title=o.attributes.get("title"),
+                    name=o.attributes.get("name"), updated_at=o.updated_at,
+                    namespaces=o.namespaces, managed=o.managed,
+                )
+                for o in hits[start:start + per_page]
+            ),
+        )
+
+    def get_saved_object(self, type, id):
+        for o in self.saved_objects:
+            if (o.type, o.id) == (type, id):
+                return o
+        raise KibanaNotFound(
+            f"saved object '{type}/{id}' not found — check the type and id with "
+            f"find_saved_objects(types=['{type}'])"
+        )
 
     def create_short_url(self, locator_id, params):
         new_id = f"su-{next(self._ids)}"

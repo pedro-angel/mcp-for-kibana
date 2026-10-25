@@ -97,3 +97,23 @@ def test_summarize_splits_details_and_maps_refs():
     assert s.missing_ref_count == 1
     assert s.missing_references == ("index-pattern/gone",)  # dict -> "type/id" string
     assert s.excluded_count == 2
+
+
+# --- get_saved_object's attribute cap (D48) ---
+
+from kibana_mcp.core.saved_objects import ATTRIBUTE_CHARS_SHOWN, cap_attributes  # noqa: E402
+
+
+def test_cap_attributes_keeps_short_values_and_sizes_long_ones():
+    limit = ATTRIBUTE_CHARS_SHOWN
+    shown, omitted = cap_attributes({
+        "title": "t", "panelsJSON": "x" * (limit + 1), "edge": "y" * limit,
+        "nested": {"k": "v" * limit}, "count": 3,
+    })
+    assert shown == {"title": "t", "edge": "y" * limit, "count": 3}
+    # A string's size is its length; another value's, its compact JSON text.
+    assert omitted == {"panelsJSON": limit + 1, "nested": limit + 8}
+
+
+def test_cap_attributes_limit_is_the_one_the_description_states():
+    assert ATTRIBUTE_CHARS_SHOWN == 4_000

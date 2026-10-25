@@ -338,7 +338,7 @@ docs/tools.md#alerting-toolbox.
   distinct destructive/non-idempotent/open-world triple; space threading
   and echo for a representative call; the no-`space` call keeping the
   pre-space result shape byte-identical.
-- `tests/unit/toolboxes/test_space_threading.py` — the shared 80-tool space
+- `tests/unit/toolboxes/test_space_threading.py` — the shared 86-tool space
   contract (factory threading, schema shape, echo-only-when-set, scoped
   not-found suffix) parametrized over all 22 alerting tools alongside the
   other space-aware toolboxes.

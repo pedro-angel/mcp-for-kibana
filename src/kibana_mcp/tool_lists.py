@@ -21,12 +21,15 @@ from types import MappingProxyType
 BUILTIN_LISTS: Mapping[str, tuple[str, ...]] = MappingProxyType({
     "read-only-explorer": (
         "list_data_views", "describe_data_view", "resolve_short_url", "export_saved_objects",
+        "find_saved_objects", "get_saved_object", "get_default_data_view",
         "search_dashboards", "get_dashboard", "search_visualizations", "get_visualization",
         "get_kibana_status", "get_kibana_stats", "get_task_manager_health",
     ),
     "dashboards-analyst": (
         "list_data_views", "describe_data_view", "create_data_view", "update_data_view",
         "resolve_short_url", "create_short_url", "export_saved_objects", "import_saved_objects",
+        "find_saved_objects", "get_saved_object", "get_default_data_view",
+        "upsert_runtime_field", "set_default_data_view",
         "search_dashboards", "get_dashboard", "create_dashboard", "add_panel", "update_panel",
         "add_esql_metric_panel", "add_esql_table_panel", "add_esql_xy_panel",
         "search_visualizations", "get_visualization", "create_visualization",
@@ -64,6 +67,11 @@ DEPENDENCIES: Mapping[str, tuple[str, ...]] = MappingProxyType({
     "update_data_view": ("list_data_views",),
     "import_saved_objects": ("export_saved_objects",),
     "overwrite_saved_objects": ("export_saved_objects",),
+    # (runtime fields, the default data view and the saved-objects reads, D48)
+    "upsert_runtime_field": ("list_data_views",),
+    "delete_runtime_field": ("list_data_views",),
+    "set_default_data_view": ("list_data_views",),
+    "get_saved_object": ("find_saved_objects",),
     # alerting
     "get_alert_rule": ("list_alert_rules",),
     "update_alert_rule": ("get_alert_rule",),

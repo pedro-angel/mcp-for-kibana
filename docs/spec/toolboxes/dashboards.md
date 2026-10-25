@@ -246,7 +246,7 @@ but are owned and registered once by data-management, not here.
   the read-before-PUT that keeps an update from creating, by-reference panel
   titles (library title, override, dangling); every chart type built reads
   back as its spec; unknown shapes never raise.
-- **Unit — test_space_threading.py**: the 80-tool cross-toolbox space
+- **Unit — test_space_threading.py**: the 86-tool cross-toolbox space
   contract (all 16 dashboards tools included) — threading, schema, echo,
   and error-path (`gateway_errors()` wraps factory errors) parity.
 - **Contract — test_gateway_contract.py**: live lifecycle round-trip with

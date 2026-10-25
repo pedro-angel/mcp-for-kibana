@@ -538,3 +538,362 @@ def test_create_data_view_other_400_is_unchanged():
     assert (exc.value.message, exc.value.detail) == (
         "Kibana rejected the payload", "[request body.data_view.title]: expected string"
     )
+
+
+# --- runtime fields, the default data view, saved-objects find/get (D48) ---
+# Raw shapes captured on 9.5.4: a view's runtimeFieldMap holds the definitions,
+# its fields map lists mapped fields, runtime fields and a composite's
+# subfields ('comp.a'), and fieldAttrs holds the custom label and description.
+
+from kibana.exceptions import NotFoundError, SpaceNotFoundError  # noqa: E402
+
+from kibana_mcp.core.errors import KibanaNotFound  # noqa: E402
+from kibana_mcp.core.models import DefaultDataView, RuntimeField  # noqa: E402
+
+
+def _not_found(msg):
+    return NotFoundError(msg, meta=SimpleNamespace(status=404), body=None)
+
+
+class _RuntimeViews:
+    """A data-view client stub holding one view with runtime fields, which
+    records every write and answers like Kibana 9.5.4 (bodies probed)."""
+
+    def __init__(self, runtime=None, attrs=None, default=""):
+        self.view = {
+            "id": "dv1", "name": "flights", "title": "kibana_sample_data_flights",
+            "fields": {
+                "Carrier": {"name": "Carrier", "type": "string"},
+                "hour": {"name": "hour", "type": "number"},
+                "comp.a": {"name": "comp.a", "type": "string"},
+            },
+            "runtimeFieldMap": runtime if runtime is not None else {
+                "hour": {"type": "long", "script": {"source": "emit(1)"}},
+                "comp": {"type": "composite", "script": {"source": "emit(['a': 'x'])"},
+                         "fields": {"a": {"type": "keyword"}}},
+            },
+            "fieldAttrs": attrs or {},
+        }
+        self.default = default
+        self.writes = []
+
+    def get(self, view_id):
+        if view_id != "dv1":
+            raise _not_found(f"Saved object [index-pattern/{view_id}] not found")
+        return FakeResponse({"data_view": self.view})
+
+    def _stored(self, name, runtime_field):
+        self.view["runtimeFieldMap"] = {
+            **self.view["runtimeFieldMap"],
+            name: {k: v for k, v in runtime_field.items() if k in ("type", "script", "fields")},
+        }
+        return FakeResponse({"fields": [], "data_view": self.view})
+
+    def create_runtime_field(self, view_id, name, runtime_field):
+        self.writes.append(("POST", name, runtime_field))
+        return self._stored(name, runtime_field)
+
+    def create_or_update_runtime_field(self, view_id, name, runtime_field):
+        self.writes.append(("PUT", name, runtime_field))
+        return self._stored(name, runtime_field)
+
+    def delete_runtime_field(self, view_id, name):
+        self.writes.append(("DELETE", name))
+        return FakeResponse({})
+
+    def get_default(self):
+        return FakeResponse({"data_view_id": self.default})
+
+    def set_default(self, data_view_id, force=None):
+        self.writes.append(("SET_DEFAULT", data_view_id, force))
+        self.default = data_view_id or ""
+        return FakeResponse({"acknowledged": True})
+
+
+def _rt(**kw):
+    stub = _RuntimeViews(**kw)
+    return stub, _gw(data_views=stub)
+
+
+def test_upsert_runtime_field_creates_with_the_post_and_reports_no_previous():
+    stub, gw = _rt()
+    out = gw.upsert_runtime_field("dv1", RuntimeField(name="h2", type="long", script="emit(2)"))
+    assert stub.writes == [("POST", "h2", {"type": "long", "script": {"source": "emit(2)"}})]
+    assert out.field == RuntimeField(name="h2", type="long", script="emit(2)")
+    assert out.previous is None and out.view_id == "dv1"
+
+
+def test_upsert_runtime_field_without_a_script_sends_only_the_type():
+    stub, gw = _rt()
+    out = gw.upsert_runtime_field("dv1", RuntimeField(name="h2", type="keyword", script=None))
+    assert stub.writes == [("POST", "h2", {"type": "keyword"})]
+    assert out.field.script is None
+
+
+def test_upsert_runtime_field_replaces_with_the_put_and_returns_what_it_replaced():
+    stub, gw = _rt(attrs={"hour": {"customLabel": "Hour", "customDescription": "UTC", "count": 3}})
+    out = gw.upsert_runtime_field("dv1", RuntimeField(name="hour", type="keyword", script="emit('x')"))
+    # The PUT drops a custom label and description unless re-sent (probed): both go back.
+    assert stub.writes == [("PUT", "hour", {
+        "type": "keyword", "script": {"source": "emit('x')"},
+        "customLabel": "Hour", "customDescription": "UTC",
+    })]
+    assert out.previous == RuntimeField(name="hour", type="long", script="emit(1)")
+    assert out.field == RuntimeField(name="hour", type="keyword", script="emit('x')")
+
+
+def test_upsert_runtime_field_refuses_a_mapped_name_before_any_write():
+    stub, gw = _rt()
+    with pytest.raises(KibanaRejected) as exc:
+        gw.upsert_runtime_field("dv1", RuntimeField(name="Carrier", type="keyword", script=None))
+    assert exc.value.message == (
+        "'Carrier' is already a field of data view 'dv1' ('kibana_sample_data_flights') and "
+        "not a runtime field (a mapped or scripted field) — pick a name the view does not "
+        "have; describe_data_view lists its fields"
+    )
+    assert stub.writes == []
+
+
+def test_upsert_runtime_field_refuses_a_composite_and_its_subfields():
+    stub, gw = _rt()
+    with pytest.raises(KibanaRejected, match=r"'comp' of data view 'dv1' is a composite field, "
+                                             r"which this tool does not replace — remove it "
+                                             r"with delete_runtime_field first"):
+        gw.upsert_runtime_field("dv1", RuntimeField(name="comp", type="long", script=None))
+    with pytest.raises(KibanaRejected, match=r"'comp.a' is a subfield of the composite runtime "
+                                             r"field 'comp'"):
+        gw.upsert_runtime_field("dv1", RuntimeField(name="comp.a", type="long", script=None))
+    assert stub.writes == []
+
+
+def test_upsert_runtime_field_create_race_names_the_retry():
+    stub, gw = _rt()
+
+    def taken(**kw):
+        raise _bad_request("Field [name = h2] already exists.")
+
+    stub.create_runtime_field = taken
+    with pytest.raises(KibanaRejected) as exc:
+        gw.upsert_runtime_field("dv1", RuntimeField(name="h2", type="long", script="emit(1)"))
+    assert exc.value.detail == (
+        "Field [name = h2] already exists. — a field 'h2' was added to data view 'dv1' after "
+        "this call read it; call upsert_runtime_field again (a runtime field is then "
+        "replaced and returned as `previous`)"
+    )
+
+
+def test_upsert_runtime_field_other_400_keeps_kibanas_message():
+    stub, gw = _rt()
+
+    def bad(**kw):
+        raise _bad_request("[request body.name]: value has length [0]")
+
+    stub.create_runtime_field = bad
+    with pytest.raises(KibanaRejected) as exc:
+        gw.upsert_runtime_field("dv1", RuntimeField(name="h2", type="long", script=None))
+    assert (exc.value.message, exc.value.detail) == (
+        "Kibana rejected the payload", "[request body.name]: value has length [0]"
+    )
+
+
+def test_upsert_runtime_field_unknown_view_names_list_data_views():
+    _, gw = _rt()
+    with pytest.raises(KibanaNotFound, match=r"data view 'nope' not found — view_id is the id "
+                                             r"that create_data_view or list_data_views"):
+        gw.upsert_runtime_field("nope", RuntimeField(name="h2", type="long", script=None))
+
+
+def test_delete_runtime_field_returns_the_deleted_definition():
+    stub, gw = _rt()
+    assert gw.delete_runtime_field("dv1", "hour") == RuntimeField(
+        name="hour", type="long", script="emit(1)"
+    )
+    deleted = gw.delete_runtime_field("dv1", "comp")
+    assert (deleted.type, deleted.fields) == ("composite", {"a": "keyword"})
+    assert stub.writes == [("DELETE", "hour"), ("DELETE", "comp")]
+
+
+def test_delete_runtime_field_miss_lists_the_views_runtime_fields():
+    stub, gw = _rt()
+    with pytest.raises(KibanaNotFound) as exc:
+        gw.delete_runtime_field("dv1", "zz")
+    assert exc.value.message == (
+        "data view 'dv1' has no runtime field 'zz' — its runtime fields: comp, hour"
+    )
+    _, empty = _rt(runtime={})
+    with pytest.raises(KibanaNotFound, match=r"— it has no runtime fields$"):
+        empty.delete_runtime_field("dv1", "zz")
+    assert stub.writes == []
+
+
+def test_delete_runtime_field_refuses_a_mapped_field_and_a_composite_subfield():
+    stub, gw = _rt()
+    with pytest.raises(KibanaRejected, match=r"'Carrier' is a field of data view 'dv1' but not "
+                                             r"a runtime field — only runtime fields can be "
+                                             r"deleted \(its runtime fields: comp, hour\)"):
+        gw.delete_runtime_field("dv1", "Carrier")
+    with pytest.raises(KibanaRejected, match=r"delete 'comp' to remove it with its subfields"):
+        gw.delete_runtime_field("dv1", "comp.a")
+    assert stub.writes == []
+
+
+def test_delete_runtime_field_gone_between_read_and_delete_says_nothing_was_deleted():
+    stub, gw = _rt()
+
+    def gone(**kw):
+        raise _not_found("Field [index_pattern = dv1, field = hour] not found.")
+
+    stub.delete_runtime_field = gone
+    with pytest.raises(KibanaNotFound, match=r"this call deleted nothing"):
+        gw.delete_runtime_field("dv1", "hour")
+
+
+def test_delete_runtime_field_in_a_space_gets_the_scoped_suffix_once():
+    stub = _RuntimeViews()
+    gw = KibanaPyGateway(make_fake_client(data_views=stub), space="sales")
+    with pytest.raises(KibanaNotFound) as exc:
+        gw.delete_runtime_field("dv1", "zz")
+    assert exc.value.message.endswith("its runtime fields: comp, hour (in space 'sales')")
+
+
+def test_get_default_data_view_unset_set_and_dangling():
+    _, unset = _rt(default="")
+    assert unset.get_default_data_view() == DefaultDataView(None, None, None, False)
+    _, set_ = _rt(default="dv1")
+    assert set_.get_default_data_view() == DefaultDataView(
+        "dv1", "flights", "kibana_sample_data_flights", True
+    )
+    # Kibana keeps the id of a deleted default view (probed): it reads as not existing.
+    _, dangling = _rt(default="gone-1")
+    assert dangling.get_default_data_view() == DefaultDataView("gone-1", None, None, False)
+
+
+def test_get_default_data_view_missing_space_stays_the_space_error():
+    stub = _RuntimeViews(default="dv1")
+
+    def no_space(view_id):
+        raise SpaceNotFoundError("sales")
+
+    stub.get = no_space
+    with pytest.raises(Exception) as exc:
+        KibanaPyGateway(make_fake_client(data_views=stub), space="sales").get_default_data_view()
+    assert "space 'sales' not found" in str(exc.value)
+
+
+def test_set_default_data_view_forces_and_returns_the_previous_id():
+    stub, gw = _rt(default="old-1")
+    change = gw.set_default_data_view("dv1")
+    # force=True: without it Kibana keeps a default already set and answers 200 (probed).
+    assert stub.writes == [("SET_DEFAULT", "dv1", True)]
+    assert change.previous_id == "old-1"
+    assert change.current == DefaultDataView(
+        "dv1", "flights", "kibana_sample_data_flights", True
+    )
+
+
+def test_set_default_data_view_none_clears_and_unset_previous_is_none():
+    stub, gw = _rt(default="")
+    change = gw.set_default_data_view(None)
+    assert stub.writes == [("SET_DEFAULT", None, True)]
+    assert change.previous_id is None and change.current.id is None
+
+
+def test_set_default_data_view_refuses_an_unknown_view_before_writing():
+    stub, gw = _rt(default="dv1")
+    with pytest.raises(KibanaNotFound, match=r"call list_data_views to find it"):
+        gw.set_default_data_view("bogus-id")
+    assert stub.writes == []
+
+
+# Raw _find hit and GET body, trimmed from 9.5.4 (the flights sample dashboard).
+_DASH = {
+    "type": "dashboard", "id": "7adfa750", "namespaces": ["default"],
+    "attributes": {"title": "[Flights] Global Flight Dashboard"},
+    "references": [
+        {"name": "4:panel_4", "type": "search", "id": "571aaf70"},
+        {"type": "index-pattern", "id": "d3d7af60", "name": "7:layer-a"},
+        {"type": "index-pattern", "id": "d3d7af60", "name": "7:layer-b"},
+    ],
+    "managed": False, "updated_at": "2026-10-25T03:03:32.348Z",
+    "created_at": "2026-10-25T03:03:32.348Z", "version": "WzE2OTUsMV0=", "score": 0,
+}
+
+
+def test_find_saved_objects_sends_title_and_name_fields_and_maps_summaries():
+    captured = {}
+
+    def find(**kw):
+        captured.update(kw)
+        return FakeResponse({"page": 2, "per_page": 5, "total": 6, "saved_objects": [
+            _DASH,
+            {"type": "index-pattern", "id": "d3d7af60", "namespaces": ["default"],
+             "attributes": {"title": "kibana_sample_data_flights", "name": "Flights"}},
+            {"type": "config", "id": "9.5.4", "attributes": {}},
+        ]})
+
+    page = _gw(saved_objects=SimpleNamespace(find=find)).find_saved_objects(
+        ["dashboard", "index-pattern"], "flights", {"type": "search", "id": "571aaf70"}, 2, 5
+    )
+    assert captured == {
+        "type": ["dashboard", "index-pattern"], "fields": ["title", "name"], "page": 2,
+        "per_page": 5, "search": "flights", "has_reference": {"type": "search", "id": "571aaf70"},
+    }
+    assert (page.total, page.page, page.per_page) == (6, 2, 5)
+    dash, view, config = page.saved_objects
+    assert (dash.type, dash.id, dash.title, dash.name, dash.managed) == (
+        "dashboard", "7adfa750", "[Flights] Global Flight Dashboard", None, False,
+    )
+    assert dash.namespaces == ("default",) and dash.updated_at == "2026-10-25T03:03:32.348Z"
+    assert (view.title, view.name) == ("kibana_sample_data_flights", "Flights")
+    assert (config.title, config.name, config.namespaces, config.updated_at) == (
+        None, None, (), None
+    )
+
+
+def test_find_saved_objects_omits_search_and_reference_when_none():
+    captured = {}
+
+    def find(**kw):
+        captured.update(kw)
+        return FakeResponse({"page": 1, "per_page": 20, "total": 0, "saved_objects": []})
+
+    _gw(saved_objects=SimpleNamespace(find=find)).find_saved_objects(["tag"], None, None, 1, 20)
+    assert set(captured) == {"type", "fields", "page", "per_page"}
+
+
+def test_get_saved_object_keeps_distinct_references_in_order():
+    obj = _gw(saved_objects=SimpleNamespace(get=lambda **kw: FakeResponse(_DASH))).get_saved_object(
+        "dashboard", "7adfa750"
+    )
+    assert obj.references == (
+        {"type": "search", "id": "571aaf70"}, {"type": "index-pattern", "id": "d3d7af60"},
+    )
+    assert obj.attributes == {"title": "[Flights] Global Flight Dashboard"}
+    assert (obj.created_at, obj.namespaces, obj.managed) == (
+        "2026-10-25T03:03:32.348Z", ("default",), False,
+    )
+
+
+def test_get_saved_object_miss_names_find_saved_objects_and_hidden_types():
+    def get(**kw):
+        raise _not_found("Saved object [action/x] not found")
+
+    gw = KibanaPyGateway(make_fake_client(saved_objects=SimpleNamespace(get=get)), space="sales")
+    with pytest.raises(KibanaNotFound) as exc:
+        gw.get_saved_object("action", "x")
+    assert exc.value.message == (
+        "saved object 'action/x' not found — check the type and id with "
+        "find_saved_objects(types=['action']); a type Kibana hides from the saved-objects API "
+        "(action, alert, …) also answers not found: read those with their own tools "
+        "(in space 'sales')"
+    )
+
+
+def test_get_saved_object_blank_type_or_id_is_rejected_before_kibana():
+    def get(**kw):
+        raise AssertionError("must not reach kibana-py, whose ValueError is unmapped")
+
+    gw = _gw(saved_objects=SimpleNamespace(get=get))
+    for type_, id_ in ((" ", "x"), ("dashboard", " ")):
+        with pytest.raises(KibanaRejected, match="must not be blank"):
+            gw.get_saved_object(type_, id_)

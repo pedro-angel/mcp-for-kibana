@@ -29,6 +29,72 @@ class ShortUrl:
 
 
 @dataclass(frozen=True, slots=True)
+class RuntimeField:
+    """A data view's runtime field as Kibana stores it (`runtimeFieldMap`, D48)."""
+    name: str
+    type: str  # keyword | long | double | date | ip | boolean | geo_point | composite
+    script: str | None  # Painless source; None reads the _source value of the same name
+    # A composite field's subfields (name -> type); None for every other type.
+    fields: dict[str, str] | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class RuntimeFieldUpsert:
+    view_id: str
+    field: RuntimeField  # as stored after the write
+    previous: RuntimeField | None  # the definition replaced; None when the call created it
+
+
+@dataclass(frozen=True, slots=True)
+class DefaultDataView:
+    """A space's default data view (Kibana's `defaultIndex` setting, D48)."""
+    id: str | None  # None when no default is set
+    name: str | None  # None when unset, or when the id names no data view
+    index_pattern: str | None
+    # False when unset, or when the stored id names no data view in the space
+    # (Kibana keeps the id of a deleted view, probed on 9.5.4).
+    exists: bool
+
+
+@dataclass(frozen=True, slots=True)
+class DefaultDataViewChange:
+    current: DefaultDataView
+    previous_id: str | None  # the default before the call; None when none was set
+
+
+@dataclass(frozen=True, slots=True)
+class SavedObjectSummary:
+    type: str
+    id: str
+    title: str | None  # attributes.title, when the type has one
+    name: str | None  # attributes.name (a data view's display name, a tag's name, …)
+    updated_at: str | None
+    namespaces: tuple[str, ...]
+    managed: bool
+
+
+@dataclass(frozen=True, slots=True)
+class SavedObjectPage:
+    total: int
+    page: int
+    per_page: int
+    saved_objects: tuple[SavedObjectSummary, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class SavedObjectDetail:
+    type: str
+    id: str
+    namespaces: tuple[str, ...]
+    created_at: str | None
+    updated_at: str | None
+    managed: bool
+    attributes: dict[str, Any]
+    # The distinct objects it references, in first-seen order: {"type", "id"}.
+    references: tuple[dict[str, str], ...]
+
+
+@dataclass(frozen=True, slots=True)
 class PanelSummary:
     index: int
     type: str
