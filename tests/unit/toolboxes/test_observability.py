@@ -464,6 +464,34 @@ async def test_upsert_apm_agent_config_keeps_the_stored_agent_name(mcp, gateway)
     assert replaced["agent_name"] == "java"
 
 
+async def test_upsert_apm_agent_config_sends_a_given_agent_name(mcp, gateway):
+    # A new configuration carries agent_name only when given; on a replacement
+    # a given one wins over the stored one.
+    gateway.apm_agent_configs[0] = replace(gateway.apm_agent_configs[0], agent_name="java")
+    async with Client(mcp) as client:
+        created = (await client.call_tool("upsert_apm_agent_config", {
+            "service_name": "cart", "agent_name": "nodejs",
+            "settings": {"capture_body": "all"}})).data
+        replaced = (await client.call_tool("upsert_apm_agent_config", {
+            "service_name": "checkout", "environment": "production", "agent_name": "go",
+            "settings": {"recording": "false"}})).data
+    assert created["agent_name"] == "nodejs" and created["created"] is True
+    assert replaced["agent_name"] == "go"
+    assert [w[1]["agent_name"] for w in gateway.apm_config_writes] == ["nodejs", "go"]
+
+
+async def test_delete_apm_agent_config_returns_the_agent_name_to_recreate_it(mcp, gateway):
+    gateway.apm_agent_configs[0] = replace(gateway.apm_agent_configs[0], agent_name="java")
+    target = {"service_name": "checkout", "environment": "production"}
+    async with Client(mcp) as client:
+        deleted = (await client.call_tool("delete_apm_agent_config", target)).data
+        recreated = (await client.call_tool("upsert_apm_agent_config", {
+            **target, "settings": deleted["settings"],
+            "agent_name": deleted["agent_name"]})).data
+    assert deleted["agent_name"] == "java"
+    assert recreated["agent_name"] == "java" and recreated["settings"] == deleted["settings"]
+
+
 async def test_upsert_apm_agent_config_sends_values_as_strings(mcp, gateway):
     # Kibana takes only strings ("0.5 does not match expected type string").
     async with Client(mcp) as client:
@@ -489,19 +517,43 @@ async def test_upsert_apm_agent_config_refuses_empty_settings(mcp, gateway):
     assert gateway.apm_config_writes == []
 
 
-@pytest.mark.parametrize("arg", ["service_name", "environment"])
-async def test_apm_config_writes_refuse_the_all_sentinel(mcp, gateway, arg):
-    # Kibana stores "ALL_OPTION_VALUE" as a literal name (probed): it would not
-    # mean "all", so the tools refuse it and say to omit the argument.
+@pytest.mark.parametrize(("arg", "scope"), [("service_name", "services"),
+                                            ("environment", "environments")])
+async def test_upsert_apm_agent_config_refuses_to_create_under_the_all_sentinel(
+    mcp, gateway, arg, scope
+):
+    # Kibana stores "ALL_OPTION_VALUE" as a literal name (probed): a new one
+    # would not mean "all", so the upsert refuses to create it.
     async with Client(mcp) as client:
-        for tool, extra in (("upsert_apm_agent_config", {"settings": {"recording": "true"}}),
-                            ("delete_apm_agent_config", {})):
-            with pytest.raises(ToolError, match=(
-                rf"{arg} 'ALL_OPTION_VALUE' is list_apm_environments' marker for all, not a "
-                rf"name Kibana matches — omit {arg} to target all"
-            )):
-                await client.call_tool(tool, {arg: "ALL_OPTION_VALUE", **extra})
+        with pytest.raises(ToolError, match=(
+            rf"{arg} 'ALL_OPTION_VALUE' is list_apm_environments' marker for all {scope}, "
+            rf"and no configuration is stored under it as a literal name — omit {arg} to "
+            rf"create or replace the all-{scope} configuration"
+        )):
+            await client.call_tool("upsert_apm_agent_config", {
+                arg: "ALL_OPTION_VALUE", "settings": {"recording": "true"}})
     assert gateway.apm_config_writes == []
+
+
+async def test_apm_config_writes_target_a_config_stored_under_the_literal_sentinel(
+    mcp, gateway
+):
+    # Another client can store "ALL_OPTION_VALUE" literally; view and delete
+    # match it exactly (probed), so the tools replace and delete that one and
+    # leave the real all-environments configuration alone.
+    literal = replace(gateway.apm_agent_configs[0], service_environment="ALL_OPTION_VALUE",
+                      settings={"recording": "true"})
+    every_env = replace(gateway.apm_agent_configs[0], service_environment=None,
+                        settings={"recording": "false"})
+    gateway.apm_agent_configs = [literal, every_env]
+    target = {"service_name": "checkout", "environment": "ALL_OPTION_VALUE"}
+    async with Client(mcp) as client:
+        replaced = (await client.call_tool("upsert_apm_agent_config", {
+            **target, "settings": {"log_level": "debug"}})).data
+        deleted = (await client.call_tool("delete_apm_agent_config", target)).data
+    assert replaced["created"] is False and replaced["previous_settings"] == {"recording": "true"}
+    assert deleted["deleted"] is True and deleted["settings"] == {"log_level": "debug"}
+    assert gateway.apm_agent_configs == [every_env]
 
 
 @pytest.mark.parametrize("tool", ["upsert_apm_agent_config", "delete_apm_agent_config"])
@@ -521,7 +573,8 @@ async def test_delete_apm_agent_config_returns_what_it_deleted(mcp, gateway):
         deleted = (await client.call_tool("delete_apm_agent_config", {
             "service_name": "checkout", "environment": "production"})).data
     assert deleted == {"service_name": "checkout", "environment": "production",
-                       "deleted": True, "settings": {"transaction_sample_rate": "0.5"}}
+                       "deleted": True, "settings": {"transaction_sample_rate": "0.5"},
+                       "agent_name": None}
     assert gateway.apm_agent_configs == []
     assert gateway.apm_config_writes == [("delete", {
         "service_name": "checkout", "environment": "production"})]

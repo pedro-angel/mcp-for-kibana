@@ -539,7 +539,15 @@ this ledger stands without them.
   between is Kibana's 400 "A configuration already exists … Use
   ?overwrite=true", answered with "call upsert_apm_agent_config again" rather
   than replaced unreported — so it is `write`, with `idempotentHint=true` (a
-  repeat stores the same map). The delete is `destructive` like every delete
+  repeat stores the same map). (Amended after review, same day: the read and
+  the overwrite are not atomic, and cannot be made so — Kibana's PUT takes
+  no etag or version, probed: an `etag` in the body is a 400 "Excess keys are
+  not allowed: body.etag", and its route overwrites the document it finds by
+  id — so a change another client stores between the call's read and its
+  PUT is replaced unreported and `previous_settings` is the map the call
+  read. That limit is stated in the spec and the tier kept, as for D45's
+  rule-wide mutes: the window is within one call, and the alternative of
+  refusing replacements entirely would leave no tool to change a setting.) The delete is `destructive` like every delete
   here: the stored configuration is gone and agents fall to whatever else
   matches them; it returns the deleted settings so a caller can recreate it,
   which is a recovery path, not an inverse (a new document). Rejected: merge
@@ -569,15 +577,27 @@ this ledger stands without them.
   setting definitions and a list kept here would drift from the agents' — the
   description says to take names from the agent's docs. Kibana stores
   `ALL_OPTION_VALUE` as a literal environment (`list_apm_environments` then
-  marks it `alreadyConfigured`, though no agent would match it), so the tools
-  refuse it for either name; it stores `service.name: ""` and then cannot
+  marks it `alreadyConfigured`, though no agent would match it), so the
+  upsert refuses to create one under it, for either name (amended after
+  review, same day: first built, both tools refused it outright and told the
+  caller to omit the name — but the view and the delete match a literal
+  `ALL_OPTION_VALUE` exactly, probed beside the service's all-environments
+  configuration, so that advice pointed the delete at the other, real
+  all-environments configuration and left the literal one unreachable; now
+  the delete matches it like any name, and the upsert replaces one that is
+  stored, refusing only after its read finds none); it stores `service.name: ""` and then cannot
   reach it again (the view and the delete read `""` as omitted, so the
   probe's one was removed from `.apm-agent-configuration` with a temporary
   restricted-index role), so `""` is refused at the schema. Kibana's PUT
   drops a stored `agent_name` (the UI writes one) unless it is sent again
   (probed: `agent_name: "java"` vanished after an overwrite without it), so a
   replacement sends the stored one, and the read shape gains `agent_name`
-  (`null` when none, the key being absent then). **No `space`** (D10: APM
+  (`null` when none, the key being absent then). (Amended after review, same
+  day: the delete returned only the settings and the upsert took no
+  `agent_name`, so recreating a deleted configuration lost it; the delete
+  now returns `agent_name` and the upsert takes an optional one — sent on a
+  create, and on a replacement in place of the stored one — default none,
+  so earlier calls behave as before.) **No `space`** (D10: APM
   configuration is cluster-global, the toolbox keeps its mixed-axis
   exclusion). Contract: [observability](toolboxes/observability.md).
 

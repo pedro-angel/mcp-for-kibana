@@ -2554,7 +2554,8 @@ async def test_apm_agent_config_lifecycle_live(gateway):
         assert "settings sent: {'transaction_sample_rate': '7'}" in str(bad.value)
         assert stored["settings"] == {"capture_body": "errors", "recording": "false"}
         assert deleted == {"service_name": name, "environment": env, "deleted": True,
-                           "settings": {"capture_body": "errors", "recording": "false"}}
+                           "settings": {"capture_body": "errors", "recording": "false"},
+                           "agent_name": None}
         assert str(gone.value) == (
             f"no APM agent configuration for service '{name}', environment '{env}' — "
             "service_name and environment must match a configuration exactly (an omitted one "
@@ -2565,9 +2566,10 @@ async def test_apm_agent_config_lifecycle_live(gateway):
         _apm_cleanup((name, env))
 
 
-async def test_apm_agent_config_upsert_keeps_agent_name_live(gateway):
+async def test_apm_agent_config_agent_name_round_trip_live(gateway):
     # A config written with agent_name (as Kibana's UI does) keeps it through a
     # tool replacement: Kibana's PUT drops it unless it is sent again (probed).
+    # The delete returns it, and passing it back to the upsert recreates it.
     name = f"contract-apm-{uuid.uuid4().hex[:8]}"
     try:
         with _raw_kibana() as raw:
@@ -2576,10 +2578,56 @@ async def test_apm_agent_config_upsert_keeps_agent_name_live(gateway):
         async with Client(_obs_tool_server()) as client:
             replaced = (await client.call_tool("upsert_apm_agent_config", {
                 "service_name": name, "settings": {"capture_body": "off"}})).data
+            with _raw_kibana() as raw:
+                stored = raw.apm.get_agent_configuration(name=name).body
+            deleted = (await client.call_tool("delete_apm_agent_config", {
+                "service_name": name})).data
+            recreated = (await client.call_tool("upsert_apm_agent_config", {
+                "service_name": name, "settings": deleted["settings"],
+                "agent_name": deleted["agent_name"]})).data
         with _raw_kibana() as raw:
-            stored = raw.apm.get_agent_configuration(name=name).body
+            restored = raw.apm.get_agent_configuration(name=name).body
         assert replaced["agent_name"] == "java" and replaced["service_environment"] is None
         assert replaced["previous_settings"] == {"capture_body": "all"}
         assert stored["agent_name"] == "java" and stored["settings"] == {"capture_body": "off"}
+        assert deleted["agent_name"] == "java"
+        assert recreated["created"] is True and recreated["agent_name"] == "java"
+        assert restored["agent_name"] == "java" and restored["settings"] == {"capture_body": "off"}
     finally:
         _apm_cleanup((name, None))
+
+
+async def test_apm_agent_config_literal_all_option_live(gateway):
+    # Kibana stores "ALL_OPTION_VALUE" as a literal environment and its view and
+    # delete match it exactly (probed): the tools replace and delete that one and
+    # leave the service's all-environments configuration alone; creating one is
+    # refused before any write.
+    name, literal = f"contract-apm-{uuid.uuid4().hex[:8]}", "ALL_OPTION_VALUE"
+    fresh = f"contract-apm-{uuid.uuid4().hex[:8]}"
+    try:
+        with _raw_kibana() as raw:
+            raw.apm.create_or_update_agent_configuration(
+                service_name=name, service_environment=literal,
+                settings={"recording": "true"})
+            raw.apm.create_or_update_agent_configuration(
+                service_name=name, settings={"recording": "false"})
+        async with Client(_obs_tool_server()) as client:
+            replaced = (await client.call_tool("upsert_apm_agent_config", {
+                "service_name": name, "environment": literal,
+                "settings": {"log_level": "debug"}})).data
+            deleted = (await client.call_tool("delete_apm_agent_config", {
+                "service_name": name, "environment": literal})).data
+            with pytest.raises(ToolError) as refused:
+                await client.call_tool("upsert_apm_agent_config", {
+                    "service_name": fresh, "environment": literal,
+                    "settings": {"recording": "true"}})
+        left = [(c.service_name, c.service_environment, c.settings)
+                for c in gateway.list_apm_agent_configs() if c.service_name in (name, fresh)]
+        assert replaced["created"] is False and replaced["previous_settings"] == {
+            "recording": "true"}
+        assert deleted["deleted"] is True and deleted["settings"] == {"log_level": "debug"}
+        assert "omit environment to create or replace the all-environments" in str(
+            refused.value)
+        assert left == [(name, None, {"recording": "false"})]
+    finally:
+        _apm_cleanup((name, literal), (name, None), (fresh, literal))

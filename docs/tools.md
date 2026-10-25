@@ -874,8 +874,8 @@ requests to its target), every other tool `openWorldHint=false`.
 | `delete_synthetic_monitor` | destructive | Permanently delete a monitor. |
 | `delete_synthetic_param` | destructive | Permanently delete a parameter; its value is lost and monitors lose `${key}`. |
 | `delete_synthetic_private_location` | destructive | Permanently delete a private location no monitor uses; its agent policy stays. |
-| `upsert_apm_agent_config` | write | Create or replace the APM agent configuration of a service + environment (omit either for all): `settings` replaces the stored map; returns `created` and the replaced `previous_settings`. |
-| `delete_apm_agent_config` | destructive | Permanently delete one APM agent configuration (exact service + environment match); returns the deleted settings. |
+| `upsert_apm_agent_config` | write | Create or replace the APM agent configuration of a service + environment (omit either for all): `settings` replaces the stored map; optional `agent_name`; returns `created` and the replaced `previous_settings`. |
+| `delete_apm_agent_config` | destructive | Permanently delete one APM agent configuration (exact service + environment match); returns the deleted settings and `agent_name`. |
 
 Synthetics write tier, as probed on Kibana 9.5.4 (decision
 [D46](spec/decisions.md)):
@@ -925,18 +925,25 @@ Synthetics write tier, as probed on Kibana 9.5.4 (decision
   configuration is named by `service_name` and `environment`, matched exactly:
   an omitted one means *all services* or *all environments*, never *any*, so
   `{service_name: "cart"}` and `{service_name: "cart", environment: "prod"}` are
-  two configurations. `list_apm_environments`' `ALL_OPTION_VALUE` is refused as
-  a name (Kibana would store it literally); so is an empty string (Kibana
-  stores `""` and then cannot find it again). `upsert_apm_agent_config` reads
-  the configuration first and replaces it only if it read one, so a
-  configuration created in between is refused, not overwritten unreported.
+  two configurations. `list_apm_environments`' `ALL_OPTION_VALUE` is not
+  created as a name (Kibana would store it literally, and no agent reads it as
+  *all*); one another client stored under that literal name is matched exactly,
+  so the tools replace and delete it, not the all-* one. An empty string is
+  refused (Kibana stores `""` and then cannot find it again).
+  `upsert_apm_agent_config` reads the configuration first and replaces it only
+  if it read one, so a configuration created in between is refused, not
+  overwritten unreported; Kibana's PUT takes no etag, though, so a change
+  another client stores to an existing one between the read and the write is
+  replaced unreported (`previous_settings` is the map the call read).
   `settings` replaces the whole map (to change one setting, pass the map from
   `get_apm_agent_config` with that key changed); values go out as strings
   (`0.5` → `"0.5"`, `false` → `"false"`). Kibana checks the values of the
   settings it knows (a rejection lists the settings sent, since Kibana's message
   can omit the key) but stores setting names it does not know, which agents
   ignore. A stored `agent_name` (Kibana's UI writes one) is sent again on a
-  replacement, since Kibana's PUT drops it otherwise. A miss reads "no APM agent
+  replacement, since Kibana's PUT drops it otherwise, unless the call passes
+  `agent_name`; a new configuration has one only when passed. The delete
+  returns `settings` and `agent_name`, which an upsert takes back to recreate it. A miss reads "no APM agent
   configuration for service 'cart', all environments — service_name and
   environment must match a configuration exactly (an omitted one means all);
   call list_apm_agent_configs to see them", on `get_apm_agent_config` too.
@@ -998,7 +1005,7 @@ Returns:
 
 // delete_apm_agent_config
 {"service_name": "checkout", "environment": "production", "deleted": true,
- "settings": {"capture_body": "errors"}}
+ "settings": {"capture_body": "errors"}, "agent_name": null}
 ```
 
 ## security-detections toolbox

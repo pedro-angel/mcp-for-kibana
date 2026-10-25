@@ -138,7 +138,10 @@ def _monitor(m: SyntheticMonitor) -> dict[str, Any]:
 
 # list_apm_environments' marker for "all environments" (Kibana's UI uses it for
 # services too). Kibana stores it as a literal name (probed on 9.5.4), which no
-# agent's lookup would read as "all", so the APM writes refuse it.
+# agent's lookup reads as "all", so the upsert refuses to create a configuration
+# under it. A configuration another client stored under the literal name is
+# matched exactly by view and delete (probed), so the tools still replace and
+# delete that one; "omit it" would point them at the real all-* configuration.
 _ALL_OPTION = "ALL_OPTION_VALUE"
 # An APM config's service name or environment: Kibana stores "" and then cannot
 # match it again (its view and delete read "" as omitted; probed), so never "".
@@ -146,12 +149,15 @@ _ApmName = Annotated[str, Field(min_length=1)] | None
 _SettingValue = str | bool | int | float
 
 
-def _apm_target(service_name: str | None, environment: str | None) -> None:
-    for arg, value in (("service_name", service_name), ("environment", environment)):
+def _refuse_new_all_option(service_name: str | None, environment: str | None) -> None:
+    # Only called when no configuration is stored under the given names.
+    for arg, value, scope in (("service_name", service_name, "services"),
+                              ("environment", environment, "environments")):
         if value == _ALL_OPTION:
             raise ToolError(
-                f"{arg} '{_ALL_OPTION}' is list_apm_environments' marker for all, not a name "
-                f"Kibana matches — omit {arg} to target all"
+                f"{arg} '{_ALL_OPTION}' is list_apm_environments' marker for all {scope}, "
+                f"and no configuration is stored under it as a literal name — omit {arg} "
+                f"to create or replace the all-{scope} configuration"
             )
 
 
@@ -496,6 +502,7 @@ class ObservabilityToolbox:
             settings: dict[str, _SettingValue],
             service_name: _ApmName = None,
             environment: _ApmName = None,
+            agent_name: _ApmName = None,
         ) -> dict[str, Any]:
             """Create or replace an APM agent configuration: the settings APM
             agents fetch from Kibana (central configuration), e.g.
@@ -508,27 +515,33 @@ class ObservabilityToolbox:
             (numbers and booleans are converted). Kibana checks the values of
             the settings it knows but stores names it does not know, which
             agents ignore, so use the setting names from the APM agent's
-            central-configuration docs. Returns the configuration as
-            get_apm_agent_config does, plus `created` (true when none existed)
-            and `previous_settings` (the map it replaced, or null): pass
-            previous_settings back to undo a replacement."""
+            central-configuration docs. agent_name (e.g. "java", which Kibana's
+            UI uses to choose the settings it shows) is optional: omitted, a
+            replacement keeps the stored one and a new configuration has none.
+            Returns the configuration as get_apm_agent_config does, plus
+            `created` (true when none existed) and `previous_settings` (the map
+            this call read and replaced, or null): pass previous_settings back
+            to undo a replacement."""
             if not settings:
                 raise ToolError(
                     "settings is empty — pass at least one setting, e.g. "
                     "{'transaction_sample_rate': '0.5'}; to remove a configuration use "
                     "delete_apm_agent_config"
                 )
-            _apm_target(service_name, environment)
             values = {name: _setting(value) for name, value in settings.items()}
             with gateway_errors(), deps.gateway_factory() as gw:
                 try:
                     previous = gw.get_apm_agent_config(service_name, environment)
                 except KibanaNotFound:
                     previous = None
+                if previous is None:
+                    _refuse_new_all_option(service_name, environment)
+                # Kibana's PUT takes no etag (probed), so the read and the
+                # overwrite are not atomic; see D47.
                 stored = gw.upsert_apm_agent_config(
                     service_name, environment, values,
                     # Kibana's PUT drops a stored agent_name that is not sent again.
-                    agent_name=previous.agent_name if previous else None,
+                    agent_name=agent_name or (previous.agent_name if previous else None),
                     overwrite=previous is not None,
                 )
             return {
@@ -549,9 +562,9 @@ class ObservabilityToolbox:
             all-environments one (list_apm_agent_configs shows them; omitting
             both deletes the configuration for all services and all
             environments). Agents then get whatever other configuration matches
-            them, or their own defaults. Returns the deleted settings; only
-            passing them to upsert_apm_agent_config recreates it."""
-            _apm_target(service_name, environment)
+            them, or their own defaults. Returns the deleted settings and
+            agent_name; only passing them to upsert_apm_agent_config recreates
+            it."""
             with gateway_errors(), deps.gateway_factory() as gw:
                 current = gw.get_apm_agent_config(service_name, environment)
                 gw.delete_apm_agent_config(service_name, environment)
@@ -560,4 +573,5 @@ class ObservabilityToolbox:
                 "environment": environment,
                 "deleted": True,
                 "settings": current.settings,
+                "agent_name": current.agent_name,
             }

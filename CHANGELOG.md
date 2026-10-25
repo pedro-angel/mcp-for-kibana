@@ -18,11 +18,17 @@ version section.
   service and environment (omit either for all): `settings` replaces the
   stored map, values go out as strings (`0.5` → `"0.5"`, `false` →
   `"false"`), and the result adds `created` and `previous_settings` (the map
-  it replaced, which a second call puts back). It overwrites only a
-  configuration it read first, keeps a stored `agent_name`, refuses an empty
-  map, `ALL_OPTION_VALUE` and `""` as names, and names the settings sent when
-  Kibana rejects a value. `delete_apm_agent_config` deletes one configuration,
-  matched exactly, and returns its settings. No tool takes `space`. Creating
+  it read and replaced, which a second call puts back; Kibana's PUT takes no
+  etag, so a change another client stores between that read and the write is
+  replaced unreported). It overwrites only a configuration it read in the same
+  call, keeps a stored `agent_name` unless given an optional `agent_name`,
+  refuses an empty map and `""` as a name, refuses to create a configuration
+  named `ALL_OPTION_VALUE` (but replaces one another client stored under that
+  literal name, rather than pointing at the all-* one), and names the settings
+  sent when Kibana rejects a value. `delete_apm_agent_config` deletes one
+  configuration, matched exactly (a literal `ALL_OPTION_VALUE` included), and
+  returns its settings and `agent_name`, which the upsert takes back to
+  recreate it. No tool takes `space`. Creating
   APM annotations is not offered: Kibana requires a Gold license for it (403
   on Basic). Decision D47.
 - **APM agent configurations show their `agent_name`** in
