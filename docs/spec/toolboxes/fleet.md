@@ -1,6 +1,6 @@
 # fleet — behavior contract
 
-Status: Draft v1.3 (2026-10-25) — regeneration corpus, reconciled to shipped code
+Status: Draft v1.4 (2026-10-25) — regeneration corpus, reconciled to shipped code
 Surface reference: docs/tools.md#fleet-toolbox · Enforcement: named per section below
 
 ## Purpose & persona
@@ -42,7 +42,12 @@ cases, and security-detections, no fleet tool accepts a `space` parameter —
 no echo, no fail-closed validation, no scoped not-found suffix
 (docs/tools.md#space-targeting). `get_fleet_settings`'s
 `space_awareness_migration_status` field is Fleet's own internal
-per-deployment migration state, informational only, not the same axis.
+per-deployment migration state, not the same axis. Once that migration has
+run (the dev stack reads `success`), Fleet's agent and package policy
+listings return only the calling space's (probed on 9.5.4), so the other
+fleet tools see the default space's (or the pinned space's) policies only;
+`uninstall_package`, whose Kibana call reaches every space, reads every
+space instead (below).
 
 **Secret redaction is a fixed field allowlist, not after-the-fact
 stripping.** Enrollment-key/uninstall-token reads and every output
@@ -111,9 +116,10 @@ Enterprise license (403 on Basic, probed) and Kibana refuses older versions.
 package that is not installed names `list_installed_packages`; a package
 policy on a managed or the default Fleet Server agent policy refuses the call
 regardless of `force` (as `delete_agent_policy` guards those policies), and so
-does any `fleet_server` package policy, on whatever agent policy (it runs the
-Fleet Servers there; the refusal names every guarded one, and for a plain one
-`delete_package_policy` once no Fleet Server is enrolled on it); any
+does any `fleet_server` package policy, on whatever agent policy or none (it
+runs the Fleet Servers there; the refusal names every guarded one, and for a
+plain or unattached one `delete_package_policy` once no Fleet Server is
+enrolled on it); any
 other package policy refuses it unless `force=True`, naming each one with its
 agent policy and agent count, because Kibana deletes them with the package
 (probed: without `force` when no agent uses them, with it otherwise), and
@@ -122,7 +128,14 @@ Kibana's `force` is sent only then. `elastic_agent` is refused, whatever
 index templates and ingest pipelines of the agents' monitoring data streams,
 and Kibana uninstalled it under a monitoring agent policy without `force` or a
 check (probed); the refusal names those agent policies and
-`update_agent_policy monitoring_enabled=[]`; the
+`update_agent_policy monitoring_enabled=[]`. With Fleet space awareness on,
+every space's agent and package policies are read (each space lists only its
+own, while Kibana's uninstall deleted another space's package policy, read by
+id after it, and `elastic_agent` holds every space's monitoring assets;
+probed), each guard and refusal applies to them with the space named, and an
+agent policy is read in its own space; a space-pinned `KIBANA_URL` refuses
+the uninstall while another space exists (it cannot read that space), and a
+key that cannot read a space fails the call; the
 managed `logs-*`/`metrics-*` data views an install may add to every space are
 kept (probed with `nginx`). The result lists the package policies read before the call; one created between
 that read and the uninstall is deleted unreported (the route has no
@@ -180,10 +193,12 @@ object's body.
   a different requested version is refused.
 - `uninstall_package` never sends an uninstall when the package has a package
   policy on a managed or the default Fleet Server agent policy, when it is
-  `fleet_server` with any package policy, when it is `elastic_agent` while an
-  agent policy has `monitoring_enabled`, nor, without `force=True`, when it
-  has any package policy; it sends Kibana's `force` only for a package with
-  package policies.
+  `fleet_server` with any package policy (on any agent policy or none), when
+  it is `elastic_agent` while an agent policy has `monitoring_enabled`, nor,
+  without `force=True`, when it has any package policy; with Fleet space
+  awareness on, "any" covers every space (a space-pinned `KIBANA_URL` refuses
+  while another space exists); it sends Kibana's `force` only for a package
+  with package policies.
 - `list_agent_diagnostics` returns exactly
   `{id, name, status, created_at, action_id}` per bundle — no download path.
 
@@ -238,8 +253,12 @@ object's body.
   `fleet_server`'s uninstall refused without force naming both the default
   Fleet Server policy and a plain one carrying a `fleet_server` package
   policy, `elastic_agent`'s refused with `force` under a monitoring agent
-  policy (and sent once none monitors), and a CPU-metrics diagnostics bundle
-  uploaded to READY before the plain one.
+  policy in the default space and then under one only a throwaway space lists
+  (and sent once none monitors), `tcp`'s refused for a package policy only a
+  throwaway space lists, then forced (that package policy gone, read by id),
+  and a CPU-metrics diagnostics bundle uploaded to READY before the plain one.
+  The cross-space checks run when Fleet space awareness is on (skipped
+  otherwise).
 - `tests/ephemeral/test_fleet_ephemeral.py`, gated by the required
   `fleet_ephemeral` Definition-of-Done criterion (`dod.config`) — the only
   tier exercising `reassign_agent`/`upgrade_agent`/`unenroll_agent` and

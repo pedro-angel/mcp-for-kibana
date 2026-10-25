@@ -34,7 +34,13 @@ version section.
   `fleet_server` with a package policy on any agent policy and `elastic_agent`
   while an agent policy has monitoring on (Fleet itself runs on both; Kibana
   removed `elastic_agent` under a monitoring policy without a check), and
-  Kibana's `force` is sent only to delete package policies. Unknown
+  Kibana's `force` is sent only to delete package policies. Every
+  `fleet_server` package policy counts, one on no agent policy too. With
+  Fleet space awareness on, the uninstall reads the agent and package
+  policies of every space, because Kibana's uninstall deletes every space's
+  package policies while each space lists only its own; the refusals name a
+  policy's space, and a space-pinned `KIBANA_URL` refuses while another
+  space exists. Unknown
   agents, packages and versions are errors that name the tool to look them up
   with. Decision D51.
 - **Security detections: edit, copy, export and import exception lists**

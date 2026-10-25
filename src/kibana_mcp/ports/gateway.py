@@ -742,6 +742,11 @@ class KibanaGateway(Protocol):
         the default Fleet Server agent policy, and any `fleet_server` one
         (it runs the Fleet Servers on its agent policy); `elastic_agent` is
         refused while any agent policy has `monitoring_enabled` (Kibana
-        uninstalls it unchecked, probed). A package that is not installed
-        raises KibanaNotFound naming list_installed_packages."""
+        uninstalls it unchecked, probed); a `fleet_server` package policy on
+        no agent policy is guarded too. With Fleet space awareness on, the
+        agent and package policies of every space count (each space lists
+        only its own; Kibana's uninstall deletes every space's package
+        policies, probed), each named with its space; a space-pinned
+        KIBANA_URL refuses while another space exists. A package that is not
+        installed raises KibanaNotFound naming list_installed_packages."""
         ...

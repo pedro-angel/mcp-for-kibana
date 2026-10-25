@@ -785,16 +785,48 @@ def _policies_ns(package_policies, agent_policies):
             {"items": package_policies, "total": len(package_policies)}),
         get_agent_policies=lambda **k: FakeResponse(
             {"items": list(agent_policies.values()), "total": len(agent_policies)}),
-        get_agent_policy=lambda *, agent_policy_id: FakeResponse(
+        get_agent_policy=lambda *, agent_policy_id, **k: FakeResponse(
             {"item": agent_policies[agent_policy_id]}))
 
 
 _INSTALLED_TCP = {**_TCP, "status": "installed"}
 
 
+def _ugw(*, migration_status="", spaces=("default",), pinned_space=None, **namespaces):
+    """A gateway for uninstall_package: Fleet settings with space awareness off
+    unless `migration_status` says otherwise ('success' on the dev stack)."""
+    fleet = SimpleNamespace(get_settings=lambda: FakeResponse(
+        {"item": {"id": "fleet-default-settings",
+                  "use_space_awareness_migration_status": migration_status}}))
+    space_ns = SimpleNamespace(get_all=lambda: FakeResponse([{"id": s} for s in spaces]))
+    return KibanaPyGateway(make_fake_client(fleet=fleet, spaces=space_ns, **namespaces),
+                           pinned_space=pinned_space)
+
+
+def _spaced_policies_ns(by_space, calls=None):
+    """`by_space`: space id -> (package policies, agent policies by id), as each
+    space lists them with space awareness on; the calling space is 'default'."""
+    def pick(k):
+        if calls is not None:
+            calls.append(k.get("space_id"))
+        return by_space[k.get("space_id") or "default"]
+
+    def agent_policy(*, agent_policy_id, **k):
+        return FakeResponse({"item": pick(k)[1][agent_policy_id]})
+
+    def listing(i):
+        def page(**k):
+            items = list(pick(k)[i].values()) if i else pick(k)[0]
+            return FakeResponse({"items": items, "total": len(items)})
+        return page
+
+    return SimpleNamespace(get_package_policies=listing(0), get_agent_policies=listing(1),
+                           get_agent_policy=agent_policy)
+
+
 def test_uninstall_package_without_package_policies_sends_no_force():
     calls = []
-    gw = _gw(fleet_epm=_epm(dict(_INSTALLED_TCP), calls),
+    gw = _ugw(fleet_epm=_epm(dict(_INSTALLED_TCP), calls),
              fleet_policies=_policies_ns([_pp("pp-x", "nginx", ["p1"])], {}))
     r = gw.uninstall_package(name="tcp")
     assert calls == [("uninstall", {"pkg_name": "tcp", "force": None})]
@@ -804,7 +836,7 @@ def test_uninstall_package_without_package_policies_sends_no_force():
 def test_uninstall_package_never_sends_force_without_package_policies():
     # Kibana's force is only there to delete package policies agents use.
     calls = []
-    gw = _gw(fleet_epm=_epm(dict(_INSTALLED_TCP), calls), fleet_policies=_policies_ns([], {}))
+    gw = _ugw(fleet_epm=_epm(dict(_INSTALLED_TCP), calls), fleet_policies=_policies_ns([], {}))
     gw.uninstall_package(name="tcp", force=True)
     assert calls == [("uninstall", {"pkg_name": "tcp", "force": None})]
 
@@ -813,7 +845,7 @@ def test_uninstall_package_refuses_package_policies_without_force():
     calls = []
     pps = [_pp("pp-1", "tcp", ["p1"]), _pp("pp-2", "tcp", ["p1", "p2"])]
     aps = {"p1": {"id": "p1", "agents": 1}, "p2": {"id": "p2", "agents": 0}}
-    gw = _gw(fleet_epm=_epm(dict(_INSTALLED_TCP), calls), fleet_policies=_policies_ns(pps, aps))
+    gw = _ugw(fleet_epm=_epm(dict(_INSTALLED_TCP), calls), fleet_policies=_policies_ns(pps, aps))
     with pytest.raises(KibanaRejected, match=(
         r"^refusing to uninstall integration package 'tcp': it has 2 package policies — "
         r"'pp-1' \('tcp-pp-1'\) on agent policy 'p1' \(1 agent\); 'pp-2' \('tcp-pp-2'\) on "
@@ -827,7 +859,7 @@ def test_uninstall_package_refuses_package_policies_without_force():
 def test_uninstall_package_force_deletes_and_reports_the_package_policies():
     calls = []
     pps = [_pp("pp-1", "tcp", ["p1"])]
-    gw = _gw(fleet_epm=_epm(dict(_INSTALLED_TCP), calls),
+    gw = _ugw(fleet_epm=_epm(dict(_INSTALLED_TCP), calls),
              fleet_policies=_policies_ns(pps, {"p1": {"id": "p1", "agents": 1}}))
     r = gw.uninstall_package(name="tcp", force=True)
     # force reaches Kibana too: it 400s package policies agents use without it (probed).
@@ -844,7 +876,7 @@ def test_uninstall_package_refuses_a_guarded_agent_policy_even_with_force(flags,
     calls = []
     pps = [_pp("pp-fs", "fleet_server", ["fleet-server-policy"])]
     aps = {"fleet-server-policy": {"id": "fleet-server-policy", "agents": 1, **flags}}
-    gw = _gw(fleet_epm=_epm({**_INSTALLED_TCP, "name": "fleet_server"}, calls),
+    gw = _ugw(fleet_epm=_epm({**_INSTALLED_TCP, "name": "fleet_server"}, calls),
              fleet_policies=_policies_ns(pps, aps))
     with pytest.raises(KibanaRejected, match=(
         rf"^refusing to uninstall integration package 'fleet_server': its package policy "
@@ -858,7 +890,7 @@ def test_uninstall_package_refuses_fleet_server_on_any_fleet_server_policy_even_
     # A user-made Fleet Server policy: neither managed nor the default one.
     calls = []
     pps = [_pp("pp-fs2", "fleet_server", ["fs-2"])]
-    gw = _gw(fleet_epm=_epm({**_INSTALLED_TCP, "name": "fleet_server"}, calls),
+    gw = _ugw(fleet_epm=_epm({**_INSTALLED_TCP, "name": "fleet_server"}, calls),
              fleet_policies=_policies_ns(pps, {"fs-2": {"id": "fs-2", "agents": 1}}))
     with pytest.raises(KibanaRejected, match=(
         r"^refusing to uninstall integration package 'fleet_server': its package policy "
@@ -874,7 +906,7 @@ def test_uninstall_package_names_every_guarded_package_policy():
     pps = [_pp("pp-fs", "fleet_server", ["fleet-server-policy"]), _pp("pp-fs2", "fleet_server", ["fs-2"])]
     aps = {"fleet-server-policy": {"id": "fleet-server-policy", "is_default_fleet_server": True},
            "fs-2": {"id": "fs-2"}}
-    gw = _gw(fleet_epm=_epm({**_INSTALLED_TCP, "name": "fleet_server"}, calls),
+    gw = _ugw(fleet_epm=_epm({**_INSTALLED_TCP, "name": "fleet_server"}, calls),
              fleet_policies=_policies_ns(pps, aps))
     with pytest.raises(KibanaRejected, match=(
         r"'pp-fs' is on agent policy 'fleet-server-policy', which is the default Fleet Server "
@@ -889,7 +921,7 @@ def test_uninstall_package_refuses_elastic_agent_while_an_agent_policy_monitors(
     aps = {"p1": {"id": "p1", "monitoring_enabled": []},
            "p2": {"id": "p2", "monitoring_enabled": ["logs", "metrics"]},
            "p3": {"id": "p3", "monitoring_enabled": ["metrics"]}}
-    gw = _gw(fleet_epm=_epm({**_INSTALLED_TCP, "name": "elastic_agent"}, calls),
+    gw = _ugw(fleet_epm=_epm({**_INSTALLED_TCP, "name": "elastic_agent"}, calls),
              fleet_policies=_policies_ns([], aps))
     with pytest.raises(KibanaRejected, match=(
         r"^refusing to uninstall integration package 'elastic_agent': agent monitoring is on "
@@ -901,7 +933,7 @@ def test_uninstall_package_refuses_elastic_agent_while_an_agent_policy_monitors(
 
 def test_uninstall_package_sends_elastic_agent_when_no_agent_policy_monitors():
     calls = []
-    gw = _gw(fleet_epm=_epm({**_INSTALLED_TCP, "name": "elastic_agent"}, calls),
+    gw = _ugw(fleet_epm=_epm({**_INSTALLED_TCP, "name": "elastic_agent"}, calls),
              fleet_policies=_policies_ns([], {"p1": {"id": "p1", "monitoring_enabled": []}}))
     gw.uninstall_package(name="elastic_agent", force=True)
     assert calls == [("uninstall", {"pkg_name": "elastic_agent", "force": None})]
@@ -909,8 +941,130 @@ def test_uninstall_package_sends_elastic_agent_when_no_agent_policy_monitors():
 
 def test_uninstall_package_not_installed_names_list_installed_packages():
     calls = []
-    gw = _gw(fleet_epm=_epm(dict(_TCP), calls), fleet_policies=_policies_ns([], {}))
+    gw = _ugw(fleet_epm=_epm(dict(_TCP), calls), fleet_policies=_policies_ns([], {}))
     with pytest.raises(KibanaNotFound, match=(
         r"^integration package 'tcp' is not installed — list_installed_packages shows")):
         gw.uninstall_package(name="tcp")
     assert calls == []
+
+
+def test_uninstall_package_refuses_fleet_server_on_no_agent_policy_even_with_force():
+    # Every fleet_server package policy is guarded, an unattached one too.
+    calls = []
+    gw = _ugw(fleet_epm=_epm({**_INSTALLED_TCP, "name": "fleet_server"}, calls),
+              fleet_policies=_policies_ns([_pp("pp-loose", "fleet_server", [])], {}))
+    with pytest.raises(KibanaRejected, match=(
+        r"^refusing to uninstall integration package 'fleet_server': its package policy "
+        r"'pp-loose' is a fleet_server package policy on no agent policy, .*regardless of "
+        r"force\. A fleet_server package policy on no agent policy, or on one .*"
+        r"delete_package_policy once no Fleet Server is enrolled on that agent policy\.$")):
+        gw.uninstall_package(name="fleet_server", force=True)
+    assert calls == []
+
+
+def test_uninstall_package_reads_no_other_space_when_space_awareness_is_off():
+    spaced = []
+    pps = [_pp("pp-1", "tcp", ["p1"])]
+    gw = _ugw(fleet_epm=_epm(dict(_INSTALLED_TCP), []), spaces=("default", "ops"),
+              fleet_policies=_spaced_policies_ns({"default": (pps, {"p1": {"id": "p1"}})}, spaced))
+    with pytest.raises(KibanaRejected, match=r"it has 1 package policy"):
+        gw.uninstall_package(name="tcp")
+    assert spaced == [None, None]  # the package-policy listing, then its agent policy
+
+
+def test_uninstall_package_refuses_elastic_agent_monitored_from_another_space():
+    # Probed (9.5.4, awareness 'success'): a monitoring agent policy made in space
+    # 'ops' is not in the default space's listing; Kibana's uninstall is global.
+    calls, spaced = [], []
+    by_space = {"default": ([], {"p1": {"id": "p1", "monitoring_enabled": []}}),
+                "ops": ([], {"p9": {"id": "p9", "monitoring_enabled": ["logs"]}})}
+    gw = _ugw(fleet_epm=_epm({**_INSTALLED_TCP, "name": "elastic_agent"}, calls),
+              migration_status="success", spaces=("default", "ops"),
+              fleet_policies=_spaced_policies_ns(by_space, spaced))
+    with pytest.raises(KibanaRejected, match=(
+        r"^refusing to uninstall integration package 'elastic_agent': agent monitoring is on "
+        r"in agent policy 'p9' in space 'ops', .*regardless of force .*update_agent_policy "
+        r"monitoring_enabled=\[\] \(a managed agent policy cannot be changed; an agent or "
+        r"package policy in another space is changed in that space: Kibana's Fleet UI there, "
+        r"or this server with KIBANA_URL ending in '/s/<space>'\)\.$")):
+        gw.uninstall_package(name="elastic_agent", force=True)
+    assert calls == [] and spaced == [None, "ops"]
+
+
+_OPS_TCP = {"default": ([], {}),
+            "ops": ([_pp("pp-o", "tcp", ["po"])], {"po": {"id": "po", "agents": 2}})}
+
+
+def test_uninstall_package_refuses_a_package_policy_only_another_space_lists_without_force():
+    # Probed (9.5.4, awareness 'success'): the default space's listing leaves out
+    # space 'ops''s tcp package policy, and Kibana's uninstall from it deletes it.
+    calls, spaced = [], []
+    gw = _ugw(fleet_epm=_epm(dict(_INSTALLED_TCP), calls),
+              migration_status="success", spaces=("default", "ops"),
+              fleet_policies=_spaced_policies_ns(_OPS_TCP, spaced))
+    with pytest.raises(KibanaRejected, match=(
+        r"^refusing to uninstall integration package 'tcp': it has 1 package policy — "
+        r"'pp-o' \('tcp-pp-o'\) in space 'ops' on agent policy 'po' \(2 agents\) — .*"
+        r"delete_package_policy \(an agent or package policy in another space is changed in "
+        r"that space: .*\), or pass force=True")):
+        gw.uninstall_package(name="tcp")
+    assert calls == [] and spaced == [None, "ops", "ops"]  # its agent policy read in 'ops'
+
+
+def test_uninstall_package_force_reports_another_space_package_policy_as_deleted():
+    calls = []
+    gw = _ugw(fleet_epm=_epm(dict(_INSTALLED_TCP), calls),
+              migration_status="success", spaces=("default", "ops"),
+              fleet_policies=_spaced_policies_ns(_OPS_TCP))
+    r = gw.uninstall_package(name="tcp", force=True)
+    assert calls == [("uninstall", {"pkg_name": "tcp", "force": True})]
+    assert [pp.id for pp in r.deleted_package_policies] == ["pp-o"]
+
+
+def test_uninstall_package_counts_a_package_policy_the_calling_space_lists_as_its_own():
+    # One shared into both spaces is listed by both: deleted by the uninstall here.
+    calls = []
+    shared = _pp("pp-s", "tcp", ["p1"])
+    aps = {"p1": {"id": "p1", "agents": 1}}
+    by_space = {"default": ([shared], aps), "ops": ([shared], aps)}
+    gw = _ugw(fleet_epm=_epm(dict(_INSTALLED_TCP), calls),
+              migration_status="success", spaces=("default", "ops"),
+              fleet_policies=_spaced_policies_ns(by_space))
+    r = gw.uninstall_package(name="tcp", force=True)
+    assert calls == [("uninstall", {"pkg_name": "tcp", "force": True})]
+    assert [pp.id for pp in r.deleted_package_policies] == ["pp-s"]
+
+
+def test_uninstall_package_guards_fleet_server_in_another_space_reading_its_agent_policy_there():
+    calls, spaced = [], []
+    by_space = {"default": ([], {}),
+                "ops": ([_pp("pp-fo", "fleet_server", ["fso"])], {"fso": {"id": "fso"}})}
+    gw = _ugw(fleet_epm=_epm({**_INSTALLED_TCP, "name": "fleet_server"}, calls),
+              migration_status="success", spaces=("default", "ops"),
+              fleet_policies=_spaced_policies_ns(by_space, spaced))
+    with pytest.raises(KibanaRejected, match=(
+        r"its package policy 'pp-fo' in space 'ops' is on agent policy 'fso', which is a "
+        r"Fleet Server policy .*regardless of force")):
+        gw.uninstall_package(name="fleet_server", force=True)
+    assert calls == [] and spaced == [None, "ops", "ops"]
+
+
+def test_uninstall_package_on_a_pinned_url_refuses_when_other_spaces_exist():
+    calls = []
+    gw = _ugw(fleet_epm=_epm(dict(_INSTALLED_TCP), calls), migration_status="success",
+              spaces=("default", "ops"), pinned_space="ops",
+              fleet_policies=_policies_ns([], {}))
+    with pytest.raises(KibanaRejected, match=(
+        r"^refusing to uninstall integration package 'tcp': Fleet space awareness is on, .*"
+        r"KIBANA_URL pins space 'ops', so this server cannot read space 'default' to check "
+        r"them\. Uninstall it with a KIBANA_URL without '/s/<space>'")):
+        gw.uninstall_package(name="tcp")
+    assert calls == []
+
+
+def test_uninstall_package_on_a_pinned_url_proceeds_when_it_is_the_only_space():
+    calls = []
+    gw = _ugw(fleet_epm=_epm(dict(_INSTALLED_TCP), calls), migration_status="success",
+              spaces=("ops",), pinned_space="ops", fleet_policies=_policies_ns([], {}))
+    gw.uninstall_package(name="tcp")
+    assert calls == [("uninstall", {"pkg_name": "tcp", "force": None})]

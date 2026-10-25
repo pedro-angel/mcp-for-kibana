@@ -1018,7 +1018,22 @@ this ledger stands without them.
   removed the monitoring data streams' index templates and ingest pipelines),
   so it is refused, whatever `force` says, while any agent policy has
   `monitoring_enabled`, naming them and `update_agent_policy
-  monitoring_enabled=[]`. `include_cpu_metrics` sends
+  monitoring_enabled=[]`. A `fleet_server` package policy on no agent policy
+  is guarded too, so every `fleet_server` package policy refuses the
+  uninstall. **Fleet space awareness (B7 review 2):** the dev stack's Fleet
+  settings read `use_space_awareness_migration_status: success`; an agent
+  policy with `monitoring_enabled` and a `tcp` package policy made in a
+  throwaway space were absent from the default space's listings, and
+  Kibana's uninstall from the default space deleted that package policy
+  (forced or not; a GET by id after it answered 404 — a listing read right
+  after still showed it, which first read as "kept"). So with the status set
+  the uninstall reads the agent and package policies of every space (the
+  spaces listing; each other space's read with its `space_id`, an agent
+  policy in its own space), names a policy's space in each refusal, and
+  for a policy in another space says it is changed there (the toolbox has no
+  `space` parameter); a space-pinned `KIBANA_URL` refuses while another
+  space exists, since it cannot read one (fail closed), and a key that cannot
+  read a space fails the call. `include_cpu_metrics` sends
   `additional_metrics=["CPU"]`, the only value Kibana accepts (400 "expected
   value to equal [CPU]"); that bundle took ~66 s and the agent takes one
   diagnostics request a minute (a second ended `FAILED` "rate limit

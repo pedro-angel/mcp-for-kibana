@@ -1802,8 +1802,8 @@ class FakeGateway:
             why = guard_reason(name, is_managed=ap.is_managed, is_default_fleet_server=(
                 ap.id in self.fleet_default_fleet_server_policy_ids))
             if why is not None:
-                guarded.append((pp.id, ap.id, why))
-            listed.append((pp.id, pp.name, ap.id, ap.agent_count))
+                guarded.append((pp.id, ap.id, why, ""))
+            listed.append((pp.id, pp.name, ap.id, ap.agent_count, ""))
         if guarded:
             raise KibanaRejected(guarded_policy_refusal(name, guarded))
         if pps and not force:
