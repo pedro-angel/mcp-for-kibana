@@ -1438,6 +1438,30 @@ this ledger stands without them.
   9.5.4 ...)`; with the pin doctored to 9.4.7, and in CI mode with a 9.4.7
   matrix version, the same NO-GO; on the real tree `GO e2e_replay_green
   (Kibana 9.5.4)`. Extends D30.
+- **D54 (2026-10-25)** — `changelog_entry` is diff-based. The DoD gate and a
+  `checks.yml` step on pull requests run `scripts/checks/changelog-entry.sh`:
+  the change is every path that differs from the base — `git merge-base HEAD
+  origin/main`, else the latest `v*` tag — in the working tree, plus untracked
+  files that are not ignored. If any of them is outside the exemption list
+  (`scripts/experiment/runs/` run records, `docs/plans/`, a `uv.lock`-only
+  bump), CHANGELOG.md must gain a non-blank line under `## [Unreleased]`, or
+  under a `## [x.y.z]` section the same change adds (a release cut moves entries
+  there). A line added under an older release, or above the first section, does
+  not count. With neither `origin/main` nor a `v*` tag the check is NO-GO naming
+  `git fetch origin main`; a shallow clone without the merge-base names `git
+  fetch --unshallow origin main`; a missing entry names `add an entry under ##
+  [Unreleased] in CHANGELOG.md` and lists up to five of the paths. The GO line
+  names the base. The CI step fetches `main` itself and skips Dependabot PRs
+  (trusted bumps, as in the commit-msg step); the `.github/dod/*.config` tiers
+  keep the criterion `n/a` because `checks.yml` runs it. Why: the criterion
+  grepped for a `## [Unreleased]` or release heading, and CHANGELOG.md always
+  has one, so it read GO on every tree while `dod.config` said it "refuses any
+  completion claim that leaves the changelog untouched"; 10 of the last 60
+  non-merge commits before the review did not touch CHANGELOG.md (chores, a
+  test-timing fix, Dependabot bumps). Evidence (2026-10-25): on a code change
+  with no entry the old gate printed `GO    changelog_entry` and the new one
+  NO-GO naming the fix; on the real tree GO (the H2 commit message has the
+  lines).
 
 ## Scope and licensing (probed on Basic)
 

@@ -262,6 +262,15 @@ version section.
   checks `scripts/cloud-setup.sh`'s fallback version, and the study notes
   (`WRAP_UP.md`, `LOCAL_STUDY.md`) say the 9.5.5 study stack is outside the
   supported set.
+- **The DoD's `changelog_entry` checks that this change added an entry**
+  (D54). It used to check only that CHANGELOG.md had a `## [Unreleased]`
+  heading, which it always has, so it read GO on every tree. Now
+  `scripts/checks/changelog-entry.sh` diffs the tree (untracked files included)
+  against the merge-base with `origin/main` (fallback: the latest `v*` tag) and,
+  when anything outside `scripts/experiment/runs/`, `docs/plans/` and `uv.lock`
+  changed, requires a line added under `## [Unreleased]`; otherwise NO-GO
+  naming the fix. Without a base it fails closed naming `git fetch origin
+  main`. `checks.yml` runs the same script on every non-Dependabot PR.
 
 ### Fixed
 

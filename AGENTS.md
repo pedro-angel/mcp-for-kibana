@@ -54,7 +54,10 @@ GO line names the version it certified.
 
 - **The DoD gate certifies completion, not you.** No completion or release
   claim without `VERDICT: GO` at that exact tree; every change carries a
-  CHANGELOG entry.
+  CHANGELOG entry — `changelog_entry` (and a `checks.yml` step on PRs) requires
+  a line added under `## [Unreleased]` when anything outside
+  `scripts/experiment/runs/`, `docs/plans/` and `uv.lock` changed since the
+  merge-base with `origin/main` (run `git fetch origin main` first; D54).
 - **Never bypass hooks** (`--no-verify` is prohibited); commits are
   Conventional Commits with a provenance trailer (hooks enforce both).
 - **Additive is default-off**; error text must name the fix; specs are

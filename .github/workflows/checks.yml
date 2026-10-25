@@ -36,6 +36,16 @@ jobs:
       # .pre-commit-config.yaml and never execute — coverage that is not.
       - name: pin comments match their SHAs
         run: pre-commit run check-pin-comments-match --hook-stage manual --all-files
+      # The DoD's changelog_entry check (D54), the same script `make dod` runs: a PR that
+      # changes anything outside its exemption list must add a line under
+      # `## [Unreleased]` in CHANGELOG.md. Dependabot PRs are exempt (trusted,
+      # machine-generated bumps, as in the commit-msg step below); a human adds the
+      # entry when a bump matters to users (a CVE fix).
+      - name: changelog entry (PR, D54)
+        if: github.event_name == 'pull_request' && github.event.pull_request.user.login != 'dependabot[bot]'
+        run: |
+          git fetch --no-tags origin main:refs/remotes/origin/main
+          sh scripts/checks/changelog-entry.sh
       # `--all-files` does not exercise commit-msg hooks, so lint each commit in the PR range.
       - name: commit-msg checks (PR range)
         if: github.event_name == 'pull_request'

@@ -268,10 +268,15 @@ if req fleet_ephemeral; then
 fi
 
 if req changelog_entry; then
-  if [ -f CHANGELOG.md ] && grep -qiE '^## (\[?unreleased|\[?[0-9]+\.[0-9]+\.[0-9]+)' CHANGELOG.md; then
-    echo "  GO    changelog_entry"
+  # Diff-based (D54): every path changed since `git merge-base HEAD origin/main`
+  # (fallback: the latest v* tag), untracked files included, outside a short
+  # exemption list needs a line added under `## [Unreleased]`. Without a base the
+  # check fails closed naming `git fetch origin main`. checks.yml runs the same
+  # script on every PR, so the rule is not only local.
+  if changelog_reason=$(scripts/checks/changelog-entry.sh 2>"$logdir/changelog_entry.log"); then
+    echo "  GO    changelog_entry  ($changelog_reason)"
   else
-    echo "  NO-GO changelog_entry  (CHANGELOG.md missing or has no release section)"
+    echo "  NO-GO changelog_entry  (${changelog_reason:-the changelog check crashed; log: $logdir/changelog_entry.log})"
     nogo=1
   fi
 fi
