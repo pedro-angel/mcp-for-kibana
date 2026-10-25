@@ -734,7 +734,13 @@ Notes on `find_saved_objects` and `get_saved_object`:
   `dashboard`, `event-annotation-group`, `graph-workspace`,
   `index-pattern`, `lens`, `links`, `map`, `query`, `search`, `tag` and
   `visualization`, and refuses any other type before calling Kibana, naming
-  `find_saved_objects`, the type's own tools and `export_saved_objects`.
+  only ways forward that work for that type: `list_outputs` for
+  `ingest-outputs`, `list_connectors`/`list_alert_rules` for the hidden
+  `action`/`alert` (which `find_saved_objects` answers with an empty page),
+  `list_synthetic_params` for `synthetics-param`, and for `fleet-proxy` that
+  no tool reads it. Kibana refuses to export Fleet's and Synthetics' types
+  (400 "Trying to export non-exportable type(s)"), so `export_saved_objects`
+  is offered only for other types, and only if Kibana exports them.
   Kibana strips only the attributes a plugin registers as encrypted, and
   some types it serves keep credentials in plain ones: on 9.5.4
   `fleet-proxy` stores `certificate_key` and `proxy_headers`, and

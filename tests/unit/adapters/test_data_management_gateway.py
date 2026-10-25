@@ -922,7 +922,10 @@ def test_get_saved_object_refuses_a_type_outside_the_allowlist_before_kibana(typ
     with pytest.raises(KibanaRejected) as exc:
         gw.get_saved_object(type_, "x")
     assert f"does not read '{type_}' objects" in exc.value.message
-    assert "find_saved_objects lists any type" in exc.value.message
+    # The per-type ways forward are the core's (tests/unit/toolboxes).
+    from kibana_mcp.core.saved_objects import unreadable_type_message
+
+    assert exc.value.message == unreadable_type_message(type_)
 
 
 def test_get_saved_object_blank_type_or_id_is_rejected_before_kibana():

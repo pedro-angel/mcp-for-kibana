@@ -2824,7 +2824,8 @@ async def test_find_and_get_saved_objects_live(gateway, tmp_path):
     # reference to no object and a word only in its description find nothing; a
     # hidden type answers an empty page; get reads analytics content only, so
     # Fleet's output (plain config_yaml / service_token attributes on 9.5.4) and
-    # proxy types are refused before Kibana is called.
+    # proxy types are refused before Kibana is called, naming only ways forward
+    # that work for each type.
     flights_id = _flights_view_id(gateway)
     with _raw_kibana() as raw:
         outputs = raw.saved_objects.find(type="ingest-outputs", fields=["name"]).body
@@ -2852,7 +2853,7 @@ async def test_find_and_get_saved_objects_live(gateway, tmp_path):
             "type": "index-pattern", "id": flights_id})).data
         refused = {}
         for type_, id_ in [("ingest-outputs", o["id"]) for o in outputs["saved_objects"]] + [
-            ("fleet-proxy", "x"), ("synthetics-param", "x"), ("action", "x"),
+            ("fleet-proxy", "x"), ("synthetics-param", "x"), ("action", "x"), ("alert", "x"),
         ]:
             with pytest.raises(ToolError) as exc:
                 await client.call_tool("get_saved_object", {"type": type_, "id": id_})
@@ -2882,9 +2883,21 @@ async def test_find_and_get_saved_objects_live(gateway, tmp_path):
     assert len(got["references"]) == len({(r["type"], r["id"]) for r in got["references"]})
     assert view["attributes"]["title"] == FLIGHTS
     assert outputs["total"] >= 1  # the stack's default Fleet output exists, and is refused
-    assert set(refused) == {"ingest-outputs", "fleet-proxy", "synthetics-param", "action"}
+    assert set(refused) == {"ingest-outputs", "fleet-proxy", "synthetics-param", "action", "alert"}
     for type_, message in refused.items():
         assert f"does not read '{type_}' objects" in message
         assert "config_yaml" not in message and "service_token" not in message
+        # The refusal names only ways that work for the type: export only where
+        # Kibana exports it (it 400s Fleet's and Synthetics' types), find only
+        # where the type is not hidden (find answers action/alert an empty page).
+        if "export_saved_objects" in message:
+            gateway.export_saved_objects([type_], None, False)
+    for type_ in ("ingest-outputs", "fleet-proxy", "synthetics-param"):
+        assert "export_saved_objects" not in refused[type_]
+        with pytest.raises(KibanaRejected):  # 400 "Trying to export non-exportable type(s)"
+            gateway.export_saved_objects([type_], None, False)
+    assert "find_saved_objects" not in refused["action"] + refused["alert"]
+    assert "list_outputs" in refused["ingest-outputs"]
+    assert "no tool reads" in refused["fleet-proxy"]
     assert elsewhere["total"] == 0 and "space" in elsewhere
     assert str(scoped_miss.value).endswith(f" (in space '{space_id}')")

@@ -705,7 +705,16 @@ this ledger stands without them.
   fixed allowlist of analytics content types (`READABLE_TYPES`) and refuses
   every other type, hidden ones included, before calling Kibana (review
   fix: the fleet contract's field-allowlist rule, applied per type here;
-  a denylist would miss the next plugin's type). Without `search_fields`
+  a denylist would miss the next plugin's type). The refusal names
+  only ways forward that work for the type (review fix: it named find,
+  "the type's own tools" and export for every type, but the export route
+  400s Fleet's and Synthetics' types, "Trying to export non-exportable
+  type(s): ingest-outputs" and `fleet-proxy`/`synthetics-param` likewise,
+  probed, find answers hidden `action`/`alert` an empty page, and no tool
+  reads `fleet-proxy`): `list_outputs`, `list_connectors`,
+  `list_alert_rules`, `list_synthetic_params`, agent/package-policy tools,
+  or "no tool reads" per known type, and for any other type find and export
+  each with the condition under which it holds. Without `search_fields`
   the find matches `search` against every attribute (`JetBeats`, only in
   the flights dashboard's description, found it), so it sends
   `search_fields=[title, name]`, the attributes a hit shows (review fix:

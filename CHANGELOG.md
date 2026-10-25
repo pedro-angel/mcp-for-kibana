@@ -41,7 +41,11 @@ version section.
   (`omitted_attributes`) and its distinct references; it refuses every other
   type before calling Kibana, because Kibana strips only registered encrypted
   attributes and Fleet's proxy and output objects keep certificate keys,
-  proxy headers, `config_yaml` and service tokens in plain ones. The `read-only-explorer` and `dashboards-analyst` profiles and
+  proxy headers, `config_yaml` and service tokens in plain ones; the refusal
+  names only what works for the type (`list_outputs` for Fleet outputs,
+  `list_connectors`/`list_alert_rules` for connectors and rules, no tool for
+  Fleet proxies), never an export Kibana refuses or a find that answers a
+  hidden type empty. The `read-only-explorer` and `dashboards-analyst` profiles and
   built-in lists grow to 14 and 26 tools. Decision D48.
 - **Observability: create, replace and delete APM agent configurations**
   (one `write` and one `destructive` tool, 162 tools in all).

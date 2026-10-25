@@ -646,6 +646,32 @@ async def test_get_saved_object_refuses_a_type_outside_the_allowlist_before_the_
     assert calls == []
 
 
+@pytest.mark.parametrize(("type_", "named", "not_named"), [
+    ("ingest-outputs", "list_outputs", "export_saved_objects"),
+    ("fleet-proxy", "no tool reads", "export_saved_objects"),
+    ("synthetics-param", "list_synthetic_params", "export_saved_objects"),
+    ("action", "list_connectors", "find_saved_objects"),
+    ("alert", "list_alert_rules", "find_saved_objects"),
+])
+def test_unreadable_type_message_names_only_ways_that_work_for_the_type(
+    type_, named, not_named
+):
+    # Kibana 400s an export of Fleet's and Synthetics' types and answers find an
+    # empty page for hidden ones (probed on 9.5.4), so neither is offered there.
+    from kibana_mcp.core.saved_objects import unreadable_type_message
+
+    message = unreadable_type_message(type_)
+    assert named in message and not_named not in message
+
+
+def test_unreadable_type_message_states_when_find_and_export_apply_to_another_type():
+    from kibana_mcp.core.saved_objects import unreadable_type_message
+
+    message = unreadable_type_message("some-plugin-type")
+    assert "unless the type is hidden" in message
+    assert "if Kibana exports the type" in message
+
+
 async def test_get_saved_object_description_lists_every_readable_type(mcp):
     import re
 

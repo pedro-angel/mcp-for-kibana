@@ -1,6 +1,6 @@
 # data-management — behavior contract
 
-Status: Draft v1.4 (2026-10-25) — regeneration corpus, reconciled to shipped code
+Status: Draft v1.5 (2026-10-25) — regeneration corpus, reconciled to shipped code
 Surface reference: docs/tools.md#data-management-toolbox · Enforcement: named per section below
 
 ## Purpose & persona
@@ -168,7 +168,9 @@ and docs/tools.md#saved-objects-exportimport-data-management.
   (`core/saved_objects.py` `READABLE_TYPES`: dashboards, Lens and legacy
   visualizations, saved searches, data views, maps, tags, saved queries,
   Canvas, Graph, links and annotation groups) and refuses any other type
-  before calling Kibana: Kibana strips only attributes registered as
+  before calling Kibana, naming only ways forward that work for that type
+  (`_UNREADABLE_WAYS`: no export for Fleet's and Synthetics' types, which
+  Kibana does not export; no find for hidden ones): Kibana strips only attributes registered as
   encrypted, and Fleet's `fleet-proxy` and `ingest-outputs` keep
   certificate keys, proxy headers, `config_yaml` and service tokens in
   plain attributes (the fleet contract's field-allowlist rule). It leaves out
