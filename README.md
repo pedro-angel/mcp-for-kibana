@@ -37,7 +37,7 @@ surfaces are not worth duplicating here.
 
 ## Status
 
-**v0.4.0 + unreleased — 10 toolboxes, 177 tools, live-tested.** The server exposes 177 tools
+**v0.4.0 + unreleased — 10 toolboxes, 183 tools, live-tested.** The server exposes 183 tools
 across 10 composable toolboxes (dashboards, data management, alerting, cases,
 security detections, fleet, streams, observability, platform admin, and platform
 health), each classified read / write / destructive and contract-tested against
@@ -59,7 +59,7 @@ tool-call markers about one run in three.
 ## What it does
 
 Lets an LLM work with Kibana through a small, reliable, purpose-built tool surface
-instead of ~610 raw endpoints — 177 tools grouped into 10 composable toolboxes you
+instead of ~610 raw endpoints — 183 tools grouped into 10 composable toolboxes you
 enable per deployment. The flagship **dashboards** toolbox lets a user describe the
 chart they want, and the server translates a simple declarative spec into real
 Kibana Lens visualizations and dashboards via the modern Dashboards API (Kibana
@@ -129,8 +129,8 @@ for running the HTTP server.
 
 ## Tool reference
 
-**177 tools across 10 toolboxes**, each tool classified by tier — read / write /
-destructive (72 / 67 / 38). Enable toolboxes per deployment with
+**183 tools across 10 toolboxes**, each tool classified by tier — read / write /
+destructive (74 / 70 / 39). Enable toolboxes per deployment with
 `KIBANA_MCP_TOOLBOXES`; cap the tier with `KIBANA_MCP_TIER`. A tool above the cap
 is not merely denied at call time — it never appears in the tool list (registered,
 then hidden via FastMCP's visibility API).
@@ -142,7 +142,7 @@ then hidden via FastMCP's visibility API).
 | `alerting` | 22 | Alerting rules and connectors: create, edit, mute, snooze. |
 | `cases` | 6 | Kibana Cases: create, comment, update status. |
 | `security-detections` | 30 | Detection rules, exception lists (incl. copy, export, import), value lists. |
-| `fleet` | 35 | Fleet agents, agent/package policies, outputs, enrollment. |
+| `fleet` | 41 | Fleet agents (tags, diagnostics), agent/package policies, integrations (install, uninstall), outputs, enrollment. |
 | `streams` | 12 | Streams list / summary / ingest config + processing (Tech Preview). |
 | `observability` | 22 | Synthetics monitors, parameters and private locations (read, create, edit, run, delete), Uptime settings, APM agent config (read, create or replace, delete) (no SLOs — Platinum-gated, out of scope). |
 | `platform-admin` | 14 | Spaces, roles, upgrade readiness, saved objects between spaces (copy, share). |

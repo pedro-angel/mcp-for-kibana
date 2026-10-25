@@ -1,13 +1,14 @@
 # fleet — behavior contract
 
-Status: Draft v1.1 (2026-10-25) — regeneration corpus, reconciled to shipped code
+Status: Draft v1.2 (2026-10-25) — regeneration corpus, reconciled to shipped code
 Surface reference: docs/tools.md#fleet-toolbox · Enforcement: named per section below
 
 ## Purpose & persona
 
 Read, configure, and operate Fleet — the Elastic Agent fleet, agent and
-integration (package) policies, enrolled agents, integrations (EPM), and
-outputs — all GA on a Basic license. Serves the `fleet-admin` profile's sole
+integration (package) policies, enrolled agents (their tags and diagnostics
+bundles), integrations (EPM, installed and uninstalled), and outputs — all GA
+on a Basic license. Serves the `fleet-admin` profile's sole
 persona: a platform/fleet admin managing agent and integration state at
 scale, running this toolbox alone at the `destructive` tier because the job
 routinely reassigns, upgrades, and unenrolls live agents. No other shipped
@@ -15,18 +16,24 @@ profile enables this toolbox.
 
 ## Surface
 
-Thirty-five tools: 20 `read`, 6 `write`, 9 `destructive`. Full per-tool
-listing: docs/tools.md#fleet-toolbox. At the default `write` tier the nine
+Forty-one tools: 22 `read`, 9 `write`, 10 `destructive`. Full per-tool
+listing: docs/tools.md#fleet-toolbox. At the default `write` tier the ten
 `destructive` tools are registered internally but hidden from the
-advertised tool list. Every tool that commands a running enrolled agent
-(`reassign_agent`, `upgrade_agent`, `unenroll_agent`, their bulk
+advertised tool list. Every tool that changes what a running enrolled agent
+does (`reassign_agent`, `upgrade_agent`, `unenroll_agent`, their bulk
 equivalents) sits at `destructive` tier, not `write`, even though none
 deletes a Kibana object — changing what a live agent collects/ships,
 swapping its binary, or unenrolling it is destructive to infrastructure, not
-to a saved object. Annotations follow docs/tools.md#tiers-and-annotations
+to a saved object. `request_agent_diagnostics` sends a live agent an action
+too, but sits at `write`: the agent collects and uploads a bundle and nothing
+it collects or ships changes (D51). `uninstall_package` is `destructive`
+because Kibana deletes the package's package policies with it.
+Annotations follow docs/tools.md#tiers-and-annotations
 (`read`→`readOnlyHint=True`; `write`→`destructiveHint=False,
-idempotentHint=False`; `destructive`→`destructiveHint=True,
-idempotentHint=True`; all three→`openWorldHint=False`).
+idempotentHint=False`, except `install_package` and `update_agent_tags`,
+whose repeat leaves the same state (`idempotentHint=True`);
+`destructive`→`destructiveHint=True, idempotentHint=True`; all
+three→`openWorldHint=False`).
 
 ## Behavioral guarantees
 
@@ -71,6 +78,43 @@ supports is never exposed. The empty-list and missing-confirm checks run
 before the gateway is even acquired, one layer earlier than the
 reserved/default guards above.
 
+**Agent tags are edited on explicit ids, read before and after (D51).**
+`update_agent_tags` takes 1–100 agent ids (never a kuery) and at least one tag
+to add or remove, none in both lists; the empty, overlapping and oversized
+cases are refused before the gateway is acquired. It reads every agent first
+and refuses the call when an id names no agent — Kibana answers 200 and skips
+it (probed) — then reads each agent back after the call (Kibana applies an
+id-list update before it answers, probed): the result's `previous_tags` and
+`tags` are the change, and an agent the update did not reach is in
+`not_applied_agent_ids`. Tags are Fleet-side labels (an offline agent was
+tagged at once), so no agent policy or data changes.
+
+**Diagnostics are requested, then watched; the bundle never reaches the
+model (D51).** `request_agent_diagnostics` reads the agent (status, and a
+not-found naming `list_agents`) and returns Kibana's `action_id` once it
+accepts the request; `list_agent_diagnostics` reports each bundle's status and
+`action_id`, never its download path or content (the bundle holds the agent's
+logs and configuration; it is downloaded in Kibana's UI).
+
+**Package install never changes an installed version; uninstall names what
+it deletes (D51).** `install_package` reads the package first: an unknown name
+names `list_packages`; a package installed at the requested version, or at any
+version when none is given, is returned with `already_installed=true` and
+nothing sent (Kibana's install without a version upgrades it, probed); one
+installed at another version is refused, because the rollback route needs an
+Enterprise license (403 on Basic, probed) and Kibana refuses older versions.
+`uninstall_package` reads the package and every package policy of it: a
+package that is not installed names `list_installed_packages`; a package
+policy on a managed or the default Fleet Server agent policy refuses the call
+regardless of `force` (as `delete_agent_policy` guards those policies); any
+other package policy refuses it unless `force=True`, naming each one with its
+agent policy and agent count, because Kibana deletes them with the package
+(probed: without `force` when no agent uses them, with it otherwise); the
+managed `logs-*`/`metrics-*` data views an install may add to every space are
+kept (probed with `nginx`). The result lists the package policies read before the call; one created between
+that read and the uninstall is deleted unreported (the route has no
+conditional form).
+
 **Agent-lifecycle results are async; return shape differs by arity.**
 Single-agent lifecycle tools return once Kibana *accepts* the command, not
 once the agent applies it (`upgrade_agent` queues an async binary swap on
@@ -80,7 +124,7 @@ object's body.
 
 ## Invariants
 
-- Registers exactly 20 read + 6 write + 9 destructive tools (35 total),
+- Registers exactly 22 read + 9 write + 10 destructive tools (41 total),
   tagged `{"fleet", <tier>}`; `KIBANA_MCP_TIER` hides `write`/`destructive`
   tools from the advertised list, not merely rejects calls to them.
 - No tool in this toolbox accepts or echoes a `space` parameter.
@@ -115,6 +159,17 @@ object's body.
   `list_agent_policies`/`get_agent_policy` report the real assigned
   `agent_count`, never a placeholder zero.
 - No tool exists to mint or revoke an enrollment API key.
+- `update_agent_tags` sends nothing when an agent id names no agent, and
+  returns every agent's tags as read before and after the call;
+  `not_applied_agent_ids` is exactly the agents whose read-back tags lack a
+  tag to add or keep a tag to remove.
+- `install_package` never sends an install for a package that is installed;
+  a different requested version is refused.
+- `uninstall_package` never sends an uninstall when the package has a package
+  policy on a managed or the default Fleet Server agent policy, nor, without
+  `force=True`, when it has any package policy.
+- `list_agent_diagnostics` returns exactly
+  `{id, name, status, created_at, action_id}` per bundle — no download path.
 
 ## Deliberate exclusions & caveats
 
@@ -124,10 +179,11 @@ object's body.
   passed inline leaks into model context; writing it to disk instead breaks
   the HTTP transport mode). Deferred pending a vetted credential-handling
   design, not merely unbuilt.
-- **EPM package install/uninstall are out of scope**, tracked in the
-  unordered Basic-license backlog with package diagnostics/tags/the
-  Kubernetes-manifest endpoint — reachable on the target license, just not
-  yet built.
+- **Package upgrades and rollbacks are out of scope** (D51): an upgrade cannot
+  be undone on Basic (the rollback route answers 403, Enterprise only), so
+  `install_package` installs only a package that is not installed. Uploading a
+  package archive, the Kubernetes-manifest endpoint and downloading a
+  diagnostics bundle are not wrapped (roadmap).
 - **Cloud-only surfaces are out of scope for a different reason**:
   agentless policies, cloud connectors, and proxies exist only on Elastic
   Cloud, outside this project's Basic/self-managed baseline.
@@ -140,17 +196,28 @@ object's body.
   annotation directions, bulk empty/missing-confirm rejection,
   `update_output`'s `confirm` forwarded and excluded from `changes`,
   `update_package_policy` forwards real fields, enrollment-key/
-  uninstall-token allowlists at the tool boundary.
+  uninstall-token allowlists at the tool boundary; the D51 tools' annotations,
+  tag-list checks before the gateway, round trips and refusals.
 - `tests/unit/adapters/test_fleet_gateway.py` — RMW body construction and
   read-only-field stripping; every reserved/default guard raises before
   the mutating call is sent; secret stripping on output create; bulk tools
-  return the action id.
+  return the action id; D51: the tag pre-read, read-back and not-applied
+  report, the diagnostics status read and CPU option, the install's
+  installed-version and unknown name/version/out-of-date paths, the
+  uninstall's package-policy and guarded-policy refusals (nothing sent).
+  `tests/unit/test_fleet_ops_core.py` pins the shared guidance text.
 - `tests/contract/test_fleet_contract.py` — a dedicated fleet suite,
   distinct from `tests/contract/test_gateway_contract.py` (different
   toolbox set, no fleet cases) — live shape assertions against a real
   Kibana with an always-on Fleet Server and demo agent: secret redaction
   verified live, CRUD round-trips, default-policy/default-output refusal
-  tests assert the guarded object survives.
+  tests assert the guarded object survives. D51: a tag added to and removed
+  from the demo agent (and Kibana's 200 for an unknown id), a diagnostics
+  bundle uploaded to READY then deleted, `tcp` installed, refused at another
+  version (and the rollback route's 403), refused for uninstall while a
+  package policy exists, uninstalled with `force` (its package policy gone),
+  Kibana's own deletion of a package policy on a plain uninstall, and
+  `fleet_server`'s uninstall refused without force.
 - `tests/ephemeral/test_fleet_ephemeral.py`, gated by the required
   `fleet_ephemeral` Definition-of-Done criterion (`dod.config`) — the only
   tier exercising `reassign_agent`/`upgrade_agent`/`unenroll_agent` and

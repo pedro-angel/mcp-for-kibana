@@ -120,6 +120,13 @@ DEPENDENCIES: Mapping[str, tuple[str, ...]] = MappingProxyType({
     "create_package_policy": ("get_package",),
     "update_package_policy": ("get_package",),
     "upgrade_agent": ("list_agent_versions",),
+    # (fleet advanced ops, D51: an unknown agent id names list_agents, an unknown
+    # package list_packages, a package that is not installed list_installed_packages)
+    "update_agent_tags": ("list_agents",),
+    "request_agent_diagnostics": ("list_agents",),
+    "list_agent_diagnostics": ("list_agents",),
+    "install_package": ("list_packages",),
+    "uninstall_package": ("list_installed_packages",),
 })
 
 LIST_FILE_VERSION = 1

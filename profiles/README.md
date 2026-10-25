@@ -70,9 +70,10 @@ mixing with tools from other toolboxes. This is the project's MVP default.
 `destructive` only if you want the model to delete dashboards, panels or library
 visualizations.)*
 
-### [`fleet-admin.mcp.json`](./fleet-admin.mcp.json) — 35 tools · `destructive`
-Administer the Elastic Agent fleet: agents, agent + integration policies, enrolled
-integrations (EPM), enrollment keys (metadata only), outputs, and full CRUD on
+### [`fleet-admin.mcp.json`](./fleet-admin.mcp.json) — 41 tools · `destructive`
+Administer the Elastic Agent fleet: agents (with their tags and diagnostics
+bundles), agent + integration policies, integrations (EPM, with install and
+uninstall), enrollment keys (metadata only), outputs, and full CRUD on
 policies and outputs. Toolbox: `fleet` (read + write + destructive). *Persona:*
 a platform/fleet admin managing agent and integration state at scale.
 *(Enrollment-key and output secrets are never returned.)*

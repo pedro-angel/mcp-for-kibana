@@ -22,7 +22,8 @@ a user describes a chart, the server translates a declarative spec into real
 Kibana Lens visualizations and dashboards. Around it: data management
 (data views and their runtime fields, saved objects),
 alerting, cases, security detections (rules, exception lists and their
-copies, value lists), fleet, streams, observability
+copies, value lists), fleet (agents and their tags and diagnostics,
+policies, integration install and uninstall, outputs), streams, observability
 (Synthetics monitoring, APM agent configuration), platform admin (spaces,
 roles, saved objects between spaces) and platform health.
 

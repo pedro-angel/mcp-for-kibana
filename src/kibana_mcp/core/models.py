@@ -699,6 +699,7 @@ class FleetAgent:
     enrolled_at: str
     last_checkin: str | None
     last_checkin_status: str | None
+    tags: tuple[str, ...] = ()  # Fleet-side labels (D51); () when none
 
 
 @dataclass(frozen=True, slots=True)
@@ -816,3 +817,59 @@ class FleetSettings:
 class FleetPermissions:
     # /api/fleet/check_permissions: whether the current key can operate Fleet.
     success: bool
+
+
+# --- fleet advanced ops (D51): agent tags, diagnostics, package install/uninstall ---
+
+
+@dataclass(frozen=True, slots=True)
+class FleetAgentTagChange:
+    # One agent of an update_agent_tags call: its tags read before the call and
+    # read back after it, so passing the difference back undoes the change.
+    agent_id: str
+    previous_tags: tuple[str, ...]
+    tags: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class FleetAgentTagsResult:
+    action_id: str
+    agents: tuple[FleetAgentTagChange, ...]
+    # Agents whose read-back tags lack a tag to add or keep a tag to remove:
+    # Kibana answered 200 but did not apply the change to them.
+    not_applied_agent_ids: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class FleetDiagnosticsRequest:
+    action_id: str
+    agent_id: str
+    agent_status: str  # the agent's status when asked; an offline agent runs it at check-in
+
+
+@dataclass(frozen=True, slots=True)
+class FleetAgentDiagnostics:
+    # One diagnostics bundle an agent uploaded (GET /api/fleet/agents/{id}/uploads):
+    # metadata only — the bundle itself is downloaded from Kibana's UI.
+    id: str
+    name: str
+    status: str  # 'AWAITING_UPLOAD' | 'IN_PROGRESS' | 'READY' | 'FAILED' | 'EXPIRED' | ...
+    created_at: str
+    action_id: str
+
+
+@dataclass(frozen=True, slots=True)
+class FleetPackageInstall:
+    name: str
+    version: str  # the installed version, read back after the call
+    status: str
+    already_installed: bool  # True: it was installed at that version; nothing was sent
+
+
+@dataclass(frozen=True, slots=True)
+class FleetPackageUninstall:
+    name: str
+    version: str  # the version that was installed
+    # Package policies of the package, read before the call: Kibana deletes them
+    # with it (probed on 9.5.4), so this is what the uninstall removed.
+    deleted_package_policies: tuple[FleetPackagePolicy, ...]

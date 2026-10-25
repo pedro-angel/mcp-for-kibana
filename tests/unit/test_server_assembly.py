@@ -239,14 +239,16 @@ FLEET_READ = {
     "list_enrollment_keys", "get_enrollment_key", "list_uninstall_tokens",
     "list_packages", "list_installed_packages", "get_package", "list_package_categories",
     "list_outputs", "get_output_health", "list_fleet_server_hosts",
+    "list_agent_tags", "list_agent_diagnostics",
 }
 FLEET_WRITE = {
     "create_agent_policy", "update_agent_policy",
     "create_package_policy", "update_package_policy",
     "create_output", "update_output",
+    "install_package", "update_agent_tags", "request_agent_diagnostics",
 }
 FLEET_DESTRUCTIVE = {
-    "delete_agent_policy", "delete_package_policy", "delete_output",
+    "delete_agent_policy", "delete_package_policy", "delete_output", "uninstall_package",
     "reassign_agent", "upgrade_agent", "unenroll_agent",
     "bulk_reassign", "bulk_upgrade", "bulk_unenroll",
 }
@@ -257,12 +259,12 @@ async def test_fleet_toolbox_boots_all_tiers():
     # destructive tools (which command live agents or delete objects) must be
     # HIDDEN (not merely registered) below the destructive tier.
     reads = await visible_tools(Settings(toolboxes=["fleet"], tier=Tier.READ))
-    assert len(reads) == 20 and reads == FLEET_READ and not (reads & FLEET_DESTRUCTIVE)
+    assert len(reads) == 22 and reads == FLEET_READ and not (reads & FLEET_DESTRUCTIVE)
     writes = await visible_tools(Settings(toolboxes=["fleet"], tier=Tier.WRITE))
     assert FLEET_WRITE <= writes and not (writes & FLEET_DESTRUCTIVE)  # destructive HIDDEN
     assert writes == FLEET_READ | FLEET_WRITE
     dest = await visible_tools(Settings(toolboxes=["fleet"], tier=Tier.DESTRUCTIVE))
-    assert len(dest) == 35 and FLEET_DESTRUCTIVE <= dest
+    assert len(dest) == 41 and FLEET_DESTRUCTIVE <= dest
     assert dest == FLEET_READ | FLEET_WRITE | FLEET_DESTRUCTIVE
 
 

@@ -12,6 +12,27 @@ version section.
 
 ### Added
 
+- **Fleet: agent tags, diagnostics, and integration install and uninstall**
+  (two `read`, three `write` and one `destructive` tool, 183 tools in all).
+  `list_agent_tags` lists the tags set on agents, and `list_agents`/`get_agent`
+  now show each agent's `tags`. `update_agent_tags` adds and removes tags on
+  the exact agent ids given (up to 100, never a query): it refuses an id that
+  names no agent before changing anything (Kibana would skip it silently) and
+  returns each agent's tags before and after, plus any agent Kibana did not
+  update. `request_agent_diagnostics` asks one agent for a diagnostics bundle
+  (optionally with a CPU profile) and returns its status; an offline agent
+  runs it at check-in. `list_agent_diagnostics` shows each bundle's status
+  (`READY` once uploaded), never its content: the bundle is downloaded in
+  Kibana's UI. `install_package` installs an integration that is not
+  installed, at its latest version or the one given; an installed one is left
+  as it is (`already_installed`), and a version change is refused, because an
+  upgrade cannot be undone on a Basic license. `uninstall_package`
+  (`destructive`) removes an integration and the package policies Kibana
+  deletes with it: it refuses a package that has package policies unless
+  `force=True`, naming them, and refuses one with a package policy on a managed
+  or the default Fleet Server agent policy whatever `force` says. Unknown
+  agents, packages and versions are errors that name the tool to look them up
+  with. Decision D51.
 - **Security detections: edit, copy, export and import exception lists**
   (three `write`, one `read` and one `destructive` tool, 177 tools in all;
   every one takes `space`). `update_exception_list` changes a list's name,

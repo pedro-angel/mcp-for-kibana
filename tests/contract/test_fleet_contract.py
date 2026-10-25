@@ -215,3 +215,134 @@ def test_delete_fleet_server_policy_refused_live(gateway):
         gateway.delete_agent_policy(agent_policy_id="fleet-server-policy")
     survivor = gateway.get_agent_policy("fleet-server-policy")
     assert survivor.id == "fleet-server-policy"
+
+
+# --- fleet advanced ops (D51): agent tags, diagnostics, package install/uninstall.
+# Tags go on the demo agent and come off in a `finally`; a diagnostics bundle is
+# deleted after the test; the package is `tcp` (small, no agent needed), left
+# uninstalled; fleet_server is only ever asked WITHOUT force. ---
+
+
+def _demo_agent(gateway):
+    agents = [a for a in gateway.list_agents()
+              if a.policy_id == "fleet-agent-policy" and a.status == "online"]
+    assert agents, "the stack's demo agent is not online — scripts/stack.sh up && seed"
+    return agents[0]
+
+
+def test_agent_tags_live(gateway):
+    agent = _demo_agent(gateway)
+    tag = f"mcp-d51-{uuid.uuid4().hex[:8]}"
+    try:
+        added = gateway.update_agent_tags(agent_ids=[agent.id], tags_to_add=[tag], tags_to_remove=[])
+        (change,) = added.agents
+        assert added.action_id and added.not_applied_agent_ids == ()
+        assert tag not in change.previous_tags and tag in change.tags
+        # Applied before Kibana answers (an id list, not a kuery): readable at once.
+        assert tag in gateway.get_agent(agent.id).tags
+        assert tag in gateway.list_agent_tags()
+        # Premise of the pre-read: Kibana answers 200 for an id that names no agent.
+        raw = gateway._client.fleet_agents.bulk_update_tags(
+            agents=["no-such-agent-00000000"], tags_to_add=[tag]).body
+        assert raw["actionId"]
+        with pytest.raises(KibanaNotFound, match="list_agents"):
+            gateway.update_agent_tags(
+                agent_ids=[agent.id, "no-such-agent-00000000"], tags_to_add=[],
+                tags_to_remove=[tag])
+        assert tag in gateway.get_agent(agent.id).tags  # the refusal changed nothing
+        removed = gateway.update_agent_tags(agent_ids=[agent.id], tags_to_add=[], tags_to_remove=[tag])
+        assert tag in removed.agents[0].previous_tags and tag not in removed.agents[0].tags
+        assert tag not in gateway.list_agent_tags()
+    finally:
+        gateway._client.fleet_agents.bulk_update_tags(agents=[agent.id], tags_to_remove=[tag])
+
+
+def test_agent_diagnostics_live(gateway):
+    import time
+
+    agent = _demo_agent(gateway)
+    req = gateway.request_agent_diagnostics(agent_id=agent.id)
+    assert req.action_id and req.agent_id == agent.id and req.agent_status == "online"
+    bundle = None
+    try:
+        deadline = time.monotonic() + 120
+        while time.monotonic() < deadline:
+            mine = [d for d in gateway.list_agent_diagnostics(agent.id) if d.action_id == req.action_id]
+            if mine and mine[0].status in ("READY", "FAILED"):
+                bundle = mine[0]
+                break
+            time.sleep(3)
+        assert bundle is not None, "the demo agent did not upload the bundle within 120 s"
+        assert bundle.status == "READY" and bundle.name.endswith(".zip") and bundle.created_at
+    finally:
+        for d in gateway.list_agent_diagnostics(agent.id):
+            if d.action_id == req.action_id and d.status == "READY":
+                gateway._client.fleet_agents.delete_file(file_id=d.id)
+    for call in (lambda: gateway.request_agent_diagnostics(agent_id="no-such-agent-00000000"),
+                 lambda: gateway.list_agent_diagnostics("no-such-agent-00000000")):
+        with pytest.raises(KibanaNotFound, match="list_agents"):
+            call()
+
+
+def _ensure_uninstalled(gateway, name):
+    if gateway._client.fleet_epm.get_package(pkg_name=name).body["item"].get("status") == "installed":
+        gateway._client.fleet_epm.uninstall_package(pkg_name=name, force=True)
+
+
+def test_package_install_uninstall_live(gateway):
+    from kibana.exceptions import ApiError
+
+    _ensure_uninstalled(gateway, "tcp")
+    suffix = uuid.uuid4().hex[:8]
+    pol = gateway.create_agent_policy(
+        name=f"mcp-d51-pol-{suffix}", namespace="default", monitoring_enabled=[])
+    try:
+        with pytest.raises(KibanaNotFound, match=r"has no version '99\.0\.0' .*omit version"):
+            gateway.install_package(name="tcp", version="99.0.0")
+        with pytest.raises(KibanaNotFound, match="list_packages"):
+            gateway.install_package(name="no-such-integration-00000000")
+
+        installed = gateway.install_package(name="tcp")
+        latest = gateway._client.fleet_epm.get_package(pkg_name="tcp").body["item"]["latestVersion"]
+        assert (installed.status, installed.version, installed.already_installed) == (
+            "installed", latest, False)
+        assert gateway.install_package(name="tcp").already_installed is True
+        with pytest.raises(KibanaRejected, match="only installs a package that is not installed"):
+            gateway.install_package(name="tcp", version="0.0.1")
+        # Premise of the version refusal: an upgrade cannot be undone on Basic.
+        with pytest.raises(ApiError) as rollback:
+            gateway._client.fleet_epm.rollback_package(pkg_name="tcp")
+        assert rollback.value.meta.status in (403, 404)
+
+        pp = gateway.create_package_policy(
+            name=f"mcp-d51-tcp-{suffix}", package={"name": "tcp", "version": latest},
+            agent_policy_id=pol.id)
+        with pytest.raises(KibanaRejected, match=rf"'{pp.id}' .*on agent policy '{pol.id}' \(0 agents\)"):
+            gateway.uninstall_package(name="tcp")
+        assert gateway.get_package_policy(pp.id).id == pp.id  # the refusal kept it
+        gone = gateway.uninstall_package(name="tcp", force=True)
+        assert [p.id for p in gone.deleted_package_policies] == [pp.id]
+        with pytest.raises(KibanaNotFound):
+            gateway.get_package_policy(pp.id)
+        with pytest.raises(KibanaNotFound, match="list_installed_packages"):
+            gateway.uninstall_package(name="tcp")
+
+        # Premise of the refusal: Kibana itself deletes a package's package
+        # policies on an uninstall without force when no agent uses them.
+        gateway.install_package(name="tcp")
+        pp2 = gateway.create_package_policy(
+            name=f"mcp-d51-tcp2-{suffix}", package={"name": "tcp", "version": latest},
+            agent_policy_id=pol.id)
+        gateway._client.fleet_epm.uninstall_package(pkg_name="tcp")
+        with pytest.raises(KibanaNotFound):
+            gateway.get_package_policy(pp2.id)
+    finally:
+        _ensure_uninstalled(gateway, "tcp")
+        gateway.delete_agent_policy(agent_policy_id=pol.id, force=True)
+
+
+def test_uninstall_fleet_server_package_refused_live(gateway):
+    # Never forced: were the guard to fail, the package-policy refusal still holds.
+    with pytest.raises(KibanaRejected, match=r"the default Fleet Server policy, .*regardless of force"):
+        gateway.uninstall_package(name="fleet_server")
+    assert any(p.name == "fleet_server" for p in gateway.list_installed_packages())

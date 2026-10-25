@@ -64,14 +64,20 @@ from kibana_mcp.core.models import (
     ExceptionListChange,
     ExceptionListImportResult,
     FleetAgent,
+    FleetAgentDiagnostics,
     FleetAgentPolicy,
     FleetAgentStatus,
+    FleetAgentTagChange,
+    FleetAgentTagsResult,
+    FleetDiagnosticsRequest,
     FleetEnrollmentKey,
     FleetOutput,
     FleetOutputHealth,
     FleetPackage,
     FleetPackageCategory,
+    FleetPackageInstall,
     FleetPackagePolicy,
+    FleetPackageUninstall,
     FleetPermissions,
     FleetServerHost,
     FleetSettings,
@@ -114,6 +120,18 @@ from kibana_mcp.core.models import (
     VisualizationSummary,
 )
 from kibana_mcp.core.exception_lists import import_error_text
+from kibana_mcp.core.fleet_ops import (
+    guarded_policy_refusal,
+    installed_version_refusal,
+    missing_agents_message,
+    not_installed_message,
+    outdated_version_message,
+    package_policies_refusal,
+    tags_not_applied,
+    unknown_agent_message,
+    unknown_package_message,
+    unknown_version_message,
+)
 from kibana_mcp.core.saved_objects import READABLE_TYPES, unreadable_type_message
 from kibana_mcp.core.space_sharing import (
     ALL_SPACES,
@@ -1238,6 +1256,19 @@ def _to_fleet_agent(body: dict[str, Any]) -> FleetAgent:
         enrolled_at=body.get("enrolled_at", ""),
         last_checkin=body.get("last_checkin"),
         last_checkin_status=body.get("last_checkin_status"),
+        tags=tuple(body.get("tags") or ()),
+    )
+
+
+def _to_fleet_agent_diagnostics(body: dict[str, Any]) -> FleetAgentDiagnostics:
+    # filePath (a Kibana download route) is left out: the bundle is fetched in
+    # Kibana's UI, never through the model.
+    return FleetAgentDiagnostics(
+        id=body.get("id", ""),
+        name=body.get("name", ""),
+        status=body.get("status", ""),
+        created_at=body.get("createTime", ""),
+        action_id=body.get("actionId", ""),
     )
 
 
@@ -3873,3 +3904,148 @@ class KibanaPyGateway:
         action_id: str = self._client.fleet_agents.bulk_unenroll(
             agents=agent_ids, force=force, revoke=revoke).body["actionId"]
         return action_id
+
+    # --- fleet advanced ops: agent tags, diagnostics, package install/uninstall (D51) ---
+
+    def _read_agent(self, agent_id: str) -> dict[str, Any]:
+        try:
+            item: dict[str, Any] = self._client.fleet_agents.get(agent_id=agent_id).body["item"]
+        except NotFoundError as e:
+            raise KibanaNotFound(unknown_agent_message(agent_id)) from e
+        return item
+
+    @_translate_errors
+    def list_agent_tags(self) -> list[str]:
+        # show_inactive like list_agents: the tags of every agent it lists.
+        return list(self._client.fleet_agents.get_tags(show_inactive=True).body.get("items", []))
+
+    @_translate_errors
+    def update_agent_tags(
+        self, *, agent_ids: list[str], tags_to_add: list[str], tags_to_remove: list[str]
+    ) -> FleetAgentTagsResult:
+        ids = list(dict.fromkeys(agent_ids))
+        before: dict[str, tuple[str, ...]] = {}
+        missing: list[str] = []
+        for agent_id in ids:
+            try:
+                raw = self._client.fleet_agents.get(agent_id=agent_id).body["item"]
+            except NotFoundError:
+                missing.append(agent_id)
+                continue
+            before[agent_id] = tuple(raw.get("tags") or ())
+        if missing:
+            # Kibana answers 200 and skips an unknown id (probed): refuse first.
+            raise KibanaNotFound(missing_agents_message(missing))
+        kwargs: dict[str, Any] = {"agents": ids}
+        if tags_to_add:
+            kwargs["tags_to_add"] = tags_to_add
+        if tags_to_remove:
+            kwargs["tags_to_remove"] = tags_to_remove
+        action_id: str = self._client.fleet_agents.bulk_update_tags(**kwargs).body["actionId"]
+        changes = tuple(
+            FleetAgentTagChange(
+                agent_id=agent_id, previous_tags=before[agent_id],
+                tags=tuple(self._client.fleet_agents.get(
+                    agent_id=agent_id).body["item"].get("tags") or ()),
+            )
+            for agent_id in ids
+        )
+        return FleetAgentTagsResult(
+            action_id=action_id, agents=changes,
+            not_applied_agent_ids=tags_not_applied(changes, tags_to_add, tags_to_remove),
+        )
+
+    @_translate_errors
+    def request_agent_diagnostics(
+        self, *, agent_id: str, include_cpu_metrics: bool = False
+    ) -> FleetDiagnosticsRequest:
+        agent = self._read_agent(agent_id)
+        kwargs: dict[str, Any] = {"agent_id": agent_id}
+        if include_cpu_metrics:
+            kwargs["additional_metrics"] = ["CPU"]  # the only value Kibana accepts (probed)
+        action_id: str = self._client.fleet_agents.request_diagnostics(**kwargs).body["actionId"]
+        return FleetDiagnosticsRequest(
+            action_id=action_id, agent_id=agent_id, agent_status=agent.get("status", ""))
+
+    @_translate_errors
+    def list_agent_diagnostics(self, agent_id: str) -> list[FleetAgentDiagnostics]:
+        try:
+            body = self._client.fleet_agents.get_uploads(agent_id=agent_id).body
+        except NotFoundError as e:
+            raise KibanaNotFound(unknown_agent_message(agent_id)) from e
+        return [_to_fleet_agent_diagnostics(u) for u in body.get("items", [])]
+
+    def _read_package(self, name: str) -> dict[str, Any]:
+        try:
+            item: dict[str, Any] = (
+                self._client.fleet_epm.get_package(pkg_name=name).body.get("item") or {})
+        except NotFoundError as e:
+            raise KibanaNotFound(unknown_package_message(name)) from e
+        if not item:
+            raise KibanaNotFound(unknown_package_message(name))
+        return item
+
+    @_translate_errors
+    def install_package(self, *, name: str, version: str | None = None) -> FleetPackageInstall:
+        item = self._read_package(name)
+        latest = str(item.get("latestVersion") or item.get("version") or "")
+        if item.get("status") == "installed":
+            # item.version is the installed version once installed (probed).
+            installed = str(item.get("version", ""))
+            if version is None or version == installed:
+                return FleetPackageInstall(
+                    name=name, version=installed, status="installed", already_installed=True)
+            raise KibanaRejected(installed_version_refusal(name, installed, version))
+        kwargs: dict[str, Any] = {"pkg_name": name}
+        if version is not None:
+            kwargs["pkg_version"] = version
+        try:
+            self._client.fleet_epm.install_package(**kwargs)
+        except NotFoundError as e:
+            # Only a version can be unknown here: the read found the name.
+            raise KibanaNotFound(unknown_version_message(name, version or "", latest)) from e
+        except BadRequestError as e:
+            if "out-of-date" not in str(e.message):
+                raise
+            raise KibanaRejected(outdated_version_message(name, version or "", latest)) from e
+        after = self._read_package(name)
+        return FleetPackageInstall(
+            name=name, version=str(after.get("version", "")),
+            status=str(after.get("status", "")), already_installed=False)
+
+    @_translate_errors
+    def uninstall_package(self, *, name: str, force: bool = False) -> FleetPackageUninstall:
+        item = self._read_package(name)
+        if item.get("status") != "installed":
+            raise KibanaNotFound(not_installed_message(name))
+        package_policies = [
+            pp for pp in _fleet_all_items(
+                lambda p: self._client.fleet_policies.get_package_policies(page=p, per_page=100).body)
+            if (pp.get("package") or {}).get("name") == name
+        ]
+        listed: list[tuple[str, str, str, int]] = []
+        agent_policies: dict[str, dict[str, Any]] = {}
+        for pp in package_policies:
+            ap_ids = [i for i in (pp.get("policy_ids") or [pp.get("policy_id")]) if i]
+            if not ap_ids:
+                listed.append((pp["id"], pp.get("name", ""), "", 0))
+            for ap_id in ap_ids:
+                if ap_id not in agent_policies:
+                    agent_policies[ap_id] = self._client.fleet_policies.get_agent_policy(
+                        agent_policy_id=ap_id).body["item"]
+                ap = agent_policies[ap_id]
+                # Kibana-owned lifecycles, as delete_agent_policy guards them.
+                if ap.get("is_managed"):
+                    raise KibanaRejected(guarded_policy_refusal(name, pp["id"], ap_id, "managed"))
+                if ap.get("is_default_fleet_server"):
+                    raise KibanaRejected(guarded_policy_refusal(
+                        name, pp["id"], ap_id, "the default Fleet Server policy"))
+                listed.append((pp["id"], pp.get("name", ""), ap_id, int(ap.get("agents") or 0)))
+        if package_policies and not force:
+            raise KibanaRejected(package_policies_refusal(name, listed))
+        # force also lets Kibana delete package policies agents use (400 without it).
+        self._client.fleet_epm.uninstall_package(pkg_name=name, force=(force or None))
+        return FleetPackageUninstall(
+            name=name, version=str(item.get("version", "")),
+            deleted_package_policies=tuple(_to_fleet_package_policy(pp) for pp in package_policies),
+        )

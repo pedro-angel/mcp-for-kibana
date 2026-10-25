@@ -9,7 +9,7 @@ via [`KIBANA_MCP_TOOLS`](configuration.md#tool-selection): **dashboards**,
 **[observability](#observability-toolbox)**,
 **[security-detections](#security-detections-toolbox)**,
 **[platform-admin](#platform-admin-toolbox)**,
-**[streams](#streams-toolbox)**, and **[fleet](#fleet-toolbox)** — 177 tools in
+**[streams](#streams-toolbox)**, and **[fleet](#fleet-toolbox)** — 183 tools in
 all. This reference details every toolbox in full. A drift-guard test
 (`tests/unit/test_docs_tool_reference.py`) asserts that every registered tool
 name appears on this page, so it cannot silently fall behind the code.
@@ -1525,14 +1525,15 @@ Notes:
 
 ## fleet toolbox
 
-Thirty-five tools across three tiers (`src/kibana_mcp/toolboxes/fleet/toolbox.py`),
+Forty-one tools across three tiers (`src/kibana_mcp/toolboxes/fleet/toolbox.py`),
 tagged `{"fleet", <tier>}`. Enable with `KIBANA_MCP_TOOLBOXES=fleet`. Read,
 configure, and operate **Fleet** — the Elastic Agent fleet, agent + integration
-(package) policies, enrolled agents, integrations (EPM), and outputs — all GA on
-a **Basic** license. Twenty `read` tools are visible at every tier; the six
-`write` tools appear at the default `write` tier; the nine `destructive` tools
-(policy/output deletes, plus single and bulk agent-lifecycle commands) require
-`KIBANA_MCP_TIER=destructive`.
+(package) policies, enrolled agents (their tags and diagnostics bundles),
+integrations (EPM, installed and uninstalled), and outputs — all GA on a
+**Basic** license. Twenty-two `read` tools are visible at every tier; the nine
+`write` tools appear at the default `write` tier; the ten `destructive` tools
+(policy/output deletes, the package uninstall, plus single and bulk
+agent-lifecycle commands) require `KIBANA_MCP_TIER=destructive`.
 
 !!! warning "Agent-lifecycle actions are destructive-tier, not write-tier"
     Every tool that commands a running enrolled agent — `reassign_agent`,
@@ -1543,6 +1544,9 @@ a **Basic** license. Twenty `read` tools are visible at every tier; the six
     tools act ONLY on the explicit `agent_ids` list given (never a fleet-wide
     sweep or kuery) and require `confirm=True`, like `disable_streams`; they are
     async and return an `action_id`, not the immediate per-agent result.
+    `request_agent_diagnostics` also sends a live agent an action, but it is
+    `write`: the agent only collects and uploads a bundle, and nothing it
+    collects or ships changes (D51).
 
 !!! note "Secret-redacted reads; enrollment-key mint/revoke deferred"
     Three read families are SECRET-REDACTED: `list_enrollment_keys` /
@@ -1551,16 +1555,18 @@ a **Basic** license. Twenty `read` tools are visible at every tier; the six
     fields only — no TLS/authenticated outputs); `list_uninstall_tokens` never
     fetches token *values* (metadata only). Enrollment-key minting/revocation —
     the only secret-minting surface in this toolbox — is deliberately out of
-    scope, deferred for a vetted credential-handling design. EPM package
-    install/delete and Cloud-only surfaces (agentless policies, cloud
-    connectors, proxies) are also out of scope.
+    scope, deferred for a vetted credential-handling design. Cloud-only
+    surfaces (agentless policies, cloud connectors, proxies) are also out of
+    scope.
 
 | Tool | Tier | Description |
 |---|---|---|
 | `get_fleet_settings` | read | Global Fleet settings: whether prerelease integrations and the integration knowledge base are enabled, and the space-awareness migration status. |
 | `check_fleet_permissions` | read | Check whether the current API key has the privileges to operate Fleet. Use first if other fleet tools return authorization errors. |
-| `list_agents` | read | List enrolled Elastic Agents (including inactive ones): id, status, assigned policy_id, hostname, version, last check-in. Empty when no agents are enrolled. |
-| `get_agent` | read | Get one Elastic Agent by id: status, assigned policy_id, hostname, version, enrolled-at, last check-in. |
+| `list_agents` | read | List enrolled Elastic Agents (including inactive ones): id, status, assigned policy_id, hostname, version, last check-in, tags. Empty when no agents are enrolled. |
+| `get_agent` | read | Get one Elastic Agent by id: status, assigned policy_id, hostname, version, enrolled-at, last check-in, tags. |
+| `list_agent_tags` | read | List the distinct tags set on agents (inactive ones included). Empty when no agent has a tag. |
+| `list_agent_diagnostics` | read | List the diagnostics bundles requested from one agent: id, file name, status (`IN_PROGRESS` until uploaded, then `READY`; `FAILED`, `EXPIRED`), created-at, and the `action_id` of the request. Metadata only — download a bundle from the agent's Diagnostics tab in Kibana. |
 | `get_agent_status_summary` | read | Fleet-wide agent status counts: online, error, offline, inactive, updating, unenrolled, and total. |
 | `list_agent_versions` | read | List the Elastic Agent versions available for upgrade on this deployment (newest first). |
 | `list_agent_policies` | read | List agent policies: id, name, namespace, assigned agent_count, status, managed flag, enabled monitoring (logs/metrics). |
@@ -1583,9 +1589,13 @@ a **Basic** license. Twenty `read` tools are visible at every tier; the six
 | `update_package_policy` | write | Update a package (integration) policy's fields (read-modify-write). `agent_policy_id` re-parents it; `package` changes the integration/version; `inputs` overrides the input config. |
 | `create_output` | write | Create a Fleet output (where agent data is shipped). Non-secret fields only (no ssl/secrets/config_yaml). `is_default`/`is_default_monitoring` promote this output, auto-un-defaulting the prior one. |
 | `update_output` | write | Update a Fleet output (read-modify-write). Setting `is_default`/`is_default_monitoring=True` PROMOTES it (the prior default becomes deletable). Editing a currently-default output requires `confirm=True`. |
+| `install_package` | write | Install an integration package that is not installed (latest version, or `version`), creating its Elasticsearch and Kibana assets (and, for a package with Kibana assets, the managed `logs-*`/`metrics-*` data views in every space if missing). Already installed at that version (or any, without `version`): `already_installed: true`, nothing sent. Never changes an installed version (an upgrade cannot be undone on Basic). Idempotent. |
+| `update_agent_tags` | write | Add and/or remove tags on the exact `agent_ids` given (1–100, never a query). Refuses an unknown id before changing anything. Returns `action_id`, each agent's `previous_tags` and `tags` (read back), and `not_applied_agent_ids`. Idempotent. |
+| `request_agent_diagnostics` | write | Ask one agent to collect and upload a diagnostics bundle (`include_cpu_metrics` adds a CPU profile). Changes nothing the agent collects or ships. Returns `action_id`, `agent_id`, `agent_status`; an offline agent runs it at check-in, within the 3-hour expiry. |
 | `delete_agent_policy` | destructive | Delete an agent policy — removes it and its package policies. Refuses a managed policy and the default Fleet Server policy regardless of `force`. `force=True` bypasses the assigned-agent check. |
 | `delete_package_policy` | destructive | Delete a package (integration) policy — detaches the integration; agents stop collecting that data. `force=True` bypasses Kibana's in-use checks. |
 | `delete_output` | destructive | Delete a Fleet output. Refuses the default output(s) — promote a replacement first (`update_output` `is_default=True`), then delete the old one. No force escape. |
+| `uninstall_package` | destructive | Uninstall an installed integration package — removes its assets and DELETES its package policies (agents stop collecting its data; ingested data and the shared `logs-*`/`metrics-*` data views stay). Refused unless `force=True` when it has package policies (they are named); refused regardless of `force` when one is on a managed or the default Fleet Server agent policy. Returns `uninstalled`, `name`, `version`, `deleted_package_policies`. |
 | `reassign_agent` | destructive | Reassign one enrolled agent to a different agent policy — changes what the live agent collects/ships. Refuses a managed or default Fleet Server target policy. |
 | `upgrade_agent` | destructive | Upgrade one enrolled agent to `version` (must be one of `list_agent_versions`). Commands a live binary swap; async — the agent applies it on its own schedule. |
 | `unenroll_agent` | destructive | Unenroll one Elastic Agent — it stops shipping data. `force=True` unenrolls an already-unenrolled/offline agent; `revoke=True` also invalidates its API key immediately. |
@@ -1615,5 +1625,31 @@ Notes:
   `unenroll_agent` return `{"ok": true, "agent_id": ...}` once Kibana accepts the
   command, not once the agent has applied it; the bulk equivalents return
   `{"action_id": ...}` for the same reason.
-- **No enrollment-key mint/revoke, no EPM install/delete.** See the note above —
-  both are deliberately out of scope for this tier.
+- **Agent tags (D51) are edited on explicit ids only.** `update_agent_tags` reads
+  every agent first, because Kibana answers 200 and skips an id that names no
+  agent; it reads them back after the call (Kibana applies an id-list update
+  before it answers), so `previous_tags` → `tags` is the whole change and
+  passing the difference back undoes it. An agent whose read-back tags do not
+  show the change — one Kibana skipped — is in `not_applied_agent_ids`. Tags are
+  Fleet-side labels: the agents' policies and data are untouched.
+- **Diagnostics (D51).** `request_agent_diagnostics` returns once Kibana accepts
+  the request; the demo agent uploaded its bundle within seconds (probed). Watch
+  it with `list_agent_diagnostics` (the request's `action_id`, status `READY`).
+  The bundle itself is not returned to the model: it holds the agent's logs and
+  configuration, so it is downloaded from Kibana's UI.
+- **Package install and uninstall (D51).** `install_package` installs only a
+  package that is not installed: without a version Kibana would upgrade one
+  installed at an older version, and the rollback route needs an Enterprise
+  license (403 on Basic), so a version change is refused (Kibana's UI, or
+  uninstall then install). Kibana installs only a package's latest version (an
+  older one answers 400 out-of-date; the error says to omit `version`). An input
+  package such as `tcp` creates its index templates and pipelines only once a
+  package policy uses it. Installing `nginx` also created the managed `logs-*`
+  and `metrics-*` data views, shared to every space (`namespaces: ["*"]`), and
+  its uninstall left them (probed). `uninstall_package` lists the package's package
+  policies first: Kibana deletes them with the package (without `force` when no
+  agent uses them, with it otherwise; probed), so any is a refusal unless
+  `force=True`, and the result names what was deleted. A package policy created
+  between that read and the uninstall is deleted unreported.
+- **No enrollment-key mint/revoke.** See the note above — deliberately out of
+  scope for this tier.

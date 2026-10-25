@@ -144,7 +144,7 @@ this ledger stands without them.
   may get the input elsewhere, e.g. an id the user pastes). Dependencies are
   followed transitively; tools hidden by the tier are not checked; toolbox
   selections are not checked. **Dependency map**: one owner, data —
-  `DEPENDENCIES` in `src/kibana_mcp/tool_lists.py`, 72 edges from 63 tools.
+  `DEPENDENCIES` in `src/kibana_mcp/tool_lists.py`, 77 edges from 68 tools.
   An edge A → B means A takes an input only B shows the model and A's own
   description or error guidance sends the model there: an index or field name
   (`update_panel`/`delete_panel` → `get_dashboard`; every VizSpec tool →
@@ -161,7 +161,9 @@ this ledger stands without them.
   runtime-field and default-data-view writes → `list_data_views`,
   `get_saved_object` → `find_saved_objects`; D49, the four tools that move saved
   objects between spaces → `find_saved_objects` and `list_spaces`; D50, the
-  exception-list get, item find, update, duplicate and export → `find_exception_lists`), plus ids and values descriptions name
+  exception-list get, item find, update, duplicate and export → `find_exception_lists`;
+  D51, the agent-tag and diagnostics tools → `list_agents`, `install_package` →
+  `list_packages`, `uninstall_package` → `list_installed_packages`), plus ids and values descriptions name
   (`get_space` → `list_spaces`, `get_synthetic_monitor` →
   `list_synthetic_monitors`, `create_synthetic_monitor` →
   `list_synthetic_private_locations`, `create_synthetic_private_location` →
@@ -942,6 +944,90 @@ this ledger stands without them.
   loses the check-then-import race returns `name: null`, not the export's
   name beside a `list_id` that holds another list. Contract:
   [security-detections](toolboxes/security-detections.md).
+
+- **D51 (2026-10-25, probes on 9.5.4, Basic)** — The fleet toolbox gains
+  agent tags, diagnostics and package install/uninstall: `list_agent_tags`
+  and `list_agent_diagnostics` (`read`), `install_package`,
+  `update_agent_tags` and `request_agent_diagnostics` (`write`) and
+  `uninstall_package` (`destructive`), over kibana-py's
+  `fleet_agents.get_tags`, `bulk_update_tags`, `request_diagnostics`,
+  `get_uploads` and `fleet_epm.install_package`/`uninstall_package`, all
+  Basic and all working live; the plan's names kept. `list_agent_diagnostics`
+  is added to the plan's five: without it the model could ask for a bundle
+  but never see it arrive. `list_agents`/`get_agent` gain each agent's `tags`
+  (additive). No `space` parameter (the toolbox has none); 183 tools
+  (74/70/39), still 91 space-aware. Nothing dropped. **Tiers, by the repo
+  rule (irreversible or data-losing → destructive):** the tag edit changes
+  Fleet-side labels only and returns the tags before and after (passing the
+  difference back undoes it) — `write`, `idempotentHint=true`; the
+  diagnostics request makes the agent collect and upload a bundle and changes
+  nothing it collects or ships, unlike the reassign/upgrade/unenroll commands
+  that sit at `destructive` — `write`, not idempotent (a bundle per call); the
+  install creates a package's assets and only for a package that is not
+  installed, so the uninstall undoes it — `write`, `idempotentHint=true` (a
+  repeat is `already_installed`); the uninstall removes the assets and
+  **deletes the package's package policies** — `destructive`. **Observed,
+  and what each shaped:** `bulk_update_agent_tags` with three ids, one
+  unknown, answered 200, tagged two and counted two actioned, none failed;
+  an id list of only unknown ids also answered 200 — so the tool reads every
+  agent first and refuses an unknown id before sending anything. The update
+  is applied before Kibana answers (an immediate GET showed it) and an
+  offline agent was tagged at once (the action is Fleet-side, acked at
+  once), so the tool reads each agent back and reports
+  `previous_tags`/`tags`, and `not_applied_agent_ids` for any agent the
+  read-back shows unchanged (a hosted agent was not available to probe). An
+  empty tag (`""`) was stored and a tag in both lists was kept (add wins),
+  so tags have `min_length=1` and the overlap is refused; with neither list
+  Kibana makes an action that changes nothing, refused too. The id list is
+  capped at 100 to bound the reads before and after. A diagnostics request
+  to the online demo agent was READY within 6 s, an offline agent's stays
+  `IN_PROGRESS` until the 3-hour expiry, an unknown id is a 404 on both
+  routes, `additional_metrics` accepts only `"CPU"` (400 otherwise), so the
+  tool takes `include_cpu_metrics`, reads the agent first for its status and
+  a not-found naming `list_agents`, and the upload listing drops `filePath`
+  (the bundle carries the agent's logs and configuration; Kibana's UI
+  downloads it). An install without a version **upgraded** `tcp` from 2.2.0
+  to 2.3.1 and `rollback_package` answered 403 "Rollback integration
+  requires an enterprise license", an older version answered 400
+  "tcp-2.2.0 is out-of-date" (unless forced) and a repeat install of the
+  installed version 200 with nothing changed, so the tool reads the package
+  and installs only one that is not installed: an installed one at the
+  requested version, or at any version when none is given, returns
+  `already_installed=true` with nothing sent, another version is refused
+  (the UI, or uninstall then install), and the out-of-date and unknown
+  version (404 "tcp@99.0.0 not found") errors name the latest version. An
+  unknown package name answered the install with a **500** "Package key
+  parsing failed" (it would read as an outage) and the read with a 404, so
+  the read names `list_packages`. `item.version` is the installed version
+  once installed (`latestVersion` beside it). An input package (`tcp`)
+  installs its index templates and pipelines only when a package policy
+  uses it. The uninstall of a package with a package policy on an agent
+  policy without agents went through **without `force` and deleted the
+  package policy**; with an agent on it, 400 "Unable to remove package …
+  with existing package policy(s) in use by agent(s)", and `force=true`
+  deleted it — so the tool lists the package's package policies first,
+  refuses any unless `force=True` (naming each with its agent policy and
+  agent count) and sends Kibana's `force` with it; one on a managed or the
+  default Fleet Server agent policy is refused regardless of `force`, as
+  `delete_agent_policy` guards those policies (uninstalling `fleet_server`
+  would strand the Fleet Server). An uninstall of a package that is not
+  installed (or unknown) answered 400 "… is not installed", so it is read
+  first and named `list_installed_packages`. The uninstall reported
+  `logs@custom` among removed assets yet left a user-edited one in place,
+  so results carry no asset list; a document written to
+  `logs-tcp.generic-default` was still there after a forced uninstall (the
+  data stream is kept), which the description states; installing `nginx` also created the
+  managed `logs-*` and `metrics-*` data views in every space (`namespaces:
+  ["*"]`) and its uninstall kept them, which both descriptions state (the
+  live test installs `tcp`, which creates neither). Installs took 4–5 s (`nginx`,
+  `kubernetes` with 126 assets) against the client's 10 s default timeout
+  (roadmap). Dependency map: the tag and diagnostics tools →
+  `list_agents`, `install_package` → `list_packages`, `uninstall_package` →
+  `list_installed_packages` (5 edges; 77 from 68 tools). Rejected: upgrades
+  through `install_package` (irreversible on Basic); exposing Kibana's kuery
+  form of the tag update (the toolbox never sweeps, as the bulk tools);
+  returning the bundle's download path; an asset list in the results (it
+  names templates Kibana keeps). Contract: [fleet](toolboxes/fleet.md).
 
 ## Reliability and models (measured)
 

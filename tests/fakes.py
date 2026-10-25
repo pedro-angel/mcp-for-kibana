@@ -9,9 +9,10 @@ from kibana_mcp.core.models import (
     AlertingHealth, AlertRule, AlertRuleDetail, RuleType, ApiDeprecation, ApmAgentConfig, ApmAnnotation, ApmEnvironment,
     ApmSourcemap, Case, Connector, ConnectorDetail, CopiedObject, CopyFailure, DashboardDetail, DashboardSummary, DataViewDetail,
     DataViewSummary, DefaultDataView, DefaultDataViewChange, DetectionAlert, DetectionRule, EmailDefaults, ExceptionItem, ExceptionList, ExceptionListChange, ExceptionListImportResult,
-    FleetAgent, FleetAgentPolicy, FleetAgentStatus, FleetEnrollmentKey, FleetOutput, FleetOutputHealth,
-    FleetPackage, FleetPackageCategory, FleetPackagePolicy, FleetPermissions, FleetServerHost,
-    FleetSettings, FleetUninstallToken,
+    FleetAgent, FleetAgentDiagnostics, FleetAgentPolicy, FleetAgentStatus, FleetAgentTagChange,
+    FleetAgentTagsResult, FleetDiagnosticsRequest, FleetEnrollmentKey, FleetOutput, FleetOutputHealth,
+    FleetPackage, FleetPackageCategory, FleetPackageInstall, FleetPackagePolicy, FleetPackageUninstall,
+    FleetPermissions, FleetServerHost, FleetSettings, FleetUninstallToken,
     ImportedObject, KibanaStats, KibanaStatus, ObjectSpaces, PanelSummary, PrepackagedRulesStatus, Role,
     RoleIndexPrivilege, RoleKibanaPrivilege, RuleSnooze, RuntimeField, RuntimeFieldUpsert,
     SavedObjectDetail, SavedObjectImportResult, SavedObjectPage, SavedObjectSummary, SharingChange,
@@ -20,6 +21,10 @@ from kibana_mcp.core.models import (
     StreamIngest, StreamSummary, StreamWriteResult, SyntheticMonitor, SyntheticParam, SyntheticPrivateLocation,
     TaskManagerHealth, Timeline, UpgradeReadiness, UptimeSettings, ValueList, ValueListItem,
     VisualizationDetail, VisualizationSummary,
+)
+from kibana_mcp.core.fleet_ops import (
+    guarded_policy_refusal, installed_version_refusal, missing_agents_message, not_installed_message,
+    package_policies_refusal, tags_not_applied, unknown_agent_message, unknown_package_message,
 )
 from kibana_mcp.core.saved_objects import READABLE_TYPES, unreadable_type_message
 from kibana_mcp.core.space_sharing import (
@@ -314,6 +319,10 @@ class FakeGateway:
             id="fleet-default-settings", prerelease_integrations_enabled=False,
             integration_knowledge_enabled=True, space_awareness_migration_status="success")
         self.fleet_permissions = FleetPermissions(success=True)
+        # fleet advanced ops (D51): test-controlled state.
+        self.fleet_default_fleet_server_policy_ids = {"fleet-server-policy"}
+        self.fleet_tag_refused_agent_ids: set[str] = set()  # e.g. hosted agents Kibana skips
+        self.fleet_diagnostics: dict[str, list[FleetAgentDiagnostics]] = {}
         self._ids = itertools.count(1)
         self.deleted: list[tuple[str, str | None]] = []  # (kind, identifier) for write-tier asserts
         self.last_exception_entries: list[dict] | None = None
@@ -1713,6 +1722,93 @@ class FakeGateway:
 
     def bulk_unenroll(self, *, agent_ids, force=False, revoke=False):
         return "fake-action-id"
+
+    # --- fleet advanced ops (D51): mirrors the adapter's checks and guidance ---
+
+    def list_agent_tags(self):
+        return sorted({t for a in self.fleet_agents_data for t in a.tags})
+
+    def update_agent_tags(self, *, agent_ids, tags_to_add, tags_to_remove):
+        ids = list(dict.fromkeys(agent_ids))
+        by_id = {a.id: a for a in self.fleet_agents_data}
+        missing = [i for i in ids if i not in by_id]
+        if missing:
+            raise KibanaNotFound(missing_agents_message(missing))
+        changes = []
+        for agent_id in ids:
+            before = by_id[agent_id].tags
+            after = before
+            if agent_id not in self.fleet_tag_refused_agent_ids:
+                kept = [t for t in before if t not in tags_to_remove]
+                after = tuple(kept + [t for t in tags_to_add if t not in kept])
+                self.fleet_agents_data = [
+                    replace(a, tags=after) if a.id == agent_id else a for a in self.fleet_agents_data
+                ]
+            changes.append(FleetAgentTagChange(agent_id=agent_id, previous_tags=before, tags=after))
+        return FleetAgentTagsResult(
+            action_id=f"fake-tags-action-{next(self._ids)}", agents=tuple(changes),
+            not_applied_agent_ids=tags_not_applied(changes, tags_to_add, tags_to_remove))
+
+    def _fake_agent(self, agent_id):
+        for a in self.fleet_agents_data:
+            if a.id == agent_id:
+                return a
+        raise KibanaNotFound(unknown_agent_message(agent_id))
+
+    def request_agent_diagnostics(self, *, agent_id, include_cpu_metrics=False):
+        agent = self._fake_agent(agent_id)
+        action_id = f"fake-diag-action-{next(self._ids)}"
+        self.fleet_diagnostics.setdefault(agent_id, []).append(FleetAgentDiagnostics(
+            id=f"{action_id}.{agent_id}", name="elastic-agent-diagnostics.zip",
+            status="READY" if agent.status == "online" else "IN_PROGRESS",
+            created_at="2026-10-25T00:00:00Z", action_id=action_id))
+        return FleetDiagnosticsRequest(action_id=action_id, agent_id=agent_id, agent_status=agent.status)
+
+    def list_agent_diagnostics(self, agent_id):
+        self._fake_agent(agent_id)
+        return list(self.fleet_diagnostics.get(agent_id, []))
+
+    def _fake_package(self, name):
+        for p in self.fleet_packages:
+            if p.name == name:
+                return p
+        raise KibanaNotFound(unknown_package_message(name))
+
+    def install_package(self, *, name, version=None):
+        pkg = self._fake_package(name)
+        if pkg.status == "installed":
+            if version is None or version == pkg.version:
+                return FleetPackageInstall(
+                    name=name, version=pkg.version, status="installed", already_installed=True)
+            raise KibanaRejected(installed_version_refusal(name, pkg.version, version))
+        installed = replace(pkg, status="installed", version=version or pkg.version)
+        self.fleet_packages = [installed if p.name == name else p for p in self.fleet_packages]
+        self.fleet_installed_packages.append(replace(installed, type=None))
+        return FleetPackageInstall(
+            name=name, version=installed.version, status="installed", already_installed=False)
+
+    def uninstall_package(self, *, name, force=False):
+        pkg = self._fake_package(name)
+        if pkg.status != "installed":
+            raise KibanaNotFound(not_installed_message(name))
+        pps = [pp for pp in self.fleet_package_policies if pp.package_name == name]
+        listed = []
+        for pp in pps:
+            ap = self.get_agent_policy(pp.agent_policy_id)
+            if ap.is_managed:
+                raise KibanaRejected(guarded_policy_refusal(name, pp.id, ap.id, "managed"))
+            if ap.id in self.fleet_default_fleet_server_policy_ids:
+                raise KibanaRejected(guarded_policy_refusal(
+                    name, pp.id, ap.id, "the default Fleet Server policy"))
+            listed.append((pp.id, pp.name, ap.id, ap.agent_count))
+        if pps and not force:
+            raise KibanaRejected(package_policies_refusal(name, listed))
+        self.fleet_package_policies = [pp for pp in self.fleet_package_policies if pp not in pps]
+        self.fleet_packages = [
+            replace(p, status="not_installed") if p.name == name else p for p in self.fleet_packages]
+        self.fleet_installed_packages = [p for p in self.fleet_installed_packages if p.name != name]
+        self.deleted.append(("package", name))
+        return FleetPackageUninstall(name=name, version=pkg.version, deleted_package_policies=tuple(pps))
 
     def _get(self, dashboard_id):
         if dashboard_id not in self.dashboards:

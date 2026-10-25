@@ -29,14 +29,19 @@ from kibana_mcp.core.models import (
     ExceptionListChange,
     ExceptionListImportResult,
     FleetAgent,
+    FleetAgentDiagnostics,
     FleetAgentPolicy,
     FleetAgentStatus,
+    FleetAgentTagsResult,
+    FleetDiagnosticsRequest,
     FleetEnrollmentKey,
     FleetOutput,
     FleetOutputHealth,
     FleetPackage,
     FleetPackageCategory,
+    FleetPackageInstall,
     FleetPackagePolicy,
+    FleetPackageUninstall,
     FleetPermissions,
     FleetServerHost,
     FleetSettings,
@@ -685,3 +690,55 @@ class KibanaGateway(Protocol):
     def bulk_unenroll(
         self, *, agent_ids: list[str], force: bool = False, revoke: bool = False
     ) -> str: ...
+
+    # --- fleet advanced ops (D51) ---
+
+    def list_agent_tags(self) -> list[str]:
+        """The distinct tags of every agent, inactive ones included."""
+        ...
+
+    def update_agent_tags(
+        self, *, agent_ids: list[str], tags_to_add: list[str], tags_to_remove: list[str]
+    ) -> FleetAgentTagsResult:
+        """Add and remove tags on exactly these agents. Reads every agent first:
+        an unknown id raises KibanaNotFound (naming list_agents) and nothing is
+        sent — Kibana skips an unknown id silently (probed). Reads them back
+        after the call (Kibana applies an id-list update before it answers,
+        probed), so each result carries the tags before and after, and an
+        agent the update did not reach is in `not_applied_agent_ids`."""
+        ...
+
+    def request_agent_diagnostics(
+        self, *, agent_id: str, include_cpu_metrics: bool = False
+    ) -> FleetDiagnosticsRequest:
+        """Ask one agent for a diagnostics bundle. Reads the agent first (an
+        unknown id raises KibanaNotFound naming list_agents) for its status:
+        an offline agent runs the request when it checks in, before the
+        action expires (3 hours on 9.5.4, probed)."""
+        ...
+
+    def list_agent_diagnostics(self, agent_id: str) -> list[FleetAgentDiagnostics]:
+        """The diagnostics bundles one agent uploaded (metadata only); an
+        unknown id raises KibanaNotFound naming list_agents."""
+        ...
+
+    def install_package(self, *, name: str, version: str | None = None) -> FleetPackageInstall:
+        """Install an integration package that is not installed (the latest
+        version, or `version`). Reads the package first: an unknown name raises
+        KibanaNotFound naming list_packages; a package installed at that
+        version (or any version when `version` is None) returns
+        `already_installed=True` with nothing sent; one installed at another
+        version raises KibanaRejected — an upgrade cannot be undone on Basic
+        (Kibana's rollback route answers 403, enterprise only; probed) and
+        Kibana refuses an older version."""
+        ...
+
+    def uninstall_package(self, *, name: str, force: bool = False) -> FleetPackageUninstall:
+        """Uninstall an installed integration package. Kibana deletes the
+        package's package policies with it (probed; with agents on them only
+        when forced), so a package that has any is refused unless `force`,
+        naming them; one with a package policy on a managed or the default
+        Fleet Server agent policy is refused regardless of `force`. A package
+        that is not installed raises KibanaNotFound naming
+        list_installed_packages."""
+        ...
