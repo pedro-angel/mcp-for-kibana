@@ -51,12 +51,16 @@ def _one_list_id(id: str | None, list_id: str | None) -> None:
 
 
 def _load_export(deps: ToolboxDeps, handle: str) -> tuple[bytes, ExceptionExportFile]:
-    """Read an `el-` handle and parse it (ValueError -> a clean tool error)."""
-    try:
-        content = read_export(deps.export_dir, handle, EXCEPTION_LIST)
-        return content, parse_export(content)
-    except ValueError as e:
-        raise ToolError(str(e)) from e
+    """Read an `el-` handle and parse it. A missing or expired handle
+    (KibanaNotFound) goes through gateway_errors and a malformed one
+    (ValueError) is raised directly, so both reach the model as a ToolError
+    that names the fix even when the server masks other errors."""
+    with gateway_errors():
+        try:
+            content = read_export(deps.export_dir, handle, EXCEPTION_LIST)
+            return content, parse_export(content)
+        except ValueError as e:
+            raise ToolError(str(e)) from e
 
 
 def _existing(gw: KibanaGateway, list_id: str, namespace_type: str) -> Any:
@@ -438,6 +442,7 @@ class SecurityDetectionsToolbox:
             does not carry the list's os_types. Returns `list_id`, `id`,
             `source_list_id`, the imported item count and any per-object errors.
 
+            An export of a `namespace_type="agnostic"` list makes an agnostic list: it is shared across ALL spaces; `space` chooses the routing space but does not isolate it.
             `space` targets a Kibana space by id (default: the default space)."""
             _, export = _load_export(deps, handle)
             content, new_list_id = as_new_copy(export, list_id)
@@ -641,6 +646,7 @@ class SecurityDetectionsToolbox:
             Returns `list_id`, `id`, `previous_id` (null when it was recreated),
             the restored item count, `removed_item_ids` and any per-object errors.
 
+            An export of a `namespace_type="agnostic"` list restores an agnostic list: it is shared across ALL spaces; `space` chooses the routing space but does not isolate it.
             `space` targets a Kibana space by id (default: the default space)."""
             content, export = _load_export(deps, handle)
             namespace = export.namespace_type

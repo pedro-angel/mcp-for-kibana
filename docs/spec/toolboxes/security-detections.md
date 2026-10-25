@@ -1,6 +1,6 @@
 # security-detections — behavior contract
 
-Status: Draft v1.2 (2026-10-25) — regeneration corpus, reconciled to shipped code
+Status: Draft v1.3 (2026-10-25) — regeneration corpus, reconciled to shipped code
 Surface reference: docs/tools.md#security-detections-toolbox · Enforcement: named per section below
 
 ## Purpose & persona
@@ -76,9 +76,13 @@ added `"type": "match"` discriminator; entries inside one item are ANDed.
 (Basic); every behavior below is pinned by a live contract test.
 
 - *Namespaces.* A list made with `namespace_type="agnostic"` answers 404 to
-  a `"single"` read, so `get_exception_list`, `find_exception_items` and every
-  tool below take `namespace_type` (default `"single"`), and the not-found
-  text names the other namespace. `find_exception_lists` lists only
+  a `"single"` read, so `get_exception_list`, `find_exception_items`,
+  `update_exception_list`, `duplicate_exception_list` and
+  `export_exception_list` take `namespace_type` (default `"single"`), and
+  the not-found text names the other namespace. `import_exception_list` and
+  `overwrite_exception_list` take none: they use the export's, so an
+  agnostic export makes or restores an agnostic list, shared across every
+  space whatever `space` routes the import (their descriptions say so). `find_exception_lists` lists only
   `"single"` lists (roadmap).
 - *`update_exception_list`* reads the list, then PUTs the stored name,
   description and type (the PUT 400s without them) with the caller's fields
@@ -159,8 +163,12 @@ wording, not incidental phrasing.
   `force=True` deletes it without touching the referencing exception item.
 - `namespace_type="agnostic"` exception objects are visible/deletable from
   every space; `space` chooses routing only, never isolation, for them.
-- `import_exception_list` never writes into an existing list: it refuses an
-  existing `list_id` and every imported item gets a new `item_id`.
+- `import_exception_list` refuses a `list_id` that exists at its check and
+  gives every imported item a new `item_id`. The check and the import are
+  two calls, so a list created between them under the same `list_id`
+  receives the items: the result then has `success: false`, the list's 409
+  in `errors`, `id: null`, and an `imported_item_count` that counts the
+  items added to that other list.
 - `update_exception_list` writes nothing when the list changed after its
   read (409 on the read's `_version`), and never changes the type or
   os_types.
@@ -196,7 +204,7 @@ wording, not incidental phrasing.
   ignores them) and are not carried by an import; `find_exception_lists`
   lists only `"single"` lists; the import's existence check and the import
   are two calls (a list created between them under the same `list_id`
-  would receive the items); the overwrite's `removed_item_ids` is read
+  receives the items, see the guarantee above); the overwrite's `removed_item_ids` is read
   before the import, not reported by Kibana.
 - **`search_detection_alerts`'s `size` carries no schema-level bound** (no
   `ge`/`le`, unlike every other numeric parameter here) — any `int` passes
@@ -210,7 +218,8 @@ wording, not incidental phrasing.
   endpoint refusal, the existing-list_id refusal, removed items, the
   content-free import error);
   every identifier/field guard; value-list-item type inheritance; space
-  threading/echo pair; guard-before-gateway ordering.
+  threading/echo pair; guard-before-gateway ordering; a missing `el-`
+  handle naming the fix on a `mask_error_details=True` server.
 - **Unit, adapter-level** —
   `tests/unit/adapters/test_security_detections_gateway.py`: real captured-
   body field mapping; pagination termination on a non-full final page; the
@@ -233,7 +242,8 @@ wording, not incidental phrasing.
   onto an existing list adds its items, the PUT ignores os_types and 409s a
   stale `_version`) and the edit/duplicate/export/import/overwrite tools
   end to end, including a cross-space import, an endpoint list and an
-  agnostic list.
+  agnostic list (read, update, export, duplicate, and an import and an
+  overwrite routed through another space that stay agnostic).
 - **Unit, core** — `tests/unit/test_exception_lists_core.py` (export
   parsing, the new-copy rewrite, error text) and the handle kinds in
   `tests/unit/test_saved_objects_core.py`.

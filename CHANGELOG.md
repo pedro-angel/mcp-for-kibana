@@ -26,9 +26,15 @@ version section.
   source's item ids), and refuses a `list_id` that already exists (Kibana
   would add the items to that list); `overwrite_exception_list` restores the
   list in place and returns the ids of the items it deleted (those added
-  after the export). `get_exception_list` and `find_exception_items` take an
-  optional `namespace_type` so agnostic lists can be read. Import errors come
-  back per object as ids and status only. Kibana neither edits nor imports a
+  after the export). Both imports take the export's namespace, so an agnostic
+  export makes or restores a list shared across every space (their
+  descriptions say so), and an expired or unknown `el-` handle is refused
+  with the fix (export again), also on a server that masks error details.
+  `get_exception_list` and `find_exception_items` take an optional
+  `namespace_type` so agnostic lists can be read; `get_exception_list`'s
+  not-found names `find_exception_lists`, so a `KIBANA_MCP_TOOLS` list that
+  leaves that tool out gets the dependency warning. Import errors come back
+  per object as ids and status only. Kibana neither edits nor imports a
   list's `os_types`. Decision D50.
 - **Platform admin: copy and share saved objects between spaces** (two
   `write` and two `destructive` tools, 172 tools in all; none takes `space`,

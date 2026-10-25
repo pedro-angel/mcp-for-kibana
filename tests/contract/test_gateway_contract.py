@@ -3394,6 +3394,21 @@ async def test_exception_list_endpoint_and_agnostic_tools_live(gateway, tmp_path
                 items = await client.call_tool("find_exception_items", {
                     "list_id": dup["list_id"], "namespace_type": "agnostic"})
                 assert items.data == []
+                # the imports take the export's namespace: an agnostic copy
+                # routed through another space is still read from this one
+                with _temp_space(gateway) as space_id:
+                    imp_ag = (await client.call_tool("import_exception_list", {
+                        "handle": exp_ag["handle"], "space": space_id})).data
+                    made.append((imp_ag["list_id"], "agnostic"))
+                    assert imp_ag["success"] is True and imp_ag["space"] == space_id
+                    assert imp_ag["namespace_type"] == "agnostic"
+                    assert gateway.get_exception_list(
+                        None, imp_ag["list_id"], "agnostic").id == imp_ag["id"]
+                    over = (await client.call_tool("overwrite_exception_list", {
+                        "handle": exp_ag["handle"], "space": space_id})).data
+                    assert over["success"] is True and over["namespace_type"] == "agnostic"
+                    restored = gateway.get_exception_list(None, ag, "agnostic")
+                    assert over["previous_id"] == over["id"] == restored.id
         finally:
             for made_id, ns in made:
                 _drop_list(raw, made_id, ns)

@@ -144,7 +144,7 @@ this ledger stands without them.
   may get the input elsewhere, e.g. an id the user pastes). Dependencies are
   followed transitively; tools hidden by the tier are not checked; toolbox
   selections are not checked. **Dependency map**: one owner, data —
-  `DEPENDENCIES` in `src/kibana_mcp/tool_lists.py`, 70 edges from 61 tools.
+  `DEPENDENCIES` in `src/kibana_mcp/tool_lists.py`, 71 edges from 62 tools.
   An edge A → B means A takes an input only B shows the model and A's own
   description or error guidance sends the model there: an index or field name
   (`update_panel`/`delete_panel` → `get_dashboard`; every VizSpec tool →
@@ -926,9 +926,9 @@ this ledger stands without them.
   echoes the values it refused (`Invalid value "index-pattern" supplied to
   "type"`), so errors are returned as `"list_id[/item_id]: <status> <kind>"`
   and a rejected import names a fresh export, never Kibana's text (#37's
-  rule). Dependency map: the update, duplicate and export →
-  `find_exception_lists`, the import and overwrite → `export_exception_list`
-  (5 edges; 70 from 61 tools). Rejected: Kibana's `as_new_list` (above);
+  rule). Dependency map: the get, update, duplicate and export →
+  `find_exception_lists` (the get's not-found now names it), the import and
+  overwrite → `export_exception_list` (6 edges; 71 from 62 tools). Rejected: Kibana's `as_new_list` (above);
   sending both `overwrite` and `as_new_list` (accepted by Kibana, meaning
   unclear); editing `os_types` (Kibana ignores it) or the type (it would
   change which engine reads the list, for no task); listing agnostic lists

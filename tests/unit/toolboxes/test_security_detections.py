@@ -516,6 +516,21 @@ async def test_import_exception_list_names_the_tools_of_a_saved_objects_handle(m
             await client.call_tool("overwrite_exception_list", {"handle": "el-000000000000"})
 
 
+async def test_missing_handle_names_the_fix_on_a_masking_server(gateway, tmp_path):
+    # Production runs FastMCP(mask_error_details=True): only a ToolError's text
+    # reaches the model, so the expired-handle KibanaNotFound must become one.
+    server = FastMCP("test", mask_error_details=True)
+    SecurityDetectionsToolbox().register(server, ToolboxDeps(
+        gateway_factory=lambda space=None: gateway, public_kibana_url="http://kb:5601",
+        export_dir=tmp_path,
+    ))
+    async with Client(server) as client:
+        for tool in ("import_exception_list", "overwrite_exception_list"):
+            with pytest.raises(ToolError, match="not found.*call export_exception_list again"):
+                await client.call_tool(tool, {"handle": "el-000000000000"})
+    assert gateway.last_exception_import is None
+
+
 async def test_overwrite_exception_list_reports_removed_items(mcp, gateway):
     async with Client(mcp) as client:
         handle = await _export(client)

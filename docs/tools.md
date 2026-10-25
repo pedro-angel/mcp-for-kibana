@@ -1237,8 +1237,12 @@ A tier includes everything below it: `write` (the default) shows the 12 reads +
 Exception-list edit, copy, export and import (D50), probed on 9.5.4:
 
 - **Namespaces.** A list made with `namespace_type="agnostic"` is found only
-  with `namespace_type="agnostic"` (a `"single"` read answers 404), so the
-  reads and every tool below take it; `find_exception_lists` lists only
+  with `namespace_type="agnostic"` (a `"single"` read answers 404), so
+  `get_exception_list`, `find_exception_items`, `update_exception_list`,
+  `duplicate_exception_list` and `export_exception_list` take it;
+  `import_exception_list` and `overwrite_exception_list` use the export's,
+  so an agnostic export makes or restores a list shared across every space,
+  whatever `space` routes the import. `find_exception_lists` lists only
   `"single"` lists.
 - **`update_exception_list`** sends the read's `_version`: a change made
   between its read and its write is a 409 that writes nothing (the error
@@ -1248,7 +1252,10 @@ Exception-list edit, copy, export and import (D50), probed on 9.5.4:
   with a fresh `item_id` per item rather than using Kibana's `as_new_list`,
   which keeps the source `item_id`s (two lists then share them) and does not
   report the new `list_id`; and it refuses an existing `list_id`, because a
-  plain import onto one skips the list but still adds the items to it.
+  plain import onto one skips the list but still adds the items to it. The
+  check and the import are two calls: a list created between them under the
+  same `list_id` still receives the items, and the result then shows
+  `success: false` with the list's 409 in `errors` and `id: null`.
   Kibana's import does not carry `os_types`.
 - **Handles.** `el-` handles share the server-side export directory with the
   saved-objects `so-` handles (20 kept per kind); each import takes only its
