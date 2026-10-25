@@ -467,3 +467,107 @@ def test_unknown_location_id_on_update_names_the_list_tool():
     rec = _Recorder(update_private_location=_nf("Private location with id nope does not exist."))
     with pytest.raises(KibanaNotFound, match=r"^private location 'nope' not found — location_id"):
         _syn_gw(rec).update_synthetic_private_location("nope", "x")
+
+
+# --- APM agent configuration writes (D47): bodies captured live on 9.5.4 -----
+
+# GET /api/apm/settings/agent-configuration/view?name=p-ag on a config made with
+# agent_name "java" (the key is absent when none was sent).
+_APM_VIEW = {"id": "m7PF", "agent_name": "java", "service": {"name": "p-ag"},
+             "settings": {"capture_body": "all"}, "@timestamp": 1792893324964,
+             "applied_by_agent": False, "etag": "47d8"}
+_APM_DELETED = {"_index": ".apm-agent-configuration", "_id": "m7PF", "result": "deleted"}
+
+
+def _apm_gw(rec):
+    return KibanaPyGateway(make_fake_client(apm=rec))
+
+
+def test_apm_agent_config_maps_agent_name():
+    [c] = _gw(apm=SimpleNamespace(get_agent_configurations=lambda **kw: FakeResponse(
+        {"configurations": [_APM_VIEW]}))).list_apm_agent_configs()
+    assert c.agent_name == "java" and c.service_environment is None
+    plain = {k: v for k, v in _APM_VIEW.items() if k != "agent_name"}
+    got = _gw(apm=SimpleNamespace(
+        get_agent_configuration=lambda **kw: FakeResponse(plain))).get_apm_agent_config("p-ag", None)
+    assert got.agent_name is None
+
+
+def test_upsert_apm_agent_config_puts_then_reads_back():
+    # The PUT answers {} (probed), so the stored config is read back.
+    rec = _Recorder(create_or_update_agent_configuration={}, get_agent_configuration=_APM_VIEW)
+    c = _apm_gw(rec).upsert_apm_agent_config(
+        "p-ag", None, {"capture_body": "all"}, agent_name="java", overwrite=True)
+    assert rec.calls == [
+        ("create_or_update_agent_configuration", {
+            "service_name": "p-ag", "settings": {"capture_body": "all"}, "agent_name": "java",
+            "overwrite": True}),
+        ("get_agent_configuration", {"name": "p-ag"}),
+    ]
+    assert c.settings == {"capture_body": "all"} and c.etag == "47d8"
+
+
+def test_upsert_apm_agent_config_omits_what_was_not_given():
+    rec = _Recorder(create_or_update_agent_configuration={}, get_agent_configuration=_APM_VIEW)
+    _apm_gw(rec).upsert_apm_agent_config(
+        None, "prod", {"log_level": "debug"}, agent_name=None, overwrite=False)
+    assert rec.calls[0] == ("create_or_update_agent_configuration", {
+        "service_environment": "prod", "settings": {"log_level": "debug"}})
+    assert rec.calls[1] == ("get_agent_configuration", {"environment": "prod"})
+
+
+def test_upsert_apm_agent_config_names_the_settings_on_a_rejected_value():
+    # Kibana's message can omit the key: "Failed to validate: \n  Must be a
+    # number between 0.0000 and 1" for transaction_sample_rate "7" (probed).
+    rec = _Recorder(create_or_update_agent_configuration=_bad(
+        "Failed to validate: \n  Must be a number between 0.0000 and 1"))
+    with pytest.raises(KibanaRejected) as exc:
+        _apm_gw(rec).upsert_apm_agent_config(
+            "cart", None, {"transaction_sample_rate": "7"}, agent_name=None, overwrite=False)
+    assert "Must be a number between 0.0000 and 1" in exc.value.detail
+    assert exc.value.detail.endswith(
+        "— settings sent: {'transaction_sample_rate': '7'}; each value is a string in the form "
+        "the setting takes (a number such as '0.5', 'true' or 'false', a duration such as "
+        "'10s', or one of the setting's words)")
+
+
+def test_upsert_apm_agent_config_race_names_the_retry():
+    # A config created between the tool's read and its write: Kibana's 400 tells
+    # the caller to use ?overwrite=true, which a tool caller cannot pass.
+    rec = _Recorder(create_or_update_agent_configuration=_bad(
+        'A configuration already exists for "cart/prod. Use ?overwrite=true to overwrite the '
+        'existing configuration.'))
+    with pytest.raises(KibanaRejected) as exc:
+        _apm_gw(rec).upsert_apm_agent_config(
+            "cart", "prod", {"recording": "true"}, agent_name=None, overwrite=False)
+    assert exc.value.message == "Kibana refused to replace the APM agent configuration"
+    assert exc.value.detail == (
+        "a configuration for service 'cart', environment 'prod' was created after this call "
+        "read none — call upsert_apm_agent_config again: it then replaces that one and returns "
+        "its settings as previous_settings")
+
+
+def test_delete_apm_agent_config_sends_the_service():
+    rec = _Recorder(delete_agent_configuration=_APM_DELETED)
+    _apm_gw(rec).delete_apm_agent_config("p-ag", None)
+    assert rec.calls == [("delete_agent_configuration", {"service_name": "p-ag"})]
+
+
+_APM_MISS = (
+    "no APM agent configuration for all services, environment 'prod' — service_name and "
+    "environment must match a configuration exactly (an omitted one means all); call "
+    "list_apm_agent_configs to see them"
+)
+
+
+@pytest.mark.parametrize("call", [
+    lambda gw: gw.get_apm_agent_config(None, "prod"),
+    lambda gw: gw.delete_apm_agent_config(None, "prod"),
+])
+def test_apm_config_miss_names_the_list_tool(call):
+    # Kibana's own 404 says only "Not Found" (probed on view and delete).
+    rec = _Recorder(get_agent_configuration=_nf("Not Found"),
+                    delete_agent_configuration=_nf("Not Found"))
+    with pytest.raises(KibanaNotFound) as exc:
+        call(_apm_gw(rec))
+    assert exc.value.message == _APM_MISS

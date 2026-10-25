@@ -113,6 +113,8 @@ class FakeGateway:
                 settings={"transaction_sample_rate": "0.5"}, applied_by_agent=True, etag="e1",
             )
         ]
+        # APM agent-config writes (D47): every write is recorded.
+        self.apm_config_writes: list[tuple] = []
         self.apm_environments = [ApmEnvironment(name="ALL_OPTION_VALUE", already_configured=False)]
         self.apm_sourcemaps = [ApmSourcemap(identifier="checkout-1.0.0", created="2026-07-12T00:00:00Z")]
         self.apm_annotations: list[ApmAnnotation] = []
@@ -823,9 +825,39 @@ class FakeGateway:
         for c in self.apm_agent_configs:
             if c.service_name == service_name and c.service_environment == environment:
                 return c
+        service = f"service '{service_name}'" if service_name is not None else "all services"
+        env = f"environment '{environment}'" if environment is not None else "all environments"
         raise KibanaNotFound(
-            f"no APM agent config for service={service_name!r} environment={environment!r}"
+            f"no APM agent configuration for {service}, {env} — service_name and environment "
+            "must match a configuration exactly (an omitted one means all); call "
+            "list_apm_agent_configs to see them"
         )
+
+    def upsert_apm_agent_config(self, service_name, environment, settings, *, agent_name,
+                                overwrite):
+        self.apm_config_writes.append(("upsert", {
+            "service_name": service_name, "environment": environment, "settings": settings,
+            "agent_name": agent_name, "overwrite": overwrite,
+        }))
+        kept = [c for c in self.apm_agent_configs
+                if (c.service_name, c.service_environment) != (service_name, environment)]
+        if len(kept) != len(self.apm_agent_configs) and not overwrite:
+            raise KibanaRejected("Kibana refused to replace the APM agent configuration")
+        config = ApmAgentConfig(
+            service_name=service_name, service_environment=environment, settings=dict(settings),
+            applied_by_agent=False, etag=f"e{len(self.apm_config_writes) + 1}",
+            agent_name=agent_name,
+        )
+        self.apm_agent_configs = [*kept, config]
+        return config
+
+    def delete_apm_agent_config(self, service_name, environment):
+        self.get_apm_agent_config(service_name, environment)
+        self.apm_config_writes.append(("delete", {
+            "service_name": service_name, "environment": environment}))
+        self.apm_agent_configs = [
+            c for c in self.apm_agent_configs
+            if (c.service_name, c.service_environment) != (service_name, environment)]
 
     def list_apm_environments(self, service_name):
         return list(self.apm_environments)

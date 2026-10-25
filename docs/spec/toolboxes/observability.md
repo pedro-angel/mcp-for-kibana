@@ -1,6 +1,6 @@
 # observability — behavior contract
 
-Status: Draft v1.3 (2026-10-25) — regeneration corpus, reconciled to shipped code
+Status: Draft v1.4 (2026-10-25) — regeneration corpus, reconciled to shipped code
 Surface reference: docs/tools.md#observability-toolbox · Enforcement: named per section below
 
 ## Purpose & persona
@@ -8,18 +8,20 @@ Surface reference: docs/tools.md#observability-toolbox · Enforcement: named per
 Reconnaissance over the observability surface reachable on a Basic license — Synthetics
 monitoring, Uptime app settings, APM central (agent) configuration — answering "what's being
 monitored, and how is APM configured", plus the upkeep of Synthetics itself: create, edit, run
-once and delete monitors, global parameters and private locations (D46). Read leg of the
+once and delete monitors, global parameters and private locations (D46), and of APM central
+configuration: create or replace an agent configuration, and delete one (D47). Read leg of the
 `observability-sre` persona (paired with `alerting` + `cases`), which is withdrawn (see Deliberate
 exclusions) — so any deployment enabling `observability` gets this toolbox standalone, read-only at
 `KIBANA_MCP_TIER=read`.
 
 ## Surface
 
-20 tools: 10 `read` (`readOnlyHint=true`) — the Synthetics, Uptime and APM-configuration reads;
-7 `write` — `create_synthetic_monitor`, `update_synthetic_monitor`, `test_synthetic_monitor`,
+22 tools: 10 `read` (`readOnlyHint=true`) — the Synthetics, Uptime and APM-configuration reads;
+8 `write` — `create_synthetic_monitor`, `update_synthetic_monitor`, `test_synthetic_monitor`,
 `create_synthetic_param`, `update_synthetic_param`, `create_synthetic_private_location`,
-`update_synthetic_private_location`; 3 `destructive` — `delete_synthetic_monitor`,
-`delete_synthetic_param`, `delete_synthetic_private_location`. The three updates and three deletes
+`update_synthetic_private_location`, `upsert_apm_agent_config`; 4 `destructive` —
+`delete_synthetic_monitor`, `delete_synthetic_param`, `delete_synthetic_private_location`,
+`delete_apm_agent_config`. The three Synthetics updates, the APM upsert and the four deletes
 carry `idempotentHint=true`; the creates and the run do not. `test_synthetic_monitor` sets
 `openWorldHint=true` (the run sends the monitor's requests to its target, outside Kibana); every
 other tool sets `openWorldHint=false`.
@@ -29,14 +31,16 @@ a deleted parameter's key, object and value are gone, with nothing left to edit 
 when the caller holds the old one — or a delete), so they are `write`. The run changes no
 Synthetics object and loses nothing, so it is `write` too, though it is not side-effect free: it
 sends real requests to the target (a paused monitor's too) and adds a short-lived package policy
-to the location's agent policy (below). Full tool list,
+to the location's agent policy (below). The APM upsert is `write` because it loses nothing: it
+reads the configuration it replaces and returns its settings as `previous_settings`, which a
+second upsert puts back; the APM delete is `destructive`, like every delete (D47). Full tool list,
 descriptions, return shapes: docs/tools.md#observability-toolbox. What's deliberately not covered —
 APM telemetry, SLOs, an AI-assistant tool, Synthetics surface left out — is under Deliberate
 exclusions, not repeated here.
 
 ## Behavioral guarantees
 
-- **No space targeting.** None of the 20 tools accept `space`; calls always resolve through the
+- **No space targeting.** None of the 22 tools accept `space`; calls always resolve through the
   gateway port's (`ports/gateway.py`) default-scope factory call — no space echo in results, no scoped
   not-found suffix, no fail-closed space check. Deliberate absence (see Deliberate exclusions), not
   an oversight to fix by copying the space-aware pattern.
@@ -44,7 +48,11 @@ exclusions, not repeated here.
   error crosses the same gateway-error-translation boundary every toolbox uses, becoming a
   plain-text tool error with no secrets or stack traces. The reads author no tool-specific guidance
   — their not-found reads as exactly "the requested id/service+environment doesn't exist" — except
-  `get_synthetic_monitor`, whose miss shares the write tier's text (D46). The write tier names the
+  `get_synthetic_monitor`, whose miss shares the write tier's text (D46), and
+  `get_apm_agent_config`, whose miss shares the APM writes' text (D47: "no APM agent configuration
+  for service 'cart', all environments — service_name and environment must match a configuration
+  exactly (an omitted one means all); call list_apm_agent_configs to see them"; Kibana's own 404
+  says only "Not Found"). The write tier names the
   fix: a wrong `monitor_id`, `param_id` or `location_id` says where ids come
   from ("… is the id that create_synthetic_monitor or list_synthetic_monitors returns, not the
   monitor's name; call list_synthetic_monitors to find it"), and each refusal below names the call
@@ -108,7 +116,28 @@ exclusions, not repeated here.
   policy is Kibana's 400 plus where policy ids come from (`list_agent_policies`,
   `create_agent_policy` in the fleet toolbox). Only the label is editable; an unknown id on the
   update is Kibana's 404 "… does not exist.", read as D17 not-found.
-- **Deletes report what they did, and a miss is a not-found.** Each delete returns
+- **An APM agent configuration is named exactly by `service_name` + `environment`.** An omitted
+  one means all services or all environments, never "any" (Kibana's view and delete match exactly,
+  probed). `ALL_OPTION_VALUE` (the `list_apm_environments` marker) is refused for either, before
+  any request — Kibana stores it as a literal name; so is `""` at the schema — Kibana stores
+  `service.name: ""` and its view and delete then read `""` as omitted, so nothing can reach that
+  configuration again (probed; the probe's one had to be removed from the system index directly).
+- **The upsert replaces the whole settings map and returns the one it replaced.**
+  `upsert_apm_agent_config` reads the configuration first; with none it creates one without
+  `overwrite` (so a configuration another caller creates in between is Kibana's 400, answered
+  "call upsert_apm_agent_config again", never overwritten unreported); with one it replaces it
+  with `overwrite=true`, sending the stored `agent_name` again (Kibana's PUT drops it otherwise,
+  probed). It returns the read shape plus `created` and `previous_settings` (`null` on a create).
+  Values go out as strings — `true`/`false` for booleans, `str()` for numbers (Kibana rejects
+  non-string values, probed). An empty map is refused before the gateway, naming
+  `delete_apm_agent_config`. Kibana validates the values of the settings it knows; its 400 can omit
+  which setting failed ("Must be a number between 0.0000 and 1"), so the error adds the settings
+  sent. It stores setting names it does not know (probed), which agents ignore; the description
+  says to take names from the agent's central-configuration docs.
+- **The APM delete returns what it removed.** `delete_apm_agent_config` reads the configuration
+  first (a miss is the D47 not-found, and nothing is deleted) and returns `{service_name,
+  environment, deleted: true, settings}`.
+- **Deletes report what they did, and a miss is a not-found.** Each Synthetics delete returns
   `{id, deleted: true}`. Kibana answers a monitor or parameter delete of an unknown id with
   `200 [{"deleted": false}]` and a private-location one with a 400 "does not exist" — all read
   as D17 not-found here. A location still used by monitors is refused by Kibana; the error adds
@@ -117,7 +146,10 @@ exclusions, not repeated here.
 
 ## Invariants
 
-- The 10 reads MUST stay `read` tier; every Synthetics delete MUST be `destructive`; no write-tier tool may delete an object.
+- The 10 reads MUST stay `read` tier; every Synthetics delete and `delete_apm_agent_config` MUST be `destructive`; no write-tier tool may delete an object.
+- `upsert_apm_agent_config` MUST NOT overwrite a configuration it did not read first, and MUST return the settings it replaced as `previous_settings`.
+- The APM writes MUST refuse `ALL_OPTION_VALUE` and `""` as a service name or environment before any request.
+- A replacement MUST send a stored `agent_name` again.
 - `list_synthetic_params`'s shape MUST NOT include a parameter value field, regardless of caller privilege.
 - `list_apm_environments` MUST always include the `ALL_OPTION_VALUE` sentinel.
 - `list_synthetic_monitors` and `list_apm_sourcemaps` MUST return the full result in one call, terminating pagination on the running total, never an absolute/global total field. (For sourcemaps the total-is-grand-total assumption is live-unverified — only the empty response has been observed on the test stack; verify against a real artifact before leaning on it.)
@@ -144,7 +176,7 @@ exclusions, not repeated here.
   generative-AI connector, and Tech-Preview besides.
 - **Space targeting is deliberately absent, not an oversight.** Synthetics and Uptime objects are
   space-scoped; APM central configuration is cluster-global. A uniform `space` parameter across all
-  20 tools would misrepresent the APM tools' scope, so reconciling the mix is deferred rather than
+  22 tools would misrepresent the APM tools' scope, so reconciling the mix is deferred rather than
   shipped half-right.
 - **The Synthetics write tier leaves part of the namespace out (D46, roadmap).** Not offered:
   Elastic-managed locations (none on a self-managed stack to probe), reading a test run's result
@@ -152,29 +184,35 @@ exclusions, not repeated here.
   timeout, labels, monitor params, `retest_on_failure`, namespace, `service.name`, type-specific
   fields), a parameter's `share_across_spaces`, a location's `geo`/`spaces`. Browser monitors are
   created like the others but run only on the `elastic-agent-complete` image; the stack's agent
-  is not one, so only lightweight checks were seen to run. APM configuration writes (agent-config
-  upsert, annotation creation) are separate backlog, not part of this tier.
+  is not one, so only lightweight checks were seen to run.
+- **Creating APM annotations is out of scope, license-gated** — Kibana answers the create with 403
+  "Annotations require at least a gold license or a trial license." on Basic (probed, D47), so
+  `search_apm_annotations` reads them and no tool writes one. The APM writes also leave out
+  `agent_name` on a new configuration (derived from ingested APM data, none on this stack) and the
+  agents' own lookup (`search_agent_configurations`).
 - **`list_apm_sourcemaps`' shape is unverified against a live artifact** — a real RUM sourcemap
   could not be seeded on the target instance, so (`identifier`, `created`) is exercised only against
   a fabricated response: directionally right, not confirmed.
 
 ## Enforcement
 
-- `tests/unit/toolboxes/test_observability.py` — registers all 20 tools against a fake gateway
+- `tests/unit/toolboxes/test_observability.py` — registers all 22 tools against a fake gateway
   and pins their hints and the absence of `space`; pins `get_synthetic_monitor`'s not-found,
   `list_apm_environments`' sentinel, `get_uptime_settings`' nested-email shape,
   `search_apm_annotations`' default environment; and each write-tier refusal (target per type,
   schedule numbers and the canonical number sent, unknown or absent locations, empty updates,
   duplicate keys and labels, a taken agent policy), the read-shape results, and that no result
-  carries a parameter value.
+  carries a parameter value; the APM upsert's create (no overwrite) and replacement (the whole map,
+  `previous_settings`, the stored `agent_name` sent again), its string values, its empty-map,
+  `ALL_OPTION_VALUE` and `""` refusals, the delete's result and both misses.
 - `tests/unit/adapters/test_observability_gateway.py` — pins the response-mapping contract per
   tool: a real captured monitor body, the browser-monitor null-target case, both
   pagination-to-exhaustion cases (the monitors case regression-guarded with deliberately
   divergent total values; the sourcemaps case exercises the page walk without a divergent-total
   guard), the param value never carried through, the uptime-settings
   nested-email mapping, the sourcemap `created` coercion.
-- `tests/unit/test_server_assembly.py` — confirms the toolbox boots with exactly these 20 names:
-  10 at `read`, 17 at the default `write`, 20 at `destructive`.
+- `tests/unit/test_server_assembly.py` — confirms the toolbox boots with exactly these 22 names:
+  10 at `read`, 18 at the default `write`, 22 at `destructive`.
 - `tests/contract/test_gateway_contract.py` (observability section) — live, hard-asserted (no
   skips) against a running Basic-license Kibana: every list tool returns an empty-but-typed array
   on the seeded stack, `get_synthetic_monitor` / `get_apm_agent_config` raise not-found live,
@@ -191,5 +229,12 @@ exclusions, not repeated here.
   rename, a run request and the test-now package policy it adds to the agent policy (still there
   after the location's delete), the in-use refusal, the move to a second location that lets the
   first be deleted, each delete and its miss; everything removed after.
+- `tests/unit/adapters/test_observability_gateway.py` (APM writes) — the PUT with only the given
+  fields then the read back, `overwrite` sent only when asked, `agent_name` mapped, the race 400
+  and a value 400 with the settings added, the miss text on view and delete.
+- `tests/contract/test_gateway_contract.py` (APM writes) — live, on throwaway `contract-apm-*`
+  services: a create (a number sent as `"0.2"`), a replacement that replaces the map and returns
+  the old one, a value Kibana rejects with the settings named, the delete with what it removed and
+  its miss; and a configuration written with `agent_name` keeping it through a replacement.
 - No e2e-replay transcript exercises this toolbox: behavior is pinned at the unit, adapter, and
   live-contract tiers above, not by a recorded model turn.

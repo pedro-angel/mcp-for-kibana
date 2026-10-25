@@ -280,6 +280,20 @@ class KibanaGateway(Protocol):
         self, service_name: str | None, environment: str | None
     ) -> ApmAgentConfig: ...
 
+    def upsert_apm_agent_config(
+        self,
+        service_name: str | None,
+        environment: str | None,
+        settings: dict[str, str],
+        *,
+        agent_name: str | None,
+        overwrite: bool,
+    ) -> ApmAgentConfig: ...
+
+    def delete_apm_agent_config(
+        self, service_name: str | None, environment: str | None
+    ) -> None: ...
+
     def list_apm_environments(self, service_name: str | None) -> list[ApmEnvironment]: ...
 
     def list_apm_sourcemaps(self) -> list[ApmSourcemap]: ...

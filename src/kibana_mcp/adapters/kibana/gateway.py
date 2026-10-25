@@ -621,7 +621,34 @@ def _to_apm_agent_config(body: dict[str, Any]) -> ApmAgentConfig:
         settings=body.get("settings") or {},
         applied_by_agent=bool(body.get("applied_by_agent", False)),
         etag=body.get("etag", ""),
+        agent_name=body.get("agent_name") or None,
     )
+
+
+def _apm_scope(service_name: str | None, environment: str | None) -> str:
+    service = f"service '{service_name}'" if service_name is not None else "all services"
+    env = f"environment '{environment}'" if environment is not None else "all environments"
+    return f"{service}, {env}"
+
+
+@contextlib.contextmanager
+def _known_apm_config(service_name: str | None, environment: str | None) -> Iterator[None]:
+    """Kibana's 404 on an APM agent config (view, delete) says only "Not Found"
+    (probed on 9.5.4): name the exact-match rule and where configs are listed."""
+    try:
+        yield
+    except NotFoundError as e:
+        raise KibanaNotFound(
+            f"no APM agent configuration for {_apm_scope(service_name, environment)} — "
+            "service_name and environment must match a configuration exactly (an omitted one "
+            "means all); call list_apm_agent_configs to see them"
+        ) from e
+
+
+_APM_SETTINGS_HINT = (
+    "each value is a string in the form the setting takes (a number such as '0.5', 'true' or "
+    "'false', a duration such as '10s', or one of the setting's words)"
+)
 
 
 def _to_apm_environment(body: dict[str, Any]) -> ApmEnvironment:
@@ -2098,12 +2125,57 @@ class KibanaPyGateway:
     def get_apm_agent_config(
         self, service_name: str | None, environment: str | None
     ) -> ApmAgentConfig:
-        # /view 404s when no matching config exists -> NotFoundError -> KibanaNotFound.
-        return _to_apm_agent_config(
-            self._client.apm.get_agent_configuration(
-                name=service_name, environment=environment
+        # /view matches exactly (an omitted name or environment means "all", not
+        # "any") and 404s when nothing matches; the miss names the list tool.
+        with _known_apm_config(service_name, environment):
+            body = self._client.apm.get_agent_configuration(
+                **_given(name=service_name, environment=environment)
             ).body
-        )
+        return _to_apm_agent_config(body)
+
+    @_translate_errors
+    def upsert_apm_agent_config(
+        self,
+        service_name: str | None,
+        environment: str | None,
+        settings: dict[str, str],
+        *,
+        agent_name: str | None,
+        overwrite: bool,
+    ) -> ApmAgentConfig:
+        # The PUT answers {} and replaces the whole settings map; without
+        # ?overwrite=true an existing config is a 400 (probed on 9.5.4), so the
+        # caller overwrites only a config it has read.
+        try:
+            self._client.apm.create_or_update_agent_configuration(**_given(
+                service_name=service_name, service_environment=environment,
+                settings=settings, agent_name=agent_name, overwrite=True if overwrite else None,
+            ))
+        except BadRequestError as e:
+            if "already exists" in str(e.message):
+                raise KibanaRejected(
+                    "Kibana refused to replace the APM agent configuration",
+                    detail=(
+                        f"a configuration for {_apm_scope(service_name, environment)} was "
+                        "created after this call read none — call upsert_apm_agent_config "
+                        "again: it then replaces that one and returns its settings as "
+                        "previous_settings"
+                    ),
+                ) from e
+            # Kibana checks the values of the settings it knows, and its message
+            # can omit which one failed ("Must be a number between 0.0000 and 1").
+            raise KibanaRejected(
+                "Kibana rejected the payload",
+                detail=f"{e.message} — settings sent: {settings}; {_APM_SETTINGS_HINT}",
+            ) from e
+        return self.get_apm_agent_config(service_name, environment)
+
+    @_translate_errors
+    def delete_apm_agent_config(self, service_name: str | None, environment: str | None) -> None:
+        with _known_apm_config(service_name, environment):
+            self._client.apm.delete_agent_configuration(
+                **_given(service_name=service_name, service_environment=environment)
+            )
 
     @_translate_errors
     def list_apm_environments(self, service_name: str | None) -> list[ApmEnvironment]:

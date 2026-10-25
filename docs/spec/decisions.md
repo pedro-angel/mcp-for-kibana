@@ -144,18 +144,19 @@ this ledger stands without them.
   may get the input elsewhere, e.g. an id the user pastes). Dependencies are
   followed transitively; tools hidden by the tier are not checked; toolbox
   selections are not checked. **Dependency map**: one owner, data —
-  `DEPENDENCIES` in `src/kibana_mcp/tool_lists.py`, 51 edges from 46 tools.
+  `DEPENDENCIES` in `src/kibana_mcp/tool_lists.py`, 53 edges from 48 tools.
   An edge A → B means A takes an input only B shows the model and A's own
   description or error guidance sends the model there: an index or field name
   (`update_panel`/`delete_panel` → `get_dashboard`; every VizSpec tool →
   `describe_data_view`, whose validation error says "Use describe_data_view"),
   the state an in-place edit merges into (`update_alert_rule` →
-  `get_alert_rule`, D40; `update_connector` → `get_connector`, D35), an export
+  `get_alert_rule`, D40; `update_connector` → `get_connector`, D35;
+  `upsert_apm_agent_config` → `get_apm_agent_config`, D47), an export
   handle (`import_saved_objects`/`overwrite_saved_objects` →
   `export_saved_objects`), or an existing object's id that the not-found
   guidance says to look up ("call search_dashboards to find it": dashboards,
   visualizations, data views, alert rules, connectors, Synthetics monitors,
-  parameters and private locations), plus ids and values descriptions name
+  parameters and private locations, APM agent configurations), plus ids and values descriptions name
   (`get_space` → `list_spaces`, `get_synthetic_monitor` →
   `list_synthetic_monitors`, `create_synthetic_monitor` →
   `list_synthetic_private_locations`, `create_synthetic_private_location` →
@@ -519,6 +520,66 @@ this ledger stands without them.
   not a running one, so a pass would still promise nothing — the description
   states the condition instead). Contract:
   [observability](toolboxes/observability.md).
+- **D47 (2026-10-25, probes on 9.5.4, Basic)** — APM central configuration
+  gains one `write` tool, `upsert_apm_agent_config`, and one `destructive`
+  one, `delete_apm_agent_config`, in the `observability` toolbox (the plan's
+  names kept: verb_noun with the toolbox's `apm_agent_config` noun, as the
+  reads `list_apm_agent_configs`/`get_apm_agent_config` have it; "upsert"
+  because Kibana's one PUT creates or replaces). **The plan's third tool,
+  `create_apm_annotation`, is dropped as out of scope (D28):** Kibana answers
+  `POST /api/apm/services/{service}/annotation` on Basic with 403
+  "Annotations require at least a gold license or a trial license." with and
+  without environment, message and tags (a malformed `@timestamp` is a 400
+  first: the body is checked before the licence). **Tiers, by the repo rule
+  (irreversible or data-losing → destructive):** the upsert loses nothing —
+  it reads the configuration it would replace and returns its settings as
+  `previous_settings`, so a second upsert restores it (the etag and
+  `applied_by_agent` are Kibana's to recompute), and it overwrites only a
+  configuration it read: with none it sends no `overwrite`, so one created in
+  between is Kibana's 400 "A configuration already exists … Use
+  ?overwrite=true", answered with "call upsert_apm_agent_config again" rather
+  than replaced unreported — so it is `write`, with `idempotentHint=true` (a
+  repeat stores the same map). The delete is `destructive` like every delete
+  here: the stored configuration is gone and agents fall to whatever else
+  matches them; it returns the deleted settings so a caller can recreate it,
+  which is a recovery path, not an inverse (a new document). Rejected: merge
+  semantics for `settings` (Kibana's PUT replaces the map, probed: a
+  `{"capture_body": "all"}` overwrite of `{"transaction_sample_rate": "0.1",
+  "recording": "true"}` stored only `capture_body`; a merge would need a null
+  to remove a key, and the replaced map is returned anyway); `overwrite=true`
+  on every call (it would replace a configuration the tool never read).
+  **Observed:** the PUT answers `{}`, so the tool reads the configuration back;
+  the view and the delete match `service.name`/`service.environment`
+  exactly — a `p-x/prod` configuration is a 404 for `name=p-x` alone — and
+  their 404 says only "Not Found", so both (and `get_apm_agent_config`, which
+  the upsert reads through) answer "no APM agent configuration for service
+  '…', all environments — service_name and environment must match a
+  configuration exactly (an omitted one means all); call
+  list_apm_agent_configs to see them". Values must be strings (a number
+  `0.5` and a boolean `false` are 400s "does not match expected type
+  string"), so the tool converts them (`false` → `"false"`, numbers by
+  `str()`). Kibana validates the values of the settings it knows
+  (`transaction_sample_rate` `"7"`, `"1e-05"`, `"0.123456"`; `log_level`
+  `"loud"`; `api_request_time` `"10x"`; `recording` `"maybe"`) but its
+  message can omit which setting failed ("Must be a number between 0.0000
+  and 1"), so the error adds the settings sent; it stores names it does not
+  know (`no_such_setting` and an empty map both answered 200). An empty map
+  is refused here (a configuration that sets nothing; the error names the
+  delete); an unknown name is not, because no public route serves Kibana's
+  setting definitions and a list kept here would drift from the agents' — the
+  description says to take names from the agent's docs. Kibana stores
+  `ALL_OPTION_VALUE` as a literal environment (`list_apm_environments` then
+  marks it `alreadyConfigured`, though no agent would match it), so the tools
+  refuse it for either name; it stores `service.name: ""` and then cannot
+  reach it again (the view and the delete read `""` as omitted, so the
+  probe's one was removed from `.apm-agent-configuration` with a temporary
+  restricted-index role), so `""` is refused at the schema. Kibana's PUT
+  drops a stored `agent_name` (the UI writes one) unless it is sent again
+  (probed: `agent_name: "java"` vanished after an overwrite without it), so a
+  replacement sends the stored one, and the read shape gains `agent_name`
+  (`null` when none, the key being absent then). **No `space`** (D10: APM
+  configuration is cluster-global, the toolbox keeps its mixed-axis
+  exclusion). Contract: [observability](toolboxes/observability.md).
 
 ## Reliability and models (measured)
 

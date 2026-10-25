@@ -4,7 +4,10 @@ monitoring, Uptime settings, and APM *configuration*.
 
 The reads are `read` tier. The Synthetics write tier (D46) edits monitors,
 global parameters and private locations (`write`), runs a monitor once
-(`write`), and deletes each of the three (`destructive`). This toolbox does NOT
+(`write`), and deletes each of the three (`destructive`). APM agent
+configurations are created or replaced (`write`) and deleted (`destructive`)
+(D47); APM annotations are only read, since creating one needs a Gold license
+(403 on Basic, probed). This toolbox does NOT
 expose APM service/transaction/trace/service-map telemetry (those are
 internal-only Kibana APIs, unreachable by an external client) or SLOs (which
 need a Platinum license). Both are out of scope: subscription-gated surfaces are
@@ -21,6 +24,7 @@ from fastmcp.exceptions import ToolError
 from mcp.types import ToolAnnotations
 from pydantic import Field
 
+from kibana_mcp.core.errors import KibanaNotFound
 from kibana_mcp.core.models import SyntheticMonitor
 from kibana_mcp.ports.gateway import KibanaGateway
 from kibana_mcp.toolboxes.base import ToolboxDeps, gateway_errors
@@ -132,6 +136,33 @@ def _monitor(m: SyntheticMonitor) -> dict[str, Any]:
     return asdict(m)
 
 
+# list_apm_environments' marker for "all environments" (Kibana's UI uses it for
+# services too). Kibana stores it as a literal name (probed on 9.5.4), which no
+# agent's lookup would read as "all", so the APM writes refuse it.
+_ALL_OPTION = "ALL_OPTION_VALUE"
+# An APM config's service name or environment: Kibana stores "" and then cannot
+# match it again (its view and delete read "" as omitted; probed), so never "".
+_ApmName = Annotated[str, Field(min_length=1)] | None
+_SettingValue = str | bool | int | float
+
+
+def _apm_target(service_name: str | None, environment: str | None) -> None:
+    for arg, value in (("service_name", service_name), ("environment", environment)):
+        if value == _ALL_OPTION:
+            raise ToolError(
+                f"{arg} '{_ALL_OPTION}' is list_apm_environments' marker for all, not a name "
+                f"Kibana matches — omit {arg} to target all"
+            )
+
+
+def _setting(value: _SettingValue) -> str:
+    # Kibana takes only strings ("0.5 does not match expected type string",
+    # probed), so numbers and booleans are sent in the form it parses.
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    return str(value)
+
+
 class ObservabilityToolbox:
     name = "observability"
 
@@ -139,6 +170,8 @@ class ObservabilityToolbox:
         self._register_read(mcp, deps)
         self._register_synthetics_write(mcp, deps)
         self._register_synthetics_destructive(mcp, deps)
+        self._register_apm_config_writes(mcp, deps)
+        self._register_apm_config_destructive(mcp, deps)
 
     def _register_read(self, mcp: FastMCP, deps: ToolboxDeps) -> None:
         @mcp.tool(tags={self.name, "read"}, annotations=_READ)
@@ -456,3 +489,75 @@ class ObservabilityToolbox:
             with gateway_errors(), deps.gateway_factory() as gw:
                 gw.delete_synthetic_private_location(location_id)
             return {"id": location_id, "deleted": True}
+
+    def _register_apm_config_writes(self, mcp: FastMCP, deps: ToolboxDeps) -> None:
+        @mcp.tool(tags={self.name, "write"}, annotations=_WRITE_IDEMPOTENT)
+        def upsert_apm_agent_config(
+            settings: dict[str, _SettingValue],
+            service_name: _ApmName = None,
+            environment: _ApmName = None,
+        ) -> dict[str, Any]:
+            """Create or replace an APM agent configuration: the settings APM
+            agents fetch from Kibana (central configuration), e.g.
+            {"transaction_sample_rate": "0.2", "log_level": "debug"}. Omit
+            service_name to target all services and environment to target all
+            environments; the pair names one configuration exactly
+            (list_apm_agent_configs shows them). `settings` REPLACES the stored
+            map: to change one setting, read the map with get_apm_agent_config
+            and pass it whole with that key changed. Values go out as strings
+            (numbers and booleans are converted). Kibana checks the values of
+            the settings it knows but stores names it does not know, which
+            agents ignore, so use the setting names from the APM agent's
+            central-configuration docs. Returns the configuration as
+            get_apm_agent_config does, plus `created` (true when none existed)
+            and `previous_settings` (the map it replaced, or null): pass
+            previous_settings back to undo a replacement."""
+            if not settings:
+                raise ToolError(
+                    "settings is empty — pass at least one setting, e.g. "
+                    "{'transaction_sample_rate': '0.5'}; to remove a configuration use "
+                    "delete_apm_agent_config"
+                )
+            _apm_target(service_name, environment)
+            values = {name: _setting(value) for name, value in settings.items()}
+            with gateway_errors(), deps.gateway_factory() as gw:
+                try:
+                    previous = gw.get_apm_agent_config(service_name, environment)
+                except KibanaNotFound:
+                    previous = None
+                stored = gw.upsert_apm_agent_config(
+                    service_name, environment, values,
+                    # Kibana's PUT drops a stored agent_name that is not sent again.
+                    agent_name=previous.agent_name if previous else None,
+                    overwrite=previous is not None,
+                )
+            return {
+                **asdict(stored),
+                "created": previous is None,
+                "previous_settings": previous.settings if previous else None,
+            }
+
+    def _register_apm_config_destructive(self, mcp: FastMCP, deps: ToolboxDeps) -> None:
+        @mcp.tool(tags={self.name, "destructive"}, annotations=_DESTRUCTIVE)
+        def delete_apm_agent_config(
+            service_name: _ApmName = None,
+            environment: _ApmName = None,
+        ) -> dict[str, Any]:
+            """Permanently delete one APM agent configuration, matched exactly by
+            service_name and environment: omit service_name for the
+            all-services configuration and environment for the
+            all-environments one (list_apm_agent_configs shows them; omitting
+            both deletes the configuration for all services and all
+            environments). Agents then get whatever other configuration matches
+            them, or their own defaults. Returns the deleted settings; only
+            passing them to upsert_apm_agent_config recreates it."""
+            _apm_target(service_name, environment)
+            with gateway_errors(), deps.gateway_factory() as gw:
+                current = gw.get_apm_agent_config(service_name, environment)
+                gw.delete_apm_agent_config(service_name, environment)
+            return {
+                "service_name": service_name,
+                "environment": environment,
+                "deleted": True,
+                "settings": current.settings,
+            }

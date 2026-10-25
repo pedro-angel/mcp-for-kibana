@@ -12,6 +12,27 @@ version section.
 
 ### Added
 
+- **Observability: create, replace and delete APM agent configurations**
+  (one `write` and one `destructive` tool, 162 tools in all).
+  `upsert_apm_agent_config` creates or replaces the central configuration of a
+  service and environment (omit either for all): `settings` replaces the
+  stored map, values go out as strings (`0.5` → `"0.5"`, `false` →
+  `"false"`), and the result adds `created` and `previous_settings` (the map
+  it replaced, which a second call puts back). It overwrites only a
+  configuration it read first, keeps a stored `agent_name`, refuses an empty
+  map, `ALL_OPTION_VALUE` and `""` as names, and names the settings sent when
+  Kibana rejects a value. `delete_apm_agent_config` deletes one configuration,
+  matched exactly, and returns its settings. No tool takes `space`. Creating
+  APM annotations is not offered: Kibana requires a Gold license for it (403
+  on Basic). Decision D47.
+- **APM agent configurations show their `agent_name`** in
+  `list_apm_agent_configs` and `get_apm_agent_config` (`null` when none was
+  stored). Decision D47.
+- **`get_apm_agent_config` names the fix on a miss**: "no APM agent
+  configuration for service '<name>', all environments — service_name and
+  environment must match a configuration exactly (an omitted one means all);
+  call list_apm_agent_configs to see them", instead of Kibana's "Not Found".
+  Decision D47.
 - **Observability: create, edit, run and delete Synthetics objects** (seven
   `write` and three `destructive` tools, 160 tools in all). Monitors:
   `create_synthetic_monitor` (http, tcp, icmp or browser, on private

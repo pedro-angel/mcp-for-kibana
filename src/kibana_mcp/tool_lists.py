@@ -90,6 +90,9 @@ DEPENDENCIES: Mapping[str, tuple[str, ...]] = MappingProxyType({
     "create_synthetic_private_location": ("list_agent_policies",),
     "update_synthetic_private_location": ("list_synthetic_private_locations",),
     "delete_synthetic_private_location": ("list_synthetic_private_locations",),
+    # (the APM agent-config writes, D47)
+    "upsert_apm_agent_config": ("get_apm_agent_config",),
+    "delete_apm_agent_config": ("list_apm_agent_configs",),
     "get_space": ("list_spaces",),
     "create_package_policy": ("get_package",),
     "update_package_policy": ("get_package",),

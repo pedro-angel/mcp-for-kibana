@@ -1,6 +1,9 @@
 """The observability toolbox: 10 read tools over synthetics + uptime + apm-config,
-and the Synthetics write tier (7 write, 3 destructive; D46). Driven through the
-in-memory fastmcp Client against a FakeGateway."""
+the Synthetics write tier (7 write, 3 destructive; D46) and the APM agent-config
+writes (1 write, 1 destructive; D47). Driven through the in-memory fastmcp Client
+against a FakeGateway."""
+
+from dataclasses import replace
 
 import pytest
 from fastmcp import Client, FastMCP
@@ -21,9 +24,11 @@ OBSERVABILITY_WRITE = {
     "create_synthetic_monitor", "update_synthetic_monitor", "test_synthetic_monitor",
     "create_synthetic_param", "update_synthetic_param",
     "create_synthetic_private_location", "update_synthetic_private_location",
+    "upsert_apm_agent_config",
 }
 OBSERVABILITY_DESTRUCTIVE = {
     "delete_synthetic_monitor", "delete_synthetic_param", "delete_synthetic_private_location",
+    "delete_apm_agent_config",
 }
 OBSERVABILITY_TOOLS = OBSERVABILITY_READ | OBSERVABILITY_WRITE | OBSERVABILITY_DESTRUCTIVE
 
@@ -59,6 +64,7 @@ async def test_observability_tools_and_hints(mcp):
     idempotent = {n for n, t in tools.items() if t.annotations.idempotent_hint}
     assert idempotent - OBSERVABILITY_READ == {
         "update_synthetic_monitor", "update_synthetic_param", "update_synthetic_private_location",
+        "upsert_apm_agent_config",
     } | OBSERVABILITY_DESTRUCTIVE
 
 
@@ -406,3 +412,129 @@ async def test_empty_ids_are_refused_at_the_schema(mcp, gateway, tool, arg):
         with pytest.raises(ToolError):
             await client.call_tool(tool, {arg: "", **extra})
     assert gateway.monitor_writes == [] and gateway.param_writes == []
+
+
+# --- APM agent configuration writes (D47) ------------------------------------
+# The fake holds one config: checkout/production, {"transaction_sample_rate": "0.5"}.
+
+_APM_MISS = (r"no APM agent configuration for service 'nope', all environments — service_name "
+             r"and environment must match a configuration exactly \(an omitted one means all\); "
+             r"call list_apm_agent_configs to see them")
+
+
+async def test_upsert_apm_agent_config_creates_one(mcp, gateway):
+    async with Client(mcp) as client:
+        created = (await client.call_tool("upsert_apm_agent_config", {
+            "service_name": "cart", "settings": {"transaction_sample_rate": "0.2"},
+        })).data
+        got = (await client.call_tool("get_apm_agent_config", {"service_name": "cart"})).data
+    assert created == {**got, "created": True, "previous_settings": None}
+    assert created["service_name"] == "cart" and created["service_environment"] is None
+    assert created["settings"] == {"transaction_sample_rate": "0.2"}
+    # Nothing was read, so nothing may be overwritten (a race is refused by Kibana).
+    assert gateway.apm_config_writes == [("upsert", {
+        "service_name": "cart", "environment": None,
+        "settings": {"transaction_sample_rate": "0.2"}, "agent_name": None, "overwrite": False,
+    })]
+
+
+async def test_upsert_apm_agent_config_replaces_the_whole_map_and_returns_the_old_one(
+    mcp, gateway
+):
+    async with Client(mcp) as client:
+        replaced = (await client.call_tool("upsert_apm_agent_config", {
+            "service_name": "checkout", "environment": "production",
+            "settings": {"capture_body": "errors"},
+        })).data
+    assert replaced["created"] is False
+    assert replaced["previous_settings"] == {"transaction_sample_rate": "0.5"}
+    assert replaced["settings"] == {"capture_body": "errors"}  # replaced, not merged
+    assert gateway.apm_config_writes[-1][1]["overwrite"] is True
+
+
+async def test_upsert_apm_agent_config_keeps_the_stored_agent_name(mcp, gateway):
+    # Kibana's PUT drops agent_name when it is not sent (probed on 9.5.4).
+    gateway.apm_agent_configs[0] = replace(gateway.apm_agent_configs[0], agent_name="java")
+    async with Client(mcp) as client:
+        replaced = (await client.call_tool("upsert_apm_agent_config", {
+            "service_name": "checkout", "environment": "production",
+            "settings": {"recording": "false"},
+        })).data
+    assert gateway.apm_config_writes[-1][1]["agent_name"] == "java"
+    assert replaced["agent_name"] == "java"
+
+
+async def test_upsert_apm_agent_config_sends_values_as_strings(mcp, gateway):
+    # Kibana takes only strings ("0.5 does not match expected type string").
+    async with Client(mcp) as client:
+        await client.call_tool("upsert_apm_agent_config", {
+            "service_name": "cart",
+            "settings": {"transaction_sample_rate": 0.25, "recording": False,
+                         "transaction_max_spans": 500, "log_level": "debug"},
+        })
+    assert gateway.apm_config_writes[-1][1]["settings"] == {
+        "transaction_sample_rate": "0.25", "recording": "false",
+        "transaction_max_spans": "500", "log_level": "debug",
+    }
+
+
+async def test_upsert_apm_agent_config_refuses_empty_settings(mcp, gateway):
+    async with Client(mcp) as client:
+        with pytest.raises(ToolError, match=(
+            r"settings is empty — pass at least one setting, e.g. "
+            r"\{'transaction_sample_rate': '0.5'\}; to remove a configuration use "
+            r"delete_apm_agent_config"
+        )):
+            await client.call_tool("upsert_apm_agent_config", {"settings": {}})
+    assert gateway.apm_config_writes == []
+
+
+@pytest.mark.parametrize("arg", ["service_name", "environment"])
+async def test_apm_config_writes_refuse_the_all_sentinel(mcp, gateway, arg):
+    # Kibana stores "ALL_OPTION_VALUE" as a literal name (probed): it would not
+    # mean "all", so the tools refuse it and say to omit the argument.
+    async with Client(mcp) as client:
+        for tool, extra in (("upsert_apm_agent_config", {"settings": {"recording": "true"}}),
+                            ("delete_apm_agent_config", {})):
+            with pytest.raises(ToolError, match=(
+                rf"{arg} 'ALL_OPTION_VALUE' is list_apm_environments' marker for all, not a "
+                rf"name Kibana matches — omit {arg} to target all"
+            )):
+                await client.call_tool(tool, {arg: "ALL_OPTION_VALUE", **extra})
+    assert gateway.apm_config_writes == []
+
+
+@pytest.mark.parametrize("tool", ["upsert_apm_agent_config", "delete_apm_agent_config"])
+async def test_apm_config_writes_refuse_empty_names_at_the_schema(mcp, gateway, tool):
+    # Kibana stores service.name "" and then cannot match it again (probed:
+    # its view and delete treat "" as omitted), so "" never goes out.
+    extra = {"settings": {"recording": "true"}} if tool.startswith("upsert") else {}
+    async with Client(mcp) as client:
+        for arg in ("service_name", "environment"):
+            with pytest.raises(ToolError):
+                await client.call_tool(tool, {arg: "", **extra})
+    assert gateway.apm_config_writes == []
+
+
+async def test_delete_apm_agent_config_returns_what_it_deleted(mcp, gateway):
+    async with Client(mcp) as client:
+        deleted = (await client.call_tool("delete_apm_agent_config", {
+            "service_name": "checkout", "environment": "production"})).data
+    assert deleted == {"service_name": "checkout", "environment": "production",
+                       "deleted": True, "settings": {"transaction_sample_rate": "0.5"}}
+    assert gateway.apm_agent_configs == []
+    assert gateway.apm_config_writes == [("delete", {
+        "service_name": "checkout", "environment": "production"})]
+
+
+async def test_delete_apm_agent_config_miss_names_the_list_tool(mcp, gateway):
+    async with Client(mcp) as client:
+        with pytest.raises(ToolError, match=_APM_MISS):
+            await client.call_tool("delete_apm_agent_config", {"service_name": "nope"})
+    assert gateway.apm_config_writes == []
+
+
+async def test_get_apm_agent_config_miss_names_the_list_tool(mcp):
+    async with Client(mcp) as client:
+        with pytest.raises(ToolError, match=_APM_MISS):
+            await client.call_tool("get_apm_agent_config", {"service_name": "nope"})

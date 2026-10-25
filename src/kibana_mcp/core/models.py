@@ -270,6 +270,10 @@ class ApmAgentConfig:
     settings: dict[str, str]
     applied_by_agent: bool
     etag: str
+    # The APM agent the config was written for ("java"), as Kibana's UI stores
+    # it; absent (None) when none was sent. Kibana's PUT drops it unless it is
+    # sent again, so upsert_apm_agent_config carries it over (D47).
+    agent_name: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

@@ -9,7 +9,7 @@ via [`KIBANA_MCP_TOOLS`](configuration.md#tool-selection): **dashboards**,
 **[observability](#observability-toolbox)**,
 **[security-detections](#security-detections-toolbox)**,
 **[platform-admin](#platform-admin-toolbox)**,
-**[streams](#streams-toolbox)**, and **[fleet](#fleet-toolbox)** — 160 tools in
+**[streams](#streams-toolbox)**, and **[fleet](#fleet-toolbox)** — 162 tools in
 all. This reference details every toolbox in full. A drift-guard test
 (`tests/unit/test_docs_tool_reference.py`) asserts that every registered tool
 name appears on this page, so it cannot silently fall behind the code.
@@ -534,8 +534,8 @@ parameter: `platform-admin` and `platform-health` manage instance-global
 objects, `streams` wraps cluster-global ES data streams, `fleet`'s space
 awareness is an opt-in per-deployment migration, and `observability` mixes
 space-scoped synthetics/uptime objects with cluster-global APM
-configuration (deferred as a follow-up; the Synthetics write tools follow the
-toolbox and take no `space` either, D10).
+configuration (deferred as a follow-up; the Synthetics write tools and the
+APM agent-config writes follow the toolbox and take no `space` either, D10).
 
 ## data-management toolbox
 
@@ -827,15 +827,17 @@ Returns:
 
 ## observability toolbox
 
-Twenty tools (`src/kibana_mcp/toolboxes/observability/toolbox.py`): 10 `read`,
-7 `write`, 3 `destructive`, tagged `{"observability", <tier>}`. Enable with
-`KIBANA_MCP_TOOLBOXES=observability` (or alongside others). Access to the Kibana
-observability surface an operator can reach on a **Basic** license: Synthetics
-monitoring (read, and the write tier: monitors, global parameters and private
-locations — create, edit, run once, delete), Uptime settings, and APM
-**configuration** (read). No tool takes `space` (see
-[Space targeting](#space-targeting)). Hints: reads `readOnlyHint=true`; the
-three updates `idempotentHint=true`; the deletes `destructiveHint=true`;
+Twenty-two tools (`src/kibana_mcp/toolboxes/observability/toolbox.py`): 10
+`read`, 8 `write`, 4 `destructive`, tagged `{"observability", <tier>}`. Enable
+with `KIBANA_MCP_TOOLBOXES=observability` (or alongside others). Access to the
+Kibana observability surface an operator can reach on a **Basic** license:
+Synthetics monitoring (read, and the write tier: monitors, global parameters and
+private locations — create, edit, run once, delete), Uptime settings, and APM
+**configuration** (read, and agent configurations created, replaced and
+deleted). No tool takes `space` (see [Space targeting](#space-targeting)).
+Hints: reads `readOnlyHint=true`; the three Synthetics updates and
+`upsert_apm_agent_config` `idempotentHint=true`; the deletes
+`destructiveHint=true`;
 `test_synthetic_monitor` `openWorldHint=true` (the run sends the monitor's
 requests to its target), every other tool `openWorldHint=false`.
 
@@ -844,9 +846,11 @@ requests to its target), every other tool `openWorldHint=false`.
     trace/service-map telemetry** — those are internal-only Kibana APIs
     (`/internal/apm/*`), unreachable by an external client on 9.x and not wrapped
     by kibana-py. It also does not expose **SLOs**, which require a Platinum
-    license (they return `403` on a Basic stack). Both are out of scope: the APM
-    telemetry has no supported external path, and subscription-gated surfaces are
-    not built here.
+    license (they return `403` on a Basic stack), and it does not **create APM
+    annotations**, which need a Gold license (`403` "Annotations require at least
+    a gold license or a trial license." on Basic; `search_apm_annotations` reads
+    them). All are out of scope: the APM telemetry has no supported external
+    path, and subscription-gated surfaces are not built here.
 
 | Tool | Tier | Description |
 |---|---|---|
@@ -870,6 +874,8 @@ requests to its target), every other tool `openWorldHint=false`.
 | `delete_synthetic_monitor` | destructive | Permanently delete a monitor. |
 | `delete_synthetic_param` | destructive | Permanently delete a parameter; its value is lost and monitors lose `${key}`. |
 | `delete_synthetic_private_location` | destructive | Permanently delete a private location no monitor uses; its agent policy stays. |
+| `upsert_apm_agent_config` | write | Create or replace the APM agent configuration of a service + environment (omit either for all): `settings` replaces the stored map; returns `created` and the replaced `previous_settings`. |
+| `delete_apm_agent_config` | destructive | Permanently delete one APM agent configuration (exact service + environment match); returns the deleted settings. |
 
 Synthetics write tier, as probed on Kibana 9.5.4 (decision
 [D46](spec/decisions.md)):
@@ -915,6 +921,25 @@ Synthetics write tier, as probed on Kibana 9.5.4 (decision
   [fleet toolbox](#fleet-toolbox)). Deleting one that monitors use is refused by
   Kibana; the error names `update_synthetic_monitor` and
   `delete_synthetic_monitor`.
+- **APM agent configurations** (decision [D47](spec/decisions.md)). A
+  configuration is named by `service_name` and `environment`, matched exactly:
+  an omitted one means *all services* or *all environments*, never *any*, so
+  `{service_name: "cart"}` and `{service_name: "cart", environment: "prod"}` are
+  two configurations. `list_apm_environments`' `ALL_OPTION_VALUE` is refused as
+  a name (Kibana would store it literally); so is an empty string (Kibana
+  stores `""` and then cannot find it again). `upsert_apm_agent_config` reads
+  the configuration first and replaces it only if it read one, so a
+  configuration created in between is refused, not overwritten unreported.
+  `settings` replaces the whole map (to change one setting, pass the map from
+  `get_apm_agent_config` with that key changed); values go out as strings
+  (`0.5` → `"0.5"`, `false` → `"false"`). Kibana checks the values of the
+  settings it knows (a rejection lists the settings sent, since Kibana's message
+  can omit the key) but stores setting names it does not know, which agents
+  ignore. A stored `agent_name` (Kibana's UI writes one) is sent again on a
+  replacement, since Kibana's PUT drops it otherwise. A miss reads "no APM agent
+  configuration for service 'cart', all environments — service_name and
+  environment must match a configuration exactly (an omitted one means all);
+  call list_apm_agent_configs to see them", on `get_apm_agent_config` too.
 - **Misses.** A wrong id names where ids come from (D17), e.g. "synthetic
   monitor 'x' not found — monitor_id is the id that create_synthetic_monitor or
   list_synthetic_monitors returns, not the monitor's name; call
@@ -936,9 +961,10 @@ Returns:
  "cert_age_threshold": 730, "default_connectors": [],
  "default_email": {"to": [], "cc": [], "bcc": []}}
 
-// list_apm_agent_configs -> list
+// list_apm_agent_configs -> list  (get_apm_agent_config: one of these)
 [{"service_name": "checkout", "service_environment": "production",
-  "settings": {"transaction_sample_rate": "0.5"}, "applied_by_agent": true, "etag": "e1"}]
+  "settings": {"transaction_sample_rate": "0.5"}, "applied_by_agent": true, "etag": "e1",
+  "agent_name": "java"}]
 
 // list_apm_environments -> list  (ALL_OPTION_VALUE = "all environments")
 [{"name": "ALL_OPTION_VALUE", "already_configured": false}]
@@ -963,6 +989,16 @@ Returns:
 
 // delete_synthetic_monitor / delete_synthetic_param / delete_synthetic_private_location
 {"id": "2820...fc76", "deleted": true}
+
+// upsert_apm_agent_config  (the get_apm_agent_config shape + created, previous_settings)
+{"service_name": "checkout", "service_environment": "production",
+ "settings": {"capture_body": "errors"}, "applied_by_agent": false,
+ "etag": "8176...5555", "agent_name": null,
+ "created": false, "previous_settings": {"transaction_sample_rate": "0.5"}}
+
+// delete_apm_agent_config
+{"service_name": "checkout", "environment": "production", "deleted": true,
+ "settings": {"capture_body": "errors"}}
 ```
 
 ## security-detections toolbox

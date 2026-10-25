@@ -119,9 +119,11 @@ OBSERVABILITY_WRITE = {
     "create_synthetic_monitor", "update_synthetic_monitor", "test_synthetic_monitor",
     "create_synthetic_param", "update_synthetic_param",
     "create_synthetic_private_location", "update_synthetic_private_location",
+    "upsert_apm_agent_config",
 }
 OBSERVABILITY_DESTRUCTIVE = {
     "delete_synthetic_monitor", "delete_synthetic_param", "delete_synthetic_private_location",
+    "delete_apm_agent_config",
 }
 OBSERVABILITY_TOOLS = OBSERVABILITY_READ | OBSERVABILITY_WRITE | OBSERVABILITY_DESTRUCTIVE
 
@@ -129,7 +131,7 @@ OBSERVABILITY_TOOLS = OBSERVABILITY_READ | OBSERVABILITY_WRITE | OBSERVABILITY_D
 async def test_observability_toolbox_boots_all_tiers():
     names = await visible_tools(Settings(toolboxes=["observability"], tier=Tier.DESTRUCTIVE))
     assert names == OBSERVABILITY_TOOLS
-    assert len(names) == 20
+    assert len(names) == 22
     read_only = await visible_tools(Settings(toolboxes=["observability"], tier=Tier.READ))
     assert read_only == OBSERVABILITY_READ
     write = await visible_tools(Settings(toolboxes=["observability"]))
