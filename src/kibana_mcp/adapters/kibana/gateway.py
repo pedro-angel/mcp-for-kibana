@@ -121,9 +121,12 @@ from kibana_mcp.core.models import (
 )
 from kibana_mcp.core.exception_lists import import_error_text
 from kibana_mcp.core.fleet_ops import (
+    AGENT_MONITORING_PACKAGE,
+    guard_reason,
     guarded_policy_refusal,
     installed_version_refusal,
     missing_agents_message,
+    monitoring_refusal,
     not_installed_message,
     outdated_version_message,
     package_policies_refusal,
@@ -4018,12 +4021,20 @@ class KibanaPyGateway:
         item = self._read_package(name)
         if item.get("status") != "installed":
             raise KibanaNotFound(not_installed_message(name))
+        if name == AGENT_MONITORING_PACKAGE:
+            # Kibana uninstalls it under a monitoring agent policy unchecked (probed).
+            monitoring = [ap["id"] for ap in _fleet_all_items(
+                lambda p: self._client.fleet_policies.get_agent_policies(page=p, per_page=100).body)
+                if ap.get("monitoring_enabled")]
+            if monitoring:
+                raise KibanaRejected(monitoring_refusal(name, monitoring))
         package_policies = [
             pp for pp in _fleet_all_items(
                 lambda p: self._client.fleet_policies.get_package_policies(page=p, per_page=100).body)
             if (pp.get("package") or {}).get("name") == name
         ]
         listed: list[tuple[str, str, str, int]] = []
+        guarded: list[tuple[str, str, str]] = []
         agent_policies: dict[str, dict[str, Any]] = {}
         for pp in package_policies:
             ap_ids = [i for i in (pp.get("policy_ids") or [pp.get("policy_id")]) if i]
@@ -4034,17 +4045,19 @@ class KibanaPyGateway:
                     agent_policies[ap_id] = self._client.fleet_policies.get_agent_policy(
                         agent_policy_id=ap_id).body["item"]
                 ap = agent_policies[ap_id]
-                # Kibana-owned lifecycles, as delete_agent_policy guards them.
-                if ap.get("is_managed"):
-                    raise KibanaRejected(guarded_policy_refusal(name, pp["id"], ap_id, "managed"))
-                if ap.get("is_default_fleet_server"):
-                    raise KibanaRejected(guarded_policy_refusal(
-                        name, pp["id"], ap_id, "the default Fleet Server policy"))
+                why = guard_reason(name, is_managed=bool(ap.get("is_managed")),
+                                   is_default_fleet_server=bool(ap.get("is_default_fleet_server")))
+                if why is not None:
+                    guarded.append((pp["id"], ap_id, why))
                 listed.append((pp["id"], pp.get("name", ""), ap_id, int(ap.get("agents") or 0)))
+        if guarded:
+            raise KibanaRejected(guarded_policy_refusal(name, guarded))
         if package_policies and not force:
             raise KibanaRejected(package_policies_refusal(name, listed))
-        # force also lets Kibana delete package policies agents use (400 without it).
-        self._client.fleet_epm.uninstall_package(pkg_name=name, force=(force or None))
+        # force lets Kibana delete package policies agents use (400 without it);
+        # it is sent only then, so it can never reach Kibana for anything else.
+        self._client.fleet_epm.uninstall_package(
+            pkg_name=name, force=(True if force and package_policies else None))
         return FleetPackageUninstall(
             name=name, version=str(item.get("version", "")),
             deleted_package_policies=tuple(_to_fleet_package_policy(pp) for pp in package_policies),

@@ -12,7 +12,11 @@ Observed on Kibana 9.5.4 (Basic), and what each shaped:
   enterprise license", so an install never changes an installed version;
 - an uninstall deletes the package's package policies (one on an agent policy
   with no agents went without `force`; one with an agent needed `force`), so a
-  package that has any is refused unless forced, naming them.
+  package that has any is refused unless forced, naming them;
+- an uninstall of `elastic_agent` went through without `force` while an agent
+  policy had monitoring on (it removed the monitoring data streams' index
+  templates and ingest pipelines; Kibana has no check), so it is refused while
+  any agent policy has `monitoring_enabled`, regardless of `force`.
 
 stdlib only (no fastmcp/mcp/kibana) so this stays in `core`.
 """
@@ -88,12 +92,51 @@ def not_installed_message(name: str) -> str:
     )
 
 
-def guarded_policy_refusal(name: str, package_policy_id: str, agent_policy_id: str, why: str) -> str:
+FLEET_SERVER_PACKAGE = "fleet_server"
+AGENT_MONITORING_PACKAGE = "elastic_agent"
+_FLEET_SERVER_POLICY = "a Fleet Server policy (that package policy runs its Fleet Servers)"
+
+
+def guard_reason(name: str, *, is_managed: bool, is_default_fleet_server: bool) -> str | None:
+    """Why a package policy of package `name` on an agent policy with these flags
+    may never be deleted by an uninstall, or None: Kibana-owned lifecycles, as
+    `delete_agent_policy` guards them, and any `fleet_server` package policy —
+    deleting one strands the Fleet Servers on its agent policy, default or not."""
+    if is_managed:
+        return "managed"
+    if is_default_fleet_server:
+        return "the default Fleet Server policy"
+    if name == FLEET_SERVER_PACKAGE:
+        return _FLEET_SERVER_POLICY
+    return None
+
+
+def guarded_policy_refusal(name: str, guarded: Sequence[tuple[str, str, str]]) -> str:
+    """`guarded`: (package policy id, agent policy id, why), one per guarded pair."""
+    where = "; ".join(f"its package policy '{pp_id}' is on agent policy '{ap_id}', which is {why}"
+                      for pp_id, ap_id, why in guarded)
+    fix = ""
+    if any(why == _FLEET_SERVER_POLICY for _, _, why in guarded):
+        fix = (" A fleet_server package policy on an agent policy that is neither managed nor "
+               "the default Fleet Server policy can be deleted on its own with "
+               "delete_package_policy once no Fleet Server is enrolled on that agent policy.")
     return (
-        f"refusing to uninstall integration package '{name}': its package policy "
-        f"'{package_policy_id}' is on agent policy '{agent_policy_id}', which is {why}, "
+        f"refusing to uninstall integration package '{name}': {where}, "
         "and Kibana deletes a package's package policies with it. This is refused "
-        "regardless of force."
+        f"regardless of force.{fix}"
+    )
+
+
+def monitoring_refusal(name: str, agent_policy_ids: Sequence[str]) -> str:
+    listed = ", ".join(f"'{i}'" for i in agent_policy_ids)
+    noun = "agent policy" if len(agent_policy_ids) == 1 else "agent policies"
+    return (
+        f"refusing to uninstall integration package '{name}': agent monitoring is on in "
+        f"{noun} {listed}, and the package holds the index templates and ingest pipelines "
+        "of the agents' monitoring data streams (logs-elastic_agent*, metrics-elastic_agent*); "
+        "Kibana uninstalls it without a check. This is refused regardless of force — turn "
+        "monitoring off on each first with update_agent_policy monitoring_enabled=[] (a "
+        "managed agent policy cannot be changed)."
     )
 
 

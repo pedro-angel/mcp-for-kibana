@@ -30,7 +30,11 @@ version section.
   (`destructive`) removes an integration and the package policies Kibana
   deletes with it: it refuses a package that has package policies unless
   `force=True`, naming them, and refuses one with a package policy on a managed
-  or the default Fleet Server agent policy whatever `force` says. Unknown
+  or the default Fleet Server agent policy whatever `force` says, as well as
+  `fleet_server` with a package policy on any agent policy and `elastic_agent`
+  while an agent policy has monitoring on (Fleet itself runs on both; Kibana
+  removed `elastic_agent` under a monitoring policy without a check), and
+  Kibana's `force` is sent only to delete package policies. Unknown
   agents, packages and versions are errors that name the tool to look them up
   with. Decision D51.
 - **Security detections: edit, copy, export and import exception lists**

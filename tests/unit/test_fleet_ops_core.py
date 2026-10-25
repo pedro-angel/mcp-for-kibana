@@ -2,7 +2,10 @@
 diagnostics and package tools share between the adapter and the fake."""
 
 from kibana_mcp.core.fleet_ops import (
+    guard_reason,
+    guarded_policy_refusal,
     missing_agents_message,
+    monitoring_refusal,
     package_policies_refusal,
     tags_not_applied,
 )
@@ -38,3 +41,25 @@ def test_package_policies_refusal_counts_policies_not_pairs_and_names_no_agent_p
         "(1 agent); 'pp-2' ('b') on no agent policy — ")
     one = package_policies_refusal("tcp", [("pp-1", "a", "p1", 0)])
     assert "it has 1 package policy — " in one
+
+
+def test_guard_reason_guards_every_fleet_server_package_policy_and_only_lifecycles_otherwise():
+    assert guard_reason("tcp", is_managed=True, is_default_fleet_server=False) == "managed"
+    assert guard_reason("system", is_managed=False, is_default_fleet_server=True) == (
+        "the default Fleet Server policy")
+    assert guard_reason("fleet_server", is_managed=False, is_default_fleet_server=False).startswith(
+        "a Fleet Server policy")
+    assert guard_reason("tcp", is_managed=False, is_default_fleet_server=False) is None
+
+
+def test_guarded_policy_refusal_names_delete_package_policy_only_where_it_applies():
+    managed = guarded_policy_refusal("fleet_server", [("pp", "ap", "managed")])
+    assert managed.endswith("This is refused regardless of force.")
+    why = guard_reason("fleet_server", is_managed=False, is_default_fleet_server=False)
+    plain = guarded_policy_refusal("fleet_server", [("pp", "ap", why or "")])
+    assert plain.endswith("delete_package_policy once no Fleet Server is enrolled on that agent policy.")
+
+
+def test_monitoring_refusal_counts_agent_policies():
+    assert "in agent policy 'p1', " in monitoring_refusal("elastic_agent", ["p1"])
+    assert "in agent policies 'p1', 'p2', " in monitoring_refusal("elastic_agent", ["p1", "p2"])

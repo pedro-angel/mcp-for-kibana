@@ -1,6 +1,6 @@
 # fleet — behavior contract
 
-Status: Draft v1.2 (2026-10-25) — regeneration corpus, reconciled to shipped code
+Status: Draft v1.3 (2026-10-25) — regeneration corpus, reconciled to shipped code
 Surface reference: docs/tools.md#fleet-toolbox · Enforcement: named per section below
 
 ## Purpose & persona
@@ -94,7 +94,11 @@ model (D51).** `request_agent_diagnostics` reads the agent (status, and a
 not-found naming `list_agents`) and returns Kibana's `action_id` once it
 accepts the request; `list_agent_diagnostics` reports each bundle's status and
 `action_id`, never its download path or content (the bundle holds the agent's
-logs and configuration; it is downloaded in Kibana's UI).
+logs and configuration; it is downloaded in Kibana's UI). `include_cpu_metrics`
+sends `additional_metrics=["CPU"]`, the only value Kibana accepts (400
+otherwise, probed); that bundle took ~66 s on the demo agent, the plain one
+~6 s, and the agent takes one request a minute (a second one within it ended
+`FAILED`, "rate limit exceeded", probed).
 
 **Package install never changes an installed version; uninstall names what
 it deletes (D51).** `install_package` reads the package first: an unknown name
@@ -106,10 +110,19 @@ Enterprise license (403 on Basic, probed) and Kibana refuses older versions.
 `uninstall_package` reads the package and every package policy of it: a
 package that is not installed names `list_installed_packages`; a package
 policy on a managed or the default Fleet Server agent policy refuses the call
-regardless of `force` (as `delete_agent_policy` guards those policies); any
+regardless of `force` (as `delete_agent_policy` guards those policies), and so
+does any `fleet_server` package policy, on whatever agent policy (it runs the
+Fleet Servers there; the refusal names every guarded one, and for a plain one
+`delete_package_policy` once no Fleet Server is enrolled on it); any
 other package policy refuses it unless `force=True`, naming each one with its
 agent policy and agent count, because Kibana deletes them with the package
-(probed: without `force` when no agent uses them, with it otherwise); the
+(probed: without `force` when no agent uses them, with it otherwise), and
+Kibana's `force` is sent only then. `elastic_agent` is refused, whatever
+`force` says, while any agent policy has `monitoring_enabled`: it holds the
+index templates and ingest pipelines of the agents' monitoring data streams,
+and Kibana uninstalled it under a monitoring agent policy without `force` or a
+check (probed); the refusal names those agent policies and
+`update_agent_policy monitoring_enabled=[]`; the
 managed `logs-*`/`metrics-*` data views an install may add to every space are
 kept (probed with `nginx`). The result lists the package policies read before the call; one created between
 that read and the uninstall is deleted unreported (the route has no
@@ -166,8 +179,11 @@ object's body.
 - `install_package` never sends an install for a package that is installed;
   a different requested version is refused.
 - `uninstall_package` never sends an uninstall when the package has a package
-  policy on a managed or the default Fleet Server agent policy, nor, without
-  `force=True`, when it has any package policy.
+  policy on a managed or the default Fleet Server agent policy, when it is
+  `fleet_server` with any package policy, when it is `elastic_agent` while an
+  agent policy has `monitoring_enabled`, nor, without `force=True`, when it
+  has any package policy; it sends Kibana's `force` only for a package with
+  package policies.
 - `list_agent_diagnostics` returns exactly
   `{id, name, status, created_at, action_id}` per bundle — no download path.
 
@@ -204,7 +220,9 @@ object's body.
   return the action id; D51: the tag pre-read, read-back and not-applied
   report, the diagnostics status read and CPU option, the install's
   installed-version and unknown name/version/out-of-date paths, the
-  uninstall's package-policy and guarded-policy refusals (nothing sent).
+  uninstall's package-policy, guarded-policy (a plain Fleet Server policy
+  included, every guarded one named) and agent-monitoring refusals (nothing
+  sent), and `force` withheld from a package without package policies.
   `tests/unit/test_fleet_ops_core.py` pins the shared guidance text.
 - `tests/contract/test_fleet_contract.py` — a dedicated fleet suite,
   distinct from `tests/contract/test_gateway_contract.py` (different
@@ -216,8 +234,12 @@ object's body.
   bundle uploaded to READY then deleted, `tcp` installed, refused at another
   version (and the rollback route's 403), refused for uninstall while a
   package policy exists, uninstalled with `force` (its package policy gone),
-  Kibana's own deletion of a package policy on a plain uninstall, and
-  `fleet_server`'s uninstall refused without force.
+  Kibana's own deletion of a package policy on a plain uninstall,
+  `fleet_server`'s uninstall refused without force naming both the default
+  Fleet Server policy and a plain one carrying a `fleet_server` package
+  policy, `elastic_agent`'s refused with `force` under a monitoring agent
+  policy (and sent once none monitors), and a CPU-metrics diagnostics bundle
+  uploaded to READY before the plain one.
 - `tests/ephemeral/test_fleet_ephemeral.py`, gated by the required
   `fleet_ephemeral` Definition-of-Done criterion (`dod.config`) — the only
   tier exercising `reassign_agent`/`upgrade_agent`/`unenroll_agent` and

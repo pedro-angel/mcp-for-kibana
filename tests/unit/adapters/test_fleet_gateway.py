@@ -783,6 +783,8 @@ def _policies_ns(package_policies, agent_policies):
     return SimpleNamespace(
         get_package_policies=lambda **k: FakeResponse(
             {"items": package_policies, "total": len(package_policies)}),
+        get_agent_policies=lambda **k: FakeResponse(
+            {"items": list(agent_policies.values()), "total": len(agent_policies)}),
         get_agent_policy=lambda *, agent_policy_id: FakeResponse(
             {"item": agent_policies[agent_policy_id]}))
 
@@ -797,6 +799,14 @@ def test_uninstall_package_without_package_policies_sends_no_force():
     r = gw.uninstall_package(name="tcp")
     assert calls == [("uninstall", {"pkg_name": "tcp", "force": None})]
     assert (r.name, r.version, r.deleted_package_policies) == ("tcp", "2.3.1", ())
+
+
+def test_uninstall_package_never_sends_force_without_package_policies():
+    # Kibana's force is only there to delete package policies agents use.
+    calls = []
+    gw = _gw(fleet_epm=_epm(dict(_INSTALLED_TCP), calls), fleet_policies=_policies_ns([], {}))
+    gw.uninstall_package(name="tcp", force=True)
+    assert calls == [("uninstall", {"pkg_name": "tcp", "force": None})]
 
 
 def test_uninstall_package_refuses_package_policies_without_force():
@@ -842,6 +852,59 @@ def test_uninstall_package_refuses_a_guarded_agent_policy_even_with_force(flags,
         rf"force\.$")):
         gw.uninstall_package(name="fleet_server", force=True)
     assert calls == []
+
+
+def test_uninstall_package_refuses_fleet_server_on_any_fleet_server_policy_even_with_force():
+    # A user-made Fleet Server policy: neither managed nor the default one.
+    calls = []
+    pps = [_pp("pp-fs2", "fleet_server", ["fs-2"])]
+    gw = _gw(fleet_epm=_epm({**_INSTALLED_TCP, "name": "fleet_server"}, calls),
+             fleet_policies=_policies_ns(pps, {"fs-2": {"id": "fs-2", "agents": 1}}))
+    with pytest.raises(KibanaRejected, match=(
+        r"^refusing to uninstall integration package 'fleet_server': its package policy "
+        r"'pp-fs2' is on agent policy 'fs-2', which is a Fleet Server policy \(that package "
+        r"policy runs its Fleet Servers\), .*regardless of force\. .*delete_package_policy "
+        r"once no Fleet Server is enrolled on that agent policy\.$")):
+        gw.uninstall_package(name="fleet_server", force=True)
+    assert calls == []
+
+
+def test_uninstall_package_names_every_guarded_package_policy():
+    calls = []
+    pps = [_pp("pp-fs", "fleet_server", ["fleet-server-policy"]), _pp("pp-fs2", "fleet_server", ["fs-2"])]
+    aps = {"fleet-server-policy": {"id": "fleet-server-policy", "is_default_fleet_server": True},
+           "fs-2": {"id": "fs-2"}}
+    gw = _gw(fleet_epm=_epm({**_INSTALLED_TCP, "name": "fleet_server"}, calls),
+             fleet_policies=_policies_ns(pps, aps))
+    with pytest.raises(KibanaRejected, match=(
+        r"'pp-fs' is on agent policy 'fleet-server-policy', which is the default Fleet Server "
+        r"policy; its package policy 'pp-fs2' is on agent policy 'fs-2', which is a Fleet Server")):
+        gw.uninstall_package(name="fleet_server")
+    assert calls == []
+
+
+def test_uninstall_package_refuses_elastic_agent_while_an_agent_policy_monitors():
+    # Probed: Kibana uninstalls it under a monitoring agent policy, no force needed.
+    calls = []
+    aps = {"p1": {"id": "p1", "monitoring_enabled": []},
+           "p2": {"id": "p2", "monitoring_enabled": ["logs", "metrics"]},
+           "p3": {"id": "p3", "monitoring_enabled": ["metrics"]}}
+    gw = _gw(fleet_epm=_epm({**_INSTALLED_TCP, "name": "elastic_agent"}, calls),
+             fleet_policies=_policies_ns([], aps))
+    with pytest.raises(KibanaRejected, match=(
+        r"^refusing to uninstall integration package 'elastic_agent': agent monitoring is on "
+        r"in agent policies 'p2', 'p3', .*regardless of force — turn monitoring off on each "
+        r"first with update_agent_policy monitoring_enabled=\[\]")):
+        gw.uninstall_package(name="elastic_agent", force=True)
+    assert calls == []
+
+
+def test_uninstall_package_sends_elastic_agent_when_no_agent_policy_monitors():
+    calls = []
+    gw = _gw(fleet_epm=_epm({**_INSTALLED_TCP, "name": "elastic_agent"}, calls),
+             fleet_policies=_policies_ns([], {"p1": {"id": "p1", "monitoring_enabled": []}}))
+    gw.uninstall_package(name="elastic_agent", force=True)
+    assert calls == [("uninstall", {"pkg_name": "elastic_agent", "force": None})]
 
 
 def test_uninstall_package_not_installed_names_list_installed_packages():

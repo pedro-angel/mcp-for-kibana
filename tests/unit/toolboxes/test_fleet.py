@@ -312,6 +312,30 @@ async def test_uninstall_package_refuses_the_fleet_server_policy_even_forced(mcp
     assert any(pp.package_name == "fleet_server" for pp in gateway.list_package_policies())
 
 
+async def test_uninstall_package_refuses_fleet_server_on_a_plain_fleet_server_policy(mcp, gateway):
+    gateway.fleet_packages.append(gateway.fleet_installed_packages[0].__class__(
+        name="fleet_server", title="Fleet Server", version="1.6.1", status="installed",
+        description="", type="integration"))
+    gateway.fleet_default_fleet_server_policy_ids = set()  # the only one is user-made
+    async with Client(mcp) as client:
+        with pytest.raises(ToolError, match=r"which is a Fleet Server policy .*regardless of force"):
+            await client.call_tool("uninstall_package", {"name": "fleet_server", "force": True})
+    assert any(pp.package_name == "fleet_server" for pp in gateway.list_package_policies())
+
+
+async def test_uninstall_package_refuses_elastic_agent_while_monitoring_is_on(mcp, gateway):
+    gateway.fleet_packages.append(gateway.fleet_installed_packages[0].__class__(
+        name="elastic_agent", title="Elastic Agent", version="2.9.6", status="installed",
+        description="", type="integration"))
+    gateway.update_agent_policy(
+        agent_policy_id="fleet-agent-policy", changes={"monitoring_enabled": ["logs"]})
+    async with Client(mcp) as client:
+        with pytest.raises(ToolError, match=(
+            r"agent monitoring is on in agent policy 'fleet-agent-policy', .*regardless of force")):
+            await client.call_tool("uninstall_package", {"name": "elastic_agent", "force": True})
+    assert ("package", "elastic_agent") not in gateway.deleted
+
+
 async def test_uninstall_package_not_installed(mcp):
     async with Client(mcp) as client:
         with pytest.raises(ToolError, match=r"^integration package 'nginx' is not installed"):

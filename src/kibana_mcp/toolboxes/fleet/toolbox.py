@@ -494,9 +494,13 @@ class FleetToolbox:
             collecting its data; ingested data and the shared 'logs-*'/
             'metrics-*' data views stay. A package with package
             policies is refused unless force=True (the refusal names them;
-            delete_package_policy removes one at a time); one with a package
-            policy on a managed or the default Fleet Server agent policy is
-            refused regardless of force. Returns {uninstalled, name, version,
+            delete_package_policy removes one at a time; force is sent to
+            Kibana only then); one with a package policy on a managed or the
+            default Fleet Server agent policy, and fleet_server with any
+            package policy, are refused regardless of force, as is
+            elastic_agent while an agent policy has monitoring on (it holds
+            the monitoring data streams' templates and pipelines). Returns
+            {uninstalled, name, version,
             deleted_package_policies} (as read before the call);
             install_package reinstalls the package, not its policies."""
             with gateway_errors(), deps.gateway_factory() as gw:

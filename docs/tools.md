@@ -1595,7 +1595,7 @@ agent-lifecycle commands) require `KIBANA_MCP_TIER=destructive`.
 | `delete_agent_policy` | destructive | Delete an agent policy — removes it and its package policies. Refuses a managed policy and the default Fleet Server policy regardless of `force`. `force=True` bypasses the assigned-agent check. |
 | `delete_package_policy` | destructive | Delete a package (integration) policy — detaches the integration; agents stop collecting that data. `force=True` bypasses Kibana's in-use checks. |
 | `delete_output` | destructive | Delete a Fleet output. Refuses the default output(s) — promote a replacement first (`update_output` `is_default=True`), then delete the old one. No force escape. |
-| `uninstall_package` | destructive | Uninstall an installed integration package — removes its assets and DELETES its package policies (agents stop collecting its data; ingested data and the shared `logs-*`/`metrics-*` data views stay). Refused unless `force=True` when it has package policies (they are named); refused regardless of `force` when one is on a managed or the default Fleet Server agent policy. Returns `uninstalled`, `name`, `version`, `deleted_package_policies`. |
+| `uninstall_package` | destructive | Uninstall an installed integration package — removes its assets and DELETES its package policies (agents stop collecting its data; ingested data and the shared `logs-*`/`metrics-*` data views stay). Refused unless `force=True` when it has package policies (they are named; `force` reaches Kibana only then); refused regardless of `force` when one is on a managed or the default Fleet Server agent policy, for `fleet_server` with any package policy, and for `elastic_agent` while an agent policy has monitoring on. Returns `uninstalled`, `name`, `version`, `deleted_package_policies`. |
 | `reassign_agent` | destructive | Reassign one enrolled agent to a different agent policy — changes what the live agent collects/ships. Refuses a managed or default Fleet Server target policy. |
 | `upgrade_agent` | destructive | Upgrade one enrolled agent to `version` (must be one of `list_agent_versions`). Commands a live binary swap; async — the agent applies it on its own schedule. |
 | `unenroll_agent` | destructive | Unenroll one Elastic Agent — it stops shipping data. `force=True` unenrolls an already-unenrolled/offline agent; `revoke=True` also invalidates its API key immediately. |
@@ -1635,6 +1635,9 @@ Notes:
 - **Diagnostics (D51).** `request_agent_diagnostics` returns once Kibana accepts
   the request; the demo agent uploaded its bundle within seconds (probed). Watch
   it with `list_agent_diagnostics` (the request's `action_id`, status `READY`).
+  A bundle with `include_cpu_metrics` took ~66 s, and the agent takes one
+  request a minute: a second one within it ended `FAILED` ("rate limit
+  exceeded", probed).
   The bundle itself is not returned to the model: it holds the agent's logs and
   configuration, so it is downloaded from Kibana's UI.
 - **Package install and uninstall (D51).** `install_package` installs only a
@@ -1650,6 +1653,11 @@ Notes:
   policies first: Kibana deletes them with the package (without `force` when no
   agent uses them, with it otherwise; probed), so any is a refusal unless
   `force=True`, and the result names what was deleted. A package policy created
-  between that read and the uninstall is deleted unreported.
+  between that read and the uninstall is deleted unreported. Packages Fleet
+  itself runs on are refused whatever `force` says: `fleet_server` with any
+  package policy (on the default Fleet Server policy or any other, it runs the
+  Fleet Servers there), and `elastic_agent` while an agent policy has
+  monitoring on (Kibana uninstalled it under one without a check, removing the
+  monitoring data streams' templates and pipelines; probed).
 - **No enrollment-key mint/revoke.** See the note above — deliberately out of
   scope for this tier.

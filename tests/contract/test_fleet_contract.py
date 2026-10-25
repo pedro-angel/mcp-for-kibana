@@ -220,7 +220,8 @@ def test_delete_fleet_server_policy_refused_live(gateway):
 # --- fleet advanced ops (D51): agent tags, diagnostics, package install/uninstall.
 # Tags go on the demo agent and come off in a `finally`; a diagnostics bundle is
 # deleted after the test; the package is `tcp` (small, no agent needed), left
-# uninstalled; fleet_server is only ever asked WITHOUT force. ---
+# uninstalled; fleet_server is only ever asked WITHOUT force; elastic_agent is
+# left as found. ---
 
 
 def _demo_agent(gateway):
@@ -257,26 +258,39 @@ def test_agent_tags_live(gateway):
         gateway._client.fleet_agents.bulk_update_tags(agents=[agent.id], tags_to_remove=[tag])
 
 
-def test_agent_diagnostics_live(gateway):
+def _await_bundle(gateway, agent_id, action_id, seconds):
     import time
 
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        mine = [d for d in gateway.list_agent_diagnostics(agent_id) if d.action_id == action_id]
+        if mine and mine[0].status in ("READY", "FAILED"):
+            return mine[0]
+        time.sleep(3)
+    raise AssertionError(f"the demo agent did not upload bundle {action_id} within {seconds} s")
+
+
+def test_agent_diagnostics_live(gateway):
+    # The agent rate-limits diagnostics to one per minute (a second request
+    # within it FAILED "rate limit exceeded", probed), so the CPU bundle comes
+    # first: it adds a CPU profile and took ~66 s on the demo agent, after which
+    # the plain one (~6 s) is outside the window. additional_metrics=["CPU"] is
+    # the only value Kibana accepts (400 "expected value to equal [CPU]", probed).
     agent = _demo_agent(gateway)
-    req = gateway.request_agent_diagnostics(agent_id=agent.id)
-    assert req.action_id and req.agent_id == agent.id and req.agent_status == "online"
-    bundle = None
+    cpu = gateway.request_agent_diagnostics(agent_id=agent.id, include_cpu_metrics=True)
+    assert cpu.action_id and cpu.agent_id == agent.id and cpu.agent_status == "online"
+    action_ids = [cpu.action_id]
     try:
-        deadline = time.monotonic() + 120
-        while time.monotonic() < deadline:
-            mine = [d for d in gateway.list_agent_diagnostics(agent.id) if d.action_id == req.action_id]
-            if mine and mine[0].status in ("READY", "FAILED"):
-                bundle = mine[0]
-                break
-            time.sleep(3)
-        assert bundle is not None, "the demo agent did not upload the bundle within 120 s"
+        bundle = _await_bundle(gateway, agent.id, cpu.action_id, 150)
+        assert bundle.status == "READY" and bundle.name.endswith(".zip") and bundle.created_at
+        req = gateway.request_agent_diagnostics(agent_id=agent.id)
+        action_ids.append(req.action_id)
+        assert req.action_id != cpu.action_id and req.agent_status == "online"
+        bundle = _await_bundle(gateway, agent.id, req.action_id, 120)
         assert bundle.status == "READY" and bundle.name.endswith(".zip") and bundle.created_at
     finally:
         for d in gateway.list_agent_diagnostics(agent.id):
-            if d.action_id == req.action_id and d.status == "READY":
+            if d.action_id in action_ids and d.status == "READY":
                 gateway._client.fleet_agents.delete_file(file_id=d.id)
     for call in (lambda: gateway.request_agent_diagnostics(agent_id="no-such-agent-00000000"),
                  lambda: gateway.list_agent_diagnostics("no-such-agent-00000000")):
@@ -343,6 +357,86 @@ def test_package_install_uninstall_live(gateway):
 
 def test_uninstall_fleet_server_package_refused_live(gateway):
     # Never forced: were the guard to fail, the package-policy refusal still holds.
-    with pytest.raises(KibanaRejected, match=r"the default Fleet Server policy, .*regardless of force"):
-        gateway.uninstall_package(name="fleet_server")
-    assert any(p.name == "fleet_server" for p in gateway.list_installed_packages())
+    # A plain agent policy carrying a fleet_server package policy is a Fleet
+    # Server policy too (neither managed nor the default): guarded as well.
+    suffix = uuid.uuid4().hex[:8]
+    pol = gateway.create_agent_policy(
+        name=f"mcp-d51-fs-{suffix}", namespace="default", monitoring_enabled=[])
+    pp = None
+    try:
+        version = gateway._client.fleet_epm.get_package(
+            pkg_name="fleet_server").body["item"]["version"]
+        pp = gateway.create_package_policy(
+            name=f"mcp-d51-fs-{suffix}", package={"name": "fleet_server", "version": version},
+            agent_policy_id=pol.id, inputs={})
+        with pytest.raises(KibanaRejected, match=r"regardless of force") as refused:
+            gateway.uninstall_package(name="fleet_server")
+        text = str(refused.value)
+        assert "which is the default Fleet Server policy" in text
+        assert (f"its package policy '{pp.id}' is on agent policy '{pol.id}', which is a Fleet "
+                "Server policy") in text
+        assert "delete_package_policy once no Fleet Server is enrolled" in text
+        assert any(p.name == "fleet_server" for p in gateway.list_installed_packages())
+    finally:
+        if pp is not None:
+            gateway.delete_package_policy(package_policy_id=pp.id, force=True)
+        gateway.delete_agent_policy(agent_policy_id=pol.id, force=True)
+
+
+_SHARED_VIEWS = frozenset({"logs-*", "metrics-*"})
+
+
+def _package_status(gateway, name):
+    return gateway._client.fleet_epm.get_package(pkg_name=name).body["item"].get("status")
+
+
+def test_uninstall_elastic_agent_refused_while_monitoring_live(gateway):
+    # Premise (probed): Kibana uninstalls elastic_agent under a monitoring agent
+    # policy without force or a check. Forcing here is safe: the package has no
+    # package policies, so force never reaches Kibana.
+    from kibana import NotFoundError
+
+    def views():
+        found = set()
+        for view_id in _SHARED_VIEWS:
+            try:
+                gateway._client.saved_objects.get(type="index-pattern", id=view_id)
+                found.add(view_id)
+            except NotFoundError:
+                pass
+        return found
+
+    before, views_before = _package_status(gateway, "elastic_agent"), views()
+    pol = None
+    try:
+        if before != "installed":
+            # A monitoring agent policy installs it during the create, which then
+            # outlasts the client's 10 s timeout (probed): install it first.
+            gateway._client.options(request_timeout=120).fleet_epm.install_package(
+                pkg_name="elastic_agent")
+        pol = gateway.create_agent_policy(
+            name=f"mcp-d51-mon-{uuid.uuid4().hex[:8]}", namespace="default",
+            monitoring_enabled=["logs", "metrics"])
+        with pytest.raises(KibanaRejected, match=(
+                rf"^refusing to uninstall integration package 'elastic_agent': agent monitoring "
+                rf"is on in agent polic(y|ies) .*'{pol.id}'.*regardless of force")):
+            gateway.uninstall_package(name="elastic_agent", force=True)
+        assert _package_status(gateway, "elastic_agent") == "installed"
+        gateway.delete_agent_policy(agent_policy_id=pol.id, force=True)
+        pol = None
+        if before != "installed":
+            # No agent policy monitors any more: the tool now sends the uninstall.
+            gone = gateway.uninstall_package(name="elastic_agent", force=True)
+            assert gone.deleted_package_policies == ()
+            assert _package_status(gateway, "elastic_agent") != "installed"
+    finally:
+        if pol is not None:
+            gateway.delete_agent_policy(agent_policy_id=pol.id, force=True)
+        if before != "installed" and _package_status(gateway, "elastic_agent") == "installed":
+            gateway._client.options(request_timeout=120).fleet_epm.uninstall_package(
+                pkg_name="elastic_agent")
+        # Its install also made the managed logs-*/metrics-* data views in
+        # every space (kept by the uninstall, as nginx's): remove the ones it
+        # made, or the saved-objects copy tests find them in a new space.
+        for view_id in views() - views_before:
+            gateway._client.saved_objects.delete(type="index-pattern", id=view_id, force=True)

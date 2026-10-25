@@ -1010,7 +1010,19 @@ this ledger stands without them.
   agent count) and sends Kibana's `force` with it; one on a managed or the
   default Fleet Server agent policy is refused regardless of `force`, as
   `delete_agent_policy` guards those policies (uninstalling `fleet_server`
-  would strand the Fleet Server). An uninstall of a package that is not
+  would strand the Fleet Server), and so is any `fleet_server` package policy
+  on any agent policy, default or not, for the same reason (the refusal names
+  every guarded one). Kibana's `force` is sent only for a package with package
+  policies, the one case it exists for. Kibana uninstalled `elastic_agent`
+  without `force` or any check while an agent policy had monitoring on (it
+  removed the monitoring data streams' index templates and ingest pipelines),
+  so it is refused, whatever `force` says, while any agent policy has
+  `monitoring_enabled`, naming them and `update_agent_policy
+  monitoring_enabled=[]`. `include_cpu_metrics` sends
+  `additional_metrics=["CPU"]`, the only value Kibana accepts (400 "expected
+  value to equal [CPU]"); that bundle took ~66 s and the agent takes one
+  diagnostics request a minute (a second ended `FAILED` "rate limit
+  exceeded"). An uninstall of a package that is not
   installed (or unknown) answered 400 "… is not installed", so it is read
   first and named `list_installed_packages`. The uninstall reported
   `logs@custom` among removed assets yet left a user-edited one in place,
