@@ -94,9 +94,10 @@ def space_failure_fix(space: str, status: object, error: str, message: str) -> s
         cause = (
             "the API key cannot write saved objects there. A key keeps the privileges "
             "its owner had when it was created, so changing a role does not change this "
-            "one: configure a new KIBANA_API_KEY, created by a user whose role grants the "
-            "saved objects' features in that space (create_or_update_role), or leave the "
-            "space out of target_spaces"
+            "one: use a new API key, created by a user whose role grants the saved "
+            "objects' features in that space (create_or_update_role) — send it as "
+            "'Authorization: ApiKey <key>' or set KIBANA_API_KEY — or leave the space out "
+            "of target_spaces"
         )
     else:
         cause = "fix what Kibana names, then copy into that space again"

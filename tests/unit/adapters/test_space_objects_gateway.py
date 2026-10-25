@@ -158,7 +158,7 @@ def test_a_whole_target_space_failure_fails_its_objects_and_keeps_the_other_copi
     (failure,) = b.failed
     assert (failure.type, failure.id, failure.error) == ("index-pattern", "dv1", "space_error")
     assert "403 Forbidden: Unable to bulk_create index-pattern" in failure.fix
-    assert "configure a new KIBANA_API_KEY" in failure.fix
+    assert "use a new API key" in failure.fix
     assert "leave the space out of target_spaces" in failure.fix
 
 

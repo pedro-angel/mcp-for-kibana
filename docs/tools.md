@@ -1388,7 +1388,7 @@ Returns:
   object in the target came from this one, listed in `destinations`), or
   `space_error` (Kibana refused the whole copy into that space, e.g. the key cannot
   write saved objects there; `fix` carries Kibana's status and message, and the other
-  target spaces keep their results; on a 403 it says a new `KIBANA_API_KEY` is
+  target spaces keep their results; on a 403 it says a new API key (sent as `Authorization: ApiKey <key>` or set in `KIBANA_API_KEY`, the latter ignored in HTTP mode by default) is
   needed, since a key keeps the privileges its owner had when it was created and a
   role change does not reach it); nothing was written for a failed object.
   `unchanged` lists requested objects Kibana neither copied nor failed: already in

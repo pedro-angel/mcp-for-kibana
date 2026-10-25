@@ -1,6 +1,6 @@
 # platform-admin — behavior contract
 
-Status: Draft v1.5 (2026-10-25) — regeneration corpus, reconciled to shipped code
+Status: Draft v1.6 (2026-10-25) — regeneration corpus, reconciled to shipped code
 Surface reference: docs/tools.md#platform-admin-toolbox · Enforcement: named per section below
 
 ## Purpose & persona
@@ -66,7 +66,7 @@ at call time. Full per-tool arguments and return shapes:
   and a `fix`; nothing written for it) and `unchanged` (requested, neither copied nor failed:
   already in that space by sharing); a target space Kibana refused as a whole (one bare error, no
   object) fails every requested object not otherwise reported there with `space_error`, while the
-  other targets keep their results (on a 403 the fix asks for a new `KIBANA_API_KEY`: a key keeps
+  other targets keep their results (on a 403 the fix asks for a new API key (sent as `Authorization: ApiKey <key>` or set in `KIBANA_API_KEY`, the latter ignored in HTTP mode by default): a key keeps
   its owner's privileges from when it was created, so a role change does not reach it); the sharing tools return each object's `spaces` after the
   call with `added`/`removed`/`deleted`, and Kibana's per-object `error` when one object failed
   while the others were updated.

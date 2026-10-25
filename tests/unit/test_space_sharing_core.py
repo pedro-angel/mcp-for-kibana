@@ -41,7 +41,7 @@ def test_copy_fix_per_error(error, overwrite, needle):
 
 
 @pytest.mark.parametrize(("status", "error", "message", "needle"), [
-    (403, "Forbidden", "Unable to bulk_create index-pattern", "configure a new KIBANA_API_KEY"),
+    (403, "Forbidden", "Unable to bulk_create index-pattern", "use a new API key"),
     (500, "Internal Server Error", "", "then copy into that space again"),
     (None, "", "", "(no detail)"),
 ])
@@ -51,6 +51,13 @@ def test_space_failure_fix_names_the_space_kibanas_error_and_the_fix(
     fix = space_failure_fix("team-b", status, error, message)
     assert fix.startswith("Kibana refused the whole copy into space 'team-b'")
     assert "nothing was written there" in fix and needle in fix
+
+
+def test_space_failure_fix_on_a_403_names_both_ways_to_send_a_key():
+    # HTTP mode reads the key from each request's Authorization header and
+    # ignores KIBANA_API_KEY by default, so the fix names both (auth _GUIDANCE).
+    fix = space_failure_fix("team-b", 403, "Forbidden", "Unable to bulk_create index-pattern")
+    assert "'Authorization: ApiKey <key>'" in fix and "KIBANA_API_KEY" in fix
 
 
 def test_guidance_offers_source_space_only_where_it_is_accepted():

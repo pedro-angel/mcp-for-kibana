@@ -30,7 +30,7 @@ version section.
   Kibana's error and a fix. A target space Kibana refuses as a whole (a key
   that cannot write there) fails its objects with `space_error` and the fix,
   and the copies made in the other spaces are still returned; on a 403 the fix
-  asks for a new `KIBANA_API_KEY` (a key keeps the privileges its owner had
+  asks for a new API key (sent as `Authorization: ApiKey <key>` or set in `KIBANA_API_KEY`, the latter ignored in HTTP mode by default) (a key keeps the privileges its owner had
   when it was made, so changing a role does not help). The guidance never
   suggests `source_space` where the deployment refuses it (a space-pinned
   Kibana or public URL) and names the URL that fixes the source instead.

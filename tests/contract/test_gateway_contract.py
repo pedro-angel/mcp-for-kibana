@@ -3085,10 +3085,16 @@ async def test_copy_reports_a_target_space_kibana_refuses_whole_live(gateway):
     assert failed["error"] == "space_error" and failed["id"] == view_id
     assert f"Kibana refused the whole copy into space '{ro}'" in failed["fix"]
     assert "403 Forbidden: Unable to bulk_create index-pattern" in failed["fix"]
-    assert "configure a new KIBANA_API_KEY" in failed["fix"]
+    assert "use a new API key" in failed["fix"]
     (made,) = copied["copied"]
     assert copied["success"] is True and made["id"] == view_id and made["destination_id"]
-    assert again["results"][0]["failed"][0]["error"] == "space_error"  # the role change did not reach the key
+    # The role change did not reach the key: the same 403 in the refused space,
+    # while the space the key could already write still takes the copy.
+    still_denied, still_copied = again["results"]
+    (refused_again,) = still_denied["failed"]
+    assert refused_again["error"] == "space_error"
+    assert "403 Forbidden" in refused_again["fix"] and "use a new API key" in refused_again["fix"]
+    assert still_copied["success"] is True and still_copied["copied"]
     assert in_ro["total"] == 0  # nothing was written into the refused space
 
 

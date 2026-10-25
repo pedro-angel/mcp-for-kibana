@@ -847,10 +847,14 @@ this ledger stands without them.
   copy and share guidance on such a deployment names the URL that fixes the
   source (`KIBANA_URL`, or `KIBANA_PUBLIC_URL` with the source the default
   space), never "the Kibana URL" when only the public URL is pinned; the 403
-  `space_error` fix asks for a new `KIBANA_API_KEY`, not only a role change:
+  `space_error` fix asks for a new API key, not only a role change:
   a key keeps the privileges its owner had when it was created (probed live
   in that contract test: the role granted `all` in the refused space, the
-  same key still answers 403 there).
+  same key still answers 403 there, which the test pins along with the copy
+  into the space the key could already write). Final review, same day: the
+  fix names both ways a key reaches the server, `Authorization: ApiKey
+  <key>` and `KIBANA_API_KEY` (as `adapters/mcp/auth.py` does), because in
+  HTTP mode the env key is ignored unless `KIBANA_MCP_ALLOW_ENV_KEY_HTTP`.
 
 ## Reliability and models (measured)
 
