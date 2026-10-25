@@ -27,14 +27,14 @@ review ran before PR #29 merged).
 - Branch: `claude/ops-admin-tools`, restarted from `main` after PR #29 merged
   (session branch rule; same name).
 
-### Owner decisions needed before the batch that needs them
+### Owner decisions (answered on the whiteboard, 2026-10-25)
 
-| Batch | Decision | Default if the owner says "your call" |
+| Batch | Owner's answer | What the batch builds |
 |---|---|---|
-| H8 | Surface budget numbers (default selection, profiles, per-toolbox, per-tool description/schema caps) | Today's values + ~10 % headroom, each line citing its decision |
-| H9 | Widen the live-model tier: new pre-registered tasks (amends `scripts/experiment/CLAUDE_E2E.md`) and one destructive-tier precision task (supersedes the write-only setup) | Replay transcripts for all toolboxes (no pre-registration change) now; new live tasks as a registered amendment with a new decision entry |
-| H10 | How to get a Fleet stack with space awareness OFF if 9.5.4 has no switch (8.19 → 9.5.4 upgrade without migration, snapshot) | Probe first; if only the upgrade path works and costs > ~10 min per run, keep it CI-only and record that |
-| PR #29 leftovers | `uninstall_package` under awareness; default selection at 27 | Not part of this plan unless the owner folds them in |
+| H8 | A (caps), with a rule: "the growth should be pondered, not just adding because of new tools" | Caps at today's values + headroom; raising a cap needs a decision entry saying why the growth is worth it — a new tool alone is not a reason |
+| H9 | Replays for **all** toolboxes (cheap, every gate run and CI); live-model tasks **on demand** | One recorded replay per unmodelled toolbox; new live tasks only in `make test-e2e`, not in the gate. **Open follow-up** (whiteboard): does the existing live tier (`e2e_green`, D42) also leave the gate? Options A keep / B on demand / C only when the diff touches tool names, descriptions or schemas (recommended). Ask before H9 |
+| H10 | A (find a 9.5.4 switch); if none, C (unit tests only). No 8.19 upgrade path | Probe; if no switch, record the evidence in the roadmap and keep the off branches unit-tested. Stays on 9.5.4: 9.5.5 needs a kibana-py release first (0.6.0 is the newest on PyPI and lists 9.5.4, 9.4.7) |
+| PR #29 | `uninstall_package`: keep as shipped | No change |
 
 ## Done criteria (PR gate)
 
@@ -138,3 +138,4 @@ session there, without permission prompts. `environment_id` =
 - 2026-10-25: plan written from the DoD adequacy review (18 verified findings); H0 found while resuming (dockerd blocked by a stale containerd pidfile; fixed by hand in this session).
 - 2026-10-25: H0 done — hook removes the stale containerd pidfile too; reproduced with a live unrelated PID planted in `/run/docker/containerd/containerd.pid`: old hook "dockerd did not come up", new hook "started dockerd".
 - 2026-10-25: H1 done — seeded-stack criteria run behind a stack-version check (`tests/_stack_version.py`, D53; inside the criteria, no new row); reproduced: old gate `GO e2e_replay_green` with the pin doctored to 9.4.7, new gate NO-GO naming `scripts/stack.sh down && scripts/stack.sh up && scripts/stack.sh seed` (doctored pin, fake 9.5.5 `/api/status`, CI matrix 9.4.7), GO `(Kibana 9.5.4)` on the real tree; cloud-setup fallback now pinned by `test_stack_pin.py`. Review (0 blocking, 3 minor) fixed: a missing `version.number` names the key and `scripts/stack.sh seed`; shell `KIBANA_URL`/`KIBANA_TEST_API_KEY` overrides are named in the fix; an `ES_LOCAL_VERSION` equal to the target is not.
+- 2026-10-25: owner answered H8/H9/H10/uninstall_package on the whiteboard (table above); `make check` exit 0 on the parent at c08f49c. H1 note: the workflow's implement agent returned before its DoD finished, so the workflow review did not run; the child ran one review agent itself (0 blocking, 3 minor, fixed).
