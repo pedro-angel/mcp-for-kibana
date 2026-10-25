@@ -1,0 +1,1 @@
+Using the kibana tools, create a new Kibana space with id 'e2e-haiku-b6561eeb'. Inside that space, create a data view for the index pattern 'kibana_sample_data_flights', then create a dashboard titled 'E2E a82b14d1 flight prices' with a bar chart of the average ticket price by carrier over the last 7 days, using that data view.
