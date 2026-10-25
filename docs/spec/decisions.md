@@ -597,7 +597,19 @@ this ledger stands without them.
   `agent_name`, so recreating a deleted configuration lost it; the delete
   now returns `agent_name` and the upsert takes an optional one — sent on a
   create, and on a replacement in place of the stored one — default none,
-  so earlier calls behave as before.) **No `space`** (D10: APM
+  so earlier calls behave as before. Amended after a second review, same
+  day: a replacement that took a caller's `agent_name` in place of the stored
+  one lost what it read, since the result returns only `previous_settings`;
+  a replacement now keeps the stored `agent_name` and refuses a different one
+  (none stored included) after its read, before any write, naming
+  delete-and-recreate — so the upsert loses nothing again, and Kibana's UI
+  does not edit it either. Returning a `previous_agent_name` instead was
+  rejected: a replacement that added one where none was stored could not be
+  undone, because an omitted `agent_name` keeps the stored one. The sentinel
+  refusal also names every argument holding `ALL_OPTION_VALUE`: with both
+  given it said to omit `service_name` only, which keeps `environment`
+  literal and would replace a configuration stored under {all services,
+  literal `ALL_OPTION_VALUE`}.) **No `space`** (D10: APM
   configuration is cluster-global, the toolbox keeps its mixed-axis
   exclusion). Contract: [observability](toolboxes/observability.md).
 

@@ -149,16 +149,47 @@ _ApmName = Annotated[str, Field(min_length=1)] | None
 _SettingValue = str | bool | int | float
 
 
+def _apm_scope(service_name: str | None, environment: str | None) -> str:
+    service = f"service '{service_name}'" if service_name is not None else "all services"
+    env = f"environment '{environment}'" if environment is not None else "all environments"
+    return f"{service}, {env}"
+
+
 def _refuse_new_all_option(service_name: str | None, environment: str | None) -> None:
-    # Only called when no configuration is stored under the given names.
-    for arg, value, scope in (("service_name", service_name, "services"),
-                              ("environment", environment, "environments")):
-        if value == _ALL_OPTION:
-            raise ToolError(
-                f"{arg} '{_ALL_OPTION}' is list_apm_environments' marker for all {scope}, "
-                f"and no configuration is stored under it as a literal name — omit {arg} "
-                f"to create or replace the all-{scope} configuration"
-            )
+    # Only called when no configuration is stored under the exact pair given.
+    # Every sentinel name is named and omitted together: omitting only one would
+    # keep the other literal, and could replace a configuration another client
+    # stored under it.
+    marked = [(arg, scope) for arg, value, scope in (
+        ("service_name", service_name, "all services"),
+        ("environment", environment, "all environments")) if value == _ALL_OPTION]
+    if not marked:
+        return
+    args = " and ".join(arg for arg, _ in marked)
+    scopes = " and ".join(scope for _, scope in marked)
+    target = _apm_scope(None if service_name == _ALL_OPTION else service_name,
+                        None if environment == _ALL_OPTION else environment)
+    raise ToolError(
+        f"{args} '{_ALL_OPTION}' {'is' if len(marked) == 1 else 'are'} "
+        f"list_apm_environments' marker for {scopes}, and no configuration is stored "
+        f"under {_apm_scope(service_name, environment)} — omit {args} to create or "
+        f"replace the configuration for {target}"
+    )
+
+
+def _refuse_agent_name_change(
+    service_name: str | None, environment: str | None, stored: str | None, given: str
+) -> None:
+    # A replacement keeps the stored agent_name, so it loses nothing it read and
+    # previous_settings alone undoes it (Kibana's UI does not edit it either).
+    if given == stored:
+        return
+    has = f"agent_name '{stored}'" if stored is not None else "no agent_name"
+    raise ToolError(
+        f"the configuration for {_apm_scope(service_name, environment)} has {has}, and a "
+        f"replacement keeps it — omit agent_name, or to change it delete_apm_agent_config "
+        f"and recreate the configuration with agent_name '{given}'"
+    )
 
 
 def _setting(value: _SettingValue) -> str:
@@ -516,8 +547,9 @@ class ObservabilityToolbox:
             the settings it knows but stores names it does not know, which
             agents ignore, so use the setting names from the APM agent's
             central-configuration docs. agent_name (e.g. "java", which Kibana's
-            UI uses to choose the settings it shows) is optional: omitted, a
-            replacement keeps the stored one and a new configuration has none.
+            UI uses to choose the settings it shows) is optional and set only
+            on a new configuration: a replacement keeps the stored one and
+            refuses a different one.
             Returns the configuration as get_apm_agent_config does, plus
             `created` (true when none existed) and `previous_settings` (the map
             this call read and replaced, or null): pass previous_settings back
@@ -536,12 +568,15 @@ class ObservabilityToolbox:
                     previous = None
                 if previous is None:
                     _refuse_new_all_option(service_name, environment)
+                elif agent_name is not None:
+                    _refuse_agent_name_change(
+                        service_name, environment, previous.agent_name, agent_name)
                 # Kibana's PUT takes no etag (probed), so the read and the
                 # overwrite are not atomic; see D47.
                 stored = gw.upsert_apm_agent_config(
                     service_name, environment, values,
                     # Kibana's PUT drops a stored agent_name that is not sent again.
-                    agent_name=agent_name or (previous.agent_name if previous else None),
+                    agent_name=previous.agent_name if previous else agent_name,
                     overwrite=previous is not None,
                 )
             return {

@@ -464,20 +464,41 @@ async def test_upsert_apm_agent_config_keeps_the_stored_agent_name(mcp, gateway)
     assert replaced["agent_name"] == "java"
 
 
-async def test_upsert_apm_agent_config_sends_a_given_agent_name(mcp, gateway):
-    # A new configuration carries agent_name only when given; on a replacement
-    # a given one wins over the stored one.
+async def test_upsert_apm_agent_config_sends_a_given_agent_name_on_a_create(mcp, gateway):
+    # A new configuration carries agent_name only when given; a replacement may
+    # repeat the stored one.
     gateway.apm_agent_configs[0] = replace(gateway.apm_agent_configs[0], agent_name="java")
     async with Client(mcp) as client:
         created = (await client.call_tool("upsert_apm_agent_config", {
             "service_name": "cart", "agent_name": "nodejs",
             "settings": {"capture_body": "all"}})).data
         replaced = (await client.call_tool("upsert_apm_agent_config", {
-            "service_name": "checkout", "environment": "production", "agent_name": "go",
+            "service_name": "checkout", "environment": "production", "agent_name": "java",
             "settings": {"recording": "false"}})).data
     assert created["agent_name"] == "nodejs" and created["created"] is True
-    assert replaced["agent_name"] == "go"
-    assert [w[1]["agent_name"] for w in gateway.apm_config_writes] == ["nodejs", "go"]
+    assert replaced["agent_name"] == "java" and replaced["created"] is False
+    assert [w[1]["agent_name"] for w in gateway.apm_config_writes] == ["nodejs", "java"]
+
+
+@pytest.mark.parametrize(("stored", "has"), [("java", "agent_name 'java'"),
+                                             (None, "no agent_name")])
+async def test_upsert_apm_agent_config_refuses_to_change_a_stored_agent_name(
+    mcp, gateway, stored, has
+):
+    # The result returns only previous_settings, so a replacement that changed
+    # agent_name would lose what it read: it refuses, after the read, before any write.
+    gateway.apm_agent_configs[0] = replace(gateway.apm_agent_configs[0], agent_name=stored)
+    async with Client(mcp) as client:
+        with pytest.raises(ToolError, match=(
+            rf"the configuration for service 'checkout', environment 'production' has {has}, "
+            r"and a replacement keeps it — omit agent_name, or to change it "
+            r"delete_apm_agent_config and recreate the configuration with agent_name 'go'"
+        )):
+            await client.call_tool("upsert_apm_agent_config", {
+                "service_name": "checkout", "environment": "production", "agent_name": "go",
+                "settings": {"recording": "false"}})
+    assert gateway.apm_config_writes == []
+    assert gateway.apm_agent_configs[0].agent_name == stored
 
 
 async def test_delete_apm_agent_config_returns_the_agent_name_to_recreate_it(mcp, gateway):
@@ -517,21 +538,59 @@ async def test_upsert_apm_agent_config_refuses_empty_settings(mcp, gateway):
     assert gateway.apm_config_writes == []
 
 
-@pytest.mark.parametrize(("arg", "scope"), [("service_name", "services"),
-                                            ("environment", "environments")])
+@pytest.mark.parametrize(("arg", "scope", "target"), [
+    ("service_name", "all services", "all services, all environments"),
+    ("environment", "all environments", "all services, all environments"),
+])
 async def test_upsert_apm_agent_config_refuses_to_create_under_the_all_sentinel(
-    mcp, gateway, arg, scope
+    mcp, gateway, arg, scope, target
 ):
     # Kibana stores "ALL_OPTION_VALUE" as a literal name (probed): a new one
     # would not mean "all", so the upsert refuses to create it.
+    named = ("service 'ALL_OPTION_VALUE', all environments" if arg == "service_name"
+             else "all services, environment 'ALL_OPTION_VALUE'")
     async with Client(mcp) as client:
         with pytest.raises(ToolError, match=(
-            rf"{arg} 'ALL_OPTION_VALUE' is list_apm_environments' marker for all {scope}, "
-            rf"and no configuration is stored under it as a literal name — omit {arg} to "
-            rf"create or replace the all-{scope} configuration"
+            rf"{arg} 'ALL_OPTION_VALUE' is list_apm_environments' marker for {scope}, and no "
+            rf"configuration is stored under {named} — omit {arg} to create or replace the "
+            rf"configuration for {target}"
         )):
             await client.call_tool("upsert_apm_agent_config", {
                 arg: "ALL_OPTION_VALUE", "settings": {"recording": "true"}})
+    assert gateway.apm_config_writes == []
+
+
+async def test_upsert_apm_agent_config_names_both_sentinels_together(mcp, gateway):
+    # Omitting only service_name would keep environment literal and replace a
+    # configuration another client stored under {all services, "ALL_OPTION_VALUE"}.
+    gateway.apm_agent_configs.append(replace(
+        gateway.apm_agent_configs[0], service_name=None,
+        service_environment="ALL_OPTION_VALUE", settings={"recording": "true"}))
+    async with Client(mcp) as client:
+        with pytest.raises(ToolError, match=(
+            r"service_name and environment 'ALL_OPTION_VALUE' are list_apm_environments' "
+            r"marker for all services and all environments, and no configuration is stored "
+            r"under service 'ALL_OPTION_VALUE', environment 'ALL_OPTION_VALUE' — omit "
+            r"service_name and environment to create or replace the configuration for all "
+            r"services, all environments"
+        )):
+            await client.call_tool("upsert_apm_agent_config", {
+                "service_name": "ALL_OPTION_VALUE", "environment": "ALL_OPTION_VALUE",
+                "settings": {"log_level": "debug"}})
+    assert gateway.apm_config_writes == []
+
+
+async def test_upsert_apm_agent_config_keeps_the_given_service_when_refusing_a_sentinel(
+    mcp, gateway
+):
+    async with Client(mcp) as client:
+        with pytest.raises(ToolError, match=(
+            r"omit environment to create or replace the configuration for service 'cart', "
+            r"all environments$"
+        )):
+            await client.call_tool("upsert_apm_agent_config", {
+                "service_name": "cart", "environment": "ALL_OPTION_VALUE",
+                "settings": {"recording": "true"}})
     assert gateway.apm_config_writes == []
 
 

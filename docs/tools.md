@@ -874,7 +874,7 @@ requests to its target), every other tool `openWorldHint=false`.
 | `delete_synthetic_monitor` | destructive | Permanently delete a monitor. |
 | `delete_synthetic_param` | destructive | Permanently delete a parameter; its value is lost and monitors lose `${key}`. |
 | `delete_synthetic_private_location` | destructive | Permanently delete a private location no monitor uses; its agent policy stays. |
-| `upsert_apm_agent_config` | write | Create or replace the APM agent configuration of a service + environment (omit either for all): `settings` replaces the stored map; optional `agent_name`; returns `created` and the replaced `previous_settings`. |
+| `upsert_apm_agent_config` | write | Create or replace the APM agent configuration of a service + environment (omit either for all): `settings` replaces the stored map; optional `agent_name` (on a create; a replacement keeps the stored one); returns `created` and the replaced `previous_settings`. |
 | `delete_apm_agent_config` | destructive | Permanently delete one APM agent configuration (exact service + environment match); returns the deleted settings and `agent_name`. |
 
 Synthetics write tier, as probed on Kibana 9.5.4 (decision
@@ -927,7 +927,8 @@ Synthetics write tier, as probed on Kibana 9.5.4 (decision
   `{service_name: "cart"}` and `{service_name: "cart", environment: "prod"}` are
   two configurations. `list_apm_environments`' `ALL_OPTION_VALUE` is not
   created as a name (Kibana would store it literally, and no agent reads it as
-  *all*); one another client stored under that literal name is matched exactly,
+  *all*; the refusal says to omit every name holding it); one another client
+  stored under that literal name is matched exactly,
   so the tools replace and delete it, not the all-* one. An empty string is
   refused (Kibana stores `""` and then cannot find it again).
   `upsert_apm_agent_config` reads the configuration first and replaces it only
@@ -941,8 +942,12 @@ Synthetics write tier, as probed on Kibana 9.5.4 (decision
   settings it knows (a rejection lists the settings sent, since Kibana's message
   can omit the key) but stores setting names it does not know, which agents
   ignore. A stored `agent_name` (Kibana's UI writes one) is sent again on a
-  replacement, since Kibana's PUT drops it otherwise, unless the call passes
-  `agent_name`; a new configuration has one only when passed. The delete
+  replacement, since Kibana's PUT drops it otherwise; a replacement given a
+  different `agent_name` is refused before any write ("… has agent_name
+  'java', and a replacement keeps it — omit agent_name, or to change it
+  delete_apm_agent_config and recreate the configuration with agent_name
+  'go'"), since the result returns only `previous_settings`. A new
+  configuration has one only when passed. The delete
   returns `settings` and `agent_name`, which an upsert takes back to recreate it. A miss reads "no APM agent
   configuration for service 'cart', all environments — service_name and
   environment must match a configuration exactly (an omitted one means all);

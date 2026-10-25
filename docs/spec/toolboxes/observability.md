@@ -1,6 +1,6 @@
 # observability — behavior contract
 
-Status: Draft v1.5 (2026-10-25) — regeneration corpus, reconciled to shipped code
+Status: Draft v1.6 (2026-10-25) — regeneration corpus, reconciled to shipped code
 Surface reference: docs/tools.md#observability-toolbox · Enforcement: named per section below
 
 ## Purpose & persona
@@ -121,7 +121,10 @@ exclusions, not repeated here.
   one means all services or all environments, never "any" (Kibana's view and delete match exactly,
   probed). `ALL_OPTION_VALUE` (the `list_apm_environments` marker) is stored by Kibana as a
   literal name, which no agent reads as "all": the upsert refuses to create a configuration under
-  it (after its read, before any write), saying to omit the argument for the all-* one; a
+  it (after its read, before any write, when nothing is stored under the exact pair), naming every
+  argument that holds the sentinel and saying to omit all of them, with the configuration that
+  then targets (omitting one of two would keep the other literal and could replace a configuration
+  another client stored under it); a
   configuration another client stored under the literal name is matched exactly by view and delete
   (probed), so the upsert replaces it and the delete removes it — telling the caller to omit the
   name there would point it at the different all-* configuration. `""` is refused at the schema — Kibana stores
@@ -132,8 +135,10 @@ exclusions, not repeated here.
   `overwrite` (so a configuration another caller creates in between is Kibana's 400, answered
   "call upsert_apm_agent_config again", never overwritten unreported); with one it replaces it
   with `overwrite=true`, sending the stored `agent_name` again (Kibana's PUT drops it otherwise,
-  probed) unless the call gives one; an optional `agent_name` is sent on a create (none when
-  omitted). The read and the overwrite are not atomic: Kibana's PUT takes no etag or version
+  probed). An optional `agent_name` is sent on a create (none when omitted); on a replacement it
+  must equal the stored one (none included), else the call is refused after the read and before
+  any write, naming delete-and-recreate — the result returns only `previous_settings`, so a changed
+  `agent_name` would be lost (Kibana's UI does not edit it either). The read and the overwrite are not atomic: Kibana's PUT takes no etag or version
   (probed: "Excess keys are not allowed: body.etag"; Kibana's own route overwrites by document id),
   so a change another client stores between them — within the one call — is replaced and not
   reported, and `previous_settings` is the map the call read. It returns the read shape plus `created` and `previous_settings` (`null` on a create).
@@ -159,7 +164,8 @@ exclusions, not repeated here.
 - The 10 reads MUST stay `read` tier; every Synthetics delete and `delete_apm_agent_config` MUST be `destructive`; no write-tier tool may delete an object.
 - `upsert_apm_agent_config` MUST NOT overwrite a configuration it did not read in the same call, and MUST return the settings it read as `previous_settings`; it MUST NOT claim more — Kibana has no conditional write, so a change stored between its read and its PUT is not detected.
 - `upsert_apm_agent_config` MUST refuse to create a configuration named `ALL_OPTION_VALUE` (service or environment) before any write; the APM writes MUST refuse `""` before any request; a configuration stored under the literal `ALL_OPTION_VALUE` MUST be matched exactly, never redirected to the all-* one.
-- A replacement MUST send a stored `agent_name` again unless the call gives one; `delete_apm_agent_config` MUST return the deleted `agent_name`.
+- A replacement MUST send the stored `agent_name` again and MUST refuse a different one before any write; `delete_apm_agent_config` MUST return the deleted `agent_name`.
+- The sentinel refusal MUST name every argument holding `ALL_OPTION_VALUE`, never advise omitting only one of two.
 - `list_synthetic_params`'s shape MUST NOT include a parameter value field, regardless of caller privilege.
 - `list_apm_environments` MUST always include the `ALL_OPTION_VALUE` sentinel.
 - `list_synthetic_monitors` and `list_apm_sourcemaps` MUST return the full result in one call, terminating pagination on the running total, never an absolute/global total field. (For sourcemaps the total-is-grand-total assumption is live-unverified — only the empty response has been observed on the test stack; verify against a real artifact before leaning on it.)
@@ -213,9 +219,11 @@ exclusions, not repeated here.
   schedule numbers and the canonical number sent, unknown or absent locations, empty updates,
   duplicate keys and labels, a taken agent policy), the read-shape results, and that no result
   carries a parameter value; the APM upsert's create (no overwrite) and replacement (the whole map,
-  `previous_settings`, the stored `agent_name` sent again, a given one sent on a create or
-  replacement), its string values, its empty-map, `""` and create-under-`ALL_OPTION_VALUE`
-  refusals, a literal-`ALL_OPTION_VALUE` configuration replaced and deleted while the
+  `previous_settings`, the stored `agent_name` sent again, a given one sent on a create and
+  the same one accepted on a replacement, a different one refused with nothing written), its
+  string values, its empty-map, `""` and create-under-`ALL_OPTION_VALUE` refusals (each name
+  alone, both together while a literal all-services one is stored, the given service kept in
+  the advice), a literal-`ALL_OPTION_VALUE` configuration replaced and deleted while the
   all-environments one stays, the delete's result (with `agent_name`, enough to recreate it) and
   both misses.
 - `tests/unit/adapters/test_observability_gateway.py` — pins the response-mapping contract per
@@ -248,9 +256,10 @@ exclusions, not repeated here.
 - `tests/contract/test_gateway_contract.py` (APM writes) — live, on throwaway `contract-apm-*`
   services: a create (a number sent as `"0.2"`), a replacement that replaces the map and returns
   the old one, a value Kibana rejects with the settings named, the delete with what it removed and
-  its miss; a configuration written with `agent_name` keeping it through a replacement, the delete
-  returning it and an upsert with it recreating it; and a literal-`ALL_OPTION_VALUE` configuration
+  its miss; a configuration written with `agent_name` keeping it through a replacement, a
+  different one refused, the delete returning it and an upsert with it recreating it; and a literal-`ALL_OPTION_VALUE` configuration
   replaced and deleted beside the service's all-environments one, which stays, with a create under
-  the literal name refused.
+  the literal name refused; and both names the sentinel, refused with "omit service_name and
+  environment" while an all-services literal-environment configuration stays untouched.
 - No e2e-replay transcript exercises this toolbox: behavior is pinned at the unit, adapter, and
   live-contract tiers above, not by a recorded model turn.

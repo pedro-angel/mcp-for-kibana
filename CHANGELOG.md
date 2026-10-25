@@ -21,10 +21,12 @@ version section.
   it read and replaced, which a second call puts back; Kibana's PUT takes no
   etag, so a change another client stores between that read and the write is
   replaced unreported). It overwrites only a configuration it read in the same
-  call, keeps a stored `agent_name` unless given an optional `agent_name`,
-  refuses an empty map and `""` as a name, refuses to create a configuration
-  named `ALL_OPTION_VALUE` (but replaces one another client stored under that
-  literal name, rather than pointing at the all-* one), and names the settings
+  call, takes an optional `agent_name` on a create, keeps a stored one on a
+  replacement (refusing a different one, which the result could not give
+  back), refuses an empty map and `""` as a name, refuses to create a
+  configuration named `ALL_OPTION_VALUE` (but replaces one another client
+  stored under that literal name, rather than pointing at the all-* one; the
+  refusal says to omit every name holding it), and names the settings
   sent when Kibana rejects a value. `delete_apm_agent_config` deletes one
   configuration, matched exactly (a literal `ALL_OPTION_VALUE` included), and
   returns its settings and `agent_name`, which the upsert takes back to
