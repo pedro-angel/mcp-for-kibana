@@ -54,7 +54,7 @@ Status: `[ ]` todo · `[~]` in progress · `[x]` committed + pushed (add sha).
 
 | # | Status | Findings | What | Size |
 |---|---|---|---|---|
-| H0 | [ ] | (session infra) | `scripts/cloud-session-start.sh` also removes a stale `/run/docker/containerd/containerd.pid` (same stale-PID class it already handles for `/var/run/docker.pid`; dockerd failed to start on resume 2026-10-25 with "process with PID 218 is still running") | S |
+| H0 | [x] | (session infra) | `scripts/cloud-session-start.sh` also removes a stale `/run/docker/containerd/containerd.pid` (same stale-PID class it already handles for `/var/run/docker.pid`; dockerd failed to start on resume 2026-10-25 with "process with PID 218 is still running") | S |
 | H1 | [ ] | environment-2 | Fail-closed **stack-version check** before the seeded-stack criteria: Kibana version from `/api/status` (seed key) must equal the `ES_LOCAL_VERSION` pin (local) or the matrix version (CI); NO-GO names `scripts/stack.sh down && scripts/stack.sh up && scripts/stack.sh seed`; version printed on every seeded-stack GO line. Fix `WRAP_UP.md`'s "start the stack at 9.5.5" and say in docs that run records at 9.5.5 are outside the supported set | S |
 | H2 | [ ] | integrity-1 | `changelog_entry` diff-based: changed paths since `git merge-base HEAD origin/main` (fallback: latest `v*` tag) outside an exemption list require an added line under `## [Unreleased]`; fail closed without `origin/main` naming `git fetch origin main`; same check as a `checks.yml` step on PRs. Fix the `dod.config` comment to match | S |
 | H3 | [ ] | integrity-2 | Verdict bound to a tree: content tree id (temporary index, `git add -A && git write-tree`) at start and end, HEAD and dirty flag in the header and VERDICT line, NO-GO if the tree changed mid-run, `$logdir/verdict.json` (sha, tree id, config sha256, criteria, Kibana version, Claude model, timestamps), `$logdir` cleared at start. AGENTS.md: how to check a GO claim (`git rev-parse HEAD^{tree}` == recorded tree id) | S |
@@ -102,3 +102,4 @@ a batch `[x]`.
 ## Log
 
 - 2026-10-25: plan written from the DoD adequacy review (18 verified findings); H0 found while resuming (dockerd blocked by a stale containerd pidfile; fixed by hand in this session).
+- 2026-10-25: H0 done — hook removes the stale containerd pidfile too; reproduced with a live unrelated PID planted in `/run/docker/containerd/containerd.pid`: old hook "dockerd did not come up", new hook "started dockerd".

@@ -268,6 +268,12 @@ version section.
   `scripts/stack.sh` decides); the Dockerfile's sync step reads it from
   `/run/secrets` and no image layer keeps it. Elsewhere the build is
   unchanged.
+- **A resumed Claude Code cloud session starts Docker again.** The session
+  hook removed the snapshot's stale `/var/run/docker.pid` but not the
+  containerd pidfile beside it, so when a reused PID sat behind it dockerd
+  failed with "failed to start containerd: ... process with PID N is still
+  running" and every stack command failed. The hook now removes both when no
+  dockerd runs.
 
 ### Security
 
