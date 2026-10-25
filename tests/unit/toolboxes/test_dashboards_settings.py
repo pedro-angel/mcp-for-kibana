@@ -110,7 +110,8 @@ async def test_title_and_description_change_and_panels_stay_byte_for_byte(mcp, g
         "refresh_interval_seconds": None, "tags": ["t-old"],
         "changed": ["title", "description"],
         "previous": {"title": "Ops", "description": "old"},
-        "undo": {"title": "Ops", "description": "old"},
+        "undo": {"dashboard_id": "d1", "title": "Ops", "description": "old"},
+        "undo_omitted": [],
     }
 
 
@@ -123,6 +124,7 @@ async def test_undo_passed_back_restores_every_setting(mcp, gateway):
         refresh_interval_seconds=30, tags_to_add=["t-prod"], tags_to_remove=["t-old"],
     )
     assert got["undo"] == {
+        "dashboard_id": "d1",
         "title": "Ops", "description": "old", "time_range": {"from": "now-7d", "to": "now"},
         "refresh_interval_seconds": 0, "tags_to_add": ["t-old"], "tags_to_remove": ["t-prod"],
     }
@@ -140,21 +142,21 @@ async def test_undo_of_settings_that_were_not_stored(mcp, gateway):
     got = await _call(mcp, time_range={"from": "now-1h"}, refresh_interval_seconds=30)
     # no time range was stored: the undo clears it, and leaves the refresh out
     # (the dashboard app ignores a refresh without a stored time range)
-    assert got["undo"] == {"clear_time_range": True}
+    assert got["undo"] == {"dashboard_id": "d1", "clear_time_range": True}
     await _call(mcp, **got["undo"])
     assert "time_range" not in gateway.dashboards["d1"]
     # a refresh that was not stored, on a stored time range, comes back paused
     await _call(mcp, time_range={"from": "now-1h"})
     gateway.dashboards["d1"].pop("refresh_interval")
     assert (await _call(mcp, refresh_interval_seconds=30))["undo"] == {
-        "refresh_interval_seconds": 0}
+        "dashboard_id": "d1", "refresh_interval_seconds": 0}
 
 
 async def test_same_values_are_unchanged_and_write_nothing(mcp, gateway):
     got = await _call(mcp, title="Ops", description="old", tags_to_add=["t-old"],
                       tags_to_remove=["t-gone"])
     assert got["status"] == "unchanged" and got["changed"] == [] and got["previous"] == {}
-    assert got["undo"] == {}
+    assert got["undo"] == {} and got["undo_omitted"] == []
     assert gateway.writes == []
 
 
@@ -217,7 +219,7 @@ async def test_a_refresh_without_a_time_range_reads_as_none_and_undoes(mcp, gate
     gateway.dashboards["d1"]["refresh_interval"] = {"pause": False, "value": 30000}
     got = await _call(mcp, time_range={"from": "now-1h"}, refresh_interval_seconds=60)
     assert got["previous"] == {"time_range": None, "refresh_interval_seconds": None}
-    assert got["undo"] == {"clear_time_range": True}
+    assert got["undo"] == {"dashboard_id": "d1", "clear_time_range": True}
     back = await _call(mcp, **got["undo"])
     assert (back["time_range"], back["refresh_interval_seconds"]) == (None, None)
 
@@ -230,6 +232,7 @@ async def test_clearing_the_time_range_reports_the_refresh_and_undoes_exactly(mc
     assert cleared["changed"] == ["time_range", "refresh_interval_seconds"]
     assert cleared["refresh_interval_seconds"] is None
     assert cleared["undo"] == {
+        "dashboard_id": "d1",
         "time_range": {"from": "now-7d", "to": "now"}, "refresh_interval_seconds": 30}
     await _call(mcp, **cleared["undo"])
     assert gateway.dashboards["d1"] == stored
@@ -241,7 +244,7 @@ async def test_a_sub_second_refresh_round_trips(mcp, gateway):
     gateway.dashboards["d1"]["time_range"] = {"from": "now-7d", "to": "now"}
     gateway.dashboards["d1"]["refresh_interval"] = {"pause": False, "value": 1500}
     got = await _call(mcp, refresh_interval_seconds=30)
-    assert got["undo"] == {"refresh_interval_seconds": 1.5}
+    assert got["undo"] == {"dashboard_id": "d1", "refresh_interval_seconds": 1.5}
     await _call(mcp, **got["undo"])
     assert gateway.dashboards["d1"]["refresh_interval"] == {"pause": False, "value": 1500}
     await _refused(mcp, r"under the 1 ms Kibana stores — pass 0 to turn auto-refresh off",
@@ -323,7 +326,7 @@ async def test_undo_of_a_rename_off_a_shared_title_is_refused_like_a_rename(mcp,
     # (D52 states this undo is refused; the fix text names the way out).
     gateway.dashboards[derive_dashboard_id("Ops")] = {"title": "Ops", "panels": []}
     got = await _call(mcp, title="Ops archive")
-    assert got["undo"] == {"title": "Ops"}
+    assert got["undo"] == {"dashboard_id": "d1", "title": "Ops"}
     await _refused(mcp, "would leave two dashboards with that title; choose another title",
                    **got["undo"])
 
@@ -357,8 +360,47 @@ async def test_unknown_tag_names_the_space(mcp, gateway):
     await _refused(mcp, r"name no tag in space 'team-a'", tags_to_add=["nope"], space="team-a")
 
 
-async def test_refresh_seconds_schema_rejects_negative(mcp):
+async def test_refresh_seconds_schema_rejects_negative_and_over_the_limit(mcp, gateway):
+    # Over 2**31-1 ms the app's setTimeout fires at once; a huge finite number
+    # is refused by the schema naming the limit, never overflowing (1e306 s).
+    gateway.dashboards["d1"]["time_range"] = {"from": "now-7d", "to": "now"}
     async with Client(mcp) as client:
-        with pytest.raises(ToolError):
-            await client.call_tool(
-                "update_dashboard", {"dashboard_id": "d1", "refresh_interval_seconds": -1})
+        for value, match in ((-1, "greater than or equal to 0"),
+                             (1e306, "less than or equal to 2147483.647"),
+                             (2147483.648, "less than or equal to 2147483.647")):
+            with pytest.raises(ToolError, match=match):
+                await client.call_tool("update_dashboard", {
+                    "dashboard_id": "d1", "refresh_interval_seconds": value})
+    assert gateway.writes == []
+    got = await _call(mcp, refresh_interval_seconds=2147483.647)
+    assert gateway.dashboards["d1"]["refresh_interval"] == {
+        "pause": False, "value": 2**31 - 1}
+    assert got["refresh_interval_seconds"] == 2147483.647
+
+
+async def test_the_undo_names_the_dashboard_and_its_space(mcp, gateway):
+    # Ids from create_dashboard are the same in every space, so an undo passed
+    # as given must not land on the default space's dashboard of that id.
+    got = await _call(mcp, description="new", space="team-a")
+    assert got["undo"] == {"dashboard_id": "d1", "description": "old", "space": "team-a"}
+    async with Client(mcp) as client:
+        await client.call_tool("update_dashboard", got["undo"])
+    assert gateway.factory_spaces == ["team-a", "team-a"]
+
+
+async def test_stored_values_the_tool_refuses_are_left_out_of_the_undo(mcp, gateway):
+    # Kibana stores a negative refresh and an unreadable time (D52 probes);
+    # passing them back would be refused, so the undo leaves them out and
+    # undo_omitted names them (previous still shows them).
+    gateway.dashboards["d1"]["time_range"] = {"from": "now-7d", "to": "now"}
+    gateway.dashboards["d1"]["refresh_interval"] = {"pause": False, "value": -1000}
+    got = await _call(mcp, refresh_interval_seconds=30)
+    assert got["previous"] == {"refresh_interval_seconds": -1}
+    assert (got["undo"], got["undo_omitted"]) == ({}, ["refresh_interval_seconds"])
+    gateway.dashboards["d1"]["time_range"] = {"from": "yesterday", "to": "now"}
+    got = await _call(mcp, clear_time_range=True, description="new")
+    assert got["previous"]["time_range"] == {"from": "yesterday", "to": "now"}
+    assert got["undo"] == {"dashboard_id": "d1", "description": "old"}
+    assert got["undo_omitted"] == ["time_range", "refresh_interval_seconds"]
+    await _call(mcp, **got["undo"])  # what is left is accepted
+    assert gateway.dashboards["d1"]["description"] == "old"

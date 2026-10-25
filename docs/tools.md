@@ -355,24 +355,31 @@ exactly as read:
   "refresh_interval_seconds": 30, "tags": ["<tag id>"],
   "changed": ["time_range", "refresh_interval_seconds"],
   "previous": {"time_range": null, "refresh_interval_seconds": null},
-  "undo": {"clear_time_range": true}
+  "undo": {"dashboard_id": "...", "clear_time_range": true},
+  "undo_omitted": []
 }
 ```
 
 - `status` — `updated`, or `unchanged` when every value passed is already
   stored (nothing is written); `changed` names the settings that changed,
   `previous` holds their values before (`null`: none was stored), and `undo`
-  the `update_dashboard` arguments that put them back — pass them as they
-  are. `refresh_interval_seconds` is `null` on a dashboard that stores no
+  the whole `update_dashboard` call that puts them back — `dashboard_id`
+  and the `space` passed included, so pass it as it is (`{}` when there is
+  nothing to undo). A previous value Kibana stored that the tool itself
+  refuses — a blank title, a time the dashboard app cannot read, a negative,
+  under-1 ms or over-limit refresh, an empty tag id — is left out of `undo`
+  and named in `undo_omitted` (`previous` still shows it), as is a refresh
+  that could then only come back without a time range. `refresh_interval_seconds` is `null` on a dashboard that stores no
   time range (Kibana keeps a refresh there, but the dashboard app applies
   one only with the stored time), and may be a fraction (Kibana stores
   milliseconds: 1500 reads as `1.5`). A time range that was not stored is
   undone with `clear_time_range=true`; a refresh that was not stored can
   only come back paused (`0`), and is left out of an undo that clears the
   time range; a paused refresh comes back paused at the interval the call
-  set. Tags are undone through `tags_to_add`/`tags_to_remove`. Renaming back
-  onto a title whose `create_dashboard` id another dashboard holds is
-  refused like any such rename, naming the way out.
+  set. Tags are undone through `tags_to_add`/`tags_to_remove`. Two undos can
+  be refused by checks that read Kibana, naming the way out: renaming back
+  onto a title whose `create_dashboard` id another dashboard holds (refused
+  like any such rename), and re-adding a removed tag id that names no tag.
 - `time_range` values must be readable by Kibana's dashboard app: date math
   (`now`, `now-24h`, `now-7d/d`, `now/w`; units `ms s m h d w M y`) or an ISO
   8601 timestamp, optionally followed by `||` and date math. Kibana's API
@@ -384,7 +391,8 @@ exactly as read:
   range after the call (already, or `time_range` in the same call): Kibana
   stores it either way, but its dashboard app applies a stored refresh only
   together with the stored time (9.5.4). 0 pauses auto-refresh and keeps the
-  stored interval.
+  stored interval. At most 2147483.647 seconds (2³¹−1 ms, about 24.8 days):
+  the app waits with `window.setTimeout`, which fires a longer delay at once.
 - Tags are tag saved-object **ids** (find them with
   `find_saved_objects(types=["tag"])`, which also shows each tag's `name`);
   tags live in one space. Kibana stores any string as a tag id, so each id

@@ -1899,10 +1899,11 @@ async def test_update_dashboard_settings_live(gateway):
                 moved = await update(tags_to_add=[tag_x], tags_to_remove=[tag_id])
                 assert _stored_dashboard(dash_id)["data"]["tags"] == [tag_x]
                 assert moved["previous"] == {"tags": [tag_id]}
-                assert moved["undo"] == {"tags_to_add": [tag_id], "tags_to_remove": [tag_x]}
+                assert moved["undo"] == {"dashboard_id": dash_id, "tags_to_add": [tag_id],
+                                         "tags_to_remove": [tag_x]}
                 await update(**moved["undo"])
                 assert got["undo"] == {
-                    "title": title, "description": "",
+                    "dashboard_id": dash_id, "title": title, "description": "",
                     "time_range": {"from": "now-7d", "to": "now"},
                     "refresh_interval_seconds": 0, "tags_to_remove": [tag_id],
                 }
@@ -1931,7 +1932,7 @@ async def test_update_dashboard_settings_live(gateway):
                 # the time and a paused refresh, at the 60 s set since (D52)
                 both = await update(time_range={"from": "now-1h"}, refresh_interval_seconds=60)
                 assert both["previous"] == {"time_range": None, "refresh_interval_seconds": None}
-                assert both["undo"] == {"clear_time_range": True}
+                assert both["undo"] == {"dashboard_id": dash_id, "clear_time_range": True}
                 back = await update(**both["undo"])
                 assert (back["time_range"], back["refresh_interval_seconds"]) == (None, None)
                 await update(**cleared["undo"])
@@ -1944,6 +1945,54 @@ async def test_update_dashboard_settings_live(gateway):
         if viz_id is not None:
             with contextlib.suppress(KibanaNotFound):
                 gateway.delete_visualization(viz_id)
+
+
+async def test_update_dashboard_refresh_values_live(gateway):
+    # Kibana stores whole milliseconds, 1500 among them: the tool reads 1.5 s
+    # and writes it back as 1500; under 1 ms and over setTimeout's 2**31-1 ms
+    # are refused writing nothing; a negative refresh Kibana stores is left
+    # out of the undo, which the tool would refuse (D52).
+    marker = uuid.uuid4().hex[:8]
+    title = f"ct refresh {marker}"
+    dash_id = derive_dashboard_id(title)
+    _delete_if_exists(gateway, dash_id)
+    try:
+        async with Client(_tool_server()) as client:
+            await client.call_tool("create_dashboard", {"title": title, "panels": [_PANEL]})
+
+            async def update(**args):
+                return (await client.call_tool(
+                    "update_dashboard", {"dashboard_id": dash_id, **args})).data
+
+            got = await update(refresh_interval_seconds=1.5)
+            assert got["refresh_interval_seconds"] == 1.5
+            assert _stored_dashboard(dash_id)["data"]["refresh_interval"] == {
+                "pause": False, "value": 1500}
+            moved = await update(refresh_interval_seconds=30)
+            assert moved["undo"] == {"dashboard_id": dash_id, "refresh_interval_seconds": 1.5}
+            await update(**moved["undo"])
+            assert _stored_dashboard(dash_id)["data"]["refresh_interval"] == {
+                "pause": False, "value": 1500}
+            stored = _stored_dashboard(dash_id)["meta"]["updated_at"]
+            for value, match in ((0.0001, "under the 1 ms Kibana stores"),
+                                 (1e306, "less than or equal to 2147483.647")):
+                with pytest.raises(ToolError, match=match):
+                    await update(refresh_interval_seconds=value)
+            assert _stored_dashboard(dash_id)["meta"]["updated_at"] == stored
+            data = _stored_dashboard(dash_id)["data"]
+            with _raw_kibana() as kb:
+                kb.dashboards.update(
+                    id=dash_id, title=data["title"], panels=data["panels"],
+                    time_range=data["time_range"],
+                    refresh_interval={"pause": False, "value": -1000},
+                )
+            assert _stored_dashboard(dash_id)["data"]["refresh_interval"] == {
+                "pause": False, "value": -1000}
+            odd = await update(refresh_interval_seconds=30)
+            assert odd["previous"] == {"refresh_interval_seconds": -1}
+            assert (odd["undo"], odd["undo_omitted"]) == ({}, ["refresh_interval_seconds"])
+    finally:
+        _delete_if_exists(gateway, dash_id)
 
 
 async def test_update_dashboard_refuses_the_sample_dashboard_live(gateway):
@@ -1986,6 +2035,14 @@ async def test_update_dashboard_scoped_live(gateway):
                 stored = _stored_dashboard(dash_id, space_id)["data"]
                 assert stored["tags"] == [scoped_tag]
                 assert stored["time_range"] == {"from": "now-1h", "to": "now"}
+                # the undo names the space, so passed as given it edits this one
+                assert got["undo"] == {
+                    "dashboard_id": dash_id, "tags_to_remove": [scoped_tag],
+                    "time_range": {"from": "now-7d", "to": "now"}, "space": space_id}
+                await client.call_tool("update_dashboard", got["undo"])
+                stored = _stored_dashboard(dash_id, space_id)["data"]
+                assert stored["tags"] == []
+                assert stored["time_range"] == {"from": "now-7d", "to": "now"}
                 # the default space has no such dashboard
                 with pytest.raises(ToolError, match="call search_dashboards to find it$"):
                     await client.call_tool(

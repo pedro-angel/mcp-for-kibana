@@ -20,13 +20,18 @@ version section.
   `find_saved_objects(types=["tag"])`), and leaves its panels exactly as they
   are. Only what is passed changes; when nothing would, nothing is written
   (`unchanged`). The result returns the settings now, what changed, their
-  previous values, and `undo`: the arguments that put them back, which the
-  tool accepts as given (auto-refresh reads as none on a dashboard without a
-  stored time range, where Kibana's dashboard app does not apply it, and a
-  stored sub-second interval as a fraction of a second; a paused refresh
-  comes back paused at the interval just set, and renaming back onto a
-  title `create_dashboard` maps to another dashboard is refused like that
-  rename). It refuses, before writing: a dashboard holding panels the API cannot write back (as
+  previous values, and `undo`: the whole `update_dashboard` call that puts
+  them back, dashboard id and space included, to pass as given (auto-refresh
+  reads as none on a dashboard without a stored time range, where Kibana's
+  dashboard app does not apply it, and a stored sub-second interval as a
+  fraction of a second; a paused refresh comes back paused at the interval
+  just set). A previous value Kibana stored that the tool itself refuses — a
+  time its dashboard app cannot read, a negative or out-of-range refresh, a
+  blank title, an empty tag id — is left out of `undo` and named in
+  `undo_omitted`. Renaming back onto a title `create_dashboard` maps to
+  another dashboard, or re-adding a removed tag id that names no tag, is
+  refused like any such call. Auto-refresh is at most 2147483.647 seconds,
+  the longest the dashboard app's timer can wait. It refuses, before writing: a dashboard holding panels the API cannot write back (as
   `update_panel` does), a time Kibana's dashboard app cannot read (Kibana's
   API would store `"yesterday"`), auto-refresh on a dashboard without a
   stored time range or with `clear_time_range` (Kibana would store it and

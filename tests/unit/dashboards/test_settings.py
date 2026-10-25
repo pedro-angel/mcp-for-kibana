@@ -6,6 +6,7 @@ string (probed), so the tool checks what the dashboard app can read."""
 import pytest
 
 from kibana_mcp.core.dashboards.settings import (
+    MAX_REFRESH_SECONDS,
     merged_tags,
     refresh_interval_for,
     refresh_seconds,
@@ -88,11 +89,11 @@ def test_undo_arguments_restore_each_setting():
                    refresh_interval={"pause": False, "value": 60000}, tags=["a", "b"])
     after = _view(title="t2", time_range={"from": "now-1h", "to": "now"},
                   refresh_interval={"pause": True, "value": 60000}, tags=["b", "c"])
-    assert undo_arguments(before, after) == {
+    assert undo_arguments(before, after) == ({
         "title": "t", "time_range": {"from": "now-7d", "to": "now"},
         "refresh_interval_seconds": 60, "tags_to_add": ["a"], "tags_to_remove": ["c"],
-    }
-    assert undo_arguments(before, before) == {}
+    }, [])
+    assert undo_arguments(before, before) == ({}, [])
 
 
 def test_a_refresh_reads_as_none_without_a_stored_time_range():
@@ -104,19 +105,48 @@ def test_a_refresh_reads_as_none_without_a_stored_time_range():
     # so an undo never pairs a refresh with clear_time_range
     after = _view(time_range={"from": "now-1h", "to": "now"},
                   refresh_interval={"pause": False, "value": 60000})
-    assert undo_arguments(untimed, after) == {"clear_time_range": True}
-    assert undo_arguments(timed, untimed) == {
-        "time_range": {"from": "now-1h", "to": "now"}, "refresh_interval_seconds": 30}
+    assert undo_arguments(untimed, after) == ({"clear_time_range": True}, [])
+    assert undo_arguments(timed, untimed) == ({
+        "time_range": {"from": "now-1h", "to": "now"}, "refresh_interval_seconds": 30}, [])
 
 
 def test_undo_arguments_for_settings_not_stored():
     before = _view()
-    assert undo_arguments(before, _view(time_range={"from": "now-1h", "to": "now"})) == {
-        "clear_time_range": True}
+    assert undo_arguments(before, _view(time_range={"from": "now-1h", "to": "now"})) == ({
+        "clear_time_range": True}, [])
     both = _view(time_range={"from": "now-1h", "to": "now"},
                  refresh_interval={"pause": False, "value": 5000})
-    assert undo_arguments(before, both) == {"clear_time_range": True}
+    assert undo_arguments(before, both) == ({"clear_time_range": True}, [])
     timed = _view(time_range={"from": "now-1h", "to": "now"})
     timed_refresh = _view(time_range={"from": "now-1h", "to": "now"},
                           refresh_interval={"pause": False, "value": 5000})
-    assert undo_arguments(timed, timed_refresh) == {"refresh_interval_seconds": 0}
+    assert undo_arguments(timed, timed_refresh) == ({"refresh_interval_seconds": 0}, [])
+
+
+def test_undo_leaves_out_stored_values_the_tool_refuses():
+    # Kibana stores values the tool would not write (D52 probes): each is
+    # left out of the undo and named, never passed back to be refused.
+    week = {"from": "now-7d", "to": "now"}
+    for value in (-1000, 0.4, 3_000_000_000):  # negative, under 1 ms, over setTimeout's
+        odd = _view(time_range=week, refresh_interval={"pause": False, "value": value})
+        new = _view(time_range=week, refresh_interval={"pause": False, "value": 30000})
+        assert undo_arguments(odd, new) == ({}, ["refresh_interval_seconds"]), value
+    unreadable = _view(time_range={"from": "yesterday", "to": "now"})
+    assert undo_arguments(unreadable, _view()) == ({}, ["time_range"])
+    # its refresh could only come back without a time range: left out too
+    with_refresh = _view(time_range={"from": "yesterday", "to": "now"},
+                         refresh_interval={"pause": False, "value": 30000})
+    assert undo_arguments(with_refresh, _view(
+        refresh_interval={"pause": False, "value": 30000})) == (
+        {}, ["time_range", "refresh_interval_seconds"])
+    # beside a readable time range set by the call, the refresh still comes back
+    assert undo_arguments(with_refresh, _view(
+        time_range=week, refresh_interval={"pause": False, "value": 5000})) == (
+        {"refresh_interval_seconds": 30}, ["time_range"])
+    assert undo_arguments(_view(title="  "), _view(title="t2")) == ({}, ["title"])
+    assert undo_arguments(_view(tags=["", "a"]), _view(tags=["b"])) == (
+        {"tags_to_add": ["a"], "tags_to_remove": ["b"]}, ["tags"])
+    # setTimeout's longest delay is the longest refresh passed back
+    longest = _view(time_range=week, refresh_interval={"pause": False, "value": 2**31 - 1})
+    assert undo_arguments(longest, _view(time_range=week)) == (
+        {"refresh_interval_seconds": MAX_REFRESH_SECONDS}, [])

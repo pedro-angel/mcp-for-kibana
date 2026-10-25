@@ -19,6 +19,7 @@ from kibana_mcp.core.dashboards.identity import derive_dashboard_id, normalize
 from kibana_mcp.core.dashboards.settings import (
     DATE_MATH_HINT,
     MAX_DASHBOARD_TAGS,
+    MAX_REFRESH_SECONDS,
     SETTINGS,
     apply_settings,
     merged_tags,
@@ -421,7 +422,8 @@ class DashboardsToolbox:
             description: str | None = None,
             time_range: TimeRange | None = None,
             clear_time_range: bool = False,
-            refresh_interval_seconds: Annotated[float, Field(ge=0)] | None = None,
+            refresh_interval_seconds: Annotated[
+                float, Field(ge=0, le=MAX_REFRESH_SECONDS)] | None = None,
             tags_to_add: Annotated[
                 list[Annotated[str, Field(min_length=1)]], Field(max_length=MAX_DASHBOARD_TAGS)
             ] | None = None,
@@ -439,9 +441,11 @@ class DashboardsToolbox:
             with panels the API cannot write back. A rename keeps the id, so
             create_dashboard with the old title of a dashboard it made still
             replaces its panels. Returns the settings now, `changed`,
-            `previous` (their values before) and `undo` (arguments that put
-            them back: pass them to update_dashboard; a refresh that was not
-            stored comes back paused).
+            `previous` (their values before) and `undo` (the whole
+            update_dashboard call that puts them back, dashboard_id and space
+            included; a refresh that was not stored comes back paused;
+            `undo_omitted` names a setting whose old value the tool cannot
+            write back, such as a time Kibana's app cannot read).
 
             `space` targets a Kibana space by id (default: the default space)."""
             if title is not None and not normalize(title):
@@ -517,12 +521,16 @@ class DashboardsToolbox:
                 changed = [k for k in SETTINGS if after[k] != before[k]]
                 if changed:
                     gw.update_dashboard(dashboard_id, new)
+            undo, undo_omitted = undo_arguments(before, after)
+            if undo:  # the whole call, so it reaches this dashboard in this space
+                undo = {"dashboard_id": dashboard_id, **undo,
+                        **({"space": space} if space is not None else {})}
             return with_space({
                 "id": dashboard_id, "url": dashboard_url(dashboard_id, space),
                 "status": "updated" if changed else "unchanged",
                 **after, "changed": changed,
                 "previous": {k: before[k] for k in changed},
-                "undo": undo_arguments(before, after),
+                "undo": undo, "undo_omitted": undo_omitted,
             }, space)
 
     def _register_destructive(self, mcp: FastMCP, deps: ToolboxDeps) -> None:

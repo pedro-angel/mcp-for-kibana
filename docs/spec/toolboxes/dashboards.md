@@ -92,7 +92,13 @@ but are owned and registered once by data-management, not here.
   made still finds it, which the description states. When every setting passed is already stored
   nothing is written (`status: unchanged`); otherwise the result returns the
   settings now, `changed`, `previous` (the values before, `null` for none
-  stored) and `undo`, the arguments that put them back
+  stored), `undo`, the whole call that puts them back (`dashboard_id` and
+  the `space` passed included; `{}` when nothing changed), and
+  `undo_omitted`, the settings whose previous value is left out of `undo`
+  because the tool's own checks refuse it — a blank title, an unreadable
+  time, a negative, under-1 ms or over-2147483.647 s refresh (setTimeout's
+  limit, also the schema's `le`), an empty tag id, and a refresh that could
+  then only come back without a time range
   (`core/dashboards/settings.py` `undo_arguments`: a time range not stored
   is undone with `clear_time_range`, tags through the add/remove lists, a
   refresh not stored only approximately — paused, 0 — and not at all in an
@@ -101,7 +107,9 @@ but are owned and registered once by data-management, not here.
   reported, `null` otherwise, only beside a stored time range, so no undo
   pairs one with `clear_time_range`, which is refused before any call
   naming both ways out; a rename back onto a title another dashboard holds
-  the `create_dashboard` id for is refused like the rename). The
+  the `create_dashboard` id for is refused like the rename, and re-adding a
+  removed tag id that names no tag by the tag check — both read Kibana when
+  the undo runs). The
   read-then-write race is not closed: the PUT checks no version (a stale
   `version` query parameter or `If-Match` header was ignored with a 200; a
   body `version` is a 400), as for every read-modify-write here.
@@ -294,7 +302,11 @@ but are owned and registered once by data-management, not here.
   annotations; panels, sections, the library ref, pinned panels, filters,
   query and options byte for byte after an edit; `previous` passed back
   undoing (`undo` passed back restoring every setting, a refresh that was
-  not stored coming back paused); `unchanged` writing nothing; time range set, cleared, `to`
+  not stored coming back paused, the undo naming the dashboard and its
+  space, a stored negative refresh and unreadable time left out and named
+  in `undo_omitted`); the refresh schema's bounds (negative, over
+  2147483.647 s, `1e306` refused naming the limit; the limit itself stored
+  as 2³¹−1 ms); `unchanged` writing nothing; time range set, cleared, `to`
   defaulted, refused unreadable before any call and together with
   `clear_time_range`; the refresh refusal without a time range, the pause
   keeping the value; tags added/removed with only new ids read, an unknown id
@@ -303,7 +315,9 @@ but are owned and registered once by data-management, not here.
   case-only rename passing, a space-not-found not swallowed); space echo and
   the `/s/` URL. **tests/unit/dashboards/test_settings.py**: the datemath
   grammar (readable and unreadable values), the timestamp order, refresh
-  shapes, tag merge order, the undo arguments.
+  shapes, tag merge order, the undo arguments and the stored values they
+  leave out (negative, under-1 ms, over-limit refresh; unreadable time and
+  the refresh beside it; blank title; empty tag id).
 - **Unit — test_dashboards_library.py**: the five library tools' annotations,
   search/filter, the VizSpec-shaped read, empty-id guidance, in-place
   replace with pre-flight before any write, wrong id checked first and
@@ -344,10 +358,14 @@ but are owned and registered once by data-management, not here.
   panels, the library ref and options unchanged, `unchanged` writing nothing,
   the four refusals writing nothing, tag add/remove, each call's `undo`
   restoring it, the clear and the refresh refusal after it;
+  `test_update_dashboard_refresh_values_live`: 1.5 s stored as 1500 ms and
+  read back, its undo restoring 1500, under 1 ms and `1e306` refused writing
+  nothing, a negative refresh Kibana stores left out of the undo;
   `test_update_dashboard_refuses_the_sample_dashboard_live`: the flights
   sample's dropped panels refused untouched;
   `test_update_dashboard_scoped_live`: a default-space tag refused in a space,
-  a space tag accepted, echo, `/s/` URL, the suffix).
+  a space tag accepted, echo, `/s/` URL, the suffix, the undo carrying the
+  space and restoring that space's dashboard as given).
 - **e2e-replay — tests/e2e_replay/**: `flights-dashboard.json` replays a
   recorded model turn recovering from a bad `time_range`, an unknown data
   view, and two bad field names before it builds the dashboard, pinning

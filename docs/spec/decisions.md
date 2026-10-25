@@ -1115,16 +1115,27 @@ this ledger stands without them.
   with `clear_time_range` — and tags through the add and remove lists;
   `previous` beside it holds the values before), panels are never written differently from how they were
   read, and nothing is written when no setting changes — `write`, as
-  `update_panel`, which writes the same whole-dashboard PUT. Every `undo`
-  is one the tool accepts (a refresh is reported only beside a stored time
-  range, so an undo never pairs one with `clear_time_range`), and three are
+  `update_panel`, which writes the same whole-dashboard PUT. The `undo` is
+  the whole call: `dashboard_id` and the `space` passed are in it
+  (`create_dashboard` ids derive from the title alone, so the same id can
+  name a dashboard in the default space too, which an undo without the space
+  would edit). Each value in it passes the tool's own argument checks; a
+  previous value Kibana stored that they refuse (a blank title, a time its
+  app cannot read, a negative, under-1 ms or over-limit refresh, an empty
+  tag id) is left out of it and named in `undo_omitted`, with `previous`
+  still holding it, as is a refresh that could then only come back without
+  a time range. A refresh is reported only beside a stored time range, so
+  an undo never pairs one with `clear_time_range`. Three undos are
   approximate: a refresh where none was stored can be paused (0), not
   removed; a paused refresh comes back paused at the interval the call set
   (0 carries no interval); and an undo that clears the time range leaves the
-  refresh the call set, stored but not applied. One undo is refused: renaming
-  back onto a title whose `create_dashboard` id another dashboard holds is
-  the rename the title check refuses (a dashboard that shared that title
-  before the call), and the refusal names the way out. The read-then-write race is not closed: the PUT checks no version
+  refresh the call set, stored but not applied. Two undos are refused by
+  checks that read Kibana when the undo runs, each refusal naming the way
+  out: renaming back onto a title whose `create_dashboard` id another
+  dashboard holds is the rename the title check refuses (a dashboard that
+  shared that title before the call), and re-adding a removed tag id that
+  names no tag is refused by the tag check (Kibana stores such ids; the
+  removal reads no tags, and a tag can be deleted before the undo). The read-then-write race is not closed: the PUT checks no version
   (a stale `version` query parameter and an `If-Match` header were ignored
   with a 200, a body `version` 400 "Additional properties are not allowed"),
   shared with every read-modify-write tool here (D45/D47 precedent: tier
@@ -1148,8 +1159,14 @@ this ledger stands without them.
   out), and the result reports such a stored refresh as `null` (Kibana's GET
   returns it, live); seconds rather than Kibana's `{pause, value ms}` (0 pauses,
   keeping the stored value, as Kibana's own pause does; `ge=0`, negative and
-  1 ms values were stored by Kibana), a number so a stored 1500 ms reads and
-  is passed back as 1.5 (whole milliseconds are sent; under 1 ms refuses). Tags are tag saved-object ids; Kibana
+  1 ms values were stored by Kibana, a negative one live in the contract
+  test), a number so a stored 1500 ms reads and is passed back as 1.5
+  (whole milliseconds are sent; under 1 ms refuses; live in the contract
+  test), at most 2147483.647 s (`le`): 9.5.4's timefilter hands the stored
+  milliseconds straight to `window.setTimeout` (read from the bundle's
+  auto-refresh loop), whose delay is a signed 32-bit integer, so a longer
+  one fires at once (MDN; not driven in a browser here), and the bound also
+  keeps a huge number from overflowing to infinity before the 1 ms check. Tags are tag saved-object ids; Kibana
   stored an unknown id, a tag's *name* and a default-space tag on a
   dashboard in another space, each a dangling reference (`tag-ref-<id>`),
   deduplicated repeats, and stored `""` — so each id being added that the
