@@ -20,11 +20,17 @@ version section.
   `find_saved_objects(types=["tag"])`), and leaves its panels exactly as they
   are. Only what is passed changes; when nothing would, nothing is written
   (`unchanged`). The result returns the settings now, what changed, their
-  previous values, and `undo`: the arguments that put them back. It refuses, before
-  writing: a dashboard holding panels the API cannot write back (as
+  previous values, and `undo`: the arguments that put them back, which the
+  tool accepts as given (auto-refresh reads as none on a dashboard without a
+  stored time range, where Kibana's dashboard app does not apply it, and a
+  stored sub-second interval as a fraction of a second; a paused refresh
+  comes back paused at the interval just set, and renaming back onto a
+  title `create_dashboard` maps to another dashboard is refused like that
+  rename). It refuses, before writing: a dashboard holding panels the API cannot write back (as
   `update_panel` does), a time Kibana's dashboard app cannot read (Kibana's
   API would store `"yesterday"`), auto-refresh on a dashboard without a
-  stored time range (Kibana would store it and never apply it), a tag id that
+  stored time range or with `clear_time_range` (Kibana would store it and
+  never apply it), a tag id that
   names no tag in that space (Kibana would store it), more than 100 tags, and
   a rename onto a title `create_dashboard` already maps to another
   dashboard. It joins the default selection (`dashboards-analyst`, now 27

@@ -363,11 +363,16 @@ exactly as read:
   stored (nothing is written); `changed` names the settings that changed,
   `previous` holds their values before (`null`: none was stored), and `undo`
   the `update_dashboard` arguments that put them back — pass them as they
-  are. A time range that was not stored is undone with
-  `clear_time_range=true`; a refresh that was not stored can only come back
-  paused (`0`), and is left out of an undo that clears the time range (the
-  dashboard app ignores a refresh without one). Tags are undone through
-  `tags_to_add`/`tags_to_remove`.
+  are. `refresh_interval_seconds` is `null` on a dashboard that stores no
+  time range (Kibana keeps a refresh there, but the dashboard app applies
+  one only with the stored time), and may be a fraction (Kibana stores
+  milliseconds: 1500 reads as `1.5`). A time range that was not stored is
+  undone with `clear_time_range=true`; a refresh that was not stored can
+  only come back paused (`0`), and is left out of an undo that clears the
+  time range; a paused refresh comes back paused at the interval the call
+  set. Tags are undone through `tags_to_add`/`tags_to_remove`. Renaming back
+  onto a title whose `create_dashboard` id another dashboard holds is
+  refused like any such rename, naming the way out.
 - `time_range` values must be readable by Kibana's dashboard app: date math
   (`now`, `now-24h`, `now-7d/d`, `now/w`; units `ms s m h d w M y`) or an ISO
   8601 timestamp, optionally followed by `||` and date math. Kibana's API

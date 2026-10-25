@@ -22,6 +22,7 @@ from kibana_mcp.core.dashboards.settings import (
     SETTINGS,
     apply_settings,
     merged_tags,
+    refresh_milliseconds,
     settings_view,
     time_range_errors,
     undo_arguments,
@@ -420,7 +421,7 @@ class DashboardsToolbox:
             description: str | None = None,
             time_range: TimeRange | None = None,
             clear_time_range: bool = False,
-            refresh_interval_seconds: Annotated[int, Field(ge=0)] | None = None,
+            refresh_interval_seconds: Annotated[float, Field(ge=0)] | None = None,
             tags_to_add: Annotated[
                 list[Annotated[str, Field(min_length=1)]], Field(max_length=MAX_DASHBOARD_TAGS)
             ] | None = None,
@@ -448,6 +449,16 @@ class DashboardsToolbox:
             if time_range is not None and clear_time_range:
                 raise ToolError(
                     "pass time_range or clear_time_range=true, not both")
+            if refresh_interval_seconds is not None and clear_time_range:
+                raise ToolError(
+                    "refresh_interval_seconds would not take effect with "
+                    "clear_time_range=true (Kibana's dashboard app applies a refresh only "
+                    "with a stored time range) — leave refresh_interval_seconds out, or "
+                    "pass time_range instead of clear_time_range")
+            if refresh_interval_seconds and not refresh_milliseconds(refresh_interval_seconds):
+                raise ToolError(
+                    f"refresh_interval_seconds {refresh_interval_seconds} is under the "
+                    "1 ms Kibana stores — pass 0 to turn auto-refresh off, or at least 0.001")
             if time_range is not None:
                 errors = time_range_errors(time_range.from_, time_range.to)
                 if errors:
@@ -471,10 +482,7 @@ class DashboardsToolbox:
                 before = settings_view(data)
                 if title is not None and normalize(title) != normalize(before["title"]):
                     _refuse_title_taken(gw, dashboard_id, title)
-                stores_time = (
-                    time_range is not None
-                    or (before["time_range"] is not None and not clear_time_range)
-                )
+                stores_time = time_range is not None or before["time_range"] is not None
                 if refresh_interval_seconds is not None and not stores_time:
                     raise ToolError(
                         "refresh_interval_seconds takes effect only on a dashboard that "

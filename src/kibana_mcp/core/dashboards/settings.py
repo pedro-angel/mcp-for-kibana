@@ -67,7 +67,8 @@ def time_range_errors(from_: str, to: str) -> list[str]:
 
 def refresh_seconds(stored: Any) -> int | float | None:
     """A stored refresh_interval in update_dashboard's own terms: None when
-    none is stored, 0 when paused, else the interval in seconds."""
+    none is stored, 0 when paused, else the interval in seconds (a fraction
+    when the stored milliseconds are not whole seconds: Kibana stores 1 ms)."""
     if not isinstance(stored, dict):
         return None
     if stored.get("pause", True):
@@ -79,13 +80,18 @@ def refresh_seconds(stored: Any) -> int | float | None:
     return int(seconds) if seconds == int(seconds) else seconds
 
 
-def refresh_interval_for(seconds: int, stored: Any) -> dict[str, Any]:
+def refresh_milliseconds(seconds: float) -> int:
+    """`seconds` as the whole milliseconds Kibana stores."""
+    return round(seconds * 1000)
+
+
+def refresh_interval_for(seconds: float, stored: Any) -> dict[str, Any]:
     """The refresh_interval to store for `seconds` (0 pauses, keeping a
     stored interval's value, as Kibana's own pause does)."""
     if seconds == 0:
         value = stored.get("value", 0) if isinstance(stored, dict) else 0
         return {"pause": True, "value": value}
-    return {"pause": False, "value": seconds * 1000}
+    return {"pause": False, "value": refresh_milliseconds(seconds)}
 
 
 def merged_tags(current: list[str], add: list[str], remove: list[str]) -> list[str]:
@@ -100,16 +106,21 @@ SETTINGS = ("title", "description", "time_range", "refresh_interval_seconds", "t
 
 
 def settings_view(data: dict[str, Any]) -> dict[str, Any]:
-    """A dashboard's editable settings in update_dashboard's terms."""
-    time_range = data.get("time_range")
+    """A dashboard's editable settings in update_dashboard's terms. The
+    refresh is None on a dashboard that stores no time range: Kibana keeps a
+    refresh there, but its dashboard app applies one only with the stored
+    time, so it is reported as the dashboard opens."""
+    stored = data.get("time_range")
+    time_range = (
+        {"from": stored.get("from"), "to": stored.get("to")}
+        if isinstance(stored, dict) else None
+    )
     return {
         "title": data.get("title", ""),
         "description": data.get("description", ""),
-        "time_range": (
-            {"from": time_range.get("from"), "to": time_range.get("to")}
-            if isinstance(time_range, dict) else None
-        ),
-        "refresh_interval_seconds": refresh_seconds(data.get("refresh_interval")),
+        "time_range": time_range,
+        "refresh_interval_seconds": (
+            refresh_seconds(data.get("refresh_interval")) if time_range else None),
         "tags": list(data.get("tags") or []),
     }
 
@@ -121,7 +132,7 @@ def apply_settings(
     description: str | None,
     time_range: dict[str, str] | None,
     clear_time_range: bool,
-    refresh_interval_seconds: int | None,
+    refresh_interval_seconds: float | None,
     tags: list[str] | None,
 ) -> dict[str, Any]:
     """`data` with the given settings replaced and nothing else touched
@@ -146,10 +157,13 @@ def apply_settings(
 
 def undo_arguments(before: dict[str, Any], after: dict[str, Any]) -> dict[str, Any]:
     """update_dashboard arguments that put `after` back to `before` (both
-    settings views). A time range that was not stored is undone with
-    clear_time_range; a refresh that was not stored can only be paused (0),
-    and is left out when the undo clears the time range (Kibana's dashboard
-    app ignores a refresh without one)."""
+    settings views), each one the tool accepts. A time range that was not
+    stored is undone with clear_time_range. A refresh is reported only
+    beside a stored time range, so one in `before` is restored beside it; a
+    refresh that was not there can only be paused (0), and is left out when
+    the undo clears the time range (the tool refuses a refresh with it, and
+    the app ignores a refresh without a time range). A paused refresh comes
+    back paused at the interval the call set: 0 carries no interval."""
     undo: dict[str, Any] = {}
     for key in ("title", "description"):
         if after[key] != before[key]:

@@ -1914,12 +1914,30 @@ async def test_update_dashboard_settings_live(gateway):
                 assert data["refresh_interval"] == {"pause": True, "value": 30000}
                 assert data["panels"] == before["panels"]
                 # without a stored time the dashboard opens with the picker's
-                # time, and a refresh is refused (the app would not apply it)
+                # time; Kibana keeps the refresh, which the app does not apply,
+                # so it reads as none, and a refresh is refused
                 cleared = await update(clear_time_range=True)
-                assert cleared["previous"] == {"time_range": {"from": "now-7d", "to": "now"}}
-                assert "time_range" not in _stored_dashboard(dash_id)["data"]
+                assert cleared["previous"] == {
+                    "time_range": {"from": "now-7d", "to": "now"},
+                    "refresh_interval_seconds": 0}
+                assert cleared["refresh_interval_seconds"] is None
+                data = _stored_dashboard(dash_id)["data"]
+                assert "time_range" not in data
+                assert data["refresh_interval"] == {"pause": True, "value": 30000}
                 with pytest.raises(ToolError, match="pass time_range too"):
                     await update(refresh_interval_seconds=60)
+                # setting both on it is undone by clear_time_range alone, and
+                # the tool takes that undo; the clear's own undo then restores
+                # the time and a paused refresh, at the 60 s set since (D52)
+                both = await update(time_range={"from": "now-1h"}, refresh_interval_seconds=60)
+                assert both["previous"] == {"time_range": None, "refresh_interval_seconds": None}
+                assert both["undo"] == {"clear_time_range": True}
+                back = await update(**both["undo"])
+                assert (back["time_range"], back["refresh_interval_seconds"]) == (None, None)
+                await update(**cleared["undo"])
+                data = _stored_dashboard(dash_id)["data"]
+                assert data["time_range"] == {"from": "now-7d", "to": "now"}
+                assert data["refresh_interval"] == {"pause": True, "value": 60000}
     finally:
         for d in (dash_id, other_id):
             _delete_if_exists(gateway, d)

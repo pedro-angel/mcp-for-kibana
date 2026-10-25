@@ -96,7 +96,12 @@ but are owned and registered once by data-management, not here.
   (`core/dashboards/settings.py` `undo_arguments`: a time range not stored
   is undone with `clear_time_range`, tags through the add/remove lists, a
   refresh not stored only approximately — paused, 0 — and not at all in an
-  undo that clears the time range, where the app ignores it). The
+  undo that clears the time range, where the app ignores it; a paused
+  refresh comes back paused at the interval the call set; a refresh is
+  reported, `null` otherwise, only beside a stored time range, so no undo
+  pairs one with `clear_time_range`, which is refused before any call
+  naming both ways out; a rename back onto a title another dashboard holds
+  the `create_dashboard` id for is refused like the rename). The
   read-then-write race is not closed: the PUT checks no version (a stale
   `version` query parameter or `If-Match` header was ignored with a 200; a
   body `version` is a 400), as for every read-modify-write here.

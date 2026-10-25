@@ -64,6 +64,9 @@ def test_refresh_seconds_reads_kibana_shapes():
 
 def test_refresh_interval_for_pauses_keeping_the_value():
     assert refresh_interval_for(30, None) == {"pause": False, "value": 30000}
+    assert refresh_interval_for(1.5, None) == {"pause": False, "value": 1500}
+    assert refresh_interval_for(30.0, None)["value"] == 30000
+    assert isinstance(refresh_interval_for(30.0, None)["value"], int)
     assert refresh_interval_for(0, {"pause": False, "value": 60000}) == {
         "pause": True, "value": 60000,
     }
@@ -90,6 +93,20 @@ def test_undo_arguments_restore_each_setting():
         "refresh_interval_seconds": 60, "tags_to_add": ["a"], "tags_to_remove": ["c"],
     }
     assert undo_arguments(before, before) == {}
+
+
+def test_a_refresh_reads_as_none_without_a_stored_time_range():
+    untimed = _view(refresh_interval={"pause": False, "value": 30000})
+    assert untimed["refresh_interval_seconds"] is None
+    timed = _view(time_range={"from": "now-1h", "to": "now"},
+                  refresh_interval={"pause": False, "value": 30000})
+    assert timed["refresh_interval_seconds"] == 30
+    # so an undo never pairs a refresh with clear_time_range
+    after = _view(time_range={"from": "now-1h", "to": "now"},
+                  refresh_interval={"pause": False, "value": 60000})
+    assert undo_arguments(untimed, after) == {"clear_time_range": True}
+    assert undo_arguments(timed, untimed) == {
+        "time_range": {"from": "now-1h", "to": "now"}, "refresh_interval_seconds": 30}
 
 
 def test_undo_arguments_for_settings_not_stored():

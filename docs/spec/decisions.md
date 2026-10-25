@@ -1115,9 +1115,16 @@ this ledger stands without them.
   with `clear_time_range` — and tags through the add and remove lists;
   `previous` beside it holds the values before), panels are never written differently from how they were
   read, and nothing is written when no setting changes — `write`, as
-  `update_panel`, which writes the same whole-dashboard PUT. One undo is
+  `update_panel`, which writes the same whole-dashboard PUT. Every `undo`
+  is one the tool accepts (a refresh is reported only beside a stored time
+  range, so an undo never pairs one with `clear_time_range`), and three are
   approximate: a refresh where none was stored can be paused (0), not
-  removed. The read-then-write race is not closed: the PUT checks no version
+  removed; a paused refresh comes back paused at the interval the call set
+  (0 carries no interval); and an undo that clears the time range leaves the
+  refresh the call set, stored but not applied. One undo is refused: renaming
+  back onto a title whose `create_dashboard` id another dashboard holds is
+  the rename the title check refuses (a dashboard that shared that title
+  before the call), and the refusal names the way out. The read-then-write race is not closed: the PUT checks no version
   (a stale `version` query parameter and an `If-Match` header were ignored
   with a 200, a body `version` 400 "Additional properties are not allowed"),
   shared with every read-modify-write tool here (D45/D47 precedent: tier
@@ -1137,9 +1144,12 @@ this ledger stands without them.
   dashboard app bundle applies a stored refresh only when `timeRestore` is
   set (`t.value&&(f.value&&d.setTime(f.value),g.value&&d.setRefreshInterval(g.value))`),
   so a refresh on a dashboard left without a time range is refused, naming
-  `time_range`; seconds rather than Kibana's `{pause, value ms}` (0 pauses,
+  `time_range` (with `clear_time_range`, before any call, naming both ways
+  out), and the result reports such a stored refresh as `null` (Kibana's GET
+  returns it, live); seconds rather than Kibana's `{pause, value ms}` (0 pauses,
   keeping the stored value, as Kibana's own pause does; `ge=0`, negative and
-  1 ms values were stored by Kibana). Tags are tag saved-object ids; Kibana
+  1 ms values were stored by Kibana), a number so a stored 1500 ms reads and
+  is passed back as 1.5 (whole milliseconds are sent; under 1 ms refuses). Tags are tag saved-object ids; Kibana
   stored an unknown id, a tag's *name* and a default-space tag on a
   dashboard in another space, each a dangling reference (`tag-ref-<id>`),
   deduplicated repeats, and stored `""` — so each id being added that the
