@@ -934,7 +934,13 @@ this ledger stands without them.
   unclear); editing `os_types` (Kibana ignores it) or the type (it would
   change which engine reads the list, for no task); listing agnostic lists
   in `find_exception_lists` in this batch (an existing tool's result would
-  grow; roadmap); wrapping item edits (no task). Contract:
+  grow; roadmap); wrapping item edits (no task). Final review, same day:
+  the not-found of the tools that take only `list_id`
+  (`find_exception_items`, `duplicate_exception_list`) says to pass the
+  list's `list_id` field and not its uuid `id`, the likeliest wrong value,
+  instead of the either-id text `get_exception_list` keeps; an import that
+  loses the check-then-import race returns `name: null`, not the export's
+  name beside a `list_id` that holds another list. Contract:
   [security-detections](toolboxes/security-detections.md).
 
 ## Reliability and models (measured)

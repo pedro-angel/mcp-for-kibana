@@ -508,6 +508,7 @@ async def test_import_exception_list_reports_losing_the_race(mcp, gateway):
             "handle": handle, "list_id": "raced"})
     data = result.data
     assert data["success"] is False and data["id"] is None
+    assert data["name"] is None  # the list under "raced" is not the export's
     assert data["errors"] == ["raced: 409 already exists"]
     assert data["imported_item_count"] == 1
     assert [i.list_id for i in gateway.exception_items["raced"]] == ["raced"]

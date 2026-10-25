@@ -461,7 +461,9 @@ class SecurityDetectionsToolbox:
             return with_space({
                 "success": result.success, "list_id": new_list_id,
                 "id": created.id if created else None,
-                "name": created.name if created else export.container.get("name"),
+                # Nothing created (e.g. a list took list_id between the check and the
+                # import): no name, since the list under list_id is not the export's.
+                "name": created.name if created else None,
                 "namespace_type": namespace, "source_list_id": export.list_id,
                 "imported_item_count": result.item_count, "errors": list(result.errors),
             }, space)

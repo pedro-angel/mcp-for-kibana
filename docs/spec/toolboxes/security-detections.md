@@ -1,6 +1,6 @@
 # security-detections — behavior contract
 
-Status: Draft v1.4 (2026-10-25) — regeneration corpus, reconciled to shipped code
+Status: Draft v1.5 (2026-10-25) — regeneration corpus, reconciled to shipped code
 Surface reference: docs/tools.md#security-detections-toolbox · Enforcement: named per section below
 
 ## Purpose & persona
@@ -167,7 +167,8 @@ wording, not incidental phrasing.
   gives every imported item a new `item_id`. The check and the import are
   two calls, so a list created between them under the same `list_id`
   receives the items: the result then has `success: false`, the list's 409
-  in `errors`, `id: null`, and an `imported_item_count` that counts the
+  in `errors`, `id: null`, `name: null` (the list under that `list_id` is
+  not the export's), and an `imported_item_count` that counts the
   items added to that other list (Kibana's own body for that import,
   `success: false` with the items counted, is pinned live; the tool's
   result is pinned by a unit test that creates the list between the two).
@@ -247,7 +248,8 @@ wording, not incidental phrasing.
   onto an existing list adds and counts its items with `success: false` and
   one 409, which the gateway maps to that import result; the PUT ignores
   os_types and 409s a stale `_version`); `find_exception_items`' not-found
-  text, for a missing list and for an agnostic list read as `"single"`; and the edit/duplicate/export/import/overwrite tools
+  text (the list_id-only tools, it and `duplicate_exception_list`, say to
+  pass the list's `list_id` field, not its uuid `id`), for a missing list and for an agnostic list read as `"single"`; and the edit/duplicate/export/import/overwrite tools
   end to end, including a cross-space import, an endpoint list and an
   agnostic list (read, update, export, duplicate, and an import and an
   overwrite routed through another space that stay agnostic).

@@ -33,7 +33,8 @@ version section.
   `get_exception_list` and `find_exception_items` take an optional
   `namespace_type` so agnostic lists can be read; their not-found names
   `find_exception_lists` and the namespace a list made with the other
-  `namespace_type` is found in, so a `KIBANA_MCP_TOOLS` list that leaves
+  `namespace_type` is found in (and, for `find_exception_items`, that it
+  takes the list's `list_id` field, not its `id`), so a `KIBANA_MCP_TOOLS` list that leaves
   `find_exception_lists` out gets the dependency warning. Import errors come back
   per object as ids and status only. Kibana neither edits nor imports a
   list's `os_types`. Decision D50.

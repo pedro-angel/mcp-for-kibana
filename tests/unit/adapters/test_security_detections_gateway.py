@@ -691,6 +691,29 @@ def test_find_exception_items_miss_names_ids_and_namespace():
     assert "list_id 'nope'" in e.value.message
     assert "find_exception_lists" in e.value.message
     assert "namespace_type='agnostic'" in e.value.message
+    # It takes only list_id, so the miss says which field: the uuid `id` of a
+    # find_exception_lists row is the likeliest wrong value.
+    assert "pass the list's `list_id` field" in e.value.message
+    assert "not its `id` (a uuid)" in e.value.message
+
+
+def test_duplicate_exception_list_miss_says_to_pass_the_list_id_field():
+    def duplicate(**kw):
+        raise NotFoundError("missing", meta=SimpleNamespace(status=404), body=None)
+
+    with pytest.raises(KibanaNotFound) as e:
+        _gw(exception_lists=SimpleNamespace(duplicate=duplicate)).duplicate_exception_list(
+            "0b6c6c3e-uuid", "single", False)
+    assert "pass the list's `list_id` field" in e.value.message
+
+
+def test_get_exception_list_miss_keeps_the_either_id_text():
+    def get(**kw):
+        raise NotFoundError("missing", meta=SimpleNamespace(status=404), body=None)
+
+    with pytest.raises(KibanaNotFound) as e:
+        _gw(exception_lists=SimpleNamespace(get=get)).get_exception_list("x", None)
+    assert "`id` and `list_id` are the values" in e.value.message
 
 
 def test_update_exception_list_resends_stored_fields_with_version():

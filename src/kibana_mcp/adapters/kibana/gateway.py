@@ -828,16 +828,26 @@ def _to_exception_list(body: dict[str, Any]) -> ExceptionList:
     )
 
 
-def _unknown_exception_list(id: str | None, list_id: str | None, namespace_type: str) -> KibanaNotFound:
+def _unknown_exception_list(
+    id: str | None, list_id: str | None, namespace_type: str, *, list_id_only: bool = False
+) -> KibanaNotFound:
     """D17's not-found text for an exception list: where the ids come from,
     and the namespace a list is found in (a list made with
-    namespace_type='agnostic' answers 404 to a 'single' read, probed)."""
+    namespace_type='agnostic' answers 404 to a 'single' read, probed). A tool
+    that takes only `list_id` says which field that is: the list's uuid `id`
+    is the likeliest wrong value."""
     which = f"list_id '{list_id}'" if list_id else f"id '{id}'"
     other = "agnostic" if namespace_type == "single" else "single"
+    where = (
+        "pass the list's `list_id` field from find_exception_lists or "
+        "create_exception_list, not its `id` (a uuid) or its name"
+        if list_id_only else
+        "`id` and `list_id` are the values find_exception_lists or create_exception_list "
+        "return, not the list's name"
+    )
     return KibanaNotFound(
-        f"exception list {which} not found (namespace_type '{namespace_type}') — `id` and "
-        "`list_id` are the values find_exception_lists or create_exception_list return, "
-        f"not the list's name; a list created with namespace_type='{other}' is found "
+        f"exception list {which} not found (namespace_type '{namespace_type}') — {where}; "
+        f"a list created with namespace_type='{other}' is found "
         f"only with namespace_type='{other}'"
     )
 
@@ -2752,7 +2762,8 @@ class KibanaPyGateway:
             except SpaceNotFoundError:
                 raise
             except NotFoundError as e:
-                raise _unknown_exception_list(None, list_id, namespace_type) from e
+                raise _unknown_exception_list(
+                    None, list_id, namespace_type, list_id_only=True) from e
             batch = body.get("data", [])
             items.extend(_to_exception_item(x) for x in batch)
             total = body.get("total")
@@ -2908,7 +2919,8 @@ class KibanaPyGateway:
         except SpaceNotFoundError:
             raise
         except NotFoundError as e:
-            raise _unknown_exception_list(None, list_id, namespace_type) from e
+            raise _unknown_exception_list(
+                None, list_id, namespace_type, list_id_only=True) from e
         except ApiError as e:
             # 405 "unable to duplicate exception list with list_id: ... - action
             # not allowed" for an endpoint list (probed); unmapped it would read
