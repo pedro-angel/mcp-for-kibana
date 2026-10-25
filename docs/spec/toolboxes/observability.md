@@ -1,6 +1,6 @@
 # observability — behavior contract
 
-Status: Draft v1.2 (2026-10-25) — regeneration corpus, reconciled to shipped code
+Status: Draft v1.3 (2026-10-25) — regeneration corpus, reconciled to shipped code
 Surface reference: docs/tools.md#observability-toolbox · Enforcement: named per section below
 
 ## Purpose & persona
@@ -20,10 +20,16 @@ exclusions) — so any deployment enabling `observability` gets this toolbox sta
 `create_synthetic_param`, `update_synthetic_param`, `create_synthetic_private_location`,
 `update_synthetic_private_location`; 3 `destructive` — `delete_synthetic_monitor`,
 `delete_synthetic_param`, `delete_synthetic_private_location`. The three updates and three deletes
-carry `idempotentHint=true`; the creates and the run do not. Every tool sets `openWorldHint=false`.
-Tiers by the repo rule (D46): a delete is irreversible (a recreated object gets a new id; a
-parameter's value cannot be read back), so it is `destructive`; every create and edit has an
-inverse, and a run adds a result without changing anything, so they are `write`. Full tool list,
+carry `idempotentHint=true`; the creates and the run do not. `test_synthetic_monitor` sets
+`openWorldHint=true` (the run sends the monitor's requests to its target, outside Kibana); every
+other tool sets `openWorldHint=false`.
+Tiers by the repo rule (D46, amended): a delete is irreversible (a recreated object gets a new id;
+a deleted parameter's key, object and value are gone, with nothing left to edit back), so it is
+`destructive`; every create and edit has an inverse (an edit back — for a parameter's value only
+when the caller holds the old one — or a delete), so they are `write`. The run changes no
+Synthetics object and loses nothing, so it is `write` too, though it is not side-effect free: it
+sends real requests to the target (a paused monitor's too) and adds a short-lived package policy
+to the location's agent policy (below). Full tool list,
 descriptions, return shapes: docs/tools.md#observability-toolbox. What's deliberately not covered —
 APM telemetry, SLOs, an AI-assistant tool, Synthetics surface left out — is under Deliberate
 exclusions, not repeated here.
@@ -75,27 +81,39 @@ exclusions, not repeated here.
   `create_synthetic_private_location`. Elastic-managed `locations` are not offered.
 - **A schedule is the read shape and Kibana's numbers.** `<n>m` or `<n>s`, `n` in 1, 2, 3, 5, 10,
   15, 20, 30, 60, 120, 240 — Kibana checks the number against its minute list whatever the unit,
-  and its own 400 drops the list from the message a tool shows, so the check is the tool's.
+  and its own 400 drops the list from the message a tool shows, so the check is the tool's. The
+  number goes out canonical (`05m` is sent as `{number: "5"}`): Kibana compares the digits as
+  text and refuses `"05"` (probed).
 - **Monitor and update results are the read shape.** `create_synthetic_monitor` and
   `update_synthetic_monitor` return what `get_synthetic_monitor` returns, mapped from Kibana's
-  response. An update sends only the fields passed (Kibana's PUT keeps the rest, probed); an
-  update with no field is refused before the gateway.
-- **A run is accepted, not awaited.** `test_synthetic_monitor` returns `{monitor_id, test_run_id}`.
-  The check runs on the Elastic Agents enrolled in the location's agent policy; with none running
-  Kibana still accepts it. The result is not read back (no public route).
+  response. An update sends only the fields passed (Kibana's PUT keeps the rest, probed); a list
+  passed (`tags`, `private_locations`) replaces the stored one (probed: `["contract"]` edited to
+  `["edited"]` reads back `["edited"]`). An update with no field is refused before the gateway.
+- **A run is accepted, not awaited, and reaches outside Kibana.** `test_synthetic_monitor` returns
+  `{monitor_id, test_run_id}`. The check runs on the Elastic Agents enrolled in the location's
+  agent policy; with none running Kibana still accepts it. A paused monitor runs too (Kibana
+  sends the run's config enabled), so a run can send requests its schedule would not; each call
+  is a new run. Each run adds a `LIGHTWEIGHT_SYNTHETICS_TEST_NOW_RUN` package policy
+  (`BROWSER_SYNTHETICS_TEST_NOW_RUN` for browser) to the location's agent policy. It outlives the
+  location if that is deleted, and Kibana's own clean-up task removes it once it is older than 2
+  minutes (15 for browser); the task runs right after the run and then every 20 minutes while
+  any remain. The result is not read back (no public route).
 - **A parameter's value is write-only.** Neither create nor update returns it (Kibana's update
   response echoes the previous value; the shape has no field for it), and a payload rejection is
-  scrubbed of it before it reaches the model. A key already held by another parameter is refused
-  (Kibana stores the duplicate, probed), naming `update_synthetic_param`.
+  scrubbed of it before it reaches the model. So a value `update_synthetic_param` replaces cannot
+  be recovered by any tool; the description says so, and setting it back needs the caller to hold
+  the old one. A key already held by another parameter is refused (Kibana stores the duplicate,
+  probed), naming `update_synthetic_param`.
 - **Private locations: one per agent policy, labels unique, both checked first.** A missing
   policy is Kibana's 400 plus where policy ids come from (`list_agent_policies`,
-  `create_agent_policy` in the fleet toolbox). Only the label is editable.
+  `create_agent_policy` in the fleet toolbox). Only the label is editable; an unknown id on the
+  update is Kibana's 404 "… does not exist.", read as D17 not-found.
 - **Deletes report what they did, and a miss is a not-found.** Each delete returns
   `{id, deleted: true}`. Kibana answers a monitor or parameter delete of an unknown id with
   `200 [{"deleted": false}]` and a private-location one with a 400 "does not exist" — all read
   as D17 not-found here. A location still used by monitors is refused by Kibana; the error adds
   `update_synthetic_monitor` (move them) and `delete_synthetic_monitor`. The agent policy behind a
-  deleted location stays.
+  deleted location stays, with any test-run package policy still on it until Kibana's clean-up.
 
 ## Invariants
 
@@ -104,6 +122,8 @@ exclusions, not repeated here.
 - `list_apm_environments` MUST always include the `ALL_OPTION_VALUE` sentinel.
 - `list_synthetic_monitors` and `list_apm_sourcemaps` MUST return the full result in one call, terminating pagination on the running total, never an absolute/global total field. (For sourcemaps the total-is-grand-total assumption is live-unverified — only the empty response has been observed on the test stack; verify against a real artifact before leaning on it.)
 - No tool of the toolbox may accept or forward a `space` parameter (D10).
+- `test_synthetic_monitor` MUST set `openWorldHint=true` and `idempotentHint=false`; its description MUST state that a paused monitor runs and that the run adds a package policy to the location's agent policy.
+- A schedule MUST reach Kibana with its number in canonical form (no leading zeros).
 - A write-tier result or error MUST NOT carry a Synthetics parameter's value.
 - `create_synthetic_monitor` and `update_synthetic_monitor` MUST refuse, before any request, a schedule outside Kibana's numbers, an unknown private location, and a target field of another monitor type.
 - A Synthetics delete of an id that matches nothing MUST raise not-found, never report `deleted: true`.
@@ -144,8 +164,9 @@ exclusions, not repeated here.
   and pins their hints and the absence of `space`; pins `get_synthetic_monitor`'s not-found,
   `list_apm_environments`' sentinel, `get_uptime_settings`' nested-email shape,
   `search_apm_annotations`' default environment; and each write-tier refusal (target per type,
-  schedule numbers, unknown or absent locations, empty updates, duplicate keys and labels, a taken
-  agent policy), the read-shape results, and that no result carries a parameter value.
+  schedule numbers and the canonical number sent, unknown or absent locations, empty updates,
+  duplicate keys and labels, a taken agent policy), the read-shape results, and that no result
+  carries a parameter value.
 - `tests/unit/adapters/test_observability_gateway.py` — pins the response-mapping contract per
   tool: a real captured monitor body, the browser-monitor null-target case, both
   pagination-to-exhaustion cases (the monitors case regression-guarded with deliberately
@@ -160,12 +181,15 @@ exclusions, not repeated here.
   `get_uptime_settings`' numeric thresholds and index pattern are confirmed live, and the
   `ALL_OPTION_VALUE` sentinel is confirmed present live.
 - `tests/unit/adapters/test_observability_gateway.py` (write tier) — the request each write sends
-  (only the given fields; the schedule as `{number, unit}`), the 200-`deleted: false` and
+  (only the given fields; the schedule as `{number, unit}`, its number canonical), the 200-`deleted: false` and
   400-"does not exist" misses as D17 not-found, the in-use location's added fix, the
   agent-policy hint, the update response's echoed value dropped, a rejection scrubbed of the value.
 - `tests/contract/test_gateway_contract.py` (Synthetics write tier) — live on a throwaway agent
   policy: a parameter's lifecycle with the value absent from every result and the duplicate key
-  refused; a private location and a monitor placed on it by label, the partial edit, a run
-  request, the in-use refusal, each delete and its miss; everything removed after.
+  refused; a private location and a monitor placed on it by label (schedule `030s` stored as
+  `30s`), the partial edit (`05m` stored as `5m`, the tag list replaced), a bad-id location
+  rename, a run request and the test-now package policy it adds to the agent policy (still there
+  after the location's delete), the in-use refusal, the move to a second location that lets the
+  first be deleted, each delete and its miss; everything removed after.
 - No e2e-replay transcript exercises this toolbox: behavior is pinned at the unit, adapter, and
   live-contract tiers above, not by a recorded model turn.

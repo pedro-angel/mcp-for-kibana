@@ -302,6 +302,19 @@ def test_update_synthetic_monitor_sends_only_the_changes():
     assert m.enabled is False
 
 
+def test_monitor_schedule_number_goes_out_canonical():
+    # Kibana compares the number as text: {"number": "05"} is a 400 "Invalid
+    # schedule 05 minutes" (probed on 9.5.4), so leading zeros never go out.
+    rec = _Recorder(create_monitor=_MONITOR, update_monitor=_MONITOR)
+    _syn_gw(rec).create_synthetic_monitor(
+        type="http", name="m", private_locations=["loc-1"], url="https://example.com",
+        host=None, inline_script=None, schedule="05m", enabled=True, tags=None,
+    )
+    _syn_gw(rec).update_synthetic_monitor("m-1", schedule="030s")
+    assert rec.calls[0][1]["schedule"] == {"number": "5", "unit": "m"}
+    assert rec.calls[1][1]["schedule"] == {"number": "30", "unit": "s"}
+
+
 def test_test_synthetic_monitor_returns_the_run_id():
     rec = _Recorder(test_monitor={"testRunId": "2962b617-4d24-4d2b-8923-1a497e6d4898"})
     assert _syn_gw(rec).test_synthetic_monitor("m-1") == "2962b617-4d24-4d2b-8923-1a497e6d4898"

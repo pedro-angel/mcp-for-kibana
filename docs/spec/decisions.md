@@ -436,12 +436,34 @@ this ledger stands without them.
   `create/update/delete_private_location` gained the toolbox's `synthetic_`
   prefix to match `list_synthetic_private_locations`. **Tiers, by the repo
   rule (irreversible or data-losing → destructive):** each delete is
-  irreversible — a recreated object gets a new id, and a parameter's value
-  cannot be read back on any route, so deleting one loses it — so all three
-  are `destructive`; every create and edit has an inverse (edit back, delete),
-  so they are `write`. The run was weighed for destructive and kept on
-  `write`: it changes no object, adds one result document, and makes the
-  requests the monitor already makes on its schedule. Monitors start enabled
+  irreversible — a recreated object gets a new id, and a deleted parameter
+  loses its key, its object and its value at once, with nothing left to edit
+  back (the value cannot be read back on any route) — so all three are
+  `destructive`; every create and edit has an inverse (edit back, delete),
+  so they are `write`. (Amended after review, same day: first written, this
+  justified the delete by the unreadable value while the update could
+  overwrite that same value at `write`. The two differ in what is left: an
+  update keeps the parameter, and the caller supplies the new value, so the
+  inverse is another update — which, for the value, needs the caller to hold
+  the old one; the update's description now says no tool can recover a
+  replaced value. That follows `update_connector`, whose write-only secrets
+  are edited at `write`. The run was also first justified as making "the
+  requests the monitor already makes on its schedule" and as "changing
+  nothing", both wrong: Kibana sends the run's config enabled, so a paused
+  monitor's requests reach its target, and each run adds a
+  `LIGHTWEIGHT_SYNTHETICS_TEST_NOW_RUN` package policy to the location's agent
+  policy. So the run now carries `openWorldHint=true` and
+  `idempotentHint=false`, like `execute_connector`, but `destructiveHint=false`
+  and stays `write`: it deletes and overwrites nothing, and Kibana removes its
+  package policy itself — its clean-up task deletes lightweight test-now
+  policies older than 2 minutes, browser ones older than 15, runs right after
+  each run and then every 20 minutes while any remain (Kibana 9.5.4's
+  `clean_up_task`, and observed: a run's policy, left on its agent policy
+  after the location was deleted, was gone after the next pass). The review
+  also found leading-zero schedules (`05m`) passing the check and failing in
+  Kibana ("Invalid schedule 05 minutes"), now sent canonical, and confirmed
+  that an update's `tags` replace the list (now asserted live with a
+  non-superset edit).) Monitors start enabled
   (Kibana's default; `enabled=False` pauses one) — unlike alert rules, which
   start disabled because their actions notify people, a monitor only checks
   the target the caller named. **No `space`** on any of them: D10's uniformity
@@ -485,9 +507,11 @@ this ledger stands without them.
   the shared demo policy. No public route reads a run's result, so the tool
   returns the id and says where the result lands. `get_synthetic_monitor`
   takes the same D17 not-found text, since `update_synthetic_monitor` reads
-  through it (Kibana's own is "Monitor id <id> not found!"). Kibana also added a
+  through it (Kibana's own is "Monitor id <id> not found!"). Each run adds a
   `LIGHTWEIGHT_SYNTHETICS_TEST_NOW_RUN` package policy to the agent policy,
-  which once outlived the location (removed by hand). Rejected alternatives:
+  which outlives the location until Kibana's clean-up task removes it (see
+  the amendment above); a location's PUT on an unknown id is a 404 "… does
+  not exist." (its DELETE a 400), both read as not-found. Rejected alternatives:
   `space` on the write tools only (D10); exposing every monitor field or
   kibana-py's `fields` passthrough (no task needs them; each is an additive
   argument later); checking agent enrollment before a run (it costs a

@@ -33,6 +33,11 @@ _WRITE = ToolAnnotations(
 _WRITE_IDEMPOTENT = ToolAnnotations(
     readOnlyHint=False, destructiveHint=False, idempotentHint=True, openWorldHint=False
 )
+# The run reaches outside Kibana: the agent sends the monitor's requests to its
+# target (a paused monitor too), and every call starts a new run.
+_RUN = ToolAnnotations(
+    readOnlyHint=False, destructiveHint=False, idempotentHint=False, openWorldHint=True
+)
 _DESTRUCTIVE = ToolAnnotations(
     readOnlyHint=False, destructiveHint=True, idempotentHint=True, openWorldHint=False
 )
@@ -55,6 +60,8 @@ _TARGET_EXAMPLE = {
 # Kibana checks a schedule's number against its minute list whatever the unit
 # (9.5.4: '15s' and '240s' pass, '45s' and '90s' fail as "45 minutes"), and its
 # 400 drops the list from the message the tool would show, so the check is here.
+# It compares the digits as text ('05' is refused as "05 minutes"), so the
+# number is sent in its canonical form: '05m' goes out as '5m'.
 _SCHEDULE_RE = re.compile(r"([0-9]+)([sm])")
 _SCHEDULE_NUMBERS = (1, 2, 3, 5, 10, 15, 20, 30, 60, 120, 240)
 
@@ -69,7 +76,7 @@ def _schedule(value: str | None) -> str | None:
             "allows, 1, 2, 3, 5, 10, 15, 20, 30, 60, 120 or 240, with unit m (minutes) or s "
             "(seconds), e.g. '10m' or '30s'"
         )
-    return value
+    return f"{int(match[1])}{match[2]}"
 
 
 def _check_locations(gw: KibanaGateway, wanted: list[str]) -> None:
@@ -299,15 +306,21 @@ class ObservabilityToolbox:
                     private_locations=private_locations,
                 ))
 
-        @mcp.tool(tags={self.name, "write"}, annotations=_WRITE)
+        @mcp.tool(tags={self.name, "write"}, annotations=_RUN)
         def test_synthetic_monitor(monitor_id: _Id) -> dict[str, Any]:
-            """Run a Synthetics monitor once now, outside its schedule (a disabled
-            monitor too), by id (from list_synthetic_monitors). Returns its
-            test_run_id. The run executes only where an Elastic Agent enrolled in
-            the location's agent policy is running; Kibana accepts the request
-            either way. No tool reads the result: Kibana writes it to the
-            synthetics-* data streams under that test_run_id and shows it in the
-            Synthetics app."""
+            """Run a Synthetics monitor once now, outside its schedule, by id (from
+            list_synthetic_monitors). A paused (enabled=False) monitor runs too:
+            the agent sends the monitor's requests to its target now, even when
+            it would not on its schedule. Each call is a new run and returns its
+            test_run_id. Each run also adds a LIGHTWEIGHT_SYNTHETICS_TEST_NOW_RUN
+            package policy (BROWSER_SYNTHETICS_TEST_NOW_RUN for a browser
+            monitor) to the location's Fleet agent policy; Kibana's own clean-up
+            task removes it about 20 minutes later, even if the location is
+            deleted first. The run executes only where an Elastic Agent enrolled
+            in that agent policy is running; Kibana accepts the request either
+            way. No tool reads the result: Kibana writes it to the synthetics-*
+            data streams under that test_run_id and shows it in the Synthetics
+            app."""
             with gateway_errors(), deps.gateway_factory() as gw:
                 run_id = gw.test_synthetic_monitor(monitor_id)
             return {"monitor_id": monitor_id, "test_run_id": run_id}
@@ -344,9 +357,11 @@ class ObservabilityToolbox:
             """Edit a Synthetics global parameter in place, by id (from
             list_synthetic_params): rename its key, rotate its value, or change
             its description or tags (`tags` replaces the list). Only the fields
-            you pass change. Neither the new nor the old value is ever returned.
-            Renaming the key breaks monitors that reference the old ${key}.
-            Returns id, key, description, tags."""
+            you pass change. Neither the new nor the old value is ever returned:
+            once `value` is replaced, no tool can recover the previous one, so
+            keep it yourself if you may need to set it back. Renaming the key
+            breaks monitors that reference the old ${key}. Returns id, key,
+            description, tags."""
             if all(v is None for v in (key, value, description, tags)):
                 raise ToolError(
                     "provide at least one field to update: key, value, description or tags"
@@ -435,7 +450,9 @@ class ObservabilityToolbox:
             list_synthetic_private_locations). Kibana refuses while monitors
             still run there: move them (update_synthetic_monitor with
             private_locations) or delete them first. The Fleet agent policy
-            behind it stays. This cannot be undone."""
+            behind it stays, and so does any LIGHTWEIGHT_SYNTHETICS_TEST_NOW_RUN
+            package policy a recent test_synthetic_monitor run added to it until
+            Kibana's clean-up task removes it. This cannot be undone."""
             with gateway_errors(), deps.gateway_factory() as gw:
                 gw.delete_synthetic_private_location(location_id)
             return {"id": location_id, "deleted": True}

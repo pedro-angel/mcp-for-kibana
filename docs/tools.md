@@ -62,7 +62,9 @@ gating:
 | destructive | `delete_dashboard`, `delete_visualization`, `delete_panel` | `false` | `true` | `true` |
 
 All tools also set `openWorldHint=False` (Kibana is a closed, known system,
-not an open web search).
+not an open web search). The two tools elsewhere that reach past Kibana —
+alerting's `execute_connector` and observability's `test_synthetic_monitor` —
+set `openWorldHint=True`.
 
 At server assembly (`server.py`), `KIBANA_MCP_TIER` (default `write`)
 computes the set of *disallowed* tier tags and calls FastMCP's
@@ -833,8 +835,9 @@ monitoring (read, and the write tier: monitors, global parameters and private
 locations — create, edit, run once, delete), Uptime settings, and APM
 **configuration** (read). No tool takes `space` (see
 [Space targeting](#space-targeting)). Hints: reads `readOnlyHint=true`; the
-three updates `idempotentHint=true`; the deletes `destructiveHint=true`; every
-tool `openWorldHint=false`.
+three updates `idempotentHint=true`; the deletes `destructiveHint=true`;
+`test_synthetic_monitor` `openWorldHint=true` (the run sends the monitor's
+requests to its target), every other tool `openWorldHint=false`.
 
 !!! note "v1 scope — what this is *not*"
     This toolbox intentionally does **not** expose APM **service/transaction/
@@ -859,9 +862,9 @@ tool `openWorldHint=false`.
 | `search_apm_annotations` | read | Search APM annotations (e.g. deployment markers) for a service in an ISO-8601 `[start, end]` window. |
 | `create_synthetic_monitor` | write | Create an http/tcp/icmp/browser monitor on private locations (ids or labels); returns it as `get_synthetic_monitor` does. |
 | `update_synthetic_monitor` | write | Edit a monitor in place: only the fields passed change (`enabled=False` pauses it); the type cannot change. |
-| `test_synthetic_monitor` | write | Run a monitor once now; returns its `test_run_id` (no tool reads the result). |
+| `test_synthetic_monitor` | write | Run a monitor once now, a paused one too (requests reach its target); adds a short-lived package policy to the location's agent policy; returns its `test_run_id` (no tool reads the result). |
 | `create_synthetic_param` | write | Create a global parameter monitors reference as `${key}`; the value is never returned. |
-| `update_synthetic_param` | write | Rename, rotate or re-describe a parameter in place; no value is ever returned. |
+| `update_synthetic_param` | write | Rename, rotate or re-describe a parameter in place; no value is ever returned, so a replaced value cannot be recovered by any tool. |
 | `create_synthetic_private_location` | write | Create a private location on a Fleet agent policy no other location uses. |
 | `update_synthetic_private_location` | write | Rename a private location (the label is all Kibana lets change). |
 | `delete_synthetic_monitor` | destructive | Permanently delete a monitor. |
@@ -879,14 +882,24 @@ Synthetics write tier, as probed on Kibana 9.5.4 (decision
   offers no Elastic-managed locations (a self-managed stack has none).
   `schedule` takes the read shape (`10m`, `30s`): the number must be one of 1,
   2, 3, 5, 10, 15, 20, 30, 60, 120, 240, with unit `m` or `s` (Kibana checks the
-  number against its minute list whatever the unit). Names are unique (Kibana's
+  number against its minute list whatever the unit). Leading zeros are dropped
+  before the call (`05m` is sent as `5m`; Kibana refuses `"05"`). `tags` and
+  `private_locations` on an update replace the whole list. Names are unique (Kibana's
   400 passes through). `update_synthetic_monitor` sends only the fields given —
   Kibana's PUT keeps the rest — and reads the monitor first only to check a
   target field against its type. Created monitors start enabled
   (`enabled=False` to create one paused).
 - **Runs.** `test_synthetic_monitor` returns `{"monitor_id", "test_run_id"}`. The
   check executes on the Elastic Agents enrolled in the location's agent policy;
-  with none running, Kibana still accepts the request and nothing runs. The
+  with none running, Kibana still accepts the request and nothing runs. A
+  paused monitor runs too, so the run can send requests its schedule would
+  not; every call is a new run. Each run adds a
+  `LIGHTWEIGHT_SYNTHETICS_TEST_NOW_RUN` package policy
+  (`BROWSER_SYNTHETICS_TEST_NOW_RUN` for browser) to that agent policy, and it
+  stays there after the location is deleted until Kibana's clean-up task
+  removes it (lightweight ones older than 2 minutes, browser ones older than
+  15; the task runs right after a run and then every 20 minutes while any
+  remain, so about 20 minutes). The
   result is written to the `synthetics-*` data streams under that
   `test_run_id` (shown in Kibana's Synthetics app); no tool reads it.
 - **Parameters.** The value is a secret: no result carries it (Kibana's update
@@ -894,6 +907,8 @@ Synthetics write tier, as probed on Kibana 9.5.4 (decision
   text is scrubbed of it. A key already in use is refused — Kibana stores a
   second parameter with the same key, which would make `${key}` ambiguous.
   `update_synthetic_param` and both create tools refuse an empty change or value.
+  A value replaced by `update_synthetic_param` cannot be read back by any tool,
+  so setting it back needs the caller to hold the old one.
 - **Private locations.** One per Fleet agent policy, labels unique (both
   checked before the write); a missing policy is Kibana's 400 plus where policy
   ids come from (`list_agent_policies`, `create_agent_policy` in the
@@ -904,8 +919,9 @@ Synthetics write tier, as probed on Kibana 9.5.4 (decision
   monitor 'x' not found — monitor_id is the id that create_synthetic_monitor or
   list_synthetic_monitors returns, not the monitor's name; call
   list_synthetic_monitors to find it". Kibana answers a monitor or parameter
-  delete of an unknown id with `200 {"deleted": false}` and a private-location
-  one with a 400; all three read as not-found here.
+  delete of an unknown id with `200 [{"deleted": false}]` and a private-location
+  one with a 400 "does not exist" (its update with a 404); all read as
+  not-found here.
 
 Returns:
 

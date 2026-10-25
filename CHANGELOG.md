@@ -17,12 +17,19 @@ version section.
   `create_synthetic_monitor` (http, tcp, icmp or browser, on private
   locations given by id or label; `schedule` such as `10m` or `30s`),
   `update_synthetic_monitor` (only the fields passed change; `enabled=False`
-  pauses it), `test_synthetic_monitor` (runs it once now and returns the
-  `test_run_id`; the result is written to the `synthetics-*` data streams, and
-  no tool reads it) and `delete_synthetic_monitor`. Global parameters:
-  `create_synthetic_param`, `update_synthetic_param` and
-  `delete_synthetic_param`; no result ever carries a value, and a key already
-  in use is refused. Private locations: `create_synthetic_private_location`
+  pauses it; `tags` and `private_locations` replace the list),
+  `test_synthetic_monitor` (runs it once now, a paused monitor too, so its
+  requests reach the target; returns the `test_run_id`; the result is written
+  to the `synthetics-*` data streams, and no tool reads it; marked
+  `openWorldHint=true`; each run adds a `LIGHTWEIGHT_SYNTHETICS_TEST_NOW_RUN`
+  package policy to the location's agent policy, which Kibana removes itself
+  about 20 minutes later) and `delete_synthetic_monitor`. A schedule's number
+  goes out without leading zeros (`05m` is sent as `5m`; Kibana refuses
+  `"05"`). Global parameters: `create_synthetic_param`,
+  `update_synthetic_param` and `delete_synthetic_param`; no result ever
+  carries a value, so a value the update replaces cannot be recovered by any
+  tool (keep it if you may set it back), and a key already in use is
+  refused. Private locations: `create_synthetic_private_location`
   (on a Fleet agent policy no other location uses),
   `update_synthetic_private_location` (the label) and
   `delete_synthetic_private_location` (refused while monitors use it). Each

@@ -50,7 +50,8 @@ async def test_observability_tools_and_hints(mcp):
         tier = "read" if name in OBSERVABILITY_READ else (
             "write" if name in OBSERVABILITY_WRITE else "destructive")
         assert t.annotations.read_only_hint is (tier == "read"), name
-        assert t.annotations.open_world_hint is False, name
+        # A run reaches the monitor's target outside Kibana (D46, amended).
+        assert t.annotations.open_world_hint is (name == "test_synthetic_monitor"), name
         if tier != "read":
             assert t.annotations.destructive_hint is (tier == "destructive"), name
         # D10: the observability toolbox takes no `space` on any tool.
@@ -175,6 +176,24 @@ async def test_create_synthetic_monitor_accepts_kibanas_schedules(mcp, schedule)
         created = (await client.call_tool(
             "create_synthetic_monitor", {**HTTP, "schedule": schedule})).data
     assert created["schedule"] == schedule
+
+
+@pytest.mark.parametrize(("given", "sent"), [("05m", "5m"), ("010m", "10m"), ("030s", "30s")])
+async def test_create_synthetic_monitor_sends_the_canonical_schedule(mcp, gateway, given, sent):
+    # Kibana refuses "05" as "Invalid schedule 05 minutes" (probed on 9.5.4).
+    async with Client(mcp) as client:
+        created = (await client.call_tool(
+            "create_synthetic_monitor", {**HTTP, "schedule": given})).data
+    assert gateway.monitor_writes[-1][1]["schedule"] == sent
+    assert created["schedule"] == sent
+
+
+async def test_update_synthetic_monitor_sends_the_canonical_schedule(mcp, gateway):
+    async with Client(mcp) as client:
+        updated = (await client.call_tool(
+            "update_synthetic_monitor", {"monitor_id": "mon-1", "schedule": "05m"})).data
+    assert gateway.monitor_writes[-1] == ("update", "mon-1", {"schedule": "5m"})
+    assert updated["schedule"] == "5m"
 
 
 async def test_create_synthetic_monitor_names_unknown_locations(mcp, gateway):

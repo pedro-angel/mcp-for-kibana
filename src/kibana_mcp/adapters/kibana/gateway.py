@@ -549,8 +549,9 @@ def _given(**kwargs: Any) -> dict[str, Any]:
 
 def _monitor_schedule(schedule: str) -> dict[str, str]:
     # "10m" / "30s" (the read shape, validated by the tool) -> Kibana's
-    # {"number": "10", "unit": "m"}; Kibana stores the number as a string.
-    return {"number": schedule[:-1], "unit": schedule[-1]}
+    # {"number": "10", "unit": "m"}; Kibana stores the number as a string and
+    # compares it as text, so "05" is a 400 (9.5.4): send the canonical digits.
+    return {"number": str(int(schedule[:-1])), "unit": schedule[-1]}
 
 
 def _deleted(body: Any, kind: str, value: str) -> None:

@@ -2299,9 +2299,9 @@ async def test_lifecycle_tools_scoped_live(gateway):
 # removes in `finally`, so the reads above keep seeing an empty Synthetics
 # surface. A private location needs a Fleet agent policy no other location uses:
 # each test makes its own and deletes it last (that removes the Synthetics
-# package policies Kibana adds to it). No agent is enrolled in it, so a test run
-# is accepted but does not execute here; D46 records the probe that saw one
-# execute.
+# package policies Kibana adds to it, a test run's included). No agent is
+# enrolled in it, so a test run is accepted but does not execute here; D46
+# records the probe that saw one execute.
 
 
 def _obs_tool_server():
@@ -2318,7 +2318,7 @@ def _obs_tool_server():
     return server
 
 
-def _synthetics_cleanup(gateway, policy_id):
+def _synthetics_cleanup(gateway, *policy_ids):
     with _raw_kibana() as raw:
         for m in raw.synthetics.get_monitors(per_page=100).body["monitors"]:
             if m["name"].startswith("contract-syn-"):
@@ -2329,8 +2329,9 @@ def _synthetics_cleanup(gateway, policy_id):
         for loc in raw.synthetics.get_private_locations().body:
             if loc["label"].startswith("contract-syn-"):
                 raw.synthetics.delete_private_location(id=loc["id"])
-    if policy_id is not None:
-        gateway.delete_agent_policy(policy_id, force=True)
+    for policy_id in policy_ids:
+        if policy_id is not None:
+            gateway.delete_agent_policy(policy_id, force=True)
 
 
 async def test_synthetic_params_lifecycle_live(gateway):
@@ -2370,19 +2371,30 @@ async def test_synthetic_params_lifecycle_live(gateway):
         assert f"synthetic param '{pid}' not found" in str(gone.value)
         assert [p for p in gateway.list_synthetic_params() if p.key == key] == []
     finally:
-        _synthetics_cleanup(gateway, None)
+        _synthetics_cleanup(gateway)
+
+
+def _test_now_policies(gateway, agent_policy_id):
+    return [p for p in gateway.list_package_policies()
+            if p.agent_policy_id == agent_policy_id
+            and p.name == "LIGHTWEIGHT_SYNTHETICS_TEST_NOW_RUN"]
 
 
 async def test_synthetic_locations_and_monitors_lifecycle_live(gateway):
     # A private location on a throwaway agent policy, a monitor placed on it by
-    # label, an in-place partial edit, a run request, the refusal to delete a
-    # location still in use, and each delete with its miss.
+    # label, an in-place partial edit (tags replaced, not merged), a run request
+    # and the package policy it leaves on the agent policy, the refusal to
+    # delete a location still in use, the move to a second location that lets
+    # the first be deleted, and each delete with its miss.
     tag = uuid.uuid4().hex[:8]
     label, name = f"contract-syn-loc-{tag}", f"contract-syn-mon-{tag}"
-    policy_id = None
+    label_b = f"contract-syn-locb-{tag}"
+    policy_id = policy_b = None
     try:
         policy_id = gateway.create_agent_policy(
             name=f"contract-syn-policy-{tag}", namespace="default", monitoring_enabled=[]).id
+        policy_b = gateway.create_agent_policy(
+            name=f"contract-syn-policy-{tag}-b", namespace="default", monitoring_enabled=[]).id
         async with Client(_obs_tool_server()) as client:
             loc = (await client.call_tool("create_synthetic_private_location", {
                 "label": label, "agent_policy_id": policy_id, "tags": ["contract"],
@@ -2396,9 +2408,15 @@ async def test_synthetic_locations_and_monitors_lifecycle_live(gateway):
             renamed = (await client.call_tool("update_synthetic_private_location", {
                 "location_id": loc["id"], "label": f"{label}-renamed",
             })).data
+            with pytest.raises(ToolError) as no_location:
+                await client.call_tool("update_synthetic_private_location", {
+                    "location_id": "no-such-location", "label": f"{label}-x"})
+            loc_b = (await client.call_tool("create_synthetic_private_location", {
+                "label": label_b, "agent_policy_id": policy_b,
+            })).data
             created = (await client.call_tool("create_synthetic_monitor", {
                 "type": "http", "name": name, "url": "http://kibana:5601/api/status",
-                "private_locations": [f"{label}-renamed"], "schedule": "30s",
+                "private_locations": [f"{label}-renamed"], "schedule": "030s",
                 "enabled": False, "tags": ["contract"],
             })).data
             with pytest.raises(ToolError) as bad_schedule:
@@ -2410,7 +2428,7 @@ async def test_synthetic_locations_and_monitors_lifecycle_live(gateway):
                     "type": "http", "name": name, "url": "http://x",
                     "private_locations": [loc["id"]]})
             edited = (await client.call_tool("update_synthetic_monitor", {
-                "monitor_id": created["id"], "schedule": "10m", "tags": ["contract", "edited"],
+                "monitor_id": created["id"], "schedule": "05m", "tags": ["edited"],
             })).data
             got = (await client.call_tool(
                 "get_synthetic_monitor", {"monitor_id": created["id"]})).data
@@ -2420,22 +2438,31 @@ async def test_synthetic_locations_and_monitors_lifecycle_live(gateway):
             with pytest.raises(ToolError) as no_monitor_read:
                 await client.call_tool("update_synthetic_monitor", {
                     "monitor_id": "no-such-monitor", "url": "http://x"})
+            before_run = _test_now_policies(gateway, policy_id)
             run = (await client.call_tool(
                 "test_synthetic_monitor", {"monitor_id": created["id"]})).data
+            after_run = _test_now_policies(gateway, policy_id)
             with pytest.raises(ToolError) as no_monitor:
                 await client.call_tool("test_synthetic_monitor", {"monitor_id": "no-such-monitor"})
             with pytest.raises(ToolError) as in_use:
+                await client.call_tool(
+                    "delete_synthetic_private_location", {"location_id": loc["id"]})
+            # The path the in-use refusal names: move the monitor, then delete.
+            moved = (await client.call_tool("update_synthetic_monitor", {
+                "monitor_id": created["id"], "private_locations": [loc_b["id"]],
+            })).data
+            loc_deleted = (await client.call_tool(
+                "delete_synthetic_private_location", {"location_id": loc["id"]})).data
+            after_location = _test_now_policies(gateway, policy_id)
+            with pytest.raises(ToolError) as loc_gone:
                 await client.call_tool(
                     "delete_synthetic_private_location", {"location_id": loc["id"]})
             deleted = (await client.call_tool(
                 "delete_synthetic_monitor", {"monitor_id": created["id"]})).data
             with pytest.raises(ToolError) as monitor_gone:
                 await client.call_tool("delete_synthetic_monitor", {"monitor_id": created["id"]})
-            loc_deleted = (await client.call_tool(
-                "delete_synthetic_private_location", {"location_id": loc["id"]})).data
-            with pytest.raises(ToolError) as loc_gone:
-                await client.call_tool(
-                    "delete_synthetic_private_location", {"location_id": loc["id"]})
+            loc_b_deleted = (await client.call_tool(
+                "delete_synthetic_private_location", {"location_id": loc_b["id"]})).data
         assert loc == {"id": loc["id"], "label": label, "agent_policy_id": policy_id,
                        "is_invalid": False, "tags": ["contract"]}
         assert f"agent policy '{policy_id}' already backs private location" in str(
@@ -2443,25 +2470,34 @@ async def test_synthetic_locations_and_monitors_lifecycle_live(gateway):
         assert "Agent policy with id no-such-agent-policy not found" in str(no_policy.value)
         assert "list_agent_policies shows them" in str(no_policy.value)
         assert renamed == {**loc, "label": f"{label}-renamed"}
+        assert "private location 'no-such-location' not found" in str(no_location.value)
+        assert "call list_synthetic_private_locations" in str(no_location.value)
         assert created["name"] == name and created["type"] == "http"
         assert created["enabled"] is False and created["schedule"] == "30s"
         assert created["locations"] == [f"{label}-renamed"]
         assert created["target"] == "http://kibana:5601/api/status"
         assert "1, 2, 3, 5, 10, 15, 20, 30, 60, 120 or 240" in str(bad_schedule.value)
         assert "must be unique" in str(dup_name.value)
-        # Kibana's PUT is partial: the edit kept everything it did not name.
-        assert edited == got == {**created, "schedule": "10m", "tags": ["contract", "edited"]}
+        # Kibana's PUT is partial: the edit kept everything it did not name, and
+        # replaced the tag list ("contract" is gone); "05m" went out as "5m".
+        assert edited == got == {**created, "schedule": "5m", "tags": ["edited"]}
         assert "is an http monitor: it takes `url`, not `host`" in str(wrong_target.value)
         assert run["monitor_id"] == created["id"] and uuid.UUID(run["test_run_id"])
+        # Each run adds a test-now package policy to the location's agent policy;
+        # it outlives the location (Kibana's clean-up task removes it later).
+        assert len(after_run) == len(before_run) + 1
+        assert {p.id for p in after_location} >= {p.id for p in after_run}
         assert "synthetic monitor 'no-such-monitor' not found" in str(no_monitor.value)
         assert "call list_synthetic_monitors" in str(no_monitor_read.value)
         assert "is used by 1 monitor(s)" in str(in_use.value)
         assert "move those monitors to another private location" in str(in_use.value)
+        assert moved == {**edited, "locations": [label_b]}
         assert deleted == {"id": created["id"], "deleted": True}
         assert f"synthetic monitor '{created['id']}' not found" in str(monitor_gone.value)
         assert loc_deleted == {"id": loc["id"], "deleted": True}
         assert f"private location '{loc['id']}' not found" in str(loc_gone.value)
+        assert loc_b_deleted == {"id": loc_b["id"], "deleted": True}
         assert gateway.list_synthetic_private_locations() == []
         assert gateway.list_synthetic_monitors() == []
     finally:
-        _synthetics_cleanup(gateway, policy_id)
+        _synthetics_cleanup(gateway, policy_id, policy_b)
