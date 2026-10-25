@@ -144,8 +144,9 @@ def test_undo_leaves_out_stored_values_the_tool_refuses():
         time_range=week, refresh_interval={"pause": False, "value": 5000})) == (
         {"refresh_interval_seconds": 30}, ["time_range"])
     assert undo_arguments(_view(title="  "), _view(title="t2")) == ({}, ["title"])
-    assert undo_arguments(_view(tags=["", "a"]), _view(tags=["b"])) == (
-        {"tags_to_add": ["a"], "tags_to_remove": ["b"]}, ["tags"])
+    # A stored "" tag stays (no call can remove it), so it never reaches undo.
+    assert undo_arguments(_view(tags=["", "a"]), _view(tags=["", "b"])) == (
+        {"tags_to_add": ["a"], "tags_to_remove": ["b"]}, [])
     # setTimeout's longest delay is the longest refresh passed back
     longest = _view(time_range=week, refresh_interval={"pause": False, "value": 2**31 - 1})
     assert undo_arguments(longest, _view(time_range=week)) == (

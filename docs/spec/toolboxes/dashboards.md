@@ -1,6 +1,6 @@
 # dashboards — behavior contract
 
-Status: Draft v1.3 (2026-10-25) — regeneration corpus, reconciled to shipped code
+Status: Draft v1.4 (2026-10-25) — regeneration corpus, reconciled to shipped code
 Surface reference: docs/tools.md#dashboards-toolbox · Enforcement: named per section below
 
 ## Purpose & persona
@@ -93,11 +93,12 @@ but are owned and registered once by data-management, not here.
   nothing is written (`status: unchanged`); otherwise the result returns the
   settings now, `changed`, `previous` (the values before, `null` for none
   stored), `undo`, the whole call that puts them back (`dashboard_id` and
-  the `space` passed included; `{}` when nothing changed), and
+  the `space` passed included; `{}` when there is nothing to undo: nothing
+  changed, or every changed value is one the tool refuses), and
   `undo_omitted`, the settings whose previous value is left out of `undo`
   because the tool's own checks refuse it — a blank title, an unreadable
   time, a negative, under-1 ms or over-2147483.647 s refresh (setTimeout's
-  limit, also the schema's `le`), an empty tag id, and a refresh that could
+  limit, also the schema's `le`), and a refresh that could
   then only come back without a time range
   (`core/dashboards/settings.py` `undo_arguments`: a time range not stored
   is undone with `clear_time_range`, tags through the add/remove lists, a
@@ -317,7 +318,7 @@ but are owned and registered once by data-management, not here.
   grammar (readable and unreadable values), the timestamp order, refresh
   shapes, tag merge order, the undo arguments and the stored values they
   leave out (negative, under-1 ms, over-limit refresh; unreadable time and
-  the refresh beside it; blank title; empty tag id).
+  the refresh beside it; blank title; a stored `""` tag never reaching undo).
 - **Unit — test_dashboards_library.py**: the five library tools' annotations,
   search/filter, the VizSpec-shaped read, empty-id guidance, in-place
   replace with pre-flight before any write, wrong id checked first and

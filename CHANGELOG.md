@@ -27,7 +27,7 @@ version section.
   fraction of a second; a paused refresh comes back paused at the interval
   just set). A previous value Kibana stored that the tool itself refuses — a
   time its dashboard app cannot read, a negative or out-of-range refresh, a
-  blank title, an empty tag id — is left out of `undo` and named in
+  blank title — is left out of `undo` and named in
   `undo_omitted`. Renaming back onto a title `create_dashboard` maps to
   another dashboard, or re-adding a removed tag id that names no tag, is
   refused like any such call. Auto-refresh is at most 2147483.647 seconds,

@@ -367,7 +367,7 @@ exactly as read:
   and the `space` passed included, so pass it as it is (`{}` when there is
   nothing to undo). A previous value Kibana stored that the tool itself
   refuses — a blank title, a time the dashboard app cannot read, a negative,
-  under-1 ms or over-limit refresh, an empty tag id — is left out of `undo`
+  under-1 ms or over-limit refresh — is left out of `undo`
   and named in `undo_omitted` (`previous` still shows it), as is a refresh
   that could then only come back without a time range. `refresh_interval_seconds` is `null` on a dashboard that stores no
   time range (Kibana keeps a refresh there, but the dashboard app applies

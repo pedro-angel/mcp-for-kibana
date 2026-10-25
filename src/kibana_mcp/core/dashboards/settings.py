@@ -221,10 +221,9 @@ def undo_arguments(
         else:
             omitted.append("refresh_interval_seconds")
     added = [t for t in after["tags"] if t not in before["tags"]]
+    # A stored "" tag id is never removed (tags_to_remove takes no empty id),
+    # so `removed` holds only ids tags_to_add accepts.
     removed = [t for t in before["tags"] if t not in after["tags"]]
-    if "" in removed:  # Kibana stores an empty tag id; tags_to_add takes none
-        omitted.append("tags")
-        removed = [t for t in removed if t]
     if removed:
         undo["tags_to_add"] = removed
     if added:

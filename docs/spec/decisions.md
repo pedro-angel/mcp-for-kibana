@@ -1121,10 +1121,12 @@ this ledger stands without them.
   name a dashboard in the default space too, which an undo without the space
   would edit). Each value in it passes the tool's own argument checks; a
   previous value Kibana stored that they refuse (a blank title, a time its
-  app cannot read, a negative, under-1 ms or over-limit refresh, an empty
-  tag id) is left out of it and named in `undo_omitted`, with `previous`
+  app cannot read, a negative, under-1 ms or over-limit refresh) is left
+  out of it and named in `undo_omitted`, with `previous`
   still holding it, as is a refresh that could then only come back without
-  a time range. A refresh is reported only beside a stored time range, so
+  a time range (final review: a stored `""` tag is never in the undo, since
+  no call can remove it; `undo` is `{}` also when every changed value is
+  left out). A refresh is reported only beside a stored time range, so
   an undo never pairs one with `clear_time_range`. Three undos are
   approximate: a refresh where none was stored can be paused (0), not
   removed; a paused refresh comes back paused at the interval the call set
