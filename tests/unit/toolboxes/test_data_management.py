@@ -260,6 +260,19 @@ async def test_import_bogus_handle_is_tool_error(gateway, tmp_path):
             await client.call_tool("import_saved_objects", {"handle": "../etc/passwd"})
 
 
+@pytest.mark.parametrize("tool", ["import_saved_objects", "overwrite_saved_objects"])
+async def test_exception_list_handle_names_its_own_tools(gateway, tmp_path, tool):
+    # D50: an `el-` handle shares the export dir but is never sent to the
+    # saved-objects import; the refusal names the tools that take it.
+    from kibana_mcp.core.saved_objects import EXCEPTION_LIST, write_export
+
+    handle = write_export(tmp_path, b"{}", EXCEPTION_LIST)
+    mcp = _mcp_with_export(gateway, tmp_path)
+    async with Client(mcp) as client:
+        with pytest.raises(ToolError, match="pass it to import_exception_list"):
+            await client.call_tool(tool, {"handle": handle})
+
+
 async def test_import_failure_message_is_content_free(gateway, tmp_path):
     # A Kibana rejection's `detail` can echo object bytes; the tool must not forward it.
     def boom(content, overwrite):

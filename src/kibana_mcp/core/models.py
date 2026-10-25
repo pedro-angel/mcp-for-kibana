@@ -403,6 +403,39 @@ class ExceptionList:
     namespace_type: str
     tags: tuple[str, ...]
     os_types: tuple[str, ...]
+    description: str = ""  # D50: update_exception_list returns the previous one
+
+
+@dataclass(frozen=True, slots=True)
+class ExceptionListChange:
+    # update_exception_list (D50): the list as Kibana stored it, and as the
+    # read before the PUT found it (what passing its fields back restores).
+    list: ExceptionList
+    previous: ExceptionList
+
+
+@dataclass(frozen=True, slots=True)
+class ExceptionListExport:
+    # export_exception_list (D50): what the model sees of an export kept on
+    # the server; `handle` goes to import_exception_list/overwrite_exception_list.
+    handle: str
+    id: str
+    list_id: str
+    name: str
+    namespace_type: str
+    item_count: int
+    byte_size: int
+
+
+@dataclass(frozen=True, slots=True)
+class ExceptionListImportResult:
+    # POST /api/exception_lists/_import (D50). Kibana reports per-object
+    # failures in a 200; `errors` keeps identity + status only ("list_id[/item_id]:
+    # 409 already exists"), never Kibana's message (a 400's echoes values).
+    success: bool
+    list_count: int
+    item_count: int
+    errors: tuple[str, ...]
 
 
 @dataclass(frozen=True, slots=True)

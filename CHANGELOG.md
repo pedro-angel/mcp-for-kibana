@@ -12,6 +12,24 @@ version section.
 
 ### Added
 
+- **Security detections: edit, copy, export and import exception lists**
+  (three `write`, one `read` and one `destructive` tool, 177 tools in all;
+  every one takes `space`). `update_exception_list` changes a list's name,
+  description or tags and returns the previous ones; it writes nothing if the
+  list changed after its read and says to call again.
+  `duplicate_exception_list` copies a list and its items into a new list in
+  the same space (Kibana refuses endpoint lists; the error names export and
+  import instead). `export_exception_list` keeps the list and its items in a
+  file on the server and returns an `el-` handle and a summary, never the
+  content; `import_exception_list` creates a new list from it, in any space,
+  with new item ids (unlike Kibana's own "as new list" mode, which reuses the
+  source's item ids), and refuses a `list_id` that already exists (Kibana
+  would add the items to that list); `overwrite_exception_list` restores the
+  list in place and returns the ids of the items it deleted (those added
+  after the export). `get_exception_list` and `find_exception_items` take an
+  optional `namespace_type` so agnostic lists can be read. Import errors come
+  back per object as ids and status only. Kibana neither edits nor imports a
+  list's `os_types`. Decision D50.
 - **Platform admin: copy and share saved objects between spaces** (two
   `write` and two `destructive` tools, 172 tools in all; none takes `space`,
   each takes `source_space`). `copy_saved_objects_to_spaces` copies objects

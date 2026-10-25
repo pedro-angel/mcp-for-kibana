@@ -1110,19 +1110,19 @@ def test_delete_detection_rule_exactly_one_guard_live(gateway):
         gateway.delete_detection_rule(None, None)
 
 
-def _sec_tool_server():
+def _sec_tool_server(export_dir=None):
     # Registers ALL tiers (register() bypasses build_server's tier gating), so the
     # delete_* destructive tools are reachable for self-cleanup.
     server = FastMCP("contract-sec")
-    SecurityDetectionsToolbox().register(
-        server,
-        ToolboxDeps(
-            gateway_factory=lambda space=None: KibanaPyGateway.connect(
-                os.environ["KIBANA_URL"], os.environ["KIBANA_TEST_API_KEY"], space
-            ),
-            public_kibana_url="http://kb:5601",
+    deps = ToolboxDeps(
+        gateway_factory=lambda space=None: KibanaPyGateway.connect(
+            os.environ["KIBANA_URL"], os.environ["KIBANA_TEST_API_KEY"], space
         ),
+        public_kibana_url="http://kb:5601",
     )
+    if export_dir is not None:
+        deps = ToolboxDeps(deps.gateway_factory, deps.public_kibana_url, export_dir)
+    SecurityDetectionsToolbox().register(server, deps)
     return server
 
 
@@ -3173,3 +3173,227 @@ async def test_share_and_unshare_saved_objects_live(gateway):
     assert "Kibana deletes an object left in no space" in str(last.value)
     assert set(kept["namespaces"]) == {"default", other}
     assert deleted["objects"][0]["deleted"] is True and deleted["objects"][0]["spaces"] == []
+
+
+# --- exception-list edit, copy, export and import (D50) ---
+
+_ENTRY = [{"field": "host.name", "value": "trusted", "operator": "included"}]
+
+
+def _item_ids(gateway, list_id, namespace_type="single"):
+    return sorted(i.item_id for i in gateway.find_exception_items(list_id, namespace_type))
+
+
+def _drop_list(raw, list_id, namespace_type="single"):
+    with contextlib.suppress(kibana.exceptions.NotFoundError):
+        raw.exception_lists.delete(list_id=list_id, namespace_type=namespace_type)
+
+
+def test_exception_list_import_premises_live(gateway):
+    # Why import_exception_list rewrites the export and checks the target first
+    # (D50): Kibana's as_new_list keeps the source item_ids, and a plain import
+    # onto an existing list_id skips the list but still adds the items to it.
+    tag = uuid.uuid4().hex[:8]
+    src, other = f"mcp-for-kibana-ct-prem-{tag}", f"mcp-for-kibana-ct-prem2-{tag}"
+    with _raw_kibana() as raw:
+        made: list[str] = [src, other]
+        try:
+            for list_id in (src, other):
+                raw.exception_lists.create(
+                    list_id=list_id, name=list_id, description="ct", type="detection",
+                    os_types=["linux"])
+            raw.exception_lists.create_item(
+                list_id=src, item_id=f"{src}-i", name="i", description="ct", type="simple",
+                entries=[{"field": "host.name", "operator": "included", "type": "match",
+                          "value": "x"}])
+            stored = raw.exception_lists.get(list_id=src).body
+            body = raw.exception_lists.export(
+                id=stored["id"], list_id=src, namespace_type="single").body
+            before = {x["list_id"] for x in raw.exception_lists.find(per_page=100).body["data"]}
+            result = raw.exception_lists.import_lists(file=body, as_new_list=True).body
+            assert result["success"] is True
+            after = raw.exception_lists.find(per_page=100).body["data"]
+            [copy] = [x for x in after if x["list_id"] not in before]
+            made.append(copy["list_id"])
+            assert copy["os_types"] == []  # the import does not carry os_types
+            copied = raw.exception_lists.find_items(list_id=copy["list_id"]).body["data"]
+            assert [i["item_id"] for i in copied] == [f"{src}-i"]  # the SAME item_id
+            # a plain import onto an existing list_id: the list is skipped (409)...
+            onto = [{**line, "list_id": other} for line in body[:-1]]
+            onto[1]["item_id"] = f"{other}-fresh"
+            plain = raw.exception_lists.import_lists(file=onto).body
+            assert plain["success_count_exception_lists"] == 0
+            assert plain["errors"][0]["error"]["status_code"] == 409
+            # ...and its items land in that other list anyway
+            assert [i["item_id"] for i in raw.exception_lists.find_items(
+                list_id=other).body["data"]] == [f"{other}-fresh"]
+            # the update PUT ignores os_types and 409s a stale _version
+            put = raw.exception_lists.update(
+                list_id=other, name="n", description="d", type="detection",
+                os_types=["windows"]).body
+            assert put["os_types"] == ["linux"]
+            with pytest.raises(kibana.exceptions.ConflictError):
+                raw.exception_lists.update(
+                    list_id=other, name="n2", description="d", type="detection",
+                    _version=stored["_version"])
+        finally:
+            for list_id in made:
+                _drop_list(raw, list_id)
+
+
+async def test_exception_list_edit_copy_export_import_overwrite_tools_live(gateway, tmp_path):
+    tag = uuid.uuid4().hex[:8]
+    list_id = f"mcp-for-kibana-ct-exc6-{tag}"
+    made = [list_id]
+    with _raw_kibana() as raw:
+        try:
+            async with Client(_sec_tool_server(tmp_path)) as client:
+                await client.call_tool("create_exception_list", {
+                    "name": "ct b6", "description": "before", "list_id": list_id,
+                    "tags": ["t1"]})
+                for n in ("a", "b"):
+                    await client.call_tool("create_exception_item", {
+                        "list_id": list_id, "name": n, "description": "ct",
+                        "entries": _ENTRY, "item_id": f"{list_id}-{n}"})
+                raw.exception_lists.create_item(  # an expired item (only raw sets expire_time)
+                    list_id=list_id, item_id=f"{list_id}-old", name="old", description="ct",
+                    type="simple", expire_time="2026-01-01T00:00:00.000Z",
+                    entries=[{"field": "host.name", "operator": "included", "type": "match",
+                              "value": "old"}])
+                source_items = sorted([f"{list_id}-a", f"{list_id}-b", f"{list_id}-old"])
+
+                # update: only the given field, previous returned, tags kept, then cleared
+                upd = (await client.call_tool("update_exception_list", {
+                    "list_id": list_id, "name": "ct b6 renamed"})).data
+                assert upd["name"] == "ct b6 renamed" and upd["tags"] == ["t1"]
+                assert upd["description"] == "before"
+                assert upd["previous"] == {"name": "ct b6", "description": "before",
+                                           "tags": ["t1"]}
+                cleared = (await client.call_tool("update_exception_list", {
+                    "list_id": list_id, "tags": []})).data
+                assert cleared["tags"] == [] and cleared["name"] == "ct b6 renamed"
+                with pytest.raises(ToolError, match="namespace_type='agnostic'"):
+                    await client.call_tool("update_exception_list", {
+                        "list_id": f"{list_id}-nope", "name": "x"})
+
+                # duplicate: a new list, new item ids, expired left out on request
+                dup = (await client.call_tool("duplicate_exception_list", {
+                    "list_id": list_id, "include_expired_exceptions": False})).data
+                made.append(dup["list_id"])
+                assert dup["name"] == "ct b6 renamed [Duplicate]"
+                assert dup["source_list_id"] == list_id and dup["list_id"] != list_id
+                dup_items = _item_ids(gateway, dup["list_id"])
+                assert len(dup_items) == 2 and not set(dup_items) & set(source_items)
+
+                # export: a handle and a summary, no content
+                exp = (await client.call_tool("export_exception_list", {"list_id": list_id})).data
+                assert exp["handle"].startswith("el-") and exp["item_count"] == 3
+                assert "trusted" not in str(exp)
+                assert (tmp_path / f"{exp['handle']}.ndjson").stat().st_size == exp["byte_size"]
+
+                # import: a NEW list with fresh item ids; the source untouched
+                imp = (await client.call_tool("import_exception_list", {
+                    "handle": exp["handle"]})).data
+                made.append(imp["list_id"])
+                assert imp["success"] is True and imp["errors"] == []
+                assert imp["imported_item_count"] == 3 and imp["source_list_id"] == list_id
+                new_items = _item_ids(gateway, imp["list_id"])
+                assert len(new_items) == 3 and not set(new_items) & set(source_items)
+                assert gateway.get_exception_list(None, imp["list_id"]).id == imp["id"]
+                assert _item_ids(gateway, list_id) == source_items
+                # an existing list_id is refused before anything is sent
+                with pytest.raises(ToolError, match="already exists"):
+                    await client.call_tool("import_exception_list", {
+                        "handle": exp["handle"], "list_id": dup["list_id"]})
+                assert len(_item_ids(gateway, dup["list_id"])) == 2
+
+                # overwrite: an added item is deleted and reported, the name restored
+                src_id = gateway.get_exception_list(None, list_id).id
+                await client.call_tool("create_exception_item", {
+                    "list_id": list_id, "name": "later", "description": "ct",
+                    "entries": _ENTRY, "item_id": f"{list_id}-later"})
+                await client.call_tool("update_exception_list", {
+                    "list_id": list_id, "name": "edited after export"})
+                ovw = (await client.call_tool("overwrite_exception_list", {
+                    "handle": exp["handle"]})).data
+                assert ovw["success"] is True and ovw["errors"] == []
+                assert ovw["removed_item_ids"] == [f"{list_id}-later"]
+                assert ovw["id"] == ovw["previous_id"] == src_id  # replaced in place
+                assert _item_ids(gateway, list_id) == source_items
+                assert gateway.get_exception_list(None, list_id).name == "ct b6 renamed"
+
+                # a deleted list is recreated, under a new id
+                await client.call_tool("delete_exception_list", {"list_id": list_id})
+                again = (await client.call_tool("overwrite_exception_list", {
+                    "handle": exp["handle"]})).data
+                assert again["previous_id"] is None and again["id"] != src_id
+                assert _item_ids(gateway, list_id) == source_items
+        finally:
+            for made_id in made:
+                _drop_list(raw, made_id)
+
+
+async def test_exception_list_import_into_another_space_tool_live(gateway, tmp_path):
+    list_id = f"mcp-for-kibana-ct-exc6s-{uuid.uuid4().hex[:8]}"
+    with _temp_space(gateway) as space_id, _raw_kibana() as raw:
+        try:
+            async with Client(_sec_tool_server(tmp_path)) as client:
+                await client.call_tool("create_exception_list", {
+                    "name": "ct b6 space", "description": "d", "list_id": list_id})
+                exp = (await client.call_tool("export_exception_list", {"list_id": list_id})).data
+                imp = (await client.call_tool("import_exception_list", {
+                    "handle": exp["handle"], "list_id": list_id, "space": space_id})).data
+                assert imp["space"] == space_id and imp["list_id"] == list_id
+                with KibanaPyGateway.connect(
+                        os.environ["KIBANA_URL"], os.environ["KIBANA_TEST_API_KEY"],
+                        space_id) as scoped:
+                    assert scoped.get_exception_list(None, list_id).id == imp["id"]
+                assert gateway.get_exception_list(None, list_id).id != imp["id"]
+                with pytest.raises(ToolError, match="not found"):
+                    await client.call_tool("import_exception_list", {
+                        "handle": exp["handle"], "space": f"{space_id}-missing"})
+        finally:
+            _drop_list(raw, list_id)
+
+
+async def test_exception_list_endpoint_and_agnostic_tools_live(gateway, tmp_path):
+    tag = uuid.uuid4().hex[:8]
+    ep, ag = f"mcp-for-kibana-ct-ep-{tag}", f"mcp-for-kibana-ct-ag-{tag}"
+    made = [(ep, "single"), (ag, "agnostic")]
+    with _raw_kibana() as raw:
+        try:
+            async with Client(_sec_tool_server(tmp_path)) as client:
+                await client.call_tool("create_exception_list", {
+                    "name": "ct ep", "description": "d", "list_id": ep, "type": "endpoint"})
+                with pytest.raises(ToolError, match="export_exception_list then import"):
+                    await client.call_tool("duplicate_exception_list", {"list_id": ep})
+                # the adapter's own 405 mapping, behind the toolbox's refusal
+                with pytest.raises(KibanaRejected, match="405"):
+                    gateway.duplicate_exception_list(ep, "single", True)
+                exp = (await client.call_tool("export_exception_list", {"list_id": ep})).data
+                imp = (await client.call_tool("import_exception_list", {
+                    "handle": exp["handle"]})).data
+                made.append((imp["list_id"], "single"))
+                assert imp["success"] is True
+
+                await client.call_tool("create_exception_list", {
+                    "name": "ct ag", "description": "d", "list_id": ag,
+                    "namespace_type": "agnostic"})
+                with pytest.raises(ToolError, match="namespace_type='agnostic'"):
+                    await client.call_tool("get_exception_list", {"list_id": ag})
+                upd = (await client.call_tool("update_exception_list", {
+                    "list_id": ag, "namespace_type": "agnostic", "description": "d2"})).data
+                assert upd["description"] == "d2" and upd["namespace_type"] == "agnostic"
+                exp_ag = (await client.call_tool("export_exception_list", {
+                    "list_id": ag, "namespace_type": "agnostic"})).data
+                assert exp_ag["namespace_type"] == "agnostic"
+                dup = (await client.call_tool("duplicate_exception_list", {
+                    "list_id": ag, "namespace_type": "agnostic"})).data
+                made.append((dup["list_id"], "agnostic"))
+                assert dup["namespace_type"] == "agnostic"
+                items = await client.call_tool("find_exception_items", {
+                    "list_id": dup["list_id"], "namespace_type": "agnostic"})
+                assert items.data == []
+        finally:
+            for made_id, ns in made:
+                _drop_list(raw, made_id, ns)

@@ -42,7 +42,7 @@ make help    # everything else, self-documented
 ## What it does
 
 Lets an LLM work with Kibana through a small, reliable, purpose-built tool
-surface instead of ~610 raw endpoints — 172 tools across 10 composable toolboxes
+surface instead of ~610 raw endpoints — 177 tools across 10 composable toolboxes
 enabled per deployment. The flagship **dashboards** toolbox lets a user describe
 the chart they want, and the server translates a simple declarative spec into
 real Kibana Lens visualizations and dashboards via the modern Dashboards API
@@ -70,7 +70,7 @@ detections, fleet, streams, observability, and platform admin/health.
 
 ## Status
 
-**v0.4.0 + unreleased — 10 toolboxes, 172 tools, live-tested.** Every tool is classified
+**v0.4.0 + unreleased — 10 toolboxes, 177 tools, live-tested.** Every tool is classified
 read / write / destructive and contract-tested against live Kibana 9.4.7 and 9.5.4, and
 the server is packaged as a stdio and container-runnable server. The flagship
 path: an LLM goes from a plain-English request ("average ticket price by carrier,
@@ -88,7 +88,7 @@ payload and cleaned up — three consecutive runs (16s/9s/7s wall). See
 | I want to... | Go to |
 |---|---|
 | Get a first dashboard running in ~10 minutes | [Getting started](user-guide.md) |
-| See what the 172 tools (10 toolboxes) take and return | [Tool reference](tools.md) |
+| See what the 177 tools (10 toolboxes) take and return | [Tool reference](tools.md) |
 | Set every environment variable | [Configuration](configuration.md) |
 | Run it in Docker / over HTTP | [Deployment](deployment.md) |
 | Understand the hexagonal layers and VizSpec→Lens translation | [Architecture](architecture.md) |

@@ -1,14 +1,15 @@
 # security-detections — behavior contract
 
-Status: Draft v1.1 (2026-09-20) — regeneration corpus, reconciled to shipped code
+Status: Draft v1.2 (2026-10-25) — regeneration corpus, reconciled to shipped code
 Surface reference: docs/tools.md#security-detections-toolbox · Enforcement: named per section below
 
 ## Purpose & persona
 
 Lets an LLM read and administer the Kibana Security **detection engine**:
 detection rules, detection alerts (signals), rule tags and prepackaged-rule
-install status, exception lists/items, value lists/items, and investigation
-timelines. GA on a **Basic** license — only creating an ML-type rule needs
+install status, exception lists/items (including editing, duplicating,
+exporting, importing and restoring a list, D50), value lists/items, and
+investigation timelines. GA on a **Basic** license — only creating an ML-type rule needs
 Platinum, and this toolbox never creates one. It is the core of the
 `soc-analyst` persona, which is **withdrawn**: its sibling `security-ai` toolbox
 (assistant + attack-discovery) needs an Enterprise-gated `.gen-ai` connector and is
@@ -17,16 +18,17 @@ contract-tested, and usable standalone.
 
 ## Surface
 
-25 tools: 11 read, 9 write, 5 destructive. Full per-tool table:
+30 tools: 12 read, 12 write, 6 destructive. Full per-tool table:
 docs/tools.md#security-detections-toolbox. Tier visibility is cumulative
 (docs/tools.md#tiers-and-annotations): `write` (default) shows reads + writes,
-`destructive` adds the 5 deletes, `read` shows only the 11 reads.
+`destructive` adds the 5 deletes and `overwrite_exception_list`, `read` shows
+only the 12 reads.
 `create_detection_rule` builds only a KQL/Lucene `query`-type rule; every
 other tool (read/update/replace/enable/disable/delete) is rule-type-agnostic.
 
 ## Behavioral guarantees
 
-**Space targeting.** All 25 tools accept the shared optional `space`
+**Space targeting.** All 30 tools accept the shared optional `space`
 parameter with the shared fail-closed-existence and dict-echo/list-never-
 echoes rules (docs/tools.md#space-targeting). Two toolbox-specific edges:
 `namespace_type="agnostic"` exception lists/items are shared across every
@@ -38,9 +40,11 @@ error.
 
 **Guard before gateway, only where the tool declares its own guard.**
 `delete_detection_rule`, `delete_exception_list`, `delete_exception_item`,
-`update_detection_rule`, and `replace_detection_rule` validate their
-identifier/field arguments and raise before `deps.gateway_factory(space)` is
-ever called — a failing guard never opens a connection or validates `space`.
+`update_detection_rule`, `replace_detection_rule`, `update_exception_list`,
+`duplicate_exception_list` and `export_exception_list` validate their
+identifier/field arguments, and `import_exception_list` and
+`overwrite_exception_list` read and parse their handle, and raise before
+`deps.gateway_factory(space)` is ever called — a failing guard never opens a connection or validates `space`.
 `get_detection_rule`, `get_exception_list`, `enable_detection_rule`, and
 `disable_detection_rule` carry no tool-body guard; the identical check runs
 inside the gateway, after the connection is already open. A rewrite must keep
@@ -68,6 +72,57 @@ though its content can never be replaced here.
 added `"type": "match"` discriminator; entries inside one item are ANDed.
 `create_exception_item` requires at least one entry.
 
+**Exception-list edit, copy, export and import (D50).** Probed on 9.5.4
+(Basic); every behavior below is pinned by a live contract test.
+
+- *Namespaces.* A list made with `namespace_type="agnostic"` answers 404 to
+  a `"single"` read, so `get_exception_list`, `find_exception_items` and every
+  tool below take `namespace_type` (default `"single"`), and the not-found
+  text names the other namespace. `find_exception_lists` lists only
+  `"single"` lists (roadmap).
+- *`update_exception_list`* reads the list, then PUTs the stored name,
+  description and type (the PUT 400s without them) with the caller's fields
+  on top and the read's `_version`: a change made between the two is a 409
+  that writes nothing, and the error says to call again. Omitted tags are
+  kept, `tags=[]` clears them. The type is never changed and os_types are
+  never sent (the PUT ignores them: `["windows"]` left `["linux"]`). The
+  result carries `previous` (name, description, tags) — passing it back
+  undoes the edit.
+- *`duplicate_exception_list`* is Kibana's duplicate route: a new list named
+  `"<name> [Duplicate]"` with a generated `list_id` and new item ids, in the
+  same space; `include_expired_exceptions=False` leaves expired items out.
+  Kibana answers 405 "action not allowed" for an endpoint list, so the tool
+  reads the list first and refuses any `endpoint*` type, naming export +
+  import as the way to copy it (the adapter maps a 405 the same way).
+- *`export_exception_list`* (read tier, like `export_saved_objects`) reads
+  the list to get both ids (Kibana's export needs both and answers an
+  unknown pair with a 400), keeps the NDJSON on the server under an `el-`
+  handle and returns only a summary (ids, name, namespace, item count, byte
+  size). `el-` and `so-` handles share the export directory with a
+  retention of 20 each; each import reads only its own kind, and a handle of
+  the other kind is refused naming the tools that take it.
+- *`import_exception_list`* (write) never uses Kibana's `as_new_list`: that
+  mode keeps the source `item_id`s (two lists then hold items with the same
+  `item_id`) and does not report the new `list_id`. The tool rewrites the
+  export instead — the caller's `list_id` or a fresh uuid on the list and
+  every item, a fresh `item_id` per item, `id`/`_version`/`tie_breaker_id`
+  dropped — and sends a plain import. A plain import onto an existing
+  `list_id` skips the list (409) but still adds the items to that list, so
+  the tool refuses an existing `list_id` before sending anything. It may
+  import into another space than the export's. Kibana's import does not
+  carry `os_types`.
+- *`overwrite_exception_list`* (destructive) imports the export with
+  `overwrite=true`: the stored list with that `list_id` keeps its `id` and
+  takes the export's name, description and tags, and its items are replaced
+  by the export's (new item `id`s, same `item_id`s) — items added since the
+  export are deleted. The tool lists their `item_id`s first and returns them
+  as `removed_item_ids`. A list that no longer exists is recreated with a
+  new `id` (`previous_id: null`), so rules that referenced the old `id` are
+  not reattached.
+- *Errors.* Per-object import failures come in a 200; they are returned as
+  `"list_id[/item_id]: <status> <kind>"`, never Kibana's message (a 400's
+  echoes the values it refused). A rejected import names a fresh export.
+
 **Value-list item identity.** `create_value_list_item`/`find_value_list_items`
 take a `list_id` argument that routes to the parent value list's own `id`
 field — `ValueList`, unlike `ExceptionList`, has no separate `list_id`
@@ -88,7 +143,7 @@ wording, not incidental phrasing.
 
 ## Invariants
 
-- Exactly 25 tools: 11 read, 9 write, 5 destructive (docs/tools.md#security-detections-toolbox).
+- Exactly 30 tools: 12 read, 12 write, 6 destructive (docs/tools.md#security-detections-toolbox).
 - `create_detection_rule` only produces a `query`-type rule; a new rule's
   `enabled` always starts `false` — there is no way to create one pre-enabled.
 - Every tool takes optional `space: str` matching `^[a-z0-9_-]+$`, no max
@@ -104,7 +159,14 @@ wording, not incidental phrasing.
   `force=True` deletes it without touching the referencing exception item.
 - `namespace_type="agnostic"` exception objects are visible/deletable from
   every space; `space` chooses routing only, never isolation, for them.
-- All 25 tools set `openWorldHint=false` and tier-correct
+- `import_exception_list` never writes into an existing list: it refuses an
+  existing `list_id` and every imported item gets a new `item_id`.
+- `update_exception_list` writes nothing when the list changed after its
+  read (409 on the read's `_version`), and never changes the type or
+  os_types.
+- `export_exception_list` returns a handle and a summary, never the list's
+  content; `el-` handles are read only by the exception-list imports.
+- All 30 tools set `openWorldHint=false` and tier-correct
   `readOnlyHint`/`destructiveHint`/`idempotentHint`.
 
 ## Deliberate exclusions & caveats
@@ -130,6 +192,12 @@ wording, not incidental phrasing.
   requires at least one — both together is accepted. `get_detection_rule` is
   the true exactly-one case: both together is rejected. A rewrite must match
   each tool's actual accept/reject behavior, not the looser docstring.
+- **Exception-list limits (D50).** `os_types` cannot be edited (the PUT
+  ignores them) and are not carried by an import; `find_exception_lists`
+  lists only `"single"` lists; the import's existence check and the import
+  are two calls (a list created between them under the same `list_id`
+  would receive the items); the overwrite's `removed_item_ids` is read
+  before the import, not reported by Kibana.
 - **`search_detection_alerts`'s `size` carries no schema-level bound** (no
   `ge`/`le`, unlike every other numeric parameter here) — any `int` passes
   through as a page-size cap.
@@ -137,7 +205,10 @@ wording, not incidental phrasing.
 ## Enforcement
 
 - **Unit** — `tests/unit/toolboxes/test_security_detections.py`: exact
-  25-tool set and tier annotations; exception-entry match-type mapping;
+  30-tool set and tier annotations; exception-entry match-type mapping;
+  the exception-list edit/copy/export/import tools (fields, guards, the
+  endpoint refusal, the existing-list_id refusal, removed items, the
+  content-free import error);
   every identifier/field guard; value-list-item type inheritance; space
   threading/echo pair; guard-before-gateway ordering.
 - **Unit, adapter-level** —
@@ -148,7 +219,7 @@ wording, not incidental phrasing.
   tests deliberately fetch an `immutable=true` rule to prove they don't
   refuse it).
 - **Unit, cross-cutting** — `tests/unit/toolboxes/test_space_threading.py`,
-  the 25 `security-detections` rows of the shared 86-tool table: threading,
+  the 30 `security-detections` rows of the shared 91-tool table: threading,
   schema shape, dict-vs-list echo, not-found-as-guidance, and auth-passthrough
   shared with the other four space-aware toolboxes.
 - **Contract, live Kibana** — `tests/contract/test_gateway_contract.py`:
@@ -158,7 +229,14 @@ wording, not incidental phrasing.
   semantics (409 without, deletes with); value-list-item CRUD; per-space
   backing-index auto-creation on first write; uninitialized-space alerts
   search returning empty; scoped-space rule isolation with suffixed
-  not-found.
+  not-found; the D50 premises (as_new_list keeps item ids, a plain import
+  onto an existing list adds its items, the PUT ignores os_types and 409s a
+  stale `_version`) and the edit/duplicate/export/import/overwrite tools
+  end to end, including a cross-space import, an endpoint list and an
+  agnostic list.
+- **Unit, core** — `tests/unit/test_exception_lists_core.py` (export
+  parsing, the new-copy rewrite, error text) and the handle kinds in
+  `tests/unit/test_saved_objects_core.py`.
 - No e2e-replay transcript and no ephemeral destructive-tier harness cover
   this toolbox; every destructive tool's only live proof is the contract
   tests' own create/delete roundtrips and teardown calls.

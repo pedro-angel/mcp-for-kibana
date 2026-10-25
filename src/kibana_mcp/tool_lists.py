@@ -108,6 +108,13 @@ DEPENDENCIES: Mapping[str, tuple[str, ...]] = MappingProxyType({
     "share_saved_objects_to_spaces": ("find_saved_objects", "list_spaces"),
     "overwrite_saved_objects_in_spaces": ("find_saved_objects", "list_spaces"),
     "unshare_saved_objects_from_spaces": ("find_saved_objects", "list_spaces"),
+    # security-detections (exception-list edit, copy, export and import, D50:
+    # a not-found names find_exception_lists; a handle comes from the export)
+    "update_exception_list": ("find_exception_lists",),
+    "duplicate_exception_list": ("find_exception_lists",),
+    "export_exception_list": ("find_exception_lists",),
+    "import_exception_list": ("export_exception_list",),
+    "overwrite_exception_list": ("export_exception_list",),
     "create_package_policy": ("get_package",),
     "update_package_policy": ("get_package",),
     "upgrade_agent": ("list_agent_versions",),

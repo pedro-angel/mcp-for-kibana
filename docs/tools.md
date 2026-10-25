@@ -9,7 +9,7 @@ via [`KIBANA_MCP_TOOLS`](configuration.md#tool-selection): **dashboards**,
 **[observability](#observability-toolbox)**,
 **[security-detections](#security-detections-toolbox)**,
 **[platform-admin](#platform-admin-toolbox)**,
-**[streams](#streams-toolbox)**, and **[fleet](#fleet-toolbox)** — 172 tools in
+**[streams](#streams-toolbox)**, and **[fleet](#fleet-toolbox)** — 177 tools in
 all. This reference details every toolbox in full. A drift-guard test
 (`tests/unit/test_docs_tool_reference.py`) asserts that every registered tool
 name appears on this page, so it cannot silently fall behind the code.
@@ -452,9 +452,9 @@ This is a deliberate fail-closed guard — see
 
 ## Space targeting
 
-Every one of the 86 tools in the **dashboards**, **data-management**,
+Every one of the 91 tools in the **dashboards**, **data-management**,
 **alerting**, **cases**, and **security-detections** toolboxes — including
-the 16 destructive-tier ones — accepts an optional `space` parameter that
+the 17 destructive-tier ones — accepts an optional `space` parameter that
 targets a Kibana space by id:
 
 ```
@@ -1174,19 +1174,22 @@ Returns:
 
 ## security-detections toolbox
 
-25 tools across three tiers (`src/kibana_mcp/toolboxes/security_detections/toolbox.py`),
+30 tools across three tiers (`src/kibana_mcp/toolboxes/security_detections/toolbox.py`),
 tagged `{"security-detections", <tier>}`. Enable with
 `KIBANA_MCP_TOOLBOXES=security-detections`. Read/write access to the Kibana
 Security **detection engine** and its supporting objects — all GA and available
 on a **Basic** license (the SIEM detection engine ships in the free tier; only
 ML-type *rules* need Platinum, and only to create them).
 
-!!! note "scope — full rule lifecycle (incl. enable/disable) + value-list items"
-    Reads never mutate. The **write** tier creates detection rules (query-type) +
-    exception lists/items, partial- and full-replace-updates a rule's fields
+!!! note "scope — full rule lifecycle (incl. enable/disable), exception-list copies + value-list items"
+    Reads never mutate (`export_exception_list` writes only a server-side file).
+    The **write** tier creates detection rules (query-type) + exception
+    lists/items, edits, duplicates and imports exception lists (D50),
+    partial- and full-replace-updates a rule's fields
     (including `enabled`, via `enable_detection_rule` / `disable_detection_rule`),
     and creates value lists + their items; the **destructive** tier deletes
-    rules/exceptions/value lists and value-list items. Enable/disable looked
+    rules/exceptions/value lists and value-list items and restores an
+    exception list in place (`overwrite_exception_list`). Enable/disable looked
     privilege-gated on the deployment key at first pass (403/500 on
     `bulk_action_rules`/`patch_rule`), but `update_rule` (full-replace) works —
     `replace_detection_rule` and enable/disable all ride that read-modify-write
@@ -1202,14 +1205,18 @@ ML-type *rules* need Platinum, and only to create them).
 | `list_detection_rule_tags` | read | The distinct tags used across detection rules. |
 | `search_detection_alerts` | read | The most recent detection alerts (id, rule_name, severity, status, timestamp); `size` caps the count. |
 | `find_exception_lists` | read | List exception-list containers. |
-| `get_exception_list` | read | Get one exception-list container by `id` or `list_id`. |
-| `find_exception_items` | read | List the exception items within an exception list (by `list_id`). |
+| `get_exception_list` | read | Get one exception-list container by `id` or `list_id` (`namespace_type="agnostic"` for an agnostic list). |
+| `find_exception_items` | read | List the exception items within an exception list (by `list_id`; `namespace_type` as above). |
+| `export_exception_list` | read | Export one exception list and its items to a server-side NDJSON file; returns an `el-` `handle` + a summary, never the content. |
 | `find_value_lists` | read | List value lists (shared value sets referenced by rule exceptions). |
 | `find_value_list_items` | read | List the items of a value list, by the list's `id` (passed as `list_id`). |
 | `find_timelines` | read | List investigation timelines. |
 | `create_detection_rule` | write | Create a custom KQL/Lucene `query` rule (`enabled` defaults false — a new rule starts inactive). Returns the created rule. |
 | `create_exception_list` | write | Create an exception-list container. |
 | `create_exception_item` | write | Add an exception item (field==/!=value `entries`) to a list. |
+| `update_exception_list` | write | Edit a list's name, description or tags by `id` / `list_id` (only the fields passed; `tags=[]` clears). Writes nothing if the list changed after its read. Returns `previous`. |
+| `duplicate_exception_list` | write | Copy a list and its items into a new list `"<name> [Duplicate]"` (new `list_id`, new item ids) in the same space. Refuses endpoint lists (Kibana 405s them). |
+| `import_exception_list` | write | Create a **new** list from an `export_exception_list` handle (in any space): a chosen or generated `list_id`, new item ids. Refuses an existing `list_id`. |
 | `update_detection_rule` | write | Partial-update a rule's non-`enabled` fields (name/description/tags/severity/risk_score/query/interval) by `rule_id` / `id`. Does not toggle `enabled`. |
 | `replace_detection_rule` | write | Full-replace (PUT) a rule by `rule_id` / `id` — read-modify-write, so it can reach fields `update_detection_rule` can't (e.g. `index`, `language`). Refuses an Elastic-prebuilt (immutable) rule. |
 | `enable_detection_rule` | write | Enable a rule's schedule by `rule_id` / `id`. |
@@ -1221,9 +1228,33 @@ ML-type *rules* need Platinum, and only to create them).
 | `delete_exception_item` | destructive | Delete an exception item by `id` / `item_id`. |
 | `delete_value_list` | destructive | Delete a value list (+ its items) by `id`. Refuses a referenced list unless `force=True`. |
 | `delete_value_list_item` | destructive | Delete a single value-list item by `item_id` (the parent list and its other items are untouched). |
+| `overwrite_exception_list` | destructive | Restore a list **in place** from an `export_exception_list` handle: its fields reverted, its items **replaced** by the export's (items added since are deleted and listed in `removed_item_ids`). A deleted list is recreated under a new `id`. Cannot be undone. |
 
-A tier includes everything below it: `write` (the default) shows the 11 reads +
-9 writes; `destructive` adds the 5 deletes; `read` shows only the 11 reads.
+A tier includes everything below it: `write` (the default) shows the 12 reads +
+12 writes; `destructive` adds the 5 deletes and `overwrite_exception_list`;
+`read` shows only the 12 reads.
+
+Exception-list edit, copy, export and import (D50), probed on 9.5.4:
+
+- **Namespaces.** A list made with `namespace_type="agnostic"` is found only
+  with `namespace_type="agnostic"` (a `"single"` read answers 404), so the
+  reads and every tool below take it; `find_exception_lists` lists only
+  `"single"` lists.
+- **`update_exception_list`** sends the read's `_version`: a change made
+  between its read and its write is a 409 that writes nothing (the error
+  says to call again). It never changes the list's type and never sends
+  `os_types` (Kibana's update ignores them).
+- **New copies, never merged.** `import_exception_list` rewrites the export
+  with a fresh `item_id` per item rather than using Kibana's `as_new_list`,
+  which keeps the source `item_id`s (two lists then share them) and does not
+  report the new `list_id`; and it refuses an existing `list_id`, because a
+  plain import onto one skips the list but still adds the items to it.
+  Kibana's import does not carry `os_types`.
+- **Handles.** `el-` handles share the server-side export directory with the
+  saved-objects `so-` handles (20 kept per kind); each import takes only its
+  own kind and names the right tools for the other.
+- **Import errors** come per object as `"list_id[/item_id]: <status> <kind>"`
+  (e.g. `"a/i: 409 already exists"`), never Kibana's message.
 
 Returns:
 
@@ -1239,8 +1270,34 @@ Returns:
  "timelines_not_updated": 0}
 
 // find_exception_lists -> list
-[{"id": "33c0...ae32", "list_id": "endpoint_list", "name": "Endpoint Security",
-  "type": "endpoint", "namespace_type": "agnostic", "tags": [], "os_types": []}]
+[{"id": "33c0...ae32", "list_id": "trusted-hosts", "name": "Trusted hosts",
+  "type": "detection", "namespace_type": "single", "tags": [], "os_types": [],
+  "description": "Hosts we trust"}]
+
+// update_exception_list
+{"id": "ba67...a1ec", "list_id": "trusted-hosts", "name": "Trusted hosts v2",
+ "type": "detection", "namespace_type": "single", "tags": ["prod"], "os_types": [],
+ "description": "Hosts we trust",
+ "previous": {"name": "Trusted hosts", "description": "Hosts we trust", "tags": ["prod"]}}
+
+// duplicate_exception_list
+{"id": "a4e7...b177", "list_id": "66fd...f7f6", "name": "Trusted hosts [Duplicate]",
+ "type": "detection", "namespace_type": "single", "tags": ["prod"], "os_types": [],
+ "description": "Hosts we trust", "source_list_id": "trusted-hosts"}
+
+// export_exception_list
+{"handle": "el-3f9c0a1b2d4e", "id": "ba67...a1ec", "list_id": "trusted-hosts",
+ "name": "Trusted hosts", "namespace_type": "single", "item_count": 2, "byte_size": 1663}
+
+// import_exception_list
+{"success": true, "list_id": "7c1d...90ab", "id": "e4ad...d965", "name": "Trusted hosts",
+ "namespace_type": "single", "source_list_id": "trusted-hosts",
+ "imported_item_count": 2, "errors": []}
+
+// overwrite_exception_list
+{"success": true, "list_id": "trusted-hosts", "id": "ba67...a1ec",
+ "previous_id": "ba67...a1ec", "namespace_type": "single", "restored_item_count": 2,
+ "removed_item_ids": ["added-after-export"], "errors": []}
 
 // search_detection_alerts -> list  (kibana.alert.* fields, defensive)
 [{"id": "a1", "rule_name": "Suspicious login", "severity": "high",
@@ -1281,7 +1338,8 @@ Notes:
   an import that Kibana rejects returns a content-free failure (never object bytes).
 - **Not multi-tenant.** Export handles live in one server-side directory shared
   by all callers — a handle is a bearer token for that export, and the 20-file
-  retention cap is global, so concurrent HTTP callers can expire each other's
+  retention cap is global (per handle kind: the exception-list `el-` handles,
+  D50, keep their own 20), so concurrent HTTP callers can expire each other's
   handles.
 
 ## platform-admin toolbox

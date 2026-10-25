@@ -26,6 +26,8 @@ from kibana_mcp.core.models import (
     DetectionRule,
     ExceptionItem,
     ExceptionList,
+    ExceptionListChange,
+    ExceptionListImportResult,
     FleetAgent,
     FleetAgentPolicy,
     FleetAgentStatus,
@@ -346,9 +348,13 @@ class KibanaGateway(Protocol):
 
     def find_exception_lists(self) -> list[ExceptionList]: ...
 
-    def get_exception_list(self, id: str | None, list_id: str | None) -> ExceptionList: ...
+    def get_exception_list(
+        self, id: str | None, list_id: str | None, namespace_type: str = "single"
+    ) -> ExceptionList: ...
 
-    def find_exception_items(self, list_id: str) -> list[ExceptionItem]: ...
+    def find_exception_items(
+        self, list_id: str, namespace_type: str = "single"
+    ) -> list[ExceptionItem]: ...
 
     def find_value_lists(self) -> list[ValueList]: ...
 
@@ -399,6 +405,42 @@ class KibanaGateway(Protocol):
     def delete_exception_item(
         self, id: str | None, item_id: str | None, namespace_type: str
     ) -> None: ...
+
+    # --- exception-list edit, copy, export and import (D50) ---
+
+    def update_exception_list(
+        self, id: str | None, list_id: str | None, namespace_type: str,
+        name: str | None, description: str | None, tags: list[str] | None,
+    ) -> ExceptionListChange:
+        """Read the list, then PUT its stored name/description/type with the
+        given fields on top (None keeps a field, tags=[] clears them) and the
+        read's `_version`, so a change made between the two is a 409, never
+        overwritten. Raises KibanaNotFound for an unknown list and
+        KibanaRejected (nothing written) on that conflict."""
+        ...
+
+    def duplicate_exception_list(
+        self, list_id: str, namespace_type: str, include_expired_exceptions: bool
+    ) -> ExceptionList:
+        """Kibana's duplicate: a new list "<name> [Duplicate]" with a fresh
+        list_id and fresh item_ids. KibanaRejected for an endpoint list (405)."""
+        ...
+
+    def export_exception_list(
+        self, id: str, list_id: str, namespace_type: str, include_expired_exceptions: bool
+    ) -> list[dict[str, Any]]:
+        """The export body (list line, item lines, details line). Kibana needs
+        both ids; an unknown pair is a 400 there, so callers read first."""
+        ...
+
+    def import_exception_list(
+        self, content: bytes, overwrite: bool
+    ) -> ExceptionListImportResult:
+        """A plain import (overwrite=False: an existing list_id is skipped but
+        its items are still added to that list, so callers check first) or an
+        overwrite (the stored list replaced in place and its items replaced by
+        the file's). Per-object failures come back in the result."""
+        ...
 
     def update_detection_rule(
         self, rule_id: str | None, id: str | None, name: str | None, description: str | None,

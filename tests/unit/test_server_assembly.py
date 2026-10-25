@@ -150,16 +150,17 @@ SECURITY_DETECTIONS_READ = {
     "find_detection_rules", "get_detection_rule", "get_prepackaged_rules_status",
     "list_detection_rule_tags", "search_detection_alerts", "find_exception_lists",
     "get_exception_list", "find_exception_items", "find_value_lists",
-    "find_value_list_items", "find_timelines",
+    "find_value_list_items", "find_timelines", "export_exception_list",
 }
 SECURITY_DETECTIONS_WRITE = {
     "create_detection_rule", "create_exception_list", "create_exception_item",
     "update_detection_rule", "replace_detection_rule", "enable_detection_rule",
     "disable_detection_rule", "create_value_list", "create_value_list_item",
+    "update_exception_list", "duplicate_exception_list", "import_exception_list",
 }
 SECURITY_DETECTIONS_DESTRUCTIVE = {
     "delete_detection_rule", "delete_exception_list", "delete_exception_item",
-    "delete_value_list", "delete_value_list_item",
+    "delete_value_list", "delete_value_list_item", "overwrite_exception_list",
 }
 SECURITY_DETECTIONS_TOOLS = (
     SECURITY_DETECTIONS_READ | SECURITY_DETECTIONS_WRITE | SECURITY_DETECTIONS_DESTRUCTIVE

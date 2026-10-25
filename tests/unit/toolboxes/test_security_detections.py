@@ -1,12 +1,15 @@
-"""The security-detections toolbox: 11 read tools + a v2/v4 write/destructive tier
-(create/delete/replace/enable/disable rules, exception lists/items, value lists +
-items) over the detection engine. Driven through the in-memory fastmcp Client
+"""The security-detections toolbox: 12 read tools + a v2/v5 write/destructive tier
+(create/delete/replace/enable/disable rules, exception lists/items and their
+edit/copy/export/import (D50), value lists + items) over the detection engine. Driven through the in-memory fastmcp Client
 against a FakeGateway."""
+
+import re
 
 import pytest
 from fastmcp import Client, FastMCP
 from fastmcp.exceptions import ToolError
 
+from kibana_mcp.core.models import ExceptionItem, ExceptionList
 from kibana_mcp.toolboxes.base import ToolboxDeps
 from kibana_mcp.toolboxes.security_detections.toolbox import SecurityDetectionsToolbox
 from tests.fakes import FakeGateway
@@ -15,13 +18,14 @@ READ_TOOLS = {
     "find_detection_rules", "get_detection_rule", "get_prepackaged_rules_status",
     "list_detection_rule_tags", "search_detection_alerts", "find_exception_lists",
     "get_exception_list", "find_exception_items", "find_value_lists",
-    "find_value_list_items", "find_timelines",
+    "find_value_list_items", "find_timelines", "export_exception_list",
 }
 WRITE_TOOLS = {"create_detection_rule", "create_exception_list", "create_exception_item",
                "update_detection_rule", "replace_detection_rule", "enable_detection_rule",
-               "disable_detection_rule", "create_value_list", "create_value_list_item"}
+               "disable_detection_rule", "create_value_list", "create_value_list_item",
+               "update_exception_list", "duplicate_exception_list", "import_exception_list"}
 DESTRUCTIVE_TOOLS = {"delete_detection_rule", "delete_exception_list", "delete_exception_item",
-                     "delete_value_list", "delete_value_list_item"}
+                     "delete_value_list", "delete_value_list_item", "overwrite_exception_list"}
 
 
 @pytest.fixture()
@@ -30,9 +34,12 @@ def gateway():
 
 
 @pytest.fixture()
-def mcp(gateway):
+def mcp(gateway, tmp_path):
     server = FastMCP("test")
-    deps = ToolboxDeps(gateway_factory=lambda space=None: gateway, public_kibana_url="http://kb:5601")
+    deps = ToolboxDeps(
+        gateway_factory=lambda space=None: gateway, public_kibana_url="http://kb:5601",
+        export_dir=tmp_path,
+    )
     SecurityDetectionsToolbox().register(server, deps)
     return server
 
@@ -356,3 +363,194 @@ async def test_guard_fires_before_factory_even_with_space(gateway):
         with pytest.raises(ToolError):  # no update field -> guard, never the factory
             await client.call_tool("update_detection_rule", {"rule_id": "r", "space": "sales"})
     assert calls == []
+
+
+# --- exception-list edit, copy, export and import (D50) ---
+
+
+def _agnostic(gateway):
+    gateway.exception_lists.append(ExceptionList(
+        id="el-ag", list_id="exc-ag", name="Shared", type="detection",
+        namespace_type="agnostic", tags=("s",), os_types=(), description="shared",
+    ))
+
+
+async def test_update_exception_list_changes_only_given_fields(mcp, gateway):
+    async with Client(mcp) as client:
+        result = await client.call_tool("update_exception_list", {
+            "list_id": "exc-1", "name": "Allowlist v2"})
+    assert result.data["name"] == "Allowlist v2"
+    assert result.data["previous"] == {"name": "Allowlist", "description": "", "tags": []}
+    [stored] = [x for x in gateway.exception_lists if x.list_id == "exc-1"]
+    assert stored.name == "Allowlist v2" and stored.type == "detection"
+
+
+async def test_update_exception_list_empty_tags_clear(mcp, gateway):
+    _agnostic(gateway)
+    async with Client(mcp) as client:
+        result = await client.call_tool("update_exception_list", {
+            "list_id": "exc-ag", "namespace_type": "agnostic", "tags": []})
+    assert result.data["tags"] == []
+    assert result.data["previous"]["tags"] == ["s"]
+
+
+@pytest.mark.parametrize("args,match", [
+    ({"name": "x"}, "exactly one of id or list_id"),
+    ({"id": "el-1", "list_id": "exc-1", "name": "x"}, "exactly one of id or list_id"),
+    ({"list_id": "exc-1"}, "at least one of name, description or tags"),
+])
+async def test_update_exception_list_guards(mcp, args, match):
+    async with Client(mcp) as client:
+        with pytest.raises(ToolError, match=match):
+            await client.call_tool("update_exception_list", args)
+
+
+async def test_update_exception_list_conflict_says_call_again(mcp, gateway):
+    gateway.exception_list_conflict = True
+    async with Client(mcp) as client:
+        with pytest.raises(ToolError, match="call update_exception_list again"):
+            await client.call_tool("update_exception_list", {"list_id": "exc-1", "name": "x"})
+
+
+async def test_update_exception_list_other_namespace_is_not_found(mcp, gateway):
+    _agnostic(gateway)
+    async with Client(mcp) as client:
+        with pytest.raises(ToolError, match="not found"):
+            await client.call_tool("update_exception_list", {"list_id": "exc-ag", "name": "x"})
+
+
+async def test_duplicate_exception_list_returns_the_copy(mcp, gateway):
+    async with Client(mcp) as client:
+        result = await client.call_tool("duplicate_exception_list", {
+            "id": "el-1", "include_expired_exceptions": False})
+    assert result.data["name"] == "Allowlist [Duplicate]"
+    assert result.data["list_id"] != "exc-1"
+    assert result.data["source_list_id"] == "exc-1"
+    assert gateway.last_duplicate_include_expired is False
+    assert len(gateway.exception_items[result.data["list_id"]]) == 1
+
+
+async def test_duplicate_exception_list_refuses_endpoint_before_calling(mcp, gateway):
+    gateway.exception_lists.append(ExceptionList(
+        id="el-ep", list_id="ep", name="EP", type="endpoint", namespace_type="single",
+        tags=(), os_types=()))
+    before = len(gateway.exception_lists)
+    async with Client(mcp) as client:
+        with pytest.raises(ToolError, match="export_exception_list then import_exception_list"):
+            await client.call_tool("duplicate_exception_list", {"list_id": "ep"})
+    assert len(gateway.exception_lists) == before
+
+
+async def test_export_exception_list_returns_a_handle_not_content(mcp, gateway, tmp_path):
+    async with Client(mcp) as client:
+        result = await client.call_tool("export_exception_list", {"list_id": "exc-1"})
+    data = result.data
+    assert re.fullmatch(r"el-[0-9a-f]{12}", data["handle"])
+    assert data["id"] == "el-1" and data["list_id"] == "exc-1" and data["item_count"] == 1
+    assert data["byte_size"] == (tmp_path / f"{data['handle']}.ndjson").stat().st_size
+    assert "entries" not in str(data) and "host.name" not in str(data)
+    assert gateway.last_export_include_expired is True
+
+
+async def test_export_exception_list_requires_one_id(mcp):
+    async with Client(mcp) as client:
+        with pytest.raises(ToolError, match="exactly one of id or list_id"):
+            await client.call_tool("export_exception_list", {})
+
+
+async def _export(client, list_id="exc-1"):
+    return (await client.call_tool("export_exception_list", {"list_id": list_id})).data["handle"]
+
+
+async def test_import_exception_list_creates_a_new_list(mcp, gateway):
+    async with Client(mcp) as client:
+        handle = await _export(client)
+        result = await client.call_tool("import_exception_list", {"handle": handle})
+    data = result.data
+    assert data["success"] is True and data["errors"] == []
+    assert data["list_id"] != "exc-1" and data["source_list_id"] == "exc-1"
+    assert data["id"] and data["imported_item_count"] == 1
+    # the source is untouched; the copy's items carry new item ids
+    assert [i.item_id for i in gateway.exception_items["exc-1"]] == ["item-1"]
+    [copied] = gateway.exception_items[data["list_id"]]
+    assert copied.item_id != "item-1"
+    content, overwrite = gateway.last_exception_import
+    assert overwrite is False and b'"id"' not in content
+
+
+async def test_import_exception_list_takes_a_list_id(mcp, gateway):
+    async with Client(mcp) as client:
+        handle = await _export(client)
+        result = await client.call_tool("import_exception_list", {
+            "handle": handle, "list_id": "restored", "space": "b"})
+    assert result.data["list_id"] == "restored" and result.data["space"] == "b"
+
+
+async def test_import_exception_list_refuses_an_existing_list_id(mcp, gateway):
+    async with Client(mcp) as client:
+        handle = await _export(client)
+        with pytest.raises(ToolError, match="already exists.*overwrite_exception_list"):
+            await client.call_tool("import_exception_list", {
+                "handle": handle, "list_id": "exc-1"})
+    assert gateway.last_exception_import is None  # nothing sent
+
+
+async def test_import_exception_list_rejection_is_content_free(mcp, gateway):
+    gateway.exception_import_rejected = True
+    async with Client(mcp) as client:
+        handle = await _export(client)
+        with pytest.raises(ToolError) as e:
+            await client.call_tool("import_exception_list", {"handle": handle})
+    assert "secret-host" not in str(e.value)
+    assert "export_exception_list" in str(e.value)
+
+
+async def test_import_exception_list_names_the_tools_of_a_saved_objects_handle(mcp, tmp_path):
+    from kibana_mcp.core.saved_objects import write_export
+
+    so = write_export(tmp_path, b"{}")
+    async with Client(mcp) as client:
+        with pytest.raises(ToolError, match="import_saved_objects"):
+            await client.call_tool("import_exception_list", {"handle": so})
+        with pytest.raises(ToolError, match="call export_exception_list again"):
+            await client.call_tool("overwrite_exception_list", {"handle": "el-000000000000"})
+
+
+async def test_overwrite_exception_list_reports_removed_items(mcp, gateway):
+    async with Client(mcp) as client:
+        handle = await _export(client)
+        gateway.exception_items["exc-1"].append(
+            ExceptionItem(id="ei-2", item_id="added-later", name="new", list_id="exc-1"))
+        await client.call_tool("update_exception_list", {"list_id": "exc-1", "name": "edited"})
+        result = await client.call_tool("overwrite_exception_list", {"handle": handle})
+    data = result.data
+    assert data["success"] is True
+    assert data["id"] == "el-1" and data["previous_id"] == "el-1"
+    assert data["removed_item_ids"] == ["added-later"]
+    assert data["restored_item_count"] == 1
+    [stored] = [x for x in gateway.exception_lists if x.list_id == "exc-1"]
+    assert stored.name == "Allowlist"
+    assert [i.item_id for i in gateway.exception_items["exc-1"]] == ["item-1"]
+    assert gateway.last_exception_import[1] is True
+
+
+async def test_overwrite_exception_list_recreates_a_deleted_list(mcp, gateway):
+    async with Client(mcp) as client:
+        handle = await _export(client)
+        gateway.exception_lists = [x for x in gateway.exception_lists if x.list_id != "exc-1"]
+        result = await client.call_tool("overwrite_exception_list", {"handle": handle})
+    assert result.data["previous_id"] is None
+    assert result.data["id"] and result.data["id"] != "el-1"
+    assert result.data["removed_item_ids"] == []
+
+
+async def test_get_and_find_take_namespace_type(mcp, gateway):
+    _agnostic(gateway)
+    gateway.exception_items["exc-ag"] = []
+    async with Client(mcp) as client:
+        got = await client.call_tool("get_exception_list", {
+            "list_id": "exc-ag", "namespace_type": "agnostic"})
+        items = await client.call_tool("find_exception_items", {
+            "list_id": "exc-ag", "namespace_type": "agnostic"})
+    assert got.data["description"] == "shared"
+    assert items.data == []

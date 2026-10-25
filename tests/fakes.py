@@ -1,13 +1,14 @@
 """In-memory KibanaGateway for unit tests."""
 
 import itertools
+import json
 from dataclasses import replace
 
 from kibana_mcp.core.errors import KibanaNotFound, KibanaRejected, KibanaSpaceNotFound
 from kibana_mcp.core.models import (
     AlertingHealth, AlertRule, AlertRuleDetail, RuleType, ApiDeprecation, ApmAgentConfig, ApmAnnotation, ApmEnvironment,
     ApmSourcemap, Case, Connector, ConnectorDetail, CopiedObject, CopyFailure, DashboardDetail, DashboardSummary, DataViewDetail,
-    DataViewSummary, DefaultDataView, DefaultDataViewChange, DetectionAlert, DetectionRule, EmailDefaults, ExceptionItem, ExceptionList,
+    DataViewSummary, DefaultDataView, DefaultDataViewChange, DetectionAlert, DetectionRule, EmailDefaults, ExceptionItem, ExceptionList, ExceptionListChange, ExceptionListImportResult,
     FleetAgent, FleetAgentPolicy, FleetAgentStatus, FleetEnrollmentKey, FleetOutput, FleetOutputHealth,
     FleetPackage, FleetPackageCategory, FleetPackagePolicy, FleetPermissions, FleetServerHost,
     FleetSettings, FleetUninstallToken,
@@ -316,6 +317,12 @@ class FakeGateway:
         self._ids = itertools.count(1)
         self.deleted: list[tuple[str, str | None]] = []  # (kind, identifier) for write-tier asserts
         self.last_exception_entries: list[dict] | None = None
+        # exception-list edit/copy/export/import (D50): test-controlled faults.
+        self.exception_list_conflict = False
+        self.exception_import_rejected = False
+        self.last_exception_import: tuple[bytes, bool] | None = None
+        self.last_duplicate_include_expired: bool | None = None
+        self.last_export_include_expired: bool | None = None
         self.closed = False
 
     def __enter__(self):
@@ -1039,16 +1046,118 @@ class FakeGateway:
     def find_exception_lists(self):
         return list(self.exception_lists)
 
-    def get_exception_list(self, id, list_id):
+    def get_exception_list(self, id, list_id, namespace_type="single"):
         for x in self.exception_lists:
+            if x.namespace_type != namespace_type:
+                continue  # Kibana answers 404 across namespaces (D50, probed)
             if (id and x.id == id) or (list_id and x.list_id == list_id):
                 return x
         raise KibanaNotFound("exception list not found")
 
-    def find_exception_items(self, list_id):
+    def find_exception_items(self, list_id, namespace_type="single"):
         if list_id not in self.exception_items:
             raise KibanaNotFound(f"exception list '{list_id}' not found")
         return list(self.exception_items[list_id])
+
+    # --- exception-list edit, copy, export and import (D50): models the
+    # probed 9.5.4 behaviour (see the port docstrings) ---
+
+    def _replace_exception_list(self, new):
+        self.exception_lists = [
+            new if (x.list_id, x.namespace_type) == (new.list_id, new.namespace_type) else x
+            for x in self.exception_lists
+        ]
+
+    def update_exception_list(self, id, list_id, namespace_type, name, description, tags):
+        old = self.get_exception_list(id, list_id, namespace_type)
+        if self.exception_list_conflict:
+            raise KibanaRejected(
+                f"exception list '{old.list_id}' changed after update_exception_list read it "
+                "(Kibana answered 409, version conflict); nothing was written — call "
+                "update_exception_list again"
+            )
+        new = replace(
+            old,
+            name=name if name is not None else old.name,
+            description=description if description is not None else old.description,
+            tags=tuple(tags) if tags is not None else old.tags,
+        )
+        self._replace_exception_list(new)
+        return ExceptionListChange(list=new, previous=old)
+
+    def duplicate_exception_list(self, list_id, namespace_type, include_expired_exceptions):
+        src = self.get_exception_list(None, list_id, namespace_type)
+        self.last_duplicate_include_expired = include_expired_exceptions
+        n = sum(1 for x in self.exception_lists if x.name.startswith(src.name))
+        copy = replace(
+            src, id=f"dup-el-{n}", list_id=f"dup-list-{n}", name=f"{src.name} [Duplicate]"
+        )
+        self.exception_lists.append(copy)
+        self.exception_items[copy.list_id] = [
+            ExceptionItem(id=f"dup-ei-{i}", item_id=f"dup-item-{n}-{i}", name=it.name,
+                          list_id=copy.list_id)
+            for i, it in enumerate(self.exception_items.get(src.list_id, []))
+        ]
+        return copy
+
+    def export_exception_list(self, id, list_id, namespace_type, include_expired_exceptions):
+        src = self.get_exception_list(id, list_id, namespace_type)
+        if src.id != id or src.list_id != list_id:
+            raise KibanaRejected("Kibana rejected the payload", detail="unknown id/list_id pair")
+        self.last_export_include_expired = include_expired_exceptions
+        items = self.exception_items.get(src.list_id, [])
+        return [
+            {"id": src.id, "list_id": src.list_id, "name": src.name, "type": src.type,
+             "description": src.description, "namespace_type": src.namespace_type,
+             "tags": list(src.tags), "os_types": list(src.os_types), "_version": "v1"},
+            *({"id": it.id, "item_id": it.item_id, "list_id": src.list_id, "name": it.name,
+               "description": "d", "type": "simple", "namespace_type": src.namespace_type,
+               "entries": [{"field": "host.name", "operator": "included", "type": "match",
+                            "value": "h"}]} for it in items),
+            {"exported_exception_list_count": 1,
+             "exported_exception_list_item_count": len(items)},
+        ]
+
+    def import_exception_list(self, content, overwrite):
+        if self.exception_import_rejected:
+            raise KibanaRejected("Kibana rejected the payload", detail='value "secret-host"')
+        self.last_exception_import = (content, overwrite)
+        lines = [json.loads(x) for x in content.decode().splitlines() if x.strip()]
+        containers = [o for o in lines if "list_id" in o and "item_id" not in o
+                      and "exported_exception_list_count" not in o]
+        items = [o for o in lines if "item_id" in o]
+        errors: list[str] = []
+        list_count = 0
+        for c in containers:
+            ns = c.get("namespace_type", "single")
+            exists = any((x.list_id, x.namespace_type) == (c["list_id"], ns)
+                         for x in self.exception_lists)
+            if exists and not overwrite:
+                errors.append(f"{c['list_id']}: 409 already exists")
+                continue  # Kibana skips the list but still imports the items
+            stored = ExceptionList(
+                id=f"imp-el-{len(self.exception_lists)}", list_id=c["list_id"],
+                name=c.get("name", ""), type=c.get("type", "detection"), namespace_type=ns,
+                tags=tuple(c.get("tags") or ()), os_types=(),
+                description=c.get("description", ""),
+            )
+            if exists:
+                old = self.get_exception_list(None, c["list_id"], ns)
+                self._replace_exception_list(replace(stored, id=old.id))
+            else:
+                self.exception_lists.append(stored)
+            list_count += 1
+            if overwrite:
+                self.exception_items[c["list_id"]] = []
+        for i, it in enumerate(items):
+            self.exception_items.setdefault(it["list_id"], []).append(ExceptionItem(
+                id=f"imp-ei-{i}", item_id=it["item_id"], name=it.get("name", ""),
+                list_id=it["list_id"],
+            ))
+        return ExceptionListImportResult(
+            success=not errors, list_count=list_count, item_count=len(items),
+            errors=tuple(errors),
+        )
 
     def find_value_lists(self):
         return list(self.value_lists)

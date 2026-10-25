@@ -144,7 +144,7 @@ this ledger stands without them.
   may get the input elsewhere, e.g. an id the user pastes). Dependencies are
   followed transitively; tools hidden by the tier are not checked; toolbox
   selections are not checked. **Dependency map**: one owner, data —
-  `DEPENDENCIES` in `src/kibana_mcp/tool_lists.py`, 65 edges from 56 tools.
+  `DEPENDENCIES` in `src/kibana_mcp/tool_lists.py`, 70 edges from 61 tools.
   An edge A → B means A takes an input only B shows the model and A's own
   description or error guidance sends the model there: an index or field name
   (`update_panel`/`delete_panel` → `get_dashboard`; every VizSpec tool →
@@ -153,13 +153,15 @@ this ledger stands without them.
   `get_alert_rule`, D40; `update_connector` → `get_connector`, D35;
   `upsert_apm_agent_config` → `get_apm_agent_config`, D47), an export
   handle (`import_saved_objects`/`overwrite_saved_objects` →
-  `export_saved_objects`), or an existing object's id that the not-found
+  `export_saved_objects`; D50, `import_exception_list`/
+  `overwrite_exception_list` → `export_exception_list`), or an existing object's id that the not-found
   guidance says to look up ("call search_dashboards to find it": dashboards,
   visualizations, data views, alert rules, connectors, Synthetics monitors,
   parameters and private locations, APM agent configurations; and, D48, the
   runtime-field and default-data-view writes → `list_data_views`,
   `get_saved_object` → `find_saved_objects`; D49, the four tools that move saved
-  objects between spaces → `find_saved_objects` and `list_spaces`), plus ids and values descriptions name
+  objects between spaces → `find_saved_objects` and `list_spaces`; D50, the
+  exception-list update, duplicate and export → `find_exception_lists`), plus ids and values descriptions name
   (`get_space` → `list_spaces`, `get_synthetic_monitor` →
   `list_synthetic_monitors`, `create_synthetic_monitor` →
   `list_synthetic_private_locations`, `create_synthetic_private_location` →
@@ -855,6 +857,84 @@ this ledger stands without them.
   fix names both ways a key reaches the server, `Authorization: ApiKey
   <key>` and `KIBANA_API_KEY` (as `adapters/mcp/auth.py` does), because in
   HTTP mode the env key is ignored unless `KIBANA_MCP_ALLOW_ENV_KEY_HTTP`.
+- **D50 (2026-10-25, probes on 9.5.4, Basic)** — The security-detections
+  toolbox gains exception-list edit, copy, export and import:
+  `update_exception_list`, `duplicate_exception_list` and
+  `import_exception_list` (`write`), `export_exception_list` (`read`) and
+  `overwrite_exception_list` (`destructive`), over kibana-py's
+  `exception_lists.update`, `duplicate`, `export` and `import_lists`, all
+  Basic and all working live; the plan's names kept. All five take `space`
+  (D10: the toolbox is space-aware), so 91 tools are space-aware;
+  `get_exception_list` and `find_exception_items` gain an optional
+  `namespace_type` (default `"single"`, additive per D7): a list made with
+  `namespace_type="agnostic"` answers 404 to a `"single"` read (probed), so
+  without it no tool could read what the new tools edit. Nothing dropped.
+  **Tiers, by the repo rule (irreversible or data-losing → destructive):**
+  the update changes only name, description and tags and returns the
+  `previous` ones (passing them back undoes it) — `write`; the duplicate and
+  the import only create a list (deleting it undoes them; a repeat makes
+  another) — `write`, not idempotent; the export changes nothing in Kibana
+  and keeps a file on the server like `export_saved_objects` (#37) — `read`;
+  the overwrite replaces the list's fields and **deletes** every item the
+  export does not hold (an item added after the export was gone, probed) —
+  `destructive`, `idempotentHint=true` (a repeat restores the same state).
+  **Observed, and what each shaped:** Kibana's list PUT requires name,
+  description and type (400 without them), keeps omitted tags and clears
+  them on `[]`, accepts a type change (`detection` → `endpoint`, probed; the
+  tool never sends one) and ignores `os_types` (`["windows"]` left
+  `["linux"]`), so the update reads the list, re-sends its stored fields
+  under the caller's and never sends os_types; the PUT honours `_version`
+  (a stale one: 409 `version_conflict_engine_exception`), so the update
+  sends the read's and a change in between writes nothing — the
+  read-then-write race B3 could not close (D47) is closed here. The
+  duplicate route answers 405 "unable to duplicate exception list with
+  list_id: … - action not allowed" for an `endpoint` list, which kibana-py
+  raises as a bare `ApiError` (it would read as an outage), so the tool
+  reads the list and refuses `endpoint*` types first, and the adapter maps a
+  405 to the same fix (export, then import); it copies `rule_default` and
+  agnostic lists, names the copy `"<name> [Duplicate]"`, generates the
+  `list_id` and item ids, and honours `include_expired_exceptions` (an item
+  with a past `expire_time` was left out). The export route needs both `id`
+  and `list_id` (400 with one) and answers an unknown pair with a 400 "does
+  not exist", so the tool reads the list first for both ids and a clean
+  404; its body is the list line, the item lines and a details line, kept
+  under a new `el-` handle kind beside the `so-` one (same 0600 file, 20 kept
+  per kind; each import reads only its kind, because Kibana's exception
+  import 400s a saved object and the reverse would hand the saved-objects
+  import an exception list, and the refusal names the right tools).
+  Kibana's `as_new_list=true` import keeps every source `item_id` (two lists
+  then held items `b6-item`; a GET by `item_id` answered one of them) and
+  does not report the new `list_id`, so the import tool rewrites the export
+  instead — the caller's `list_id` or a fresh uuid on the list and every
+  item, a fresh `item_id` per item, `id`/`_version`/`tie_breaker_id` dropped
+  (the import mints its own, probed with the source still present) — and
+  sends a plain import. A plain import onto an existing `list_id` answers
+  the list with a 409 "already exists … skipped" but **still adds the
+  items to that list** (2 items became 4, probed), so the tool refuses an
+  existing `list_id` before sending anything (the check and the import are
+  two calls; no conditional create exists). An import into a space id that
+  names no space wrote there (the list appeared once the space was created),
+  which D5's connect-time check already refuses. The overwrite import
+  (`overwrite=true`) kept the list's saved-object `id`, reverted its name,
+  description and tags, and replaced its items (new item `id`s, same
+  `item_id`s; an added one deleted); after a delete it recreated the list
+  under a **new** `id` — rules reference a list by `id` too, so the result
+  says `previous_id` (null then) and the description warns. The tool reads
+  the current items first and returns those the export lacks as
+  `removed_item_ids`. Neither import mode carries `os_types` (both copies
+  came back `[]`). Per-object import failures come in a 200; a 400's message
+  echoes the values it refused (`Invalid value "index-pattern" supplied to
+  "type"`), so errors are returned as `"list_id[/item_id]: <status> <kind>"`
+  and a rejected import names a fresh export, never Kibana's text (#37's
+  rule). Dependency map: the update, duplicate and export →
+  `find_exception_lists`, the import and overwrite → `export_exception_list`
+  (5 edges; 70 from 61 tools). Rejected: Kibana's `as_new_list` (above);
+  sending both `overwrite` and `as_new_list` (accepted by Kibana, meaning
+  unclear); editing `os_types` (Kibana ignores it) or the type (it would
+  change which engine reads the list, for no task); listing agnostic lists
+  in `find_exception_lists` in this batch (an existing tool's result would
+  grow; roadmap); wrapping item edits (no task). Contract:
+  [security-detections](toolboxes/security-detections.md).
 
 ## Reliability and models (measured)
 

@@ -28,7 +28,7 @@ from kibana_mcp.core.models import (
     ShortUrl,
     ValueListItem,
 )
-from kibana_mcp.core.saved_objects import to_ndjson, write_export
+from kibana_mcp.core.saved_objects import EXCEPTION_LIST, to_ndjson, write_export
 from kibana_mcp.config import Settings
 from kibana_mcp.server import build_server
 from kibana_mcp.toolboxes import TOOLBOXES
@@ -62,6 +62,7 @@ class Seed:
     value_list_item_id: str
     visualization_id: str
     snooze_schedule_id: str
+    exception_handle: str
 
 
 def _seed(gateway: FakeGateway, export_dir: Path) -> Seed:
@@ -83,6 +84,9 @@ def _seed(gateway: FakeGateway, export_dir: Path) -> Seed:
         "metrics": [{"type": "primary", "operation": "count"}],
     }
     handle = write_export(export_dir, to_ndjson(gateway.export_body))
+    exc = gateway.exception_lists[0]
+    exception_handle = write_export(export_dir, to_ndjson(
+        gateway.export_exception_list(exc.id, exc.list_id, "single", True)), EXCEPTION_LIST)
     su = ShortUrl(
         id="su-seed", slug="seed-slug", locator_id="LEGACY_SHORT_URL_LOCATOR",
         url="/app/dashboards",
@@ -123,7 +127,7 @@ def _seed(gateway: FakeGateway, export_dir: Path) -> Seed:
         short_url_id=su.id, short_url_slug=su.slug,
         rule_id=rule.id, connector_id=conn.id, case_id=case.id,
         value_list_item_id=vli.id, visualization_id="viz-seed",
-        snooze_schedule_id="snooze-seed",
+        snooze_schedule_id="snooze-seed", exception_handle=exception_handle,
     )
 
 
@@ -139,8 +143,8 @@ def _seed(gateway: FakeGateway, export_dir: Path) -> Seed:
 #   delete_short_url, overwrite_saved_objects, find_saved_objects,
 #   get_saved_object, get_default_data_view, upsert_runtime_field,
 #   set_default_data_view, delete_runtime_field (D48)
-# alerting (22), cases (6), security-detections (25): the extension rows
-#   below — 86 space-aware tools in all
+# alerting (22), cases (6), security-detections (30, D50): the extension rows
+#   below — 91 space-aware tools in all
 _TOOLS: list[tuple[str, Callable[[Seed], dict[str, Any]], str]] = [
     ("search_dashboards", lambda s: {}, "list"),
     ("get_dashboard", lambda s: {"dashboard_id": s.dashboard_id}, "dict"),
@@ -307,9 +311,15 @@ _TOOLS: list[tuple[str, Callable[[Seed], dict[str, Any]], str]] = [
     ("delete_exception_item", lambda s: {"item_id": "item-1"}, "dict"),
     ("delete_value_list", lambda s: {"id": "vl-1"}, "dict"),
     ("delete_value_list_item", lambda s: {"item_id": s.value_list_item_id}, "dict"),
+    # exception-list edit, copy, export and import (D50)
+    ("update_exception_list", lambda s: {"list_id": "exc-1", "name": "n"}, "dict"),
+    ("duplicate_exception_list", lambda s: {"list_id": "exc-1"}, "dict"),
+    ("export_exception_list", lambda s: {"list_id": "exc-1"}, "dict"),
+    ("import_exception_list", lambda s: {"handle": s.exception_handle}, "dict"),
+    ("overwrite_exception_list", lambda s: {"handle": s.exception_handle}, "dict"),
 ]
 
-assert len(_TOOLS) == 86
+assert len(_TOOLS) == 91
 
 
 def _make_server(gateway_factory: Any, export_dir: Path, *, with_platform_admin: bool = False) -> FastMCP:
@@ -350,10 +360,10 @@ async def test_space_threads_to_the_factory(tmp_path, name, args_builder, kind, 
     assert calls == [space]
 
 
-# --- Group 2: schema — exactly the 86 tools expose `space`, correctly shaped ---
+# --- Group 2: schema — exactly the 91 tools expose `space`, correctly shaped ---
 
 
-async def test_schema_exactly_86_tools_expose_space(tmp_path):
+async def test_schema_exactly_91_tools_expose_space(tmp_path):
     gateway = FakeGateway()
     server = _make_server(lambda space=None: gateway, tmp_path, with_platform_admin=True)
     async with Client(server) as client:
@@ -372,7 +382,7 @@ async def test_schema_exactly_86_tools_expose_space(tmp_path):
         t.name for t in all_tools
         if "space" in t.inputSchema.get("properties", {})
     } - {name for name, _, _ in _TOOLS}
-    assert not outsiders, f"tools outside the 86 gained a space param: {sorted(outsiders)}"
+    assert not outsiders, f"tools outside the 91 gained a space param: {sorted(outsiders)}"
     for tool in with_space.values():
         prop = tool.inputSchema["properties"]["space"]
         # Annotated[str, Field(pattern=...)] | None renders as an anyOf of

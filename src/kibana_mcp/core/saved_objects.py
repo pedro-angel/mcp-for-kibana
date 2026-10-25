@@ -19,10 +19,27 @@ from typing import Any
 from kibana_mcp.core.errors import KibanaNotFound
 from kibana_mcp.core.models import ExportSummary, TypeCount
 
-# A valid handle is a bare `so-<12 hex>` token — no path metacharacter is
+# A valid handle is a bare `<prefix>-<12 hex>` token — no path metacharacter is
 # representable, so traversal is impossible. `\A..\Z` (not `^..$`) so a trailing
 # newline can never slip through even if a future edit swaps fullmatch for match.
-_HANDLE_RE = re.compile(r"\Aso-[0-9a-f]{12}\Z")
+# Two kinds share the export directory (D50): `so-` saved-objects exports and
+# `el-` exception-list exports. Each import reads only its own kind: the two
+# NDJSON formats are not interchangeable (Kibana's exception-list import 400s
+# a saved object, probed), so a handle of the other kind names its own tools.
+SAVED_OBJECTS = "so"
+EXCEPTION_LIST = "el"
+_HANDLE_KINDS: dict[str, tuple[str, str, str]] = {
+    # prefix: (label, the tools that take it, the tool that makes it)
+    SAVED_OBJECTS: (
+        "saved-objects", "import_saved_objects or overwrite_saved_objects",
+        "export_saved_objects",
+    ),
+    EXCEPTION_LIST: (
+        "exception-list", "import_exception_list or overwrite_exception_list",
+        "export_exception_list",
+    ),
+}
+_HANDLE_RES = {k: re.compile(rf"\A{k}-[0-9a-f]{{12}}\Z") for k in _HANDLE_KINDS}
 # O_NOFOLLOW may be absent on some platforms; 0 is a safe no-op there (Linux/macOS
 # — the dev + CI targets — have it).
 _NOFOLLOW = getattr(os, "O_NOFOLLOW", 0)
@@ -30,8 +47,8 @@ _NOFOLLOW = getattr(os, "O_NOFOLLOW", 0)
 _MAX_RETAINED = 20
 
 
-def new_handle() -> str:
-    return f"so-{secrets.token_hex(6)}"
+def new_handle(prefix: str = SAVED_OBJECTS) -> str:
+    return f"{prefix}-{secrets.token_hex(6)}"
 
 
 def to_ndjson(export_body: list[dict[str, Any]]) -> bytes:
@@ -40,13 +57,20 @@ def to_ndjson(export_body: list[dict[str, Any]]) -> bytes:
     return "\n".join(json.dumps(o, separators=(",", ":")) for o in export_body).encode("utf-8")
 
 
-def resolve_handle_path(export_dir: Path, handle: str) -> Path:
+def resolve_handle_path(export_dir: Path, handle: str, prefix: str = SAVED_OBJECTS) -> Path:
     """THE security boundary. Raise ValueError unless `handle` is a bare
-    `so-<hex>` token whose file resolves to a direct child of `export_dir`.
+    `<prefix>-<hex>` token whose file resolves to a direct child of `export_dir`.
     The regex alone forbids every path character; the resolved-parent check is
     defense-in-depth (and rejects a final-component symlink out of the dir)."""
-    if not _HANDLE_RE.fullmatch(handle):
-        raise ValueError(f"invalid saved-objects export handle: {handle!r}")
+    if not _HANDLE_RES[prefix].fullmatch(handle):
+        label, _, maker = _HANDLE_KINDS[prefix]
+        for other, (other_label, takers, _) in _HANDLE_KINDS.items():
+            if other != prefix and _HANDLE_RES[other].fullmatch(handle):
+                raise ValueError(
+                    f"{handle!r} is a {other_label} export handle: pass it to {takers}; "
+                    f"this tool takes the {label} handle that {maker} returns ({prefix}-…)"
+                )
+        raise ValueError(f"invalid {label} export handle: {handle!r}")
     base = export_dir.resolve()
     path = base / f"{handle}.ndjson"
     if path.resolve().parent != base:
@@ -54,12 +78,12 @@ def resolve_handle_path(export_dir: Path, handle: str) -> Path:
     return path
 
 
-def write_export(export_dir: Path, content: bytes) -> str:
+def write_export(export_dir: Path, content: bytes, prefix: str = SAVED_OBJECTS) -> str:
     """Write `content` under a fresh handle; return the handle. Created with
     O_CREAT|O_EXCL|O_NOFOLLOW at mode 0600 — atomic, refuses a pre-planted
     symlink/file at the (random) name."""
-    handle = new_handle()
-    path = resolve_handle_path(export_dir, handle)
+    handle = new_handle(prefix)
+    path = resolve_handle_path(export_dir, handle, prefix)
     fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY | _NOFOLLOW, 0o600)
     try:
         view = memoryview(content)
@@ -67,20 +91,22 @@ def write_export(export_dir: Path, content: bytes) -> str:
             view = view[os.write(fd, view):]
     finally:
         os.close(fd)
-    _prune(export_dir)
+    _prune(export_dir, prefix)
     return handle
 
 
-def read_export(export_dir: Path, handle: str) -> bytes:
+def read_export(export_dir: Path, handle: str, prefix: str = SAVED_OBJECTS) -> bytes:
     """Read a previously-written export by handle. Confined to `export_dir` and
     opened O_NOFOLLOW (a symlink at the name is refused, TOCTOU-proof). A missing
     file is a clean KibanaNotFound; any other open failure is a ValueError."""
-    path = resolve_handle_path(export_dir, handle)
+    path = resolve_handle_path(export_dir, handle, prefix)
     try:
         fd = os.open(path, os.O_RDONLY | _NOFOLLOW)
     except FileNotFoundError:
+        label, _, maker = _HANDLE_KINDS[prefix]
         raise KibanaNotFound(
-            f"saved-objects export handle '{handle}' not found (it may have expired)"
+            f"{label} export handle '{handle}' not found (it may have expired: the "
+            f"server keeps the last {_MAX_RETAINED}) — call {maker} again for a new one"
         ) from None
     except OSError as e:  # e.g. ELOOP from O_NOFOLLOW on a symlink
         raise ValueError(f"cannot read export handle '{handle}': {e.strerror}") from None
@@ -96,12 +122,15 @@ def read_export(export_dir: Path, handle: str) -> bytes:
         os.close(fd)
 
 
-def _prune(export_dir: Path) -> None:
-    """Keep only the most recent _MAX_RETAINED export files (best-effort) so a
-    read-tier tool can't grow the disk without bound."""
+def _prune(export_dir: Path, prefix: str = SAVED_OBJECTS) -> None:
+    """Keep only the most recent _MAX_RETAINED export files of one kind
+    (best-effort) so a read-tier tool can't grow the disk without bound."""
     try:
         files = sorted(
-            (p for p in export_dir.iterdir() if p.name.startswith("so-") and p.name.endswith(".ndjson")),
+            (
+                p for p in export_dir.iterdir()
+                if p.name.startswith(f"{prefix}-") and p.name.endswith(".ndjson")
+            ),
             key=lambda p: p.stat().st_mtime,
             reverse=True,
         )

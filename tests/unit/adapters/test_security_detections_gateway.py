@@ -639,3 +639,163 @@ def test_disable_sets_enabled_false():
     ))
     gw.disable_detection_rule(id="r1", rule_id="")
     assert captured["enabled"] is False
+
+
+# --- exception-list edit, copy, export and import (D50) ---
+
+_EXC_STORED = {**_EXC, "description": "probe list", "tags": ["t1"], "_version": "WzI0MywxXQ=="}
+
+
+def test_get_exception_list_sends_namespace_and_maps_description():
+    seen = {}
+
+    def get(**kw):
+        seen.update(kw)
+        return FakeResponse(_EXC_STORED)
+
+    el = _gw(exception_lists=SimpleNamespace(get=get)).get_exception_list(
+        None, "probe-exc-xyz", "agnostic")
+    assert seen["namespace_type"] == "agnostic"
+    assert el.description == "probe list"
+
+
+def test_get_exception_list_miss_names_ids_and_namespace():
+    def get(**kw):
+        raise NotFoundError("missing", meta=SimpleNamespace(status=404), body=None)
+
+    with pytest.raises(KibanaNotFound) as e:
+        _gw(exception_lists=SimpleNamespace(get=get)).get_exception_list(None, "nope")
+    assert "list_id 'nope'" in e.value.message
+    assert "find_exception_lists" in e.value.message
+    assert "namespace_type='agnostic'" in e.value.message
+
+
+def test_find_exception_items_sends_namespace():
+    seen = {}
+
+    def find_items(**kw):
+        seen.update(kw)
+        return FakeResponse({"data": [], "total": 0})
+
+    _gw(exception_lists=SimpleNamespace(find_items=find_items)).find_exception_items(
+        "L", "agnostic")
+    assert seen["namespace_type"] == "agnostic"
+
+
+def test_update_exception_list_resends_stored_fields_with_version():
+    sent = {}
+
+    def update(**kw):
+        sent.update(kw)
+        return FakeResponse({**_EXC_STORED, "name": kw["name"], "_version": "new"})
+
+    gw = _gw(exception_lists=SimpleNamespace(
+        get=lambda **kw: FakeResponse(_EXC_STORED), update=update))
+    change = gw.update_exception_list(None, "probe-exc-xyz", "single", "renamed", None, None)
+    # name/description/type are required by the PUT: the stored ones are re-sent
+    assert sent["name"] == "renamed"
+    assert sent["description"] == "probe list"
+    assert sent["type"] == "detection"
+    assert sent["id"] == _EXC["id"]
+    assert sent["_version"] == "WzI0MywxXQ=="  # the read's: a change in between is a 409
+    assert sent["tags"] is None  # omitted: Kibana keeps the stored tags
+    assert "os_types" not in sent  # Kibana ignores them on the PUT (probed)
+    assert change.list.name == "renamed"
+    assert change.previous.name == "probe-exc" and change.previous.tags == ("t1",)
+
+
+def test_update_exception_list_empty_tags_clear():
+    sent = {}
+
+    def update(**kw):
+        sent.update(kw)
+        return FakeResponse({**_EXC_STORED, "tags": []})
+
+    gw = _gw(exception_lists=SimpleNamespace(
+        get=lambda **kw: FakeResponse(_EXC_STORED), update=update))
+    gw.update_exception_list(_EXC["id"], None, "single", None, None, [])
+    assert sent["tags"] == []
+
+
+def test_update_exception_list_version_conflict_names_the_retry():
+    def update(**kw):
+        raise ConflictError("version conflict", meta=SimpleNamespace(status=409), body=None)
+
+    gw = _gw(exception_lists=SimpleNamespace(
+        get=lambda **kw: FakeResponse(_EXC_STORED), update=update))
+    with pytest.raises(KibanaRejected) as e:
+        gw.update_exception_list(None, "probe-exc-xyz", "single", "x", None, None)
+    assert "nothing was written" in e.value.message
+    assert "call update_exception_list again" in e.value.message
+
+
+def test_duplicate_exception_list_maps_405_to_a_fix():
+    from kibana.exceptions import ApiError
+
+    def duplicate(**kw):
+        raise ApiError("action not allowed", meta=SimpleNamespace(status=405), body=None)
+
+    gw = _gw(exception_lists=SimpleNamespace(duplicate=duplicate))
+    with pytest.raises(KibanaRejected, match="export_exception_list then import_exception_list"):
+        gw.duplicate_exception_list("ep", "single", True)
+
+
+def test_duplicate_exception_list_miss_is_not_found():
+    def duplicate(**kw):
+        raise NotFoundError("gone", meta=SimpleNamespace(status=404), body=None)
+
+    with pytest.raises(KibanaNotFound, match="list_id 'x'"):
+        _gw(exception_lists=SimpleNamespace(duplicate=duplicate)).duplicate_exception_list(
+            "x", "single", True)
+
+
+def test_duplicate_exception_list_forwards_args():
+    seen = {}
+
+    def duplicate(**kw):
+        seen.update(kw)
+        return FakeResponse({**_EXC, "list_id": "new", "name": "probe-exc [Duplicate]"})
+
+    copy = _gw(exception_lists=SimpleNamespace(duplicate=duplicate)).duplicate_exception_list(
+        "probe-exc-xyz", "single", False)
+    assert seen == {"list_id": "probe-exc-xyz", "namespace_type": "single",
+                    "include_expired_exceptions": False}
+    assert copy.list_id == "new"
+
+
+@pytest.mark.parametrize("body", [
+    [{"list_id": "a"}, {"exported_exception_list_count": 1}],
+    b'{"list_id":"a"}\n{"exported_exception_list_count":1}\n',
+])
+def test_export_exception_list_returns_lines(body):
+    seen = {}
+
+    def export(**kw):
+        seen.update(kw)
+        return FakeResponse(body)
+
+    lines = _gw(exception_lists=SimpleNamespace(export=export)).export_exception_list(
+        "i", "a", "single", True)
+    assert lines == [{"list_id": "a"}, {"exported_exception_list_count": 1}]
+    assert seen["id"] == "i" and seen["list_id"] == "a"
+
+
+@pytest.mark.parametrize("overwrite,flag", [(False, None), (True, True)])
+def test_import_exception_list_never_sends_as_new_list(overwrite, flag):
+    seen = {}
+
+    def import_lists(**kw):
+        seen.update(kw)
+        return FakeResponse({
+            "errors": [{"error": {"status_code": 409, "message": 'echo "secret"'},
+                        "list_id": "a", "item_id": "i"}],
+            "success": False, "success_count_exception_lists": 0,
+            "success_count_exception_list_items": 2,
+        })
+
+    result = _gw(exception_lists=SimpleNamespace(import_lists=import_lists)).import_exception_list(
+        b"x", overwrite)
+    assert seen["overwrite"] is flag
+    assert "as_new_list" not in seen
+    assert result.success is False and result.list_count == 0 and result.item_count == 2
+    assert result.errors == ("a/i: 409 already exists",)  # never Kibana's message

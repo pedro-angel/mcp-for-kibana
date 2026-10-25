@@ -4,6 +4,7 @@ import kibana (machine-enforced)."""
 import contextlib
 import functools
 import inspect
+import json
 import re
 import urllib.parse
 from collections.abc import Callable, Iterator
@@ -60,6 +61,8 @@ from kibana_mcp.core.models import (
     EmailDefaults,
     ExceptionItem,
     ExceptionList,
+    ExceptionListChange,
+    ExceptionListImportResult,
     FleetAgent,
     FleetAgentPolicy,
     FleetAgentStatus,
@@ -110,6 +113,7 @@ from kibana_mcp.core.models import (
     VisualizationDetail,
     VisualizationSummary,
 )
+from kibana_mcp.core.exception_lists import import_error_text
 from kibana_mcp.core.saved_objects import READABLE_TYPES, unreadable_type_message
 from kibana_mcp.core.space_sharing import (
     ALL_SPACES,
@@ -820,6 +824,32 @@ def _to_exception_list(body: dict[str, Any]) -> ExceptionList:
         namespace_type=body.get("namespace_type", ""),
         tags=tuple(body.get("tags") or []),
         os_types=tuple(body.get("os_types") or []),
+        description=body.get("description") or "",
+    )
+
+
+def _unknown_exception_list(id: str | None, list_id: str | None, namespace_type: str) -> KibanaNotFound:
+    """D17's not-found text for an exception list: where the ids come from,
+    and the namespace a list is found in (a list made with
+    namespace_type='agnostic' answers 404 to a 'single' read, probed)."""
+    which = f"list_id '{list_id}'" if list_id else f"id '{id}'"
+    other = "agnostic" if namespace_type == "single" else "single"
+    return KibanaNotFound(
+        f"exception list {which} not found (namespace_type '{namespace_type}') — `id` and "
+        "`list_id` are the values find_exception_lists or create_exception_list return, "
+        f"not the list's name; a list created with namespace_type='{other}' is found "
+        f"only with namespace_type='{other}'"
+    )
+
+
+def _to_exception_import(body: dict[str, Any]) -> ExceptionListImportResult:
+    return ExceptionListImportResult(
+        success=bool(body.get("success", False)),
+        list_count=int(body.get("success_count_exception_lists", 0) or 0),
+        item_count=int(body.get("success_count_exception_list_items", 0) or 0),
+        errors=tuple(
+            import_error_text(e) for e in (body.get("errors") or []) if isinstance(e, dict)
+        ),
     )
 
 
@@ -2682,25 +2712,40 @@ class KibanaPyGateway:
             page += 1
         return lists
 
-    @_translate_errors
-    def get_exception_list(self, id: str | None, list_id: str | None) -> ExceptionList:
+    def _read_exception_list(
+        self, id: str | None, list_id: str | None, namespace_type: str
+    ) -> dict[str, Any]:
         # exception_lists.get tolerates both; it only raises on neither.
         id = id or None
         list_id = list_id or None
         if id is None and list_id is None:
             raise KibanaRejected("provide an id or list_id to identify the exception list")
-        return _to_exception_list(
-            self._client.exception_lists.get(id=id, list_id=list_id).body
-        )
+        try:
+            body: dict[str, Any] = self._client.exception_lists.get(
+                id=id, list_id=list_id, namespace_type=namespace_type
+            ).body
+        except SpaceNotFoundError:
+            raise
+        except NotFoundError as e:
+            raise _unknown_exception_list(id, list_id, namespace_type) from e
+        return body
 
     @_translate_errors
-    def find_exception_items(self, list_id: str) -> list[ExceptionItem]:
+    def get_exception_list(
+        self, id: str | None, list_id: str | None, namespace_type: str = "single"
+    ) -> ExceptionList:
+        return _to_exception_list(self._read_exception_list(id, list_id, namespace_type))
+
+    @_translate_errors
+    def find_exception_items(
+        self, list_id: str, namespace_type: str = "single"
+    ) -> list[ExceptionItem]:
         # list_id required; a bogus one 404s -> KibanaNotFound.
         items: list[ExceptionItem] = []
         page = 1
         while True:
             body = self._client.exception_lists.find_items(
-                list_id=list_id, page=page, per_page=100
+                list_id=list_id, namespace_type=namespace_type, page=page, per_page=100
             ).body
             batch = body.get("data", [])
             items.extend(_to_exception_item(x) for x in batch)
@@ -2813,6 +2858,87 @@ class KibanaPyGateway:
         if (id is None) == (item_id is None):
             raise KibanaRejected("provide exactly one of id or item_id to identify the exception item")
         self._client.exception_lists.delete_item(id=id, item_id=item_id, namespace_type=namespace_type)
+
+    # --- exception-list edit, copy, export and import (D50) ---
+
+    @_translate_errors
+    def update_exception_list(
+        self, id: str | None, list_id: str | None, namespace_type: str,
+        name: str | None, description: str | None, tags: list[str] | None,
+    ) -> ExceptionListChange:
+        # PUT /api/exception_lists requires name, description and type (a PUT
+        # without them 400s) and keeps omitted tags; tags=[] clears them. It
+        # ignores os_types (a PUT of ["windows"] left ["linux"], probed), so
+        # they are never sent. The read's `_version` makes a change made in
+        # between a 409 version_conflict instead of a silent overwrite.
+        raw = self._read_exception_list(id, list_id, namespace_type)
+        try:
+            body = self._client.exception_lists.update(
+                id=raw.get("id"),
+                name=name if name is not None else raw.get("name", ""),
+                description=description if description is not None else raw.get("description", ""),
+                type=raw.get("type", "detection"),
+                namespace_type=namespace_type,
+                tags=list(tags) if tags is not None else None,
+                _version=raw.get("_version"),
+            ).body
+        except ConflictError as e:
+            raise KibanaRejected(
+                f"exception list '{raw.get('list_id', list_id or id)}' changed after "
+                "update_exception_list read it (Kibana answered 409, version conflict); "
+                "nothing was written — call update_exception_list again"
+            ) from e
+        return ExceptionListChange(list=_to_exception_list(body), previous=_to_exception_list(raw))
+
+    @_translate_errors
+    def duplicate_exception_list(
+        self, list_id: str, namespace_type: str, include_expired_exceptions: bool
+    ) -> ExceptionList:
+        try:
+            body = self._client.exception_lists.duplicate(
+                list_id=list_id, namespace_type=namespace_type,
+                include_expired_exceptions=include_expired_exceptions,
+            ).body
+        except SpaceNotFoundError:
+            raise
+        except NotFoundError as e:
+            raise _unknown_exception_list(None, list_id, namespace_type) from e
+        except ApiError as e:
+            # 405 "unable to duplicate exception list with list_id: ... - action
+            # not allowed" for an endpoint list (probed); unmapped it would read
+            # as an outage.
+            if getattr(e, "status_code", None) != 405:
+                raise
+            raise KibanaRejected(
+                f"Kibana refuses to duplicate exception list '{list_id}' (405 action not "
+                "allowed: it refuses endpoint lists) — export_exception_list then "
+                "import_exception_list makes a copy"
+            ) from e
+        return _to_exception_list(body)
+
+    @_translate_errors
+    def export_exception_list(
+        self, id: str, list_id: str, namespace_type: str, include_expired_exceptions: bool
+    ) -> list[dict[str, Any]]:
+        body = self._client.exception_lists.export(
+            id=id, list_id=list_id, namespace_type=namespace_type,
+            include_expired_exceptions=include_expired_exceptions,
+        ).body
+        if isinstance(body, (bytes, str)):  # kibana-py parses application/ndjson; be defensive
+            text = body.decode("utf-8") if isinstance(body, bytes) else body
+            return [json.loads(line) for line in text.splitlines() if line.strip()]
+        return list(body)
+
+    @_translate_errors
+    def import_exception_list(
+        self, content: bytes, overwrite: bool
+    ) -> ExceptionListImportResult:
+        # Never `as_new_list`: it keeps the source item_ids (D50, probed); a
+        # new copy is rewritten in core.exception_lists and imported plainly.
+        body = self._client.exception_lists.import_lists(
+            file=content, overwrite=True if overwrite else None,
+        ).body
+        return _to_exception_import(body)
 
     # --- security-detections writes (v3, #60): update rule + value lists ---
 
