@@ -2309,6 +2309,24 @@ class KibanaPyGateway:
         return dashboard_id
 
     @_translate_errors
+    def get_tag_names(self, tag_ids: list[str]) -> dict[str, str]:
+        # No public tags API in kibana-py: tags are `tag` saved objects, read
+        # with the saved-objects bulk get on this gateway's (space-scoped)
+        # client. A miss is a per-object 404 inside a 200 (probed on 9.5.4:
+        # "Saved object [tag/nope] not found"; a default-space tag read from
+        # another space is a 404 too, tags live in one space).
+        if not tag_ids:
+            return {}
+        body = self._client.saved_objects.bulk_get(
+            objects=[{"type": "tag", "id": tag_id} for tag_id in tag_ids]
+        ).body
+        return {
+            str(o["id"]): str((o.get("attributes") or {}).get("name", ""))
+            for o in body.get("saved_objects", [])
+            if not o.get("error") and o.get("type") == "tag"
+        }
+
+    @_translate_errors
     def create_visualization(self, config: dict[str, Any]) -> str:
         visualization_id: str = self._client.visualizations.create(data=config).body["id"]
         return visualization_id

@@ -1765,6 +1765,219 @@ async def test_library_tools_scoped_live(gateway):
             )).data
             assert deleted == {"id": viz_id, "deleted": True, "space": space_id}
 
+# --- update_dashboard (B8, D52) -------------------------------------------
+
+_SAMPLE_FLIGHTS_DASHBOARD = "7adfa750-4c81-11e8-b3d7-01146121b73d"
+
+
+@contextlib.contextmanager
+def _temp_tag(name, space=None):
+    """A throwaway `tag` saved object (no tag tool exists), removed after."""
+    tag_id = f"ct-tag-{uuid.uuid4().hex[:8]}"
+    with _raw_kibana(space) as kb:
+        kb.saved_objects.create(
+            type="tag", id=tag_id, attributes={"name": name, "description": "", "color": "#00AA00"}
+        )
+    try:
+        yield tag_id
+    finally:
+        with _raw_kibana(space) as kb:
+            with contextlib.suppress(Exception):
+                kb.saved_objects.delete(type="tag", id=tag_id)
+
+
+def _stored_dashboard(dashboard_id, space=None):
+    with _raw_kibana(space) as kb:
+        return kb.dashboards.get(id=dashboard_id).body
+
+
+def test_update_dashboard_premises_live(gateway):
+    # What the tool's checks rest on (probed on 9.5.4): Kibana's PUT stores a
+    # time it cannot read and a tag id that names nothing, keeps a refresh
+    # without a time range as timeRestore false, and checks no version.
+    dash_id = f"ct-dash-premises-{uuid.uuid4().hex[:8]}"
+    with _raw_kibana() as kb:
+        try:
+            kb.dashboards.update(
+                id=dash_id, title="ct premises", panels=[],
+                time_range={"from": "yesterday", "to": "now"}, tags=["ct-no-such-tag"],
+            )
+            data = kb.dashboards.get(id=dash_id).body["data"]
+            assert data["time_range"] == {"from": "yesterday", "to": "now"}
+            assert data["tags"] == ["ct-no-such-tag"]
+            kb.dashboards.update(
+                id=dash_id, title="ct premises", panels=[],
+                refresh_interval={"pause": False, "value": 30000},
+            )
+            attrs = kb.saved_objects.get(type="dashboard", id=dash_id).body["attributes"]
+            assert attrs["timeRestore"] is False
+            assert attrs["refreshInterval"] == {"pause": False, "value": 30000}
+            stale = kb.perform_request(
+                "PUT", f"/api/dashboards/{dash_id}", params={"version": "WzEsMV0="},
+                headers={"kbn-xsrf": "true", "content-type": "application/json",
+                         "elastic-api-version": "2023-10-31"},
+                body={"title": "ct premises stale", "panels": []},
+            )
+            assert stale.meta.status == 200  # a stale version is not checked
+        finally:
+            with contextlib.suppress(Exception):
+                kb.dashboards.delete(id=dash_id)
+
+
+async def test_update_dashboard_settings_live(gateway):
+    marker = uuid.uuid4().hex[:8]
+    title = f"ct settings {marker}"
+    dash_id = derive_dashboard_id(title)
+    other_title = f"ct settings other {marker}"
+    other_id = derive_dashboard_id(other_title)
+    viz_id = None
+    for d in (dash_id, other_id):
+        _delete_if_exists(gateway, d)
+    try:
+        with _temp_tag(f"ct prod {marker}") as tag_id, _temp_tag(f"ct x {marker}") as tag_x:
+            async with Client(_tool_server()) as client:
+                viz_id = (await client.call_tool("create_visualization", {
+                    "spec": dict(_PANEL, title=f"ct settings viz {marker}"),
+                })).data["id"]
+                await client.call_tool("create_dashboard", {"title": title, "panels": [_PANEL]})
+                await client.call_tool(
+                    "add_library_panel", {"dashboard_id": dash_id, "visualization_id": viz_id})
+                before = _stored_dashboard(dash_id)["data"]
+
+                async def update(**args):
+                    return (await client.call_tool(
+                        "update_dashboard", {"dashboard_id": dash_id, **args})).data
+
+                got = await update(
+                    title=f"{title} v2", description="new words",
+                    time_range={"from": "now-24h", "to": "now"},
+                    refresh_interval_seconds=30, tags_to_add=[tag_id],
+                )
+                assert got["status"] == "updated"
+                assert got["changed"] == [
+                    "title", "description", "time_range", "refresh_interval_seconds", "tags"]
+                assert got["previous"] == {  # create_dashboard stores now-7d..now
+                    "title": title, "description": "",
+                    "time_range": {"from": "now-7d", "to": "now"},
+                    "refresh_interval_seconds": None, "tags": [],
+                }
+                stored = _stored_dashboard(dash_id)
+                data = stored["data"]
+                assert stored.get("warnings") in (None, [])
+                assert data["panels"] == before["panels"]  # ids, grid, library ref
+                assert data["panels"][1]["config"] == {"ref_id": viz_id}
+                for key in ("options", "filters", "query", "pinned_panels"):
+                    assert data.get(key) == before.get(key), key
+                assert data["title"] == f"{title} v2" and data["description"] == "new words"
+                assert data["time_range"] == {"from": "now-24h", "to": "now"}
+                assert data["refresh_interval"] == {"pause": False, "value": 30000}
+                assert data["tags"] == [tag_id]
+
+                # the same values again write nothing
+                again = await update(title=f"{title} v2", tags_to_add=[tag_id])
+                assert again["status"] == "unchanged" and again["previous"] == {}
+                assert (_stored_dashboard(dash_id)["meta"]["updated_at"]
+                        == stored["meta"]["updated_at"])
+
+                # refusals change nothing: an unknown tag id, a tag *name*, an
+                # unreadable time, a rename onto another dashboard's title id
+                await client.call_tool("create_dashboard", {"title": other_title,
+                                                            "panels": [_PANEL]})
+                for args, match in (
+                    ({"tags_to_add": [f"ct-no-such-tag-{marker}"]}, "find_saved_objects"),
+                    ({"tags_to_add": [f"ct prod {marker}"]}, "name no tag"),
+                    ({"time_range": {"from": "yesterday"}}, "not a time Kibana can read"),
+                    ({"title": other_title}, f"dashboard '{other_id}'"),
+                ):
+                    with pytest.raises(ToolError, match=match):
+                        await update(**args)
+                assert (_stored_dashboard(dash_id)["meta"]["updated_at"]
+                        == stored["meta"]["updated_at"])
+
+                # tags edit in place; each call's `undo` puts it back, newest
+                # first (a refresh that was not stored comes back paused)
+                moved = await update(tags_to_add=[tag_x], tags_to_remove=[tag_id])
+                assert _stored_dashboard(dash_id)["data"]["tags"] == [tag_x]
+                assert moved["previous"] == {"tags": [tag_id]}
+                assert moved["undo"] == {"tags_to_add": [tag_id], "tags_to_remove": [tag_x]}
+                await update(**moved["undo"])
+                assert got["undo"] == {
+                    "title": title, "description": "",
+                    "time_range": {"from": "now-7d", "to": "now"},
+                    "refresh_interval_seconds": 0, "tags_to_remove": [tag_id],
+                }
+                await update(**got["undo"])
+                data = _stored_dashboard(dash_id)["data"]
+                assert data["title"] == title and data["description"] == ""
+                assert data["time_range"] == {"from": "now-7d", "to": "now"}
+                assert data["tags"] == []
+                assert data["refresh_interval"] == {"pause": True, "value": 30000}
+                assert data["panels"] == before["panels"]
+                # without a stored time the dashboard opens with the picker's
+                # time, and a refresh is refused (the app would not apply it)
+                cleared = await update(clear_time_range=True)
+                assert cleared["previous"] == {"time_range": {"from": "now-7d", "to": "now"}}
+                assert "time_range" not in _stored_dashboard(dash_id)["data"]
+                with pytest.raises(ToolError, match="pass time_range too"):
+                    await update(refresh_interval_seconds=60)
+    finally:
+        for d in (dash_id, other_id):
+            _delete_if_exists(gateway, d)
+        if viz_id is not None:
+            with contextlib.suppress(KibanaNotFound):
+                gateway.delete_visualization(viz_id)
+
+
+async def test_update_dashboard_refuses_the_sample_dashboard_live(gateway):
+    # The flights sample holds map and legacy panels the API drops: the same
+    # refusal as update_panel, nothing written.
+    before = _stored_dashboard(_SAMPLE_FLIGHTS_DASHBOARD)
+    assert before.get("warnings")
+    async with Client(_tool_server()) as client:
+        with pytest.raises(ToolError, match="Modify this dashboard in the Kibana UI instead"):
+            await client.call_tool("update_dashboard", {
+                "dashboard_id": _SAMPLE_FLIGHTS_DASHBOARD, "description": "ct",
+            })
+    assert _stored_dashboard(_SAMPLE_FLIGHTS_DASHBOARD)["meta"] == before["meta"]
+
+
+async def test_update_dashboard_scoped_live(gateway):
+    # In a space: the tag check reads that space (a default-space tag is
+    # refused there), the result echoes the space and the URL carries /s/.
+    marker = uuid.uuid4().hex[:8]
+    title = f"ct scoped settings {marker}"
+    dash_id = derive_dashboard_id(title)
+    with _temp_space(gateway, "mcp-for-kibana-ct-settings") as space_id:
+        with _live_gateway(space_id) as gw:
+            gw.create_data_view(FLIGHTS, f"ct-flights-{marker}", "timestamp")
+        with _temp_tag(f"ct default {marker}") as default_tag, \
+                _temp_tag(f"ct scoped {marker}", space_id) as scoped_tag:
+            async with Client(_tool_server()) as client:
+                await client.call_tool(
+                    "create_dashboard", {"title": title, "panels": [_PANEL], "space": space_id})
+                with pytest.raises(ToolError, match=rf"name no tag in space '{space_id}'"):
+                    await client.call_tool("update_dashboard", {
+                        "dashboard_id": dash_id, "tags_to_add": [default_tag], "space": space_id,
+                    })
+                got = (await client.call_tool("update_dashboard", {
+                    "dashboard_id": dash_id, "tags_to_add": [scoped_tag],
+                    "time_range": {"from": "now-1h"}, "space": space_id,
+                })).data
+                assert got["space"] == space_id
+                assert f"/s/{space_id}/app/dashboards#/view/{dash_id}" in got["url"]
+                stored = _stored_dashboard(dash_id, space_id)["data"]
+                assert stored["tags"] == [scoped_tag]
+                assert stored["time_range"] == {"from": "now-1h", "to": "now"}
+                # the default space has no such dashboard
+                with pytest.raises(ToolError, match="call search_dashboards to find it$"):
+                    await client.call_tool(
+                        "update_dashboard", {"dashboard_id": dash_id, "description": "x"})
+                with pytest.raises(ToolError, match=rf"\(in space '{space_id}'\)$"):
+                    await client.call_tool("update_dashboard", {
+                        "dashboard_id": f"ct-no-such-{marker}", "description": "x",
+                        "space": space_id,
+                    })
+
 
 def test_cross_space_import_clones(gateway, tmp_path):
     # export from space a -> import into space b WITHOUT overwrite = a clone:

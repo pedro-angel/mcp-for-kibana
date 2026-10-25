@@ -9,7 +9,7 @@ via [`KIBANA_MCP_TOOLS`](configuration.md#tool-selection): **dashboards**,
 **[observability](#observability-toolbox)**,
 **[security-detections](#security-detections-toolbox)**,
 **[platform-admin](#platform-admin-toolbox)**,
-**[streams](#streams-toolbox)**, and **[fleet](#fleet-toolbox)** — 183 tools in
+**[streams](#streams-toolbox)**, and **[fleet](#fleet-toolbox)** — 184 tools in
 all. This reference details every toolbox in full. A drift-guard test
 (`tests/unit/test_docs_tool_reference.py`) asserts that every registered tool
 name appears on this page, so it cannot silently fall behind the code.
@@ -37,6 +37,7 @@ FastMCP's visibility API).
 | [`add_esql_table_panel`](#esql-panels-dedicated-add_esql__panel-tools) | write | Add an ES\|QL table panel to an existing dashboard: grouping columns as rows, metric columns as values. |
 | [`add_esql_xy_panel`](#esql-panels-dedicated-add_esql__panel-tools) | write | Add an ES\|QL bar/line/area panel to an existing dashboard. |
 | [`update_panel`](#update_panel) | write | Replace the visualization at a given panel index. |
+| [`update_dashboard`](#update_dashboard) | write | Change a dashboard's title, description, time range, auto-refresh or tags; its panels stay as they are. |
 | [`delete_dashboard`](#delete_dashboard) | destructive | Permanently delete a dashboard. |
 | [`delete_visualization`](#delete_visualization) | destructive | Permanently delete a library visualization; dashboards that show it keep a broken panel. |
 | [`delete_panel`](#delete_panel) | destructive | Permanently remove one panel from a dashboard. |
@@ -58,7 +59,7 @@ gating:
 |---|---|---|---|---|
 | read | `list_data_views`, `describe_data_view`, `search_dashboards`, `get_dashboard`, `search_visualizations`, `get_visualization` | `true` | — | — |
 | write | `create_visualization`, `add_library_panel`, `add_panel`, `add_esql_metric_panel`, `add_esql_table_panel`, `add_esql_xy_panel` | `false` | `false` | `false` |
-| write (upsert) | `create_dashboard`, `update_panel`, `update_visualization` | `false` | `false` | `true` — `update_panel`/`update_visualization`: replacing with the same spec twice is a no-op; `create_dashboard`: re-creating the same title overwrites, never duplicates. |
+| write (upsert) | `create_dashboard`, `update_panel`, `update_visualization`, `update_dashboard` | `false` | `false` | `true` — `update_panel`/`update_visualization`: replacing with the same spec twice is a no-op; `update_dashboard`: the same settings twice are `unchanged` (nothing written); `create_dashboard`: re-creating the same title overwrites, never duplicates. |
 | destructive | `delete_dashboard`, `delete_visualization`, `delete_panel` | `false` | `true` | `true` |
 
 All tools also set `openWorldHint=False` (Kibana is a closed, known system,
@@ -337,6 +338,66 @@ by id, only by index; see `get_dashboard`).
 {"id": "...", "panel_index": 0}
 ```
 
+### `update_dashboard`
+
+Changes only the settings passed — `title`, `description`, `time_range`
+(`{"from", "to"}`, `to` defaulting to `now`), `clear_time_range=true`,
+`refresh_interval_seconds` (0 turns auto-refresh off), `tags_to_add` /
+`tags_to_remove` (tag ids) — and writes the dashboard back with its panels,
+sections, pinned panels (controls), filters, query and display options
+exactly as read:
+
+```json
+{
+  "id": "...", "url": "...", "status": "updated",
+  "title": "...", "description": "...",
+  "time_range": {"from": "now-24h", "to": "now"},
+  "refresh_interval_seconds": 30, "tags": ["<tag id>"],
+  "changed": ["time_range", "refresh_interval_seconds"],
+  "previous": {"time_range": null, "refresh_interval_seconds": null},
+  "undo": {"clear_time_range": true}
+}
+```
+
+- `status` — `updated`, or `unchanged` when every value passed is already
+  stored (nothing is written); `changed` names the settings that changed,
+  `previous` holds their values before (`null`: none was stored), and `undo`
+  the `update_dashboard` arguments that put them back — pass them as they
+  are. A time range that was not stored is undone with
+  `clear_time_range=true`; a refresh that was not stored can only come back
+  paused (`0`), and is left out of an undo that clears the time range (the
+  dashboard app ignores a refresh without one). Tags are undone through
+  `tags_to_add`/`tags_to_remove`.
+- `time_range` values must be readable by Kibana's dashboard app: date math
+  (`now`, `now-24h`, `now-7d/d`, `now/w`; units `ms s m h d w M y`) or an ISO
+  8601 timestamp, optionally followed by `||` and date math. Kibana's API
+  itself stores any string (on 9.5.4, `"yesterday"` and a `from` later than
+  `to` both answered 200), so the tool refuses an unreadable value, and two
+  timestamps in the wrong order, before any call. Without a stored time range
+  the dashboard opens with the time picker's current time.
+- `refresh_interval_seconds` is refused unless the dashboard stores a time
+  range after the call (already, or `time_range` in the same call): Kibana
+  stores it either way, but its dashboard app applies a stored refresh only
+  together with the stored time (9.5.4). 0 pauses auto-refresh and keeps the
+  stored interval.
+- Tags are tag saved-object **ids** (find them with
+  `find_saved_objects(types=["tag"])`, which also shows each tag's `name`);
+  tags live in one space. Kibana stores any string as a tag id, so each id
+  being added is read first in the same space and an unknown one refuses the
+  call; removing an id the dashboard lacks is a no-op. At most 100 tags.
+  There is no tool that creates a tag.
+- Refuses, untouched, a dashboard holding panels or fields the API cannot
+  write back (the same refusal as `add_panel`/`update_panel`), and a rename
+  onto a title whose `create_dashboard` id belongs to another dashboard
+  (naming it). `create_dashboard` finds a dashboard by the id its title
+  derives, so after renaming a dashboard it made, `create_dashboard` with the
+  **old** title replaces this dashboard's panels and with the new title makes
+  a separate one.
+- Kibana's dashboard PUT replaces the whole dashboard and checks no version
+  (a stale `version` query parameter or `If-Match` header was ignored with a
+  200, one in the body is a 400), so an edit made in Kibana between the read
+  and the write is overwritten, as with every panel tool here.
+
 ### `delete_dashboard`
 
 ```json
@@ -452,7 +513,7 @@ This is a deliberate fail-closed guard — see
 
 ## Space targeting
 
-Every one of the 91 tools in the **dashboards**, **data-management**,
+Every one of the 92 tools in the **dashboards**, **data-management**,
 **alerting**, **cases**, and **security-detections** toolboxes — including
 the 17 destructive-tier ones — accepts an optional `space` parameter that
 targets a Kibana space by id:

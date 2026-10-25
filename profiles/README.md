@@ -59,11 +59,11 @@ read tools. The same 14 tools are the built-in list `@read-only-explorer`, for
 mixing with tools from other toolboxes.
 *Persona:* an analyst or on-device model browsing what's already in Kibana.
 
-### [`dashboards-analyst.mcp.json`](./dashboards-analyst.mcp.json) — 26 tools · `write`
+### [`dashboards-analyst.mcp.json`](./dashboards-analyst.mcp.json) — 27 tools · `write`
 Turn plain-English asks into real Lens visualizations and dashboards (idempotent —
 re-creating the same title updates rather than duplicates). Toolboxes: `dashboards`
 + `data-management` at `write`: their read tools plus the creates and in-place
-updates. The same 26 tools are the built-in list `@dashboards-analyst`, for
+updates. The same 27 tools are the built-in list `@dashboards-analyst`, for
 mixing with tools from other toolboxes. This is the project's MVP default.
 *Persona:* data/BI analyst, dashboard builder.
 *(Deletion tools exist but are `destructive`-tier — raise `KIBANA_MCP_TIER` to

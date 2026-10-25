@@ -31,7 +31,7 @@ BUILTIN_LISTS: Mapping[str, tuple[str, ...]] = MappingProxyType({
         "find_saved_objects", "get_saved_object", "get_default_data_view",
         "upsert_runtime_field", "set_default_data_view",
         "search_dashboards", "get_dashboard", "create_dashboard", "add_panel", "update_panel",
-        "add_esql_metric_panel", "add_esql_table_panel", "add_esql_xy_panel",
+        "update_dashboard", "add_esql_metric_panel", "add_esql_table_panel", "add_esql_xy_panel",
         "search_visualizations", "get_visualization", "create_visualization",
         "update_visualization", "add_library_panel",
     ),
@@ -59,6 +59,8 @@ DEPENDENCIES: Mapping[str, tuple[str, ...]] = MappingProxyType({
     "add_esql_table_panel": ("search_dashboards",),
     "add_esql_xy_panel": ("search_dashboards",),
     "update_panel": ("describe_data_view", "get_dashboard"),
+    # (B8: a not-found names search_dashboards, tag ids come from the find)
+    "update_dashboard": ("search_dashboards", "find_saved_objects"),
     "delete_panel": ("get_dashboard",),
     "delete_dashboard": ("search_dashboards",),
     "delete_visualization": ("search_visualizations",),

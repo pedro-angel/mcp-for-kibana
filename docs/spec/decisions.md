@@ -144,7 +144,7 @@ this ledger stands without them.
   may get the input elsewhere, e.g. an id the user pastes). Dependencies are
   followed transitively; tools hidden by the tier are not checked; toolbox
   selections are not checked. **Dependency map**: one owner, data —
-  `DEPENDENCIES` in `src/kibana_mcp/tool_lists.py`, 77 edges from 68 tools.
+  `DEPENDENCIES` in `src/kibana_mcp/tool_lists.py`, 79 edges from 69 tools.
   An edge A → B means A takes an input only B shows the model and A's own
   description or error guidance sends the model there: an index or field name
   (`update_panel`/`delete_panel` → `get_dashboard`; every VizSpec tool →
@@ -163,7 +163,9 @@ this ledger stands without them.
   objects between spaces → `find_saved_objects` and `list_spaces`; D50, the
   exception-list get, item find, update, duplicate and export → `find_exception_lists`;
   D51, the agent-tag and diagnostics tools → `list_agents`, `install_package` →
-  `list_packages`, `uninstall_package` → `list_installed_packages`), plus ids and values descriptions name
+  `list_packages`, `uninstall_package` → `list_installed_packages`; D52,
+  `update_dashboard` → `search_dashboards` and, for tag ids,
+  `find_saved_objects`), plus ids and values descriptions name
   (`get_space` → `list_spaces`, `get_synthetic_monitor` →
   `list_synthetic_monitors`, `create_synthetic_monitor` →
   `list_synthetic_private_locations`, `create_synthetic_private_location` →
@@ -1093,6 +1095,72 @@ this ledger stands without them.
   deleted (an uninstall the caller cannot review); an operator setting that
   vouches for the key (an assertion, not a proof). Contract:
   [fleet](toolboxes/fleet.md).
+
+- **D52 (2026-10-25, probes on 9.5.4, Basic)** — The dashboards toolbox
+  gains `update_dashboard` (`write`, `idempotentHint=true`), over
+  kibana-py's `dashboards.update` (Basic, works live); the plan's name kept.
+  It changes a dashboard's `title`, `description`, `time_range` (or
+  `clear_time_range=true`), `refresh_interval_seconds` and tags
+  (`tags_to_add`/`tags_to_remove`), and writes back the panels, sections,
+  pinned panels, filters, query and options exactly as read, behind the same
+  unsupported-panels refusal as `update_panel`; `space` like every tool
+  here. 184 tools (74/71/39), 92 space-aware; dashboards 17 (4/10/3);
+  dependency map 79 edges from 69 tools (`update_dashboard` →
+  `search_dashboards`, `find_saved_objects`). The `dashboards-analyst`
+  profile and list (the default selection) are whole toolboxes at `write`
+  (D39, D41), so they gain it: 27 tools, reviewed with the owner in the
+  plan's final batch (D48's note). Nothing dropped. **Tier, by the repo
+  rule:** every change is undone by passing the result's `undo` arguments
+  back (title, description, a time range — one that was not stored is undone
+  with `clear_time_range` — and tags through the add and remove lists;
+  `previous` beside it holds the values before), panels are never written differently from how they were
+  read, and nothing is written when no setting changes — `write`, as
+  `update_panel`, which writes the same whole-dashboard PUT. One undo is
+  approximate: a refresh where none was stored can be paused (0), not
+  removed. The read-then-write race is not closed: the PUT checks no version
+  (a stale `version` query parameter and an `If-Match` header were ignored
+  with a 200, a body `version` 400 "Additional properties are not allowed"),
+  shared with every read-modify-write tool here (D45/D47 precedent: tier
+  kept). **Observed, and what each shaped:** the PUT replaces the whole
+  dashboard and an omitted field reverts (an omitted `time_range` stores
+  `timeRestore: false`), so the tool sends everything it read and changes
+  only the keys it was given; panel ids, grid, sections and a library `ref_id`
+  came back unchanged (contract test). Kibana stored `time_range`
+  `{"from": "yesterday"}` and a `from` later than `to` with a 200 and dropped
+  a `mode`; the server schema is only `from`/`to` strings, and the dashboard
+  app parses them with `@kbn/datemath` (read from 9.5.4's bundled module: `now`
+  or a moment-parsed ISO 8601 anchor with optional `||`, then `+N`, `-N` or
+  `/` steps, units `ms s m h d w M y`, a rounding step only of one unit) — so
+  the tool checks that grammar and the order of two timestamps before any
+  call, naming the forms it takes. `refresh_interval` without a time range
+  was stored (`timeRestore: false`, `refreshInterval` kept), and 9.5.4's
+  dashboard app bundle applies a stored refresh only when `timeRestore` is
+  set (`t.value&&(f.value&&d.setTime(f.value),g.value&&d.setRefreshInterval(g.value))`),
+  so a refresh on a dashboard left without a time range is refused, naming
+  `time_range`; seconds rather than Kibana's `{pause, value ms}` (0 pauses,
+  keeping the stored value, as Kibana's own pause does; `ge=0`, negative and
+  1 ms values were stored by Kibana). Tags are tag saved-object ids; Kibana
+  stored an unknown id, a tag's *name* and a default-space tag on a
+  dashboard in another space, each a dangling reference (`tag-ref-<id>`),
+  deduplicated repeats, and stored `""` — so each id being added that the
+  dashboard does not carry is read with a saved-objects bulk get in the same
+  space (a miss is a per-object 404 inside a 200) and an unknown one refuses
+  the call naming `find_saved_objects(types=["tag"])`; ids already on it are
+  kept unread; 100 tags is Kibana's schema cap. Add/remove lists, not a
+  replacement list, so a model can tag without reading the current tags
+  first (B7's `update_agent_tags` precedent); an overlap is refused.
+  `create_dashboard` derives its id from the title, so a rename onto a title
+  whose id another existing dashboard holds would leave two same-titled
+  dashboards and `create_dashboard` editing the other: refused, naming it;
+  any other rename leaves `create_dashboard` finding the dashboard by its old
+  title (the description says so). The flights sample dashboard, with map
+  and legacy panels the API drops, is refused untouched (live). Rejected:
+  tag names as input (a name is a label Kibana does not key by; ids are
+  what it stores and the find shows both); a tag-creation tool and settings
+  in `get_dashboard`'s result (roadmap); Kibana's raw `refresh_interval` and
+  `time_range.mode`; the same time check in `create_dashboard` (a behavior
+  change outside this batch; roadmap). Contract:
+  [dashboards](toolboxes/dashboards.md).
 
 ## Reliability and models (measured)
 

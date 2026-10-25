@@ -37,7 +37,7 @@ surfaces are not worth duplicating here.
 
 ## Status
 
-**v0.4.0 + unreleased — 10 toolboxes, 183 tools, live-tested.** The server exposes 183 tools
+**v0.4.0 + unreleased — 10 toolboxes, 184 tools, live-tested.** The server exposes 184 tools
 across 10 composable toolboxes (dashboards, data management, alerting, cases,
 security detections, fleet, streams, observability, platform admin, and platform
 health), each classified read / write / destructive and contract-tested against
@@ -59,7 +59,7 @@ tool-call markers about one run in three.
 ## What it does
 
 Lets an LLM work with Kibana through a small, reliable, purpose-built tool surface
-instead of ~610 raw endpoints — 183 tools grouped into 10 composable toolboxes you
+instead of ~610 raw endpoints — 184 tools grouped into 10 composable toolboxes you
 enable per deployment. The flagship **dashboards** toolbox lets a user describe the
 chart they want, and the server translates a simple declarative spec into real
 Kibana Lens visualizations and dashboards via the modern Dashboards API (Kibana
@@ -129,15 +129,15 @@ for running the HTTP server.
 
 ## Tool reference
 
-**183 tools across 10 toolboxes**, each tool classified by tier — read / write /
-destructive (74 / 70 / 39). Enable toolboxes per deployment with
+**184 tools across 10 toolboxes**, each tool classified by tier — read / write /
+destructive (74 / 71 / 39). Enable toolboxes per deployment with
 `KIBANA_MCP_TOOLBOXES`; cap the tier with `KIBANA_MCP_TIER`. A tool above the cap
 is not merely denied at call time — it never appears in the tool list (registered,
 then hidden via FastMCP's visibility API).
 
 | Toolbox | Tools | What it does |
 |---|--:|---|
-| `dashboards` | 16 | Build Lens visualizations + dashboards from a declarative spec — the flagship plain-English → dashboard path. |
+| `dashboards` | 17 | Build Lens visualizations + dashboards from a declarative spec — the flagship plain-English → dashboard path. |
 | `data-management` | 17 | Data views (with runtime fields and the space's default), short URLs, and saved objects (find, get, export, import). |
 | `alerting` | 22 | Alerting rules and connectors: create, edit, mute, snooze. |
 | `cases` | 6 | Kibana Cases: create, comment, update status. |

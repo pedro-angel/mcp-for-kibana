@@ -1,6 +1,6 @@
 # dashboards — behavior contract
 
-Status: Draft v1.2 (2026-10-12) — regeneration corpus, reconciled to shipped code
+Status: Draft v1.3 (2026-10-25) — regeneration corpus, reconciled to shipped code
 Surface reference: docs/tools.md#dashboards-toolbox · Enforcement: named per section below
 
 ## Purpose & persona
@@ -17,13 +17,13 @@ data-view discovery.
 
 ## Surface
 
-16 tools: 4 read (`search_dashboards`, `get_dashboard`,
-`search_visualizations`, `get_visualization`), 9 write (`create_dashboard`,
+17 tools: 4 read (`search_dashboards`, `get_dashboard`,
+`search_visualizations`, `get_visualization`), 10 write (`create_dashboard`,
 `create_visualization`, `update_visualization`, `add_library_panel`,
-`add_panel`, the three `add_esql_*_panel`, `update_panel`; 3 of them
-upsert/idempotent: `create_dashboard`, `update_visualization`,
-`update_panel`), 3 destructive (`delete_dashboard`, `delete_visualization`,
-`delete_panel`). Per-tool
+`add_panel`, the three `add_esql_*_panel`, `update_panel`,
+`update_dashboard`; 4 of them upsert/idempotent: `create_dashboard`,
+`update_visualization`, `update_panel`, `update_dashboard`), 3 destructive
+(`delete_dashboard`, `delete_visualization`, `delete_panel`). Per-tool
 arguments/returns, the annotation table, and the tier-visibility mechanism
 (a tool above `KIBANA_MCP_TIER` is hidden at registration, not just
 rejected at call time) live at docs/tools.md#dashboards-toolbox and
@@ -33,7 +33,7 @@ but are owned and registered once by data-management, not here.
 
 ## Behavioral guarantees
 
-- **Space targeting** (docs/tools.md#space-targeting) is uniform: all 16
+- **Space targeting** (docs/tools.md#space-targeting) is uniform: all 17
   tools accept optional `space`; `search_dashboards` and
   `search_visualizations` (the list-returning tools) never echo it back;
   every dict-returning tool echoes `"space"` only when the caller set one.
@@ -44,10 +44,11 @@ but are owned and registered once by data-management, not here.
   guidance-shaped `ToolError`, not a different path.
 - **One scoped gateway per read-modify-write.** `add_panel`,
   `add_library_panel`, the three `add_esql_*_panel` tools, `update_panel`,
-  `delete_panel`, and `update_visualization` each fetch, check or mutate in
-  memory, and write back through the *same* `gateway_factory(space)` call,
-  so a read and its paired write can never resolve to two spaces — and
-  `add_library_panel` can never link a visualization from another space.
+  `update_dashboard`, `delete_panel`, and `update_visualization` each fetch,
+  check or mutate in memory, and write back through the *same*
+  `gateway_factory(space)` call, so a read and its paired write can never
+  resolve to two spaces — `add_library_panel` can never link a visualization
+  from another space, nor `update_dashboard` a tag from another space.
 - **Derived identity + idempotent create.** `create_dashboard` never
   accepts a caller-chosen id — it derives one deterministically from the
   normalized title, so an equivalent title always acts on the same
@@ -61,6 +62,44 @@ but are owned and registered once by data-management, not here.
   round-trip warnings first; anything that can't be written back
   losslessly makes the tool refuse outright, untouched, naming the cause
   and pointing at the Kibana UI.
+- **Settings edits leave panels alone (B8, D52).** `update_dashboard`
+  changes only what it is given — `title`, `description`, `time_range` (or
+  `clear_time_range=true`, which removes it), `refresh_interval_seconds`
+  (0 pauses, keeping the stored interval), `tags_to_add`/`tags_to_remove` —
+  and writes back the panels, sections, pinned panels, filters, query and
+  options exactly as read (Kibana's PUT replaces the whole dashboard, and an
+  omitted field reverts to its default, probed on 9.5.4). Before any call it
+  refuses an empty change, a blank title, `time_range` with
+  `clear_time_range`, a tag in both lists, and a `time_range` the dashboard
+  app cannot read: Kibana's API stores any string (`"yesterday"`, a `from`
+  after `to`, both 200 on 9.5.4), and its dashboard app parses them with
+  @kbn/datemath, so the tool checks that grammar (`now` or an ISO 8601
+  anchor with optional `||`, then `+N`/`-N`/`/` steps in `ms s m h d w M y`)
+  and the order of two timestamps (`core/dashboards/settings.py`). After its
+  read (the unsupported-panels refusal first) it refuses
+  `refresh_interval_seconds` unless the dashboard stores a time range after
+  the call: Kibana stores a refresh either way (`timeRestore: false`), but the
+  9.5.4 dashboard app applies a stored refresh only together with the stored
+  time. Tags are tag saved-object ids, which Kibana stores whatever they name
+  (an unknown id, a tag name, a tag from another space: all stored); every id
+  being added that the dashboard does not already carry is read in the same
+  space first (`get_tag_names`, a saved-objects bulk get) and an unknown one
+  refuses the call naming `find_saved_objects(types=["tag"])`; a result over
+  100 tags (Kibana's cap) is refused. A rename whose title derives the
+  `create_dashboard` id of another existing dashboard is refused, naming it
+  (a space-not-found from that probe is not swallowed); any other rename
+  keeps the id, so `create_dashboard` with the old title of a dashboard it
+  made still finds it, which the description states. When every setting passed is already stored
+  nothing is written (`status: unchanged`); otherwise the result returns the
+  settings now, `changed`, `previous` (the values before, `null` for none
+  stored) and `undo`, the arguments that put them back
+  (`core/dashboards/settings.py` `undo_arguments`: a time range not stored
+  is undone with `clear_time_range`, tags through the add/remove lists, a
+  refresh not stored only approximately — paused, 0 — and not at all in an
+  undo that clears the time range, where the app ignores it). The
+  read-then-write race is not closed: the PUT checks no version (a stale
+  `version` query parameter or `If-Match` header was ignored with a 200; a
+  body `version` is a 400), as for every read-modify-write here.
 - **Positional panel addressing.** `update_panel` and `delete_panel`
   address the zero-based index `get_dashboard` reports (Kibana 9.5 also
   returns a per-panel `id`, which these tools carry through untouched but do
@@ -125,7 +164,7 @@ but are owned and registered once by data-management, not here.
 
 ## Invariants
 
-- All 16 tools accept optional `space` (`^[a-z0-9_-]+$`) threaded through
+- All 17 tools accept optional `space` (`^[a-z0-9_-]+$`) threaded through
   exactly one `gateway_factory(space)` call per invocation.
 - `search_dashboards` and `search_visualizations` never gain a `space` key;
   every other tool's dict result gains one only when `space` was passed.
@@ -135,7 +174,8 @@ but are owned and registered once by data-management, not here.
 - `create_dashboard` must not treat a space-not-found probe error as
   "dashboard does not exist."
 - `create_dashboard` (replace path), `add_panel`, `add_library_panel`, the
-  `add_esql_*_panel` tools, `update_panel`, and `delete_panel` must refuse
+  `add_esql_*_panel` tools, `update_panel`, `update_dashboard`, and
+  `delete_panel` must refuse
   to write when the fetched dashboard cannot round-trip losslessly, before
   any mutation.
   (`delete_panel`'s refusal is currently unpinned by a dedicated unit
@@ -154,6 +194,12 @@ but are owned and registered once by data-management, not here.
 - `add_library_panel` must never write a `ref_id` it has not just read back
   as an existing visualization in the same space; `update_visualization`
   must never create a visualization.
+- `update_dashboard` must never change a panel, section, pinned panel,
+  filter, query or option; must never write a tag id it has not just read
+  back as a tag in the same space (ids already on the dashboard are kept as
+  they are), a `time_range` the datemath grammar rejects, or a refresh
+  interval on a dashboard left without a time range; and must write nothing
+  when no setting changes.
 - `get_dashboard` adds `visualization_id` only to by-reference panels.
 - An omitted `time_field` is valid in every VizSpec, `date_histogram`
   included: it is auto-filled from the data view before the pre-flight,
@@ -200,7 +246,15 @@ but are owned and registered once by data-management, not here.
   is permanent: structural dashboard edits stay Kibana-UI-only.
 - **`create_dashboard`'s idempotency is title-based, not content-based** —
   two calls with different panels but the same normalized title collapse
-  to one dashboard (a replace), by design.
+  to one dashboard (a replace), by design. A rename with `update_dashboard`
+  keeps the id, so `create_dashboard` with the old title still finds (and
+  replaces the panels of) the renamed dashboard; recorded on the roadmap.
+- **`update_dashboard` edits settings, not filters, the query or display
+  options**, creates no tag (no tag tool exists), and `get_dashboard` does
+  not report the time range, refresh or tags (`update_dashboard` returns
+  them). `create_dashboard` does not check its `time_range` the way
+  `update_dashboard` does (Kibana stores any string). Recorded on the
+  roadmap.
 - **Panels from `add_panel`/`create_dashboard` are inline copies**, not
   library items; `update_visualization` does not reach them, and there is no
   tool that turns an inline panel into a library item.
@@ -231,6 +285,20 @@ but are owned and registered once by data-management, not here.
   `delete_panel` index and type/section guards; the annotation matrix; the
   space matrix (factory scoping, echo, `/s/<space>` URL prefix across all
   6 URL-emitting tools × `{explicit, "default", omitted}`).
+- **Unit — test_dashboards_settings.py**: `update_dashboard`'s
+  annotations; panels, sections, the library ref, pinned panels, filters,
+  query and options byte for byte after an edit; `previous` passed back
+  undoing (`undo` passed back restoring every setting, a refresh that was
+  not stored coming back paused); `unchanged` writing nothing; time range set, cleared, `to`
+  defaulted, refused unreadable before any call and together with
+  `clear_time_range`; the refresh refusal without a time range, the pause
+  keeping the value; tags added/removed with only new ids read, an unknown id
+  naming `find_saved_objects`, the overlap and 100-tag refusals; the
+  unsupported-panels refusals; the rename refusal (and a free title or
+  case-only rename passing, a space-not-found not swallowed); space echo and
+  the `/s/` URL. **tests/unit/dashboards/test_settings.py**: the datemath
+  grammar (readable and unreadable values), the timestamp order, refresh
+  shapes, tag merge order, the undo arguments.
 - **Unit — test_dashboards_library.py**: the five library tools' annotations,
   search/filter, the VizSpec-shaped read, empty-id guidance, in-place
   replace with pre-flight before any write, wrong id checked first and
@@ -244,10 +312,11 @@ but are owned and registered once by data-management, not here.
 - **Unit — tests/unit/adapters/test_visualization_gateway.py,
   tests/unit/visualizations/test_describe.py**: paging and query passing,
   the read-before-PUT that keeps an update from creating, by-reference panel
-  titles (library title, override, dangling); every chart type built reads
+  titles (library title, override, dangling); the tag bulk get keeping only
+  existing tags and making no call for no ids; every chart type built reads
   back as its spec; unknown shapes never raise.
-- **Unit — test_space_threading.py**: the 86-tool cross-toolbox space
-  contract (all 16 dashboards tools included) — threading, schema, echo,
+- **Unit — test_space_threading.py**: the 92-tool cross-toolbox space
+  contract (all 17 dashboards tools included) — threading, schema, echo,
   and error-path (`gateway_errors()` wraps factory errors) parity.
 - **Contract — test_gateway_contract.py**: live lifecycle round-trip with
   zero warnings; live idempotent-create through the actual tool; long-title
@@ -263,7 +332,17 @@ but are owned and registered once by data-management, not here.
   refuses it, an edit reaches it, a deleted item leaves a dangling panel the
   tools still edit around and remove, and a dangling id is refused by
   `add_library_panel`; `test_library_tools_scoped_live`: the five tools in a
-  space with echo, `/s/` URL and the suffix once).
+  space with echo, `/s/` URL and the suffix once); `update_dashboard`
+  (`test_update_dashboard_premises_live`: Kibana stores an unreadable time,
+  an unknown tag id and a refresh without a time range, and ignores a stale
+  version; `test_update_dashboard_settings_live`: every setting at once with
+  panels, the library ref and options unchanged, `unchanged` writing nothing,
+  the four refusals writing nothing, tag add/remove, each call's `undo`
+  restoring it, the clear and the refresh refusal after it;
+  `test_update_dashboard_refuses_the_sample_dashboard_live`: the flights
+  sample's dropped panels refused untouched;
+  `test_update_dashboard_scoped_live`: a default-space tag refused in a space,
+  a space tag accepted, echo, `/s/` URL, the suffix).
 - **e2e-replay — tests/e2e_replay/**: `flights-dashboard.json` replays a
   recorded model turn recovering from a bad `time_range`, an unknown data
   view, and two bad field names before it builds the dashboard, pinning

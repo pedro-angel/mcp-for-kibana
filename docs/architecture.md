@@ -21,7 +21,7 @@ flowchart LR
     subgraph server["mcp-for-kibana"]
         direction TB
         Transport["Transport<br/>stdio | streamable-HTTP"]
-        Toolboxes["10 toolboxes / 183 tools<br/>tier-gated read / write / destructive"]
+        Toolboxes["10 toolboxes / 184 tools<br/>tier-gated read / write / destructive"]
         Core["Hexagonal core<br/>VizSpec → Lens"]
         Gateway["kibana-py gateway"]
         Transport --> Toolboxes --> Core
@@ -48,7 +48,7 @@ layering is not just a diagram — it's machine-enforced by
 flowchart TD
     Client["MCP client (LLM host)"] -->|MCP protocol| Server
     AuthAdapter["adapters/mcp — per-request ApiKey auth"] --> Server
-    Server["server.py — composition root"] --> Toolboxes["toolboxes/ — 10 toolboxes, 183 tools, tiered<br/>(dashboards shown)"]
+    Server["server.py — composition root"] --> Toolboxes["toolboxes/ — 10 toolboxes, 184 tools, tiered<br/>(dashboards shown)"]
     Toolboxes --> Ports["ports/gateway.py — KibanaGateway protocol"]
     Toolboxes --> Core["core/ — VizSpec, validate, translate, compose (pure, no framework imports)"]
     Ports -. implemented by .-> KibanaAdapter["adapters/kibana — KibanaPyGateway (only module importing kibana-py)"]
@@ -93,7 +93,7 @@ class Toolbox(Protocol):
 `toolboxes/__init__.py` holds the registry (`TOOLBOXES: dict[str,
 Toolbox]`) — ten toolboxes today (`dashboards`, `data-management`,
 `alerting`, `cases`, `platform-health`, `observability`,
-`security-detections`, `platform-admin`, `streams`, `fleet` — 183 tools in
+`security-detections`, `platform-admin`, `streams`, `fleet` — 184 tools in
 all). Deployment
 config (`KIBANA_MCP_TOOLBOXES`, see
 [Configuration](configuration.md#toolbox-selection)) picks which entries to
@@ -238,9 +238,10 @@ works in practice.
 ## The dropped-panel guard
 
 `add_panel`, `add_library_panel`, the `add_esql_*_panel` tools,
-`update_panel`, and `delete_panel` all modify an *existing* dashboard by
-reading its current data, changing one part, and writing the whole thing
-back (there is no partial-update API for individual panels). A panel that
+`update_panel`, `update_dashboard`, and `delete_panel` all modify an
+*existing* dashboard by reading its current data, changing one part, and
+writing the whole thing back (there is no partial-update API for individual
+panels or settings: the PUT replaces the whole dashboard). A panel that
 shows a library visualization by reference (`{"ref_id": ...}`) round-trips
 losslessly, so it passes this guard (D37).
 That read-modify-write is unsafe if the dashboard contains anything the

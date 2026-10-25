@@ -234,7 +234,7 @@ wording, not incidental phrasing.
   and `find_exception_items` (ids, `find_exception_lists`, the other
   namespace).
 - **Unit, cross-cutting** — `tests/unit/toolboxes/test_space_threading.py`,
-  the 30 `security-detections` rows of the shared 91-tool table: threading,
+  the 30 `security-detections` rows of the shared 92-tool table: threading,
   schema shape, dict-vs-list echo, not-found-as-guidance, and auth-passthrough
   shared with the other four space-aware toolboxes.
 - **Contract, live Kibana** — `tests/contract/test_gateway_contract.py`:

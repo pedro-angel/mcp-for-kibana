@@ -11,13 +11,13 @@ from tests.fakes import FakeGateway
 DASHBOARDS_TOOLS = {
     "search_dashboards", "get_dashboard", "search_visualizations", "get_visualization",
     "create_dashboard", "create_visualization", "update_visualization", "add_library_panel",
-    "add_panel", "update_panel",
+    "add_panel", "update_panel", "update_dashboard",
     "add_esql_metric_panel", "add_esql_table_panel", "add_esql_xy_panel",
     "delete_dashboard", "delete_visualization", "delete_panel",
 }
 DASHBOARDS_WRITE = {
     "create_dashboard", "create_visualization", "update_visualization", "add_library_panel",
-    "add_panel", "update_panel",
+    "add_panel", "update_panel", "update_dashboard",
     "add_esql_metric_panel", "add_esql_table_panel", "add_esql_xy_panel",
 }
 DASHBOARDS_DESTRUCTIVE = {"delete_dashboard", "delete_visualization", "delete_panel"}

@@ -29,7 +29,7 @@ below are the proposal the file ships with.
 | `models` | placeholders | LM Studio model keys, from `lms ls` |
 | `task.steps`, `task.levels` | 4 steps, levels L1–L4 | Level *k* is one prompt with steps 1..*k*, and it is checked against every check of those steps |
 | `server.entry` | `mcp-for-kibana-study` | The `~/.lmstudio/mcp.json` server the model gets, as `integrations: ["mcp/<entry>"]` |
-| `server.toolboxes`, `server.tier`, `server.expected_tools` | `dashboards,data-management,alerting`, `write`, 45 | The same toolboxes and tier as the Claude study's server arm (24 tools when that study ran; alerting, data-management and dashboards have grown since) |
+| `server.toolboxes`, `server.tier`, `server.expected_tools` | `dashboards,data-management,alerting`, `write`, 46 | The same toolboxes and tier as the Claude study's server arm (24 tools when that study ran; alerting, data-management and dashboards have grown since) |
 | `runs.pilot_per_cell` | 1 | Pilot runs per model × level |
 | `runs.per_cell` | 10 | Full runs per model × level, one per block `b01`..`bNN` |
 | `runs.order` | `rotate` | Block *b* rotates the model order and the level order by *b* |
@@ -73,7 +73,7 @@ retried, a timed-out stream's calls kept, Kibana reset to its pre-run state
 with existing objects untouched, resume after a crash, redaction of the
 Kibana key on disk and in traces, refusal to send when redaction misses the
 key, preflight reporting a fix for each failure, mcp.json never written,
-listing the real server's 45 tools over stdio, and the analysis (Wilson
+listing the real server's 46 tools over stdio, and the analysis (Wilson
 intervals, pass^k, chain breakdown, re-derivation consistency).
 
 Only the Mac verifies:

@@ -786,6 +786,13 @@ class FakeGateway:
         self.dashboards[dashboard_id] = data  # create-if-absent (no _get)
         return dashboard_id
 
+    def get_tag_names(self, tag_ids):
+        # Tags are `tag` saved objects (find_saved_objects serves the same list);
+        # an id that names no tag is left out, as the adapter's bulk get does.
+        tags = {o.id: str(o.attributes.get("name", "")) for o in self.saved_objects
+                if o.type == "tag"}
+        return {t: tags[t] for t in tag_ids if t in tags}
+
     def _panel_summary(self, index, panel):
         # Mirrors the adapter: a by-reference panel reports its library item's
         # id and title ("" once that item is deleted).

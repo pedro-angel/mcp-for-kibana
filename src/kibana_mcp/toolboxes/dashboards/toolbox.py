@@ -16,6 +16,16 @@ from kibana_mcp.core.dashboards.compose import (
     replace_panel_config,
 )
 from kibana_mcp.core.dashboards.identity import derive_dashboard_id, normalize
+from kibana_mcp.core.dashboards.settings import (
+    DATE_MATH_HINT,
+    MAX_DASHBOARD_TAGS,
+    SETTINGS,
+    apply_settings,
+    merged_tags,
+    settings_view,
+    time_range_errors,
+    undo_arguments,
+)
 from kibana_mcp.core.errors import KibanaNotFound, KibanaSpaceNotFound
 from kibana_mcp.core.visualizations.spec import TimeRange, VizSpec
 from kibana_mcp.core.visualizations.translate import (
@@ -75,6 +85,27 @@ def _checked_dashboard_data(gw: KibanaGateway, dashboard_id: str) -> dict[str, A
             "Modify this dashboard in the Kibana UI instead."
         )
     return data
+
+
+def _refuse_title_taken(gw: KibanaGateway, dashboard_id: str, title: str) -> None:
+    # create_dashboard acts on the dashboard whose id the title derives; a
+    # rename onto a title another dashboard holds that id for would leave two
+    # same-titled dashboards, and create_dashboard editing the other one.
+    other = derive_dashboard_id(title)
+    if other == dashboard_id:
+        return
+    try:
+        existing = gw.get_dashboard(other)
+    except KibanaSpaceNotFound:
+        raise
+    except KibanaNotFound:
+        return
+    raise ToolError(
+        f"dashboard '{other}' ('{existing.title}') is the one create_dashboard edits for "
+        f"the title '{title}' — renaming '{dashboard_id}' to it would leave two dashboards "
+        "with that title; choose another title, or remove the other one with "
+        "delete_dashboard (destructive tier) first"
+    )
 
 
 class DashboardsToolbox:
@@ -381,6 +412,110 @@ class DashboardsToolbox:
                 new = replace_panel_config(data, panel_index, _prepare_config(gw, panel))
                 gw.update_dashboard(dashboard_id, new)
             return with_space({"id": dashboard_id, "panel_index": panel_index}, space)
+
+        @mcp.tool(tags={self.name, "write"}, annotations=_UPSERT)
+        def update_dashboard(
+            dashboard_id: str,
+            title: Annotated[str, Field(min_length=1)] | None = None,
+            description: str | None = None,
+            time_range: TimeRange | None = None,
+            clear_time_range: bool = False,
+            refresh_interval_seconds: Annotated[int, Field(ge=0)] | None = None,
+            tags_to_add: Annotated[
+                list[Annotated[str, Field(min_length=1)]], Field(max_length=MAX_DASHBOARD_TAGS)
+            ] | None = None,
+            tags_to_remove: list[Annotated[str, Field(min_length=1)]] | None = None,
+            space: Annotated[str, Field(pattern=SPACE_ID_PATTERN)] | None = None,
+        ) -> dict[str, Any]:
+            """Change a dashboard's settings; its panels are left exactly as they
+            are. Only what you pass changes: `title`, `description`,
+            `time_range` (the time the dashboard opens with; date math like
+            now-24h or ISO 8601), `clear_time_range=true` (open with the time
+            picker's current time instead), `refresh_interval_seconds` (auto-
+            refresh; 0 turns it off; Kibana applies it only on a dashboard that
+            stores a time range), `tags_to_add`/`tags_to_remove` (tag ids: find
+            them with find_saved_objects(types=["tag"])). Refuses a dashboard
+            with panels the API cannot write back. A rename keeps the id, so
+            create_dashboard with the old title of a dashboard it made still
+            replaces its panels. Returns the settings now, `changed`,
+            `previous` (their values before) and `undo` (arguments that put
+            them back: pass them to update_dashboard; a refresh that was not
+            stored comes back paused).
+
+            `space` targets a Kibana space by id (default: the default space)."""
+            if title is not None and not normalize(title):
+                raise ToolError("dashboard title cannot be blank or whitespace-only")
+            if time_range is not None and clear_time_range:
+                raise ToolError(
+                    "pass time_range or clear_time_range=true, not both")
+            if time_range is not None:
+                errors = time_range_errors(time_range.from_, time_range.to)
+                if errors:
+                    raise ToolError("; ".join(errors) + f" — {DATE_MATH_HINT}")
+            add = list(dict.fromkeys(tags_to_add or []))
+            remove = list(dict.fromkeys(tags_to_remove or []))
+            both = [t for t in add if t in remove]
+            if both:
+                raise ToolError(
+                    f"tag(s) {both} are in both tags_to_add and tags_to_remove — "
+                    "pass each tag in one list only")
+            if (title is None and description is None and time_range is None
+                    and not clear_time_range and refresh_interval_seconds is None
+                    and not add and not remove):
+                raise ToolError(
+                    "nothing to change: pass at least one of title, description, "
+                    "time_range, clear_time_range, refresh_interval_seconds, "
+                    "tags_to_add or tags_to_remove")
+            with gateway_errors(), deps.gateway_factory(space) as gw:
+                data = _checked_dashboard_data(gw, dashboard_id)
+                before = settings_view(data)
+                if title is not None and normalize(title) != normalize(before["title"]):
+                    _refuse_title_taken(gw, dashboard_id, title)
+                stores_time = (
+                    time_range is not None
+                    or (before["time_range"] is not None and not clear_time_range)
+                )
+                if refresh_interval_seconds is not None and not stores_time:
+                    raise ToolError(
+                        "refresh_interval_seconds takes effect only on a dashboard that "
+                        "stores a time range (Kibana restores the two together) — pass "
+                        "time_range too")
+                tags = None
+                if add or remove:
+                    tags = merged_tags(before["tags"], add, remove)
+                    new_ids = [t for t in add if t not in before["tags"]]
+                    found = gw.get_tag_names(new_ids)
+                    missing = [t for t in new_ids if t not in found]
+                    if missing:
+                        where = f" in space '{space}'" if space else ""
+                        raise ToolError(
+                            f"tag id(s) {missing} name no tag{where} — tags_to_add takes "
+                            "tag ids: call find_saved_objects(types=[\"tag\"]) to find "
+                            "them (Kibana would store an id that names nothing)")
+                    if len(tags) > MAX_DASHBOARD_TAGS:
+                        raise ToolError(
+                            f"a dashboard holds at most {MAX_DASHBOARD_TAGS} tags; this "
+                            f"change leaves {len(tags)} — remove some with tags_to_remove")
+                new = apply_settings(
+                    data, title=title, description=description,
+                    time_range=(
+                        {"from": time_range.from_, "to": time_range.to}
+                        if time_range is not None else None
+                    ),
+                    clear_time_range=clear_time_range,
+                    refresh_interval_seconds=refresh_interval_seconds, tags=tags,
+                )
+                after = settings_view(new)
+                changed = [k for k in SETTINGS if after[k] != before[k]]
+                if changed:
+                    gw.update_dashboard(dashboard_id, new)
+            return with_space({
+                "id": dashboard_id, "url": dashboard_url(dashboard_id, space),
+                "status": "updated" if changed else "unchanged",
+                **after, "changed": changed,
+                "previous": {k: before[k] for k in changed},
+                "undo": undo_arguments(before, after),
+            }, space)
 
     def _register_destructive(self, mcp: FastMCP, deps: ToolboxDeps) -> None:
         @mcp.tool(tags={self.name, "destructive"}, annotations=_DESTRUCTIVE)

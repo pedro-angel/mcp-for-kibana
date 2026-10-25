@@ -104,6 +104,13 @@ class KibanaGateway(Protocol):
 
     def upsert_dashboard(self, dashboard_id: str, data: dict[str, Any]) -> str: ...
 
+    def get_tag_names(self, tag_ids: list[str]) -> dict[str, str]:
+        """Id -> name of each saved-object tag among `tag_ids` that exists in
+        this gateway's space; an id that names no tag there is left out (Kibana's
+        dashboard PUT stores any string as a tag id, probed on 9.5.4). No call
+        for an empty list."""
+        ...
+
     def create_visualization(self, config: dict[str, Any]) -> str: ...
 
     def search_visualizations(self, query: str | None) -> list[VisualizationSummary]: ...

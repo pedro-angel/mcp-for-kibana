@@ -12,6 +12,23 @@ version section.
 
 ### Added
 
+- **Dashboards: edit a dashboard's settings** (one `write` tool, 184 tools in
+  all; it takes `space`). `update_dashboard` changes a dashboard's title,
+  description, time range (or clears it, so the dashboard opens with the time
+  picker's current time), auto-refresh interval in seconds (0 turns it off)
+  and tags (`tags_to_add`/`tags_to_remove`, tag ids from
+  `find_saved_objects(types=["tag"])`), and leaves its panels exactly as they
+  are. Only what is passed changes; when nothing would, nothing is written
+  (`unchanged`). The result returns the settings now, what changed, their
+  previous values, and `undo`: the arguments that put them back. It refuses, before
+  writing: a dashboard holding panels the API cannot write back (as
+  `update_panel` does), a time Kibana's dashboard app cannot read (Kibana's
+  API would store `"yesterday"`), auto-refresh on a dashboard without a
+  stored time range (Kibana would store it and never apply it), a tag id that
+  names no tag in that space (Kibana would store it), more than 100 tags, and
+  a rename onto a title `create_dashboard` already maps to another
+  dashboard. It joins the default selection (`dashboards-analyst`, now 27
+  tools). Decision D52.
 - **Fleet: agent tags, diagnostics, and integration install and uninstall**
   (two `read`, three `write` and one `destructive` tool, 183 tools in all).
   `list_agent_tags` lists the tags set on agents, and `list_agents`/`get_agent`

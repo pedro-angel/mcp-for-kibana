@@ -132,11 +132,12 @@ def _seed(gateway: FakeGateway, export_dir: Path) -> Seed:
 
 
 # TOOLS: (name, args_builder, kind) — kind in {"dict", "list"}
-# dashboards (16): search_dashboards(list), get_dashboard,
+# dashboards (17): search_dashboards(list), get_dashboard,
 #   search_visualizations(list), get_visualization, create_dashboard,
 #   create_visualization, update_visualization, add_library_panel, add_panel,
 #   add_esql_metric_panel, add_esql_table_panel, add_esql_xy_panel,
-#   update_panel, delete_dashboard, delete_visualization, delete_panel
+#   update_panel, update_dashboard, delete_dashboard, delete_visualization,
+#   delete_panel
 # data-management (17): list_data_views(list), describe_data_view,
 #   resolve_short_url, export_saved_objects, import_saved_objects,
 #   create_data_view, update_data_view, create_short_url, delete_data_view,
@@ -144,7 +145,7 @@ def _seed(gateway: FakeGateway, export_dir: Path) -> Seed:
 #   get_saved_object, get_default_data_view, upsert_runtime_field,
 #   set_default_data_view, delete_runtime_field (D48)
 # alerting (22), cases (6), security-detections (30, D50): the extension rows
-#   below — 91 space-aware tools in all
+#   below — 92 space-aware tools in all
 _TOOLS: list[tuple[str, Callable[[Seed], dict[str, Any]], str]] = [
     ("search_dashboards", lambda s: {}, "list"),
     ("get_dashboard", lambda s: {"dashboard_id": s.dashboard_id}, "dict"),
@@ -187,6 +188,7 @@ _TOOLS: list[tuple[str, Callable[[Seed], dict[str, Any]], str]] = [
         lambda s: {"dashboard_id": s.dashboard_id, "panel_index": 0, "panel": BAR_PANEL},
         "dict",
     ),
+    ("update_dashboard", lambda s: {"dashboard_id": s.dashboard_id, "title": "Renamed"}, "dict"),
     ("delete_dashboard", lambda s: {"dashboard_id": s.dashboard_id}, "dict"),
     ("delete_panel", lambda s: {"dashboard_id": s.dashboard_id, "panel_index": 0}, "dict"),
     ("list_data_views", lambda s: {}, "list"),
@@ -319,7 +321,7 @@ _TOOLS: list[tuple[str, Callable[[Seed], dict[str, Any]], str]] = [
     ("overwrite_exception_list", lambda s: {"handle": s.exception_handle}, "dict"),
 ]
 
-assert len(_TOOLS) == 91
+assert len(_TOOLS) == 92
 
 
 def _make_server(gateway_factory: Any, export_dir: Path, *, with_platform_admin: bool = False) -> FastMCP:
@@ -360,10 +362,10 @@ async def test_space_threads_to_the_factory(tmp_path, name, args_builder, kind, 
     assert calls == [space]
 
 
-# --- Group 2: schema — exactly the 91 tools expose `space`, correctly shaped ---
+# --- Group 2: schema — exactly the 92 tools expose `space`, correctly shaped ---
 
 
-async def test_schema_exactly_91_tools_expose_space(tmp_path):
+async def test_schema_exactly_92_tools_expose_space(tmp_path):
     gateway = FakeGateway()
     server = _make_server(lambda space=None: gateway, tmp_path, with_platform_admin=True)
     async with Client(server) as client:
@@ -382,7 +384,7 @@ async def test_schema_exactly_91_tools_expose_space(tmp_path):
         t.name for t in all_tools
         if "space" in t.inputSchema.get("properties", {})
     } - {name for name, _, _ in _TOOLS}
-    assert not outsiders, f"tools outside the 91 gained a space param: {sorted(outsiders)}"
+    assert not outsiders, f"tools outside the 92 gained a space param: {sorted(outsiders)}"
     for tool in with_space.values():
         prop = tool.inputSchema["properties"]["space"]
         # Annotated[str, Field(pattern=...)] | None renders as an anyOf of
