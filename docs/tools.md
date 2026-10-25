@@ -1595,7 +1595,7 @@ agent-lifecycle commands) require `KIBANA_MCP_TIER=destructive`.
 | `delete_agent_policy` | destructive | Delete an agent policy — removes it and its package policies. Refuses a managed policy and the default Fleet Server policy regardless of `force`. `force=True` bypasses the assigned-agent check. |
 | `delete_package_policy` | destructive | Delete a package (integration) policy — detaches the integration; agents stop collecting that data. `force=True` bypasses Kibana's in-use checks. |
 | `delete_output` | destructive | Delete a Fleet output. Refuses the default output(s) — promote a replacement first (`update_output` `is_default=True`), then delete the old one. No force escape. |
-| `uninstall_package` | destructive | Uninstall an installed integration package — removes its assets and DELETES its package policies (agents stop collecting its data; ingested data and the shared `logs-*`/`metrics-*` data views stay). Refused unless `force=True` when it has package policies (they are named; `force` reaches Kibana only then); refused regardless of `force` when one is on a managed or the default Fleet Server agent policy, for `fleet_server` with any package policy, and for `elastic_agent` while an agent policy has monitoring on. With Fleet space awareness on, the policies of every space count (each named with its space); a space-pinned `KIBANA_URL` refuses while another space exists. Returns `uninstalled`, `name`, `version`, `deleted_package_policies`. |
+| `uninstall_package` | destructive | Uninstall an installed integration package — removes its assets and DELETES its package policies (agents stop collecting its data; ingested data and the shared `logs-*`/`metrics-*` data views stay). Refused unless `force=True` when it has package policies (they are named; `force` reaches Kibana only then); refused regardless of `force` when one is on a managed or the default Fleet Server agent policy, for `fleet_server` with any package policy, and for `elastic_agent` while an agent policy has monitoring on. With Fleet space awareness on, refused regardless of `force`: Kibana deletes every space's package policies and this server cannot prove its key reads every space (the error names Kibana's Integrations UI). Returns `uninstalled`, `name`, `version`, `deleted_package_policies`. |
 | `reassign_agent` | destructive | Reassign one enrolled agent to a different agent policy — changes what the live agent collects/ships. Refuses a managed or default Fleet Server target policy. |
 | `upgrade_agent` | destructive | Upgrade one enrolled agent to `version` (must be one of `list_agent_versions`). Commands a live binary swap; async — the agent applies it on its own schedule. |
 | `unenroll_agent` | destructive | Unenroll one Elastic Agent — it stops shipping data. `force=True` unenrolls an already-unenrolled/offline agent; `revoke=True` also invalidates its API key immediately. |
@@ -1661,8 +1661,13 @@ Notes:
   monitoring data streams' templates and pipelines; probed). With Fleet space
   awareness on (`get_fleet_settings`' `space_awareness_migration_status`), each
   space lists only its own agent and package policies, yet Kibana's uninstall
-  deleted another space's package policy (probed): the uninstall reads every
-  space's, and a space-pinned `KIBANA_URL`, which cannot, refuses while another
-  space exists. The other fleet tools read the default (or pinned) space only.
+  deleted another space's package policy (probed), and Kibana's spaces listing
+  leaves out, without an error, each space the API key cannot read (probed with
+  a key limited to the default space, whose uninstall, no `force`, deleted a
+  package policy in a space it was never shown). Nothing this server calls
+  proves a key reads every space, so `uninstall_package` is refused with
+  awareness on, `force` or not, and the error names Kibana's Integrations UI,
+  as a user with Fleet and Integrations in all spaces. The other fleet tools
+  read the default (or pinned) space only.
 - **No enrollment-key mint/revoke.** See the note above — deliberately out of
   scope for this tier.

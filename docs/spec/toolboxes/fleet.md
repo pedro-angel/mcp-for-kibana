@@ -1,6 +1,6 @@
 # fleet — behavior contract
 
-Status: Draft v1.4 (2026-10-25) — regeneration corpus, reconciled to shipped code
+Status: Draft v1.5 (2026-10-25) — regeneration corpus, reconciled to shipped code
 Surface reference: docs/tools.md#fleet-toolbox · Enforcement: named per section below
 
 ## Purpose & persona
@@ -46,8 +46,8 @@ per-deployment migration state, not the same axis. Once that migration has
 run (the dev stack reads `success`), Fleet's agent and package policy
 listings return only the calling space's (probed on 9.5.4), so the other
 fleet tools see the default space's (or the pinned space's) policies only;
-`uninstall_package`, whose Kibana call reaches every space, reads every
-space instead (below).
+`uninstall_package`, whose Kibana call reaches every space, is refused then
+(below).
 
 **Secret redaction is a fixed field allowlist, not after-the-fact
 stripping.** Enrollment-key/uninstall-token reads and every output
@@ -128,14 +128,21 @@ Kibana's `force` is sent only then. `elastic_agent` is refused, whatever
 index templates and ingest pipelines of the agents' monitoring data streams,
 and Kibana uninstalled it under a monitoring agent policy without `force` or a
 check (probed); the refusal names those agent policies and
-`update_agent_policy monitoring_enabled=[]`. With Fleet space awareness on,
-every space's agent and package policies are read (each space lists only its
-own, while Kibana's uninstall deleted another space's package policy, read by
-id after it, and `elastic_agent` holds every space's monitoring assets;
-probed), each guard and refusal applies to them with the space named, and an
-agent policy is read in its own space; a space-pinned `KIBANA_URL` refuses
-the uninstall while another space exists (it cannot read that space), and a
-key that cannot read a space fails the call; the
+`update_agent_policy monitoring_enabled=[]`. **With Fleet space awareness on
+(`use_space_awareness_migration_status` set to any value), every uninstall
+is refused, whatever `force` says, before any policy is read** (fail
+closed): each space lists only its own agent and package policies, Kibana's
+uninstall deletes every space's package policies (probed: read by id after
+it), and Kibana's spaces listing leaves out, without an error, each space
+the API key cannot read — a key limited to the default space listed only it,
+and Kibana's uninstall with that key, no `force`, deleted a package policy
+in a space it was never shown (probed). No Kibana route the server calls
+proves a key reads every space (the package `stats` and
+`withPackagePoliciesCount` counts are space-scoped as well, probed), so no
+listing is provably complete; the refusal names Kibana's Integrations UI, as
+a user whose role grants Fleet and Integrations in all spaces. The checks
+above therefore run with awareness off, where one listing holds every
+space's policies. The
 managed `logs-*`/`metrics-*` data views an install may add to every space are
 kept (probed with `nginx`). The result lists the package policies read before the call; one created between
 that read and the uninstall is deleted unreported (the route has no
@@ -195,10 +202,10 @@ object's body.
   policy on a managed or the default Fleet Server agent policy, when it is
   `fleet_server` with any package policy (on any agent policy or none), when
   it is `elastic_agent` while an agent policy has `monitoring_enabled`, nor,
-  without `force=True`, when it has any package policy; with Fleet space
-  awareness on, "any" covers every space (a space-pinned `KIBANA_URL` refuses
-  while another space exists); it sends Kibana's `force` only for a package
-  with package policies.
+  without `force=True`, when it has any package policy, nor, whatever
+  `force` says, while Fleet space awareness is on (no listing it can read
+  proves complete); it sends Kibana's `force` only for a package with package
+  policies.
 - `list_agent_diagnostics` returns exactly
   `{id, name, status, created_at, action_id}` per bundle — no download path.
 
@@ -237,7 +244,9 @@ object's body.
   installed-version and unknown name/version/out-of-date paths, the
   uninstall's package-policy, guarded-policy (a plain Fleet Server policy
   included, every guarded one named) and agent-monitoring refusals (nothing
-  sent), and `force` withheld from a package without package policies.
+  sent), `force` withheld from a package without package policies, and the
+  space-awareness refusal whatever the key's spaces listing shows (one space,
+  a pinned one, several) or `force` says, with no policy read.
   `tests/unit/test_fleet_ops_core.py` pins the shared guidance text.
 - `tests/contract/test_fleet_contract.py` — a dedicated fleet suite,
   distinct from `tests/contract/test_gateway_contract.py` (different
@@ -253,12 +262,16 @@ object's body.
   `fleet_server`'s uninstall refused without force naming both the default
   Fleet Server policy and a plain one carrying a `fleet_server` package
   policy, `elastic_agent`'s refused with `force` under a monitoring agent
-  policy in the default space and then under one only a throwaway space lists
-  (and sent once none monitors), `tcp`'s refused for a package policy only a
-  throwaway space lists, then forced (that package policy gone, read by id),
-  and a CPU-metrics diagnostics bundle uploaded to READY before the plain one.
-  The cross-space checks run when Fleet space awareness is on (skipped
-  otherwise).
+  policy (and sent once none monitors), and a CPU-metrics diagnostics bundle
+  uploaded to READY before the plain one. With Fleet space awareness on (the
+  dev stack), the uninstalls are refused for awareness instead (`tcp` with
+  and without `force`, `fleet_server` without; the `elastic_agent` case is
+  skipped), and a
+  throwaway API key limited to the default space (minted with the stack's
+  `elastic` password from `elastic-start-local/.env`, invalidated after) is
+  shown a spaces listing without a throwaway space holding a `tcp` package
+  policy, both gateways refuse, and Kibana's own uninstall with that key
+  deletes that package policy (read by id).
 - `tests/ephemeral/test_fleet_ephemeral.py`, gated by the required
   `fleet_ephemeral` Definition-of-Done criterion (`dod.config`) — the only
   tier exercising `reassign_agent`/`upgrade_agent`/`unenroll_agent` and

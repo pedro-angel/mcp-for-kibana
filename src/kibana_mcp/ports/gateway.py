@@ -743,10 +743,11 @@ class KibanaGateway(Protocol):
         (it runs the Fleet Servers on its agent policy); `elastic_agent` is
         refused while any agent policy has `monitoring_enabled` (Kibana
         uninstalls it unchecked, probed); a `fleet_server` package policy on
-        no agent policy is guarded too. With Fleet space awareness on, the
-        agent and package policies of every space count (each space lists
-        only its own; Kibana's uninstall deletes every space's package
-        policies, probed), each named with its space; a space-pinned
-        KIBANA_URL refuses while another space exists. A package that is not
-        installed raises KibanaNotFound naming list_installed_packages."""
+        no agent policy is guarded too. With Fleet space awareness on, every
+        uninstall is refused, whatever `force` says, before any policy is
+        read: Kibana's uninstall deletes every space's package policies,
+        while the spaces listing hides each space the key cannot read
+        (probed), and nothing reachable proves the key reads them all. A
+        package that is not installed raises KibanaNotFound naming
+        list_installed_packages."""
         ...

@@ -130,7 +130,7 @@ from kibana_mcp.core.fleet_ops import (
     not_installed_message,
     outdated_version_message,
     package_policies_refusal,
-    pinned_space_refusal,
+    space_awareness_refusal,
     tags_not_applied,
     unattached_guard_reason,
     unknown_agent_message,
@@ -4018,79 +4018,51 @@ class KibanaPyGateway:
             name=name, version=str(after.get("version", "")),
             status=str(after.get("status", "")), already_installed=False)
 
-    def _fleet_policy_spaces(self, name: str) -> list[str | None]:
-        """The spaces `uninstall_package` reads agent and package policies in,
-        None for the calling space (always first). With Fleet space awareness
-        off it sees them all; on (the dev stack reads 'success'), each space
-        lists only its own while Kibana's uninstall deletes every space's
-        package policies (probed on 9.5.4, each read by id after it) and
-        elastic_agent serves every space's monitoring: then every space. A
-        space-pinned KIBANA_URL cannot reach another space, so it refuses."""
-        settings = self._client.fleet.get_settings().body.get("item") or {}
-        if not settings.get("use_space_awareness_migration_status"):
-            return [None]
-        calling = self._space or self._pinned_space or "default"
-        others = [str(sp["id"]) for sp in self._client.spaces.get_all().body
-                  if str(sp.get("id")) != calling]
-        if others and self._pinned_space is not None:
-            raise KibanaRejected(pinned_space_refusal(name, self._pinned_space, others))
-        return [None, *others]
-
     @_translate_errors
     def uninstall_package(self, *, name: str, force: bool = False) -> FleetPackageUninstall:
         item = self._read_package(name)
         if item.get("status") != "installed":
             raise KibanaNotFound(not_installed_message(name))
-        spaces = self._fleet_policy_spaces(name)
+        # With space awareness on, Kibana's uninstall deletes every space's package
+        # policies, while spaces.get_all leaves out each space the key cannot read
+        # (probed with a key restricted to 'default'): nothing listed is provably
+        # complete, so refuse before reading any policy, whatever force says.
+        settings = self._client.fleet.get_settings().body.get("item") or {}
+        if settings.get("use_space_awareness_migration_status"):
+            raise KibanaRejected(space_awareness_refusal(name))
         policies = self._client.fleet_policies
 
-        def in_space(space: str | None) -> dict[str, Any]:
-            return {} if space is None else {"space_id": space, "validate_spaces": False}
-
-        def items_in(list_page: Callable[..., Any], space: str | None) -> list[dict[str, Any]]:
-            scope = in_space(space)
-            return _fleet_all_items(lambda p: list_page(page=p, per_page=100, **scope).body)
-
-        def every_space(list_page: Callable[..., Any]) -> list[tuple[str, dict[str, Any]]]:
-            """(space, item) per item, deduplicated by id; space "" is the calling one."""
-            seen: dict[str, tuple[str, dict[str, Any]]] = {}
-            for space in spaces:
-                for it in items_in(list_page, space):
-                    seen.setdefault(str(it["id"]), (space or "", it))
-            return list(seen.values())
+        def every(list_page: Callable[..., Any]) -> list[dict[str, Any]]:
+            return _fleet_all_items(lambda p: list_page(page=p, per_page=100).body)
 
         if name == AGENT_MONITORING_PACKAGE:
             # Kibana uninstalls it under a monitoring agent policy unchecked (probed).
-            monitoring = [(ap["id"], space) for space, ap in every_space(policies.get_agent_policies)
+            monitoring = [ap["id"] for ap in every(policies.get_agent_policies)
                           if ap.get("monitoring_enabled")]
             if monitoring:
-                raise KibanaRejected(monitoring_refusal(
-                    name, [i for i, _ in monitoring], {i: s for i, s in monitoring if s}))
-        package_policies = [
-            (space, pp) for space, pp in every_space(policies.get_package_policies)
-            if (pp.get("package") or {}).get("name") == name
-        ]
-        listed: list[tuple[str, str, str, int, str]] = []
-        guarded: list[tuple[str, str, str, str]] = []
-        agent_policies: dict[tuple[str, str], dict[str, Any]] = {}
-        for space, pp in package_policies:
+                raise KibanaRejected(monitoring_refusal(name, monitoring))
+        package_policies = [pp for pp in every(policies.get_package_policies)
+                            if (pp.get("package") or {}).get("name") == name]
+        listed: list[tuple[str, str, str, int]] = []
+        guarded: list[tuple[str, str, str]] = []
+        agent_policies: dict[str, dict[str, Any]] = {}
+        for pp in package_policies:
             ap_ids = [i for i in (pp.get("policy_ids") or [pp.get("policy_id")]) if i]
             if not ap_ids:
                 unattached = unattached_guard_reason(name)
                 if unattached is not None:
-                    guarded.append((pp["id"], "", unattached, space))
-                listed.append((pp["id"], pp.get("name", ""), "", 0, space))
+                    guarded.append((pp["id"], "", unattached))
+                listed.append((pp["id"], pp.get("name", ""), "", 0))
             for ap_id in ap_ids:
-                if (space, ap_id) not in agent_policies:
-                    agent_policies[(space, ap_id)] = policies.get_agent_policy(
-                        agent_policy_id=ap_id, **in_space(space or None)).body["item"]
-                ap = agent_policies[(space, ap_id)]
+                if ap_id not in agent_policies:
+                    agent_policies[ap_id] = policies.get_agent_policy(
+                        agent_policy_id=ap_id).body["item"]
+                ap = agent_policies[ap_id]
                 why = guard_reason(name, is_managed=bool(ap.get("is_managed")),
                                    is_default_fleet_server=bool(ap.get("is_default_fleet_server")))
                 if why is not None:
-                    guarded.append((pp["id"], ap_id, why, space))
-                listed.append(
-                    (pp["id"], pp.get("name", ""), ap_id, int(ap.get("agents") or 0), space))
+                    guarded.append((pp["id"], ap_id, why))
+                listed.append((pp["id"], pp.get("name", ""), ap_id, int(ap.get("agents") or 0)))
         if guarded:
             raise KibanaRejected(guarded_policy_refusal(name, guarded))
         if package_policies and not force:
@@ -4102,5 +4074,5 @@ class KibanaPyGateway:
         return FleetPackageUninstall(
             name=name, version=str(item.get("version", "")),
             deleted_package_policies=tuple(
-                _to_fleet_package_policy(pp) for _, pp in package_policies),
+                _to_fleet_package_policy(pp) for pp in package_policies),
         )

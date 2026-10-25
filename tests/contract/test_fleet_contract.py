@@ -332,25 +332,26 @@ def test_package_install_uninstall_live(gateway):
         pp = gateway.create_package_policy(
             name=f"mcp-d51-tcp-{suffix}", package={"name": "tcp", "version": latest},
             agent_policy_id=pol.id)
-        with pytest.raises(KibanaRejected, match=rf"'{pp.id}' .*on agent policy '{pol.id}' \(0 agents\)"):
-            gateway.uninstall_package(name="tcp")
-        assert gateway.get_package_policy(pp.id).id == pp.id  # the refusal kept it
-        gone = gateway.uninstall_package(name="tcp", force=True)
-        assert [p.id for p in gone.deleted_package_policies] == [pp.id]
+        if _space_awareness_on(gateway):
+            # No space listing proves complete (see the restricted-key test).
+            for force in (False, True):
+                with pytest.raises(KibanaRejected, match=r"Fleet space awareness is on"):
+                    gateway.uninstall_package(name="tcp", force=force)
+            assert gateway.get_package_policy(pp.id).id == pp.id  # the refusal kept it
+            gateway._client.fleet_epm.uninstall_package(pkg_name="tcp")
+        else:
+            with pytest.raises(KibanaRejected, match=(
+                    rf"'{pp.id}' .*on agent policy '{pol.id}' \(0 agents\)")):
+                gateway.uninstall_package(name="tcp")
+            assert gateway.get_package_policy(pp.id).id == pp.id  # the refusal kept it
+            gone = gateway.uninstall_package(name="tcp", force=True)
+            assert [p.id for p in gone.deleted_package_policies] == [pp.id]
+        # Premise of the package-policy refusal: Kibana itself deletes a package's
+        # package policies on an uninstall without force when no agent uses them.
         with pytest.raises(KibanaNotFound):
             gateway.get_package_policy(pp.id)
         with pytest.raises(KibanaNotFound, match="list_installed_packages"):
             gateway.uninstall_package(name="tcp")
-
-        # Premise of the refusal: Kibana itself deletes a package's package
-        # policies on an uninstall without force when no agent uses them.
-        gateway.install_package(name="tcp")
-        pp2 = gateway.create_package_policy(
-            name=f"mcp-d51-tcp2-{suffix}", package={"name": "tcp", "version": latest},
-            agent_policy_id=pol.id)
-        gateway._client.fleet_epm.uninstall_package(pkg_name="tcp")
-        with pytest.raises(KibanaNotFound):
-            gateway.get_package_policy(pp2.id)
     finally:
         _ensure_uninstalled(gateway, "tcp")
         gateway.delete_agent_policy(agent_policy_id=pol.id, force=True)
@@ -373,16 +374,64 @@ def _space_awareness_on(gateway):
         "use_space_awareness_migration_status"))
 
 
-def test_uninstall_counts_a_package_policy_in_another_space_live(gateway):
-    # Premise (probed, 9.5.4, awareness 'success'): the default space's listing
-    # leaves out another space's package policy, and Kibana's uninstall from it
-    # deletes that one too (read by id after; a listing right after reads stale).
+def _es_admin():
+    """(Elasticsearch URL, elastic password) from the stack's own
+    elastic-start-local/.env, or None: only Elasticsearch mints an API key with
+    privileges (one the test key derives has none, probed)."""
+    from tests._stack_env import _parse, _repo_root
+
+    env = _parse(_repo_root() / "elastic-start-local" / ".env") or {}
+    if not env.get("ES_LOCAL_PORT") or not env.get("ES_LOCAL_PASSWORD"):
+        return None
+    return f"http://localhost:{env['ES_LOCAL_PORT']}", env["ES_LOCAL_PASSWORD"]
+
+
+def _es(es, method, path, body):
+    import base64
+    import json
+    import urllib.request
+
+    url, password = es
+    request = urllib.request.Request(
+        url + path, method=method, data=json.dumps(body).encode(),
+        headers={"Content-Type": "application/json", "Authorization": "Basic " + base64.b64encode(
+            f"elastic:{password}".encode()).decode()})
+    with urllib.request.urlopen(request, timeout=30) as response:  # noqa: S310 (local stack URL)
+        return json.loads(response.read())
+
+
+@contextlib.contextmanager
+def _default_space_fleet_key(es):
+    """A throwaway API key granting Fleet and Integrations in space 'default' only
+    (invalidated after)."""
+    key = _es(es, "POST", "/_security/api_key", {
+        "name": f"mcp-d51-restricted-{uuid.uuid4().hex[:8]}", "expiration": "30m",
+        "role_descriptors": {"fleet_default_only": {"applications": [{
+            "application": "kibana-.kibana", "resources": ["space:default"],
+            "privileges": ["feature_fleetv2.all", "feature_fleet.all"]}]}}})
+    try:
+        yield key["encoded"]
+    finally:
+        _es(es, "DELETE", "/_security/api_key", {"ids": [key["id"]]})
+
+
+def test_uninstall_refused_for_a_space_the_key_cannot_list_live(gateway):
+    # Why uninstall_package refuses with Fleet space awareness on: a key that
+    # cannot read a space is not told it exists, and Kibana's uninstall with
+    # that key, no force, still deletes the package policy there.
+    import os
+
     from kibana import NotFoundError
+
+    from kibana_mcp.adapters.kibana.gateway import KibanaPyGateway
 
     if not _space_awareness_on(gateway):
         pytest.skip("Fleet space awareness is off: every space lists every package policy")
+    es = _es_admin()
+    if es is None:
+        pytest.skip("no ES_LOCAL_PORT/ES_LOCAL_PASSWORD in elastic-start-local/.env")
     _ensure_uninstalled(gateway, "tcp")
-    with _fleet_space(gateway) as (space_id, scoped):
+    with _fleet_space(gateway) as (space_id, scoped), _default_space_fleet_key(es) as key:
         pol = scoped.fleet_policies.create_agent_policy(
             name=f"mcp-d51-sp-{space_id}", namespace="default", monitoring_enabled=[]).body["item"]
         try:
@@ -391,16 +440,18 @@ def test_uninstall_counts_a_package_policy_in_another_space_live(gateway):
             pp = scoped.fleet_policies.create_package_policy(
                 name=f"mcp-d51-sp-tcp-{space_id}", namespace="default", policy_ids=[pol["id"]],
                 package={"name": "tcp", "version": version}).body["item"]
-            assert all(p.id != pp["id"] for p in gateway.list_package_policies())
-            with pytest.raises(KibanaRejected, match=(
-                    rf"^refusing to uninstall integration package 'tcp': it has 1 package policy "
-                    rf"— '{pp['id']}' \(.*\) in space '{space_id}' on agent policy '{pol['id']}' "
-                    rf"\(0 agents\) — .*or pass force=True")):
-                gateway.uninstall_package(name="tcp")
-            assert scoped.fleet_policies.get_package_policy(
-                package_policy_id=pp["id"]).body["item"]["id"] == pp["id"]  # the refusal kept it
-            gone = gateway.uninstall_package(name="tcp", force=True)
-            assert [p.id for p in gone.deleted_package_policies] == [pp["id"]]
+            with KibanaPyGateway.connect(os.environ["KIBANA_URL"], key) as restricted:
+                assert [s.id for s in restricted.list_spaces()] == ["default"]
+                assert space_id in {s.id for s in gateway.list_spaces()}
+                for gw in (restricted, gateway):
+                    for force in (False, True):
+                        with pytest.raises(KibanaRejected, match=(
+                                r"^refusing to uninstall integration package 'tcp': Fleet space "
+                                r"awareness is on, .*regardless of force; nothing was changed")):
+                            gw.uninstall_package(name="tcp", force=force)
+                assert scoped.fleet_policies.get_package_policy(
+                    package_policy_id=pp["id"]).body["item"]["id"] == pp["id"]  # kept
+                restricted._client.fleet_epm.uninstall_package(pkg_name="tcp")
             with pytest.raises(NotFoundError):
                 scoped.fleet_policies.get_package_policy(package_policy_id=pp["id"])
         finally:
@@ -412,6 +463,11 @@ def test_uninstall_fleet_server_package_refused_live(gateway):
     # Never forced: were the guard to fail, the package-policy refusal still holds.
     # A plain agent policy carrying a fleet_server package policy is a Fleet
     # Server policy too (neither managed nor the default): guarded as well.
+    if _space_awareness_on(gateway):
+        with pytest.raises(KibanaRejected, match=r"Fleet space awareness is on"):
+            gateway.uninstall_package(name="fleet_server")
+        assert any(p.name == "fleet_server" for p in gateway.list_installed_packages())
+        return
     suffix = uuid.uuid4().hex[:8]
     pol = gateway.create_agent_policy(
         name=f"mcp-d51-fs-{suffix}", namespace="default", monitoring_enabled=[])
@@ -449,6 +505,10 @@ def test_uninstall_elastic_agent_refused_while_monitoring_live(gateway):
     # package policies, so force never reaches Kibana.
     from kibana import NotFoundError
 
+    if _space_awareness_on(gateway):
+        pytest.skip("Fleet space awareness is on: the uninstall is refused before this guard "
+                    "(test_uninstall_refused_for_a_space_the_key_cannot_list_live)")
+
     def views():
         found = set()
         for view_id in _SHARED_VIEWS:
@@ -477,21 +537,6 @@ def test_uninstall_elastic_agent_refused_while_monitoring_live(gateway):
         assert _package_status(gateway, "elastic_agent") == "installed"
         gateway.delete_agent_policy(agent_policy_id=pol.id, force=True)
         pol = None
-        if _space_awareness_on(gateway):
-            # A monitoring policy only another space lists still refuses it.
-            with _fleet_space(gateway) as (space_id, scoped):
-                other = scoped.fleet_policies.create_agent_policy(
-                    name=f"mcp-d51-mon-{space_id}", namespace="default",
-                    monitoring_enabled=["logs", "metrics"]).body["item"]
-                try:
-                    with pytest.raises(KibanaRejected, match=(
-                            rf"agent monitoring is on in agent policy '{other['id']}' in space "
-                            rf"'{space_id}', .*KIBANA_URL ending in '/s/<space>'\)\.$")):
-                        gateway.uninstall_package(name="elastic_agent", force=True)
-                    assert _package_status(gateway, "elastic_agent") == "installed"
-                finally:
-                    scoped.fleet_policies.delete_agent_policy(
-                        agent_policy_id=other["id"], force=True)
         if before != "installed":
             # No agent policy monitors any more: the tool now sends the uninstall.
             gone = gateway.uninstall_package(name="elastic_agent", force=True)

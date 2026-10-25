@@ -499,7 +499,11 @@ class FleetToolbox:
             default Fleet Server agent policy, and fleet_server with any
             package policy, are refused regardless of force, as is
             elastic_agent while an agent policy has monitoring on (it holds
-            the monitoring data streams' templates and pipelines). Returns
+            the monitoring data streams' templates and pipelines). With Fleet
+            space awareness on (get_fleet_settings
+            space_awareness_migration_status set) every uninstall is refused,
+            force or not: Kibana deletes the package policies of every space
+            and this server cannot prove its key reads them all. Returns
             {uninstalled, name, version,
             deleted_package_policies} (as read before the call);
             install_package reinstalls the package, not its policies."""

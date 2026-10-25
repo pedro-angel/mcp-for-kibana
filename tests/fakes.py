@@ -24,7 +24,9 @@ from kibana_mcp.core.models import (
 )
 from kibana_mcp.core.fleet_ops import (
     AGENT_MONITORING_PACKAGE, guard_reason, guarded_policy_refusal, installed_version_refusal,
-    missing_agents_message, monitoring_refusal, not_installed_message, package_policies_refusal, tags_not_applied, unknown_agent_message, unknown_package_message,
+    missing_agents_message, monitoring_refusal, not_installed_message, package_policies_refusal,
+    space_awareness_refusal, tags_not_applied, unattached_guard_reason, unknown_agent_message,
+    unknown_package_message,
 )
 from kibana_mcp.core.saved_objects import READABLE_TYPES, unreadable_type_message
 from kibana_mcp.core.space_sharing import (
@@ -1791,6 +1793,8 @@ class FakeGateway:
         pkg = self._fake_package(name)
         if pkg.status != "installed":
             raise KibanaNotFound(not_installed_message(name))
+        if self.fleet_settings.space_awareness_migration_status:
+            raise KibanaRejected(space_awareness_refusal(name))
         if name == AGENT_MONITORING_PACKAGE:
             monitoring = [ap.id for ap in self.fleet_agent_policies if ap.monitoring_enabled]
             if monitoring:
@@ -1798,12 +1802,18 @@ class FakeGateway:
         pps = [pp for pp in self.fleet_package_policies if pp.package_name == name]
         listed, guarded = [], []
         for pp in pps:
+            if pp.agent_policy_id is None:  # as the adapter: no agent policy to read
+                unattached = unattached_guard_reason(name)
+                if unattached is not None:
+                    guarded.append((pp.id, "", unattached))
+                listed.append((pp.id, pp.name, "", 0))
+                continue
             ap = self.get_agent_policy(pp.agent_policy_id)
             why = guard_reason(name, is_managed=ap.is_managed, is_default_fleet_server=(
                 ap.id in self.fleet_default_fleet_server_policy_ids))
             if why is not None:
-                guarded.append((pp.id, ap.id, why, ""))
-            listed.append((pp.id, pp.name, ap.id, ap.agent_count, ""))
+                guarded.append((pp.id, ap.id, why))
+            listed.append((pp.id, pp.name, ap.id, ap.agent_count))
         if guarded:
             raise KibanaRejected(guarded_policy_refusal(name, guarded))
         if pps and not force:

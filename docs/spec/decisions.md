@@ -1033,7 +1033,8 @@ this ledger stands without them.
   for a policy in another space says it is changed there (the toolbox has no
   `space` parameter); a space-pinned `KIBANA_URL` refuses while another
   space exists, since it cannot read one (fail closed), and a key that cannot
-  read a space fails the call. `include_cpu_metrics` sends
+  read a space fails the call — *superseded by the final review below: a key
+  that cannot read a space is not told it exists.* `include_cpu_metrics` sends
   `additional_metrics=["CPU"]`, the only value Kibana accepts (400 "expected
   value to equal [CPU]"); that bundle took ~66 s and the agent takes one
   diagnostics request a minute (a second ended `FAILED` "rate limit
@@ -1054,7 +1055,44 @@ this ledger stands without them.
   through `install_package` (irreversible on Basic); exposing Kibana's kuery
   form of the tag update (the toolbox never sweeps, as the bulk tools);
   returning the bundle's download path; an asset list in the results (it
-  names templates Kibana keeps). Contract: [fleet](toolboxes/fleet.md).
+  names templates Kibana keeps). **Amended (B7 final review, probes on 9.5.4):
+  with Fleet space awareness on, `uninstall_package` is refused, whatever
+  `force` says, before any policy is read; the every-space reading above is
+  withdrawn.** It failed open: Kibana's spaces listing returns only the spaces
+  the API key is authorized in (a 403 only when there are none), so a space
+  the key cannot read was skipped unseen. Probed with a throwaway space
+  holding a `tcp` package policy and a throwaway API key granting
+  `feature_fleetv2.all` and `feature_fleet.all` on `space:default` only: the
+  key's listing showed only `default` (`include_authorized_purposes` too), a
+  GET of the other space answered 403, and Kibana's uninstall with that key,
+  no `force`, answered 200 and deleted the package policy there (404 by id
+  after) — so a no-`force` call would have deleted it and left it out of
+  `deleted_package_policies`, and a `/s/<space>` URL with a key limited to
+  that space (whose listing shows one space) was let through outright. No
+  Kibana route the server calls proves a key reads every space: the package
+  `stats` route and `withPackagePoliciesCount` counted 0 package policies
+  from the default space for the other space's one (space-scoped, as the
+  `elastic` user too), `_bulk_get` and a by-id read of the hidden policy
+  answered empty and 404, `/api/stats` carries no usage, and
+  `/internal/security/me` names the key, not its grants. Elasticsearch's
+  `_has_privileges` would (resource `*`: false for the limited key, true for
+  the test key), but the server takes no Elasticsearch URL, and Kibana's
+  console proxy is an internal route needing the `console` privilege (403 for
+  the limited key). So any value of `use_space_awareness_migration_status`
+  (a migration under way or failed may already scope policies) refuses;
+  `force` is no way past it, since it could only delete package policies no
+  read reported; the refusal says why and names Kibana's Integrations UI, as
+  a user whose role grants Fleet and Integrations in all spaces. With
+  awareness off one listing holds every space's policies, and the guards
+  above apply as before. A fresh 9.5.4 stack has awareness on unasked, so the
+  uninstall now runs only where it is off; an optional Elasticsearch URL to
+  prove an all-spaces key is on the roadmap. The space-named refusals, the
+  pinned-URL refusal and the other-space fix text go with the every-space
+  reading (no fleet refusal names another space now). Rejected: proceeding
+  under `force` with a warning that unreported package policies may be
+  deleted (an uninstall the caller cannot review); an operator setting that
+  vouches for the key (an assertion, not a proof). Contract:
+  [fleet](toolboxes/fleet.md).
 
 ## Reliability and models (measured)
 
