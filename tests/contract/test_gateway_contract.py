@@ -2,7 +2,9 @@
 by a real Kibana on each supported line. If a test here fails while unit goldens pass, fix
 translate.py AND the golden test together."""
 
+import asyncio
 import contextlib
+import json
 import os
 import uuid
 
@@ -29,6 +31,7 @@ from kibana_mcp.toolboxes.alerting.toolbox import AlertingToolbox
 from kibana_mcp.toolboxes.base import ToolboxDeps
 from kibana_mcp.toolboxes.dashboards.toolbox import DashboardsToolbox
 from kibana_mcp.toolboxes.data_management.toolbox import DataManagementToolbox
+from kibana_mcp.toolboxes.observability.toolbox import ObservabilityToolbox
 from kibana_mcp.toolboxes.platform_admin.toolbox import PlatformAdminToolbox
 from kibana_mcp.toolboxes.security_detections.toolbox import SecurityDetectionsToolbox
 
@@ -688,8 +691,11 @@ def test_get_exception_list_missing_raises_live(gateway):
 
 
 def test_find_exception_items_missing_list_raises_live(gateway):
-    with pytest.raises(KibanaNotFound):
+    with pytest.raises(KibanaNotFound) as e:
         gateway.find_exception_items("does-not-exist-list-xyz")
+    assert "list_id 'does-not-exist-list-xyz' not found" in e.value.message
+    assert "find_exception_lists" in e.value.message
+    assert "namespace_type='agnostic'" in e.value.message
 
 
 def test_value_lists_empty_live(gateway):
@@ -967,15 +973,16 @@ def test_create_or_update_role_refuses_reserved_live(gateway):
         gateway.create_or_update_role("kibana_system", ["monitor"], [], None, None, None, False)
 
 
-def _platform_admin_tool_server():
+def _platform_admin_tool_server(api_key=None):
     # Registers ALL tiers (register() bypasses tier gating) so the destructive
-    # delete_* tools are reachable for self-cleanup.
+    # delete_* tools are reachable for self-cleanup. `api_key`: a key other
+    # than the stack's superuser one (a restricted key's refusals).
     server = FastMCP("contract-platform-admin")
     PlatformAdminToolbox().register(
         server,
         ToolboxDeps(
             gateway_factory=lambda space=None: KibanaPyGateway.connect(
-                os.environ["KIBANA_URL"], os.environ["KIBANA_TEST_API_KEY"], space
+                os.environ["KIBANA_URL"], api_key or os.environ["KIBANA_TEST_API_KEY"], space
             ),
             public_kibana_url="http://kb:5601",
         ),
@@ -1107,19 +1114,19 @@ def test_delete_detection_rule_exactly_one_guard_live(gateway):
         gateway.delete_detection_rule(None, None)
 
 
-def _sec_tool_server():
+def _sec_tool_server(export_dir=None):
     # Registers ALL tiers (register() bypasses build_server's tier gating), so the
     # delete_* destructive tools are reachable for self-cleanup.
     server = FastMCP("contract-sec")
-    SecurityDetectionsToolbox().register(
-        server,
-        ToolboxDeps(
-            gateway_factory=lambda space=None: KibanaPyGateway.connect(
-                os.environ["KIBANA_URL"], os.environ["KIBANA_TEST_API_KEY"], space
-            ),
-            public_kibana_url="http://kb:5601",
+    deps = ToolboxDeps(
+        gateway_factory=lambda space=None: KibanaPyGateway.connect(
+            os.environ["KIBANA_URL"], os.environ["KIBANA_TEST_API_KEY"], space
         ),
+        public_kibana_url="http://kb:5601",
     )
+    if export_dir is not None:
+        deps = ToolboxDeps(deps.gateway_factory, deps.public_kibana_url, export_dir)
+    SecurityDetectionsToolbox().register(server, deps)
     return server
 
 
@@ -1758,6 +1765,294 @@ async def test_library_tools_scoped_live(gateway):
             )).data
             assert deleted == {"id": viz_id, "deleted": True, "space": space_id}
 
+# --- update_dashboard (B8, D52) -------------------------------------------
+
+_SAMPLE_FLIGHTS_DASHBOARD = "7adfa750-4c81-11e8-b3d7-01146121b73d"
+
+
+@contextlib.contextmanager
+def _temp_tag(name, space=None):
+    """A throwaway `tag` saved object (no tag tool exists), removed after."""
+    tag_id = f"ct-tag-{uuid.uuid4().hex[:8]}"
+    with _raw_kibana(space) as kb:
+        kb.saved_objects.create(
+            type="tag", id=tag_id, attributes={"name": name, "description": "", "color": "#00AA00"}
+        )
+    try:
+        yield tag_id
+    finally:
+        with _raw_kibana(space) as kb:
+            with contextlib.suppress(Exception):
+                kb.saved_objects.delete(type="tag", id=tag_id)
+
+
+def _stored_dashboard(dashboard_id, space=None):
+    with _raw_kibana(space) as kb:
+        return kb.dashboards.get(id=dashboard_id).body
+
+
+def test_update_dashboard_premises_live(gateway):
+    # What the tool's checks rest on (probed on 9.5.4): Kibana's PUT stores a
+    # time it cannot read and a tag id that names nothing, keeps a refresh
+    # without a time range as timeRestore false, and checks no version.
+    dash_id = f"ct-dash-premises-{uuid.uuid4().hex[:8]}"
+    with _raw_kibana() as kb:
+        try:
+            kb.dashboards.update(
+                id=dash_id, title="ct premises", panels=[],
+                time_range={"from": "yesterday", "to": "now"}, tags=["ct-no-such-tag"],
+            )
+            data = kb.dashboards.get(id=dash_id).body["data"]
+            assert data["time_range"] == {"from": "yesterday", "to": "now"}
+            assert data["tags"] == ["ct-no-such-tag"]
+            kb.dashboards.update(
+                id=dash_id, title="ct premises", panels=[],
+                refresh_interval={"pause": False, "value": 30000},
+            )
+            attrs = kb.saved_objects.get(type="dashboard", id=dash_id).body["attributes"]
+            assert attrs["timeRestore"] is False
+            assert attrs["refreshInterval"] == {"pause": False, "value": 30000}
+            stale = kb.perform_request(
+                "PUT", f"/api/dashboards/{dash_id}", params={"version": "WzEsMV0="},
+                headers={"kbn-xsrf": "true", "content-type": "application/json",
+                         "elastic-api-version": "2023-10-31"},
+                body={"title": "ct premises stale", "panels": []},
+            )
+            assert stale.meta.status == 200  # a stale version is not checked
+        finally:
+            with contextlib.suppress(Exception):
+                kb.dashboards.delete(id=dash_id)
+
+
+async def test_update_dashboard_settings_live(gateway):
+    marker = uuid.uuid4().hex[:8]
+    title = f"ct settings {marker}"
+    dash_id = derive_dashboard_id(title)
+    other_title = f"ct settings other {marker}"
+    other_id = derive_dashboard_id(other_title)
+    viz_id = None
+    for d in (dash_id, other_id):
+        _delete_if_exists(gateway, d)
+    try:
+        with _temp_tag(f"ct prod {marker}") as tag_id, _temp_tag(f"ct x {marker}") as tag_x:
+            async with Client(_tool_server()) as client:
+                viz_id = (await client.call_tool("create_visualization", {
+                    "spec": dict(_PANEL, title=f"ct settings viz {marker}"),
+                })).data["id"]
+                await client.call_tool("create_dashboard", {"title": title, "panels": [_PANEL]})
+                await client.call_tool(
+                    "add_library_panel", {"dashboard_id": dash_id, "visualization_id": viz_id})
+                before = _stored_dashboard(dash_id)["data"]
+
+                async def update(**args):
+                    return (await client.call_tool(
+                        "update_dashboard", {"dashboard_id": dash_id, **args})).data
+
+                got = await update(
+                    title=f"{title} v2", description="new words",
+                    time_range={"from": "now-24h", "to": "now"},
+                    refresh_interval_seconds=30, tags_to_add=[tag_id],
+                )
+                assert got["status"] == "updated"
+                assert got["changed"] == [
+                    "title", "description", "time_range", "refresh_interval_seconds", "tags"]
+                assert got["previous"] == {  # create_dashboard stores now-7d..now
+                    "title": title, "description": "",
+                    "time_range": {"from": "now-7d", "to": "now"},
+                    "refresh_interval_seconds": None, "tags": [],
+                }
+                stored = _stored_dashboard(dash_id)
+                data = stored["data"]
+                assert stored.get("warnings") in (None, [])
+                assert data["panels"] == before["panels"]  # ids, grid, library ref
+                assert data["panels"][1]["config"] == {"ref_id": viz_id}
+                for key in ("options", "filters", "query", "pinned_panels"):
+                    assert data.get(key) == before.get(key), key
+                assert data["title"] == f"{title} v2" and data["description"] == "new words"
+                assert data["time_range"] == {"from": "now-24h", "to": "now"}
+                assert data["refresh_interval"] == {"pause": False, "value": 30000}
+                assert data["tags"] == [tag_id]
+
+                # the same values again write nothing
+                again = await update(title=f"{title} v2", tags_to_add=[tag_id])
+                assert again["status"] == "unchanged" and again["previous"] == {}
+                assert (_stored_dashboard(dash_id)["meta"]["updated_at"]
+                        == stored["meta"]["updated_at"])
+
+                # refusals change nothing: an unknown tag id, a tag *name*, an
+                # unreadable time, a rename onto another dashboard's title id
+                await client.call_tool("create_dashboard", {"title": other_title,
+                                                            "panels": [_PANEL]})
+                for args, match in (
+                    ({"tags_to_add": [f"ct-no-such-tag-{marker}"]}, "find_saved_objects"),
+                    ({"tags_to_add": [f"ct prod {marker}"]}, "name no tag"),
+                    ({"time_range": {"from": "yesterday"}}, "not a time Kibana can read"),
+                    ({"title": other_title}, f"dashboard '{other_id}'"),
+                ):
+                    with pytest.raises(ToolError, match=match):
+                        await update(**args)
+                assert (_stored_dashboard(dash_id)["meta"]["updated_at"]
+                        == stored["meta"]["updated_at"])
+
+                # tags edit in place; each call's `undo` puts it back, newest
+                # first (a refresh that was not stored comes back paused)
+                moved = await update(tags_to_add=[tag_x], tags_to_remove=[tag_id])
+                assert _stored_dashboard(dash_id)["data"]["tags"] == [tag_x]
+                assert moved["previous"] == {"tags": [tag_id]}
+                assert moved["undo"] == {"dashboard_id": dash_id, "tags_to_add": [tag_id],
+                                         "tags_to_remove": [tag_x]}
+                await update(**moved["undo"])
+                assert got["undo"] == {
+                    "dashboard_id": dash_id, "title": title, "description": "",
+                    "time_range": {"from": "now-7d", "to": "now"},
+                    "refresh_interval_seconds": 0, "tags_to_remove": [tag_id],
+                }
+                await update(**got["undo"])
+                data = _stored_dashboard(dash_id)["data"]
+                assert data["title"] == title and data["description"] == ""
+                assert data["time_range"] == {"from": "now-7d", "to": "now"}
+                assert data["tags"] == []
+                assert data["refresh_interval"] == {"pause": True, "value": 30000}
+                assert data["panels"] == before["panels"]
+                # without a stored time the dashboard opens with the picker's
+                # time; Kibana keeps the refresh, which the app does not apply,
+                # so it reads as none, and a refresh is refused
+                cleared = await update(clear_time_range=True)
+                assert cleared["previous"] == {
+                    "time_range": {"from": "now-7d", "to": "now"},
+                    "refresh_interval_seconds": 0}
+                assert cleared["refresh_interval_seconds"] is None
+                data = _stored_dashboard(dash_id)["data"]
+                assert "time_range" not in data
+                assert data["refresh_interval"] == {"pause": True, "value": 30000}
+                with pytest.raises(ToolError, match="pass time_range too"):
+                    await update(refresh_interval_seconds=60)
+                # setting both on it is undone by clear_time_range alone, and
+                # the tool takes that undo; the clear's own undo then restores
+                # the time and a paused refresh, at the 60 s set since (D52)
+                both = await update(time_range={"from": "now-1h"}, refresh_interval_seconds=60)
+                assert both["previous"] == {"time_range": None, "refresh_interval_seconds": None}
+                assert both["undo"] == {"dashboard_id": dash_id, "clear_time_range": True}
+                back = await update(**both["undo"])
+                assert (back["time_range"], back["refresh_interval_seconds"]) == (None, None)
+                await update(**cleared["undo"])
+                data = _stored_dashboard(dash_id)["data"]
+                assert data["time_range"] == {"from": "now-7d", "to": "now"}
+                assert data["refresh_interval"] == {"pause": True, "value": 60000}
+    finally:
+        for d in (dash_id, other_id):
+            _delete_if_exists(gateway, d)
+        if viz_id is not None:
+            with contextlib.suppress(KibanaNotFound):
+                gateway.delete_visualization(viz_id)
+
+
+async def test_update_dashboard_refresh_values_live(gateway):
+    # Kibana stores whole milliseconds, 1500 among them: the tool reads 1.5 s
+    # and writes it back as 1500; under 1 ms and over setTimeout's 2**31-1 ms
+    # are refused writing nothing; a negative refresh Kibana stores is left
+    # out of the undo, which the tool would refuse (D52).
+    marker = uuid.uuid4().hex[:8]
+    title = f"ct refresh {marker}"
+    dash_id = derive_dashboard_id(title)
+    _delete_if_exists(gateway, dash_id)
+    try:
+        async with Client(_tool_server()) as client:
+            await client.call_tool("create_dashboard", {"title": title, "panels": [_PANEL]})
+
+            async def update(**args):
+                return (await client.call_tool(
+                    "update_dashboard", {"dashboard_id": dash_id, **args})).data
+
+            got = await update(refresh_interval_seconds=1.5)
+            assert got["refresh_interval_seconds"] == 1.5
+            assert _stored_dashboard(dash_id)["data"]["refresh_interval"] == {
+                "pause": False, "value": 1500}
+            moved = await update(refresh_interval_seconds=30)
+            assert moved["undo"] == {"dashboard_id": dash_id, "refresh_interval_seconds": 1.5}
+            await update(**moved["undo"])
+            assert _stored_dashboard(dash_id)["data"]["refresh_interval"] == {
+                "pause": False, "value": 1500}
+            stored = _stored_dashboard(dash_id)["meta"]["updated_at"]
+            for value, match in ((0.0001, "under the 1 ms Kibana stores"),
+                                 (1e306, "less than or equal to 2147483.647")):
+                with pytest.raises(ToolError, match=match):
+                    await update(refresh_interval_seconds=value)
+            assert _stored_dashboard(dash_id)["meta"]["updated_at"] == stored
+            data = _stored_dashboard(dash_id)["data"]
+            with _raw_kibana() as kb:
+                kb.dashboards.update(
+                    id=dash_id, title=data["title"], panels=data["panels"],
+                    time_range=data["time_range"],
+                    refresh_interval={"pause": False, "value": -1000},
+                )
+            assert _stored_dashboard(dash_id)["data"]["refresh_interval"] == {
+                "pause": False, "value": -1000}
+            odd = await update(refresh_interval_seconds=30)
+            assert odd["previous"] == {"refresh_interval_seconds": -1}
+            assert (odd["undo"], odd["undo_omitted"]) == ({}, ["refresh_interval_seconds"])
+    finally:
+        _delete_if_exists(gateway, dash_id)
+
+
+async def test_update_dashboard_refuses_the_sample_dashboard_live(gateway):
+    # The flights sample holds map and legacy panels the API drops: the same
+    # refusal as update_panel, nothing written.
+    before = _stored_dashboard(_SAMPLE_FLIGHTS_DASHBOARD)
+    assert before.get("warnings")
+    async with Client(_tool_server()) as client:
+        with pytest.raises(ToolError, match="Modify this dashboard in the Kibana UI instead"):
+            await client.call_tool("update_dashboard", {
+                "dashboard_id": _SAMPLE_FLIGHTS_DASHBOARD, "description": "ct",
+            })
+    assert _stored_dashboard(_SAMPLE_FLIGHTS_DASHBOARD)["meta"] == before["meta"]
+
+
+async def test_update_dashboard_scoped_live(gateway):
+    # In a space: the tag check reads that space (a default-space tag is
+    # refused there), the result echoes the space and the URL carries /s/.
+    marker = uuid.uuid4().hex[:8]
+    title = f"ct scoped settings {marker}"
+    dash_id = derive_dashboard_id(title)
+    with _temp_space(gateway, "mcp-for-kibana-ct-settings") as space_id:
+        with _live_gateway(space_id) as gw:
+            gw.create_data_view(FLIGHTS, f"ct-flights-{marker}", "timestamp")
+        with _temp_tag(f"ct default {marker}") as default_tag, \
+                _temp_tag(f"ct scoped {marker}", space_id) as scoped_tag:
+            async with Client(_tool_server()) as client:
+                await client.call_tool(
+                    "create_dashboard", {"title": title, "panels": [_PANEL], "space": space_id})
+                with pytest.raises(ToolError, match=rf"name no tag in space '{space_id}'"):
+                    await client.call_tool("update_dashboard", {
+                        "dashboard_id": dash_id, "tags_to_add": [default_tag], "space": space_id,
+                    })
+                got = (await client.call_tool("update_dashboard", {
+                    "dashboard_id": dash_id, "tags_to_add": [scoped_tag],
+                    "time_range": {"from": "now-1h"}, "space": space_id,
+                })).data
+                assert got["space"] == space_id
+                assert f"/s/{space_id}/app/dashboards#/view/{dash_id}" in got["url"]
+                stored = _stored_dashboard(dash_id, space_id)["data"]
+                assert stored["tags"] == [scoped_tag]
+                assert stored["time_range"] == {"from": "now-1h", "to": "now"}
+                # the undo names the space, so passed as given it edits this one
+                assert got["undo"] == {
+                    "dashboard_id": dash_id, "tags_to_remove": [scoped_tag],
+                    "time_range": {"from": "now-7d", "to": "now"}, "space": space_id}
+                await client.call_tool("update_dashboard", got["undo"])
+                stored = _stored_dashboard(dash_id, space_id)["data"]
+                assert stored["tags"] == []
+                assert stored["time_range"] == {"from": "now-7d", "to": "now"}
+                # the default space has no such dashboard
+                with pytest.raises(ToolError, match="call search_dashboards to find it$"):
+                    await client.call_tool(
+                        "update_dashboard", {"dashboard_id": dash_id, "description": "x"})
+                with pytest.raises(ToolError, match=rf"\(in space '{space_id}'\)$"):
+                    await client.call_tool("update_dashboard", {
+                        "dashboard_id": f"ct-no-such-{marker}", "description": "x",
+                        "space": space_id,
+                    })
+
 
 def test_cross_space_import_clones(gateway, tmp_path):
     # export from space a -> import into space b WITHOUT overwrite = a clone:
@@ -1985,7 +2280,7 @@ async def test_get_alert_rule_reads_params_before_and_after_a_threshold_fix_live
         assert after["enabled"] is True and after["tags"] == ["contract"]
         assert set(after) == {
             "id", "name", "rule_type_id", "consumer", "enabled", "schedule_interval",
-            "status", "tags", "params", "actions",
+            "status", "tags", "params", "actions", "muted", "muted_alert_ids",
         }
         assert stored.get("api_key_owner")  # an enabled rule has a key; it never comes back
         assert os.environ["KIBANA_TEST_API_KEY"] not in str(after_call.content)
@@ -2078,3 +2373,1346 @@ async def test_update_data_view_tool_scoped_live(gateway, tmp_path):
         assert "call list_data_views to find it" in str(miss.value)
         assert str(miss.value).endswith(f" (in space '{space_id}')")
         assert str(miss.value).count("(in space") == 1
+
+
+# --- alerting rule lifecycle: mute, snooze, API key, untrack (B1, probed on 9.5.4) ---
+
+# An ungrouped .es-query rule over every flight in ten years: its first run
+# (right after enable) raises the one alert such a rule has, "query matched".
+_ESQ_FIRING = {**_ESQ_PARAMS, "timeWindowSize": 3650, "timeWindowUnit": "d"}
+
+
+async def _wait_for_alert(client, rule_id, alert_id, space=None, timeout=120.0):
+    """Mute `alert_id` as soon as the rule has raised it: Kibana answers 404
+    for an alert the rule has not raised (yet), so the first success is the
+    alert existing. Polls, never sleeps a fixed time."""
+    args = {"rule_id": rule_id, "alert_id": alert_id, **({"space": space} if space else {})}
+    deadline = asyncio.get_running_loop().time() + timeout
+    while True:
+        try:
+            return (await client.call_tool("mute_alert", args)).data
+        except ToolError as e:
+            if "not found on alert rule" not in str(e) or (
+                asyncio.get_running_loop().time() > deadline
+            ):
+                raise
+            await asyncio.sleep(2)
+
+
+async def test_mute_tools_through_mcp_live(gateway):
+    # The per-alert mute and the rule-wide mute land on the rule Kibana stores
+    # and get_alert_rule reads both back. Kibana's rule-wide mute and unmute
+    # both clear the per-alert mutes, and on a muted rule it answers a per-alert
+    # mute with 204 but records nothing — so mute_alert refuses that case. An
+    # alert id the rule never raised is refused with guidance
+    # (validate_alerts_existence stays at Kibana's default).
+    rid = None
+    try:
+        async with Client(_alerting_tool_server()) as client:
+            rid = (await client.call_tool("create_alert_rule", {
+                "name": f"contract-mute-{uuid.uuid4().hex[:8]}", "rule_type_id": ".es-query",
+                "consumer": "stackAlerts", "params": _ESQ_FIRING, "enabled": True,
+            })).data["id"]
+            with pytest.raises(ToolError) as typo:
+                await client.call_tool("mute_alert", {"rule_id": rid, "alert_id": "no-such-alert"})
+            muted_one = await _wait_for_alert(client, rid, "query matched")
+            await client.call_tool(  # repeat: no error, still one entry
+                "mute_alert", {"rule_id": rid, "alert_id": "query matched"})
+            got_one = (await client.call_tool("get_alert_rule", {"rule_id": rid})).data
+            unmuted_one = (await client.call_tool(
+                "unmute_alert", {"rule_id": rid, "alert_id": "query matched"})).data
+            await client.call_tool(  # an alert that is not muted: 204, nothing changes
+                "unmute_alert", {"rule_id": rid, "alert_id": "never-muted"})
+            await client.call_tool("mute_alert", {"rule_id": rid, "alert_id": "query matched"})
+            muted_all = (await client.call_tool("mute_alert_rule", {"rule_id": rid})).data
+            await client.call_tool("mute_alert_rule", {"rule_id": rid})  # repeat: no error
+            got_all = (await client.call_tool("get_alert_rule", {"rule_id": rid})).data
+            with _raw_kibana() as raw:
+                stored = raw.alerting.rule.get(id=rid).body
+            with pytest.raises(ToolError) as on_muted:
+                await client.call_tool("mute_alert", {"rule_id": rid, "alert_id": "query matched"})
+            unmuted_all = (await client.call_tool("unmute_alert_rule", {"rule_id": rid})).data
+            await client.call_tool("mute_alert", {"rule_id": rid, "alert_id": "query matched"})
+            # on a rule NOT muted as a whole: still clears, and names what it cleared
+            unmuted_none = (await client.call_tool("unmute_alert_rule", {"rule_id": rid})).data
+            got_none = (await client.call_tool("get_alert_rule", {"rule_id": rid})).data
+            for alert_id in unmuted_none["cleared_alert_ids"]:  # restore from the result
+                await client.call_tool("mute_alert", {"rule_id": rid, "alert_id": alert_id})
+            got_restored = (await client.call_tool("get_alert_rule", {"rule_id": rid})).data
+            with pytest.raises(ToolError) as missing:
+                await client.call_tool("mute_alert_rule", {"rule_id": "no-such-rule"})
+        assert "alert 'no-such-alert' not found on alert rule" in str(typo.value)
+        assert "'query matched'" in str(typo.value)  # the guidance names the real id
+        assert muted_one == {"rule_id": rid, "alert_id": "query matched", "muted": True}
+        assert got_one["muted"] is False and got_one["muted_alert_ids"] == ["query matched"]
+        assert unmuted_one == {"rule_id": rid, "alert_id": "query matched", "muted": False}
+        # the rule-wide mute names the per-alert mute it dropped
+        assert muted_all == {"id": rid, "muted": True, "cleared_alert_ids": ["query matched"]}
+        assert got_all["muted"] is True and got_all["enabled"] is True  # still running
+        # Kibana dropped the per-alert mute when it muted the whole rule
+        assert got_all["muted_alert_ids"] == [] and stored["muted_alert_ids"] == []
+        assert stored["mute_all"] is True
+        assert "is muted as a whole" in str(on_muted.value)
+        assert "call unmute_alert_rule first" in str(on_muted.value)
+        assert unmuted_all == {"id": rid, "muted": False, "cleared_alert_ids": []}
+        # ...and the rule-wide unmute clears a per-alert mute set after it, naming it
+        assert unmuted_none == {"id": rid, "muted": False, "cleared_alert_ids": ["query matched"]}
+        assert got_none["muted"] is False and got_none["muted_alert_ids"] == []
+        assert got_restored["muted_alert_ids"] == ["query matched"]  # restorable
+        assert "alert rule 'no-such-rule' not found" in str(missing.value)
+        assert "call list_alert_rules to find it" in str(missing.value)
+    finally:
+        if rid is not None:
+            gateway.delete_alert_rule(rid)
+
+
+async def test_snooze_tools_through_mcp_live(gateway):
+    # snooze_alert_rule turns any ISO-8601 instant into the one format Kibana
+    # takes, returns the schedule_id unsnooze_alert_rule needs, and the limit of
+    # five snoozes (expired ones count) is refused naming the fix.
+    rid = None
+    try:
+        async with Client(_alerting_tool_server()) as client:
+            rid = (await client.call_tool("create_alert_rule", {
+                "name": f"contract-snooze-{uuid.uuid4().hex[:8]}", "rule_type_id": ".es-query",
+                "consumer": "stackAlerts", "params": _ESQ_PARAMS,
+            })).data["id"]
+            offset = (await client.call_tool("snooze_alert_rule", {
+                "rule_id": rid, "duration": "2h", "start": "2030-01-01T02:00:00+02:00",
+                "recurring": {"every": "1w", "onWeekDay": ["SA"], "end": "2030-03-01T00:00:00Z"},
+            })).data
+            now = (await client.call_tool(
+                "snooze_alert_rule", {"rule_id": rid, "duration": "30m"})).data
+            past = (await client.call_tool(  # an expired window is stored, and counts
+                "snooze_alert_rule", {"rule_id": rid, "duration": "1h", "start": "2020-01-01"})).data
+            for _ in range(2):
+                await client.call_tool("snooze_alert_rule", {"rule_id": rid, "duration": "1d"})
+            with pytest.raises(ToolError) as limit:
+                await client.call_tool("snooze_alert_rule", {"rule_id": rid, "duration": "1h"})
+            gone = (await client.call_tool(
+                "unsnooze_alert_rule", {"rule_id": rid, "schedule_id": past["schedule_id"]})).data
+            again = (await client.call_tool(  # the freed slot takes a new snooze
+                "snooze_alert_rule", {"rule_id": rid, "duration": "1h"})).data
+            with pytest.raises(ToolError) as stale:
+                await client.call_tool(
+                    "unsnooze_alert_rule", {"rule_id": rid, "schedule_id": past["schedule_id"]})
+            with pytest.raises(ToolError) as bad_every:
+                await client.call_tool("snooze_alert_rule", {
+                    "rule_id": rid, "duration": "1h", "recurring": {"every": "1x"}})
+            with pytest.raises(ToolError) as bad_unit:
+                await client.call_tool("snooze_alert_rule", {"rule_id": rid, "duration": "1w"})
+        assert offset["rule_id"] == rid and offset["schedule_id"]
+        assert offset["start"] == "2030-01-01T00:00:00.000Z" and offset["timezone"] == "UTC"
+        assert offset["recurring"] == {
+            "every": "1w", "onWeekDay": ["SA"], "end": "2030-03-01T00:00:00.000Z"}
+        assert now["duration"] == "30m" and now["start"].endswith("Z") and now["recurring"] is None
+        assert past["start"] == "2020-01-01T00:00:00.000Z"
+        assert "already has 5 snooze schedules" in str(limit.value)
+        assert "unsnooze_alert_rule" in str(limit.value)
+        assert gone == {"rule_id": rid, "schedule_id": past["schedule_id"], "unsnoozed": True}
+        assert again["schedule_id"] not in {offset["schedule_id"], past["schedule_id"]}
+        assert f"snooze schedule '{past['schedule_id']}' not found on alert rule" in str(stale.value)
+        assert "Kibana rejected the payload" in str(bad_every.value)  # Kibana's own check
+        assert "'1x'" not in str(bad_unit.value) and "is not a snooze duration" in str(bad_unit.value)
+    finally:
+        if rid is not None:
+            gateway.delete_alert_rule(rid)
+
+
+async def test_update_alert_rule_api_key_and_untrack_live(gateway):
+    # The key refresh keeps the rule as it was (definition, enabled) and returns
+    # no key material; disable with untrack=True is accepted and disables, and
+    # the default disable request is unchanged (no body).
+    rid = None
+    try:
+        async with Client(_alerting_tool_server()) as client:
+            rid = (await client.call_tool("create_alert_rule", {
+                "name": f"contract-key-{uuid.uuid4().hex[:8]}", "rule_type_id": ".es-query",
+                "consumer": "stackAlerts", "params": _ESQ_PARAMS, "enabled": True,
+                "tags": ["contract"],
+            })).data["id"]
+            with _raw_kibana() as raw:
+                before = raw.alerting.rule.get(id=rid).body
+            refreshed = await client.call_tool("update_alert_rule_api_key", {"rule_id": rid})
+            with _raw_kibana() as raw:
+                after = raw.alerting.rule.get(id=rid).body
+            disabled = (await client.call_tool(
+                "disable_alert_rule", {"rule_id": rid, "untrack": True})).data
+            got = (await client.call_tool("get_alert_rule", {"rule_id": rid})).data
+            with pytest.raises(ToolError) as missing:
+                await client.call_tool("update_alert_rule_api_key", {"rule_id": "no-such-rule"})
+        assert refreshed.data == {"id": rid, "api_key_updated": True}
+        assert os.environ["KIBANA_TEST_API_KEY"] not in str(refreshed.content)
+        assert after["enabled"] is True and after["api_key_owner"]
+        assert after["updated_at"] > before["updated_at"]  # Kibana recorded the refresh
+        for key in ("name", "params", "tags", "schedule", "actions"):
+            assert after[key] == before[key], key
+        assert disabled == {"id": rid, "enabled": False, "untracked": True}
+        assert got["enabled"] is False
+        assert "alert rule 'no-such-rule' not found" in str(missing.value)
+    finally:
+        if rid is not None:
+            gateway.delete_alert_rule(rid)
+
+
+async def test_lifecycle_tools_scoped_live(gateway):
+    # In a space: every lifecycle tool lands there and echoes it, the rule is
+    # invisible from the root space, and a miss carries the suffix once.
+    with _temp_space(gateway, "mcp-for-kibana-ct-alrt-life") as space_id:
+        async with Client(_alerting_tool_server()) as client:
+            rid = (await client.call_tool("create_alert_rule", {
+                "name": "contract scoped lifecycle", "rule_type_id": ".es-query",
+                "consumer": "stackAlerts", "params": _ESQ_PARAMS, "space": space_id,
+            })).data["id"]
+            scoped = {"rule_id": rid, "space": space_id}
+            muted = (await client.call_tool("mute_alert_rule", scoped)).data
+            unmuted = (await client.call_tool("unmute_alert_rule", scoped)).data
+            snoozed = (await client.call_tool(
+                "snooze_alert_rule", {**scoped, "duration": "1h"})).data
+            unsnoozed = (await client.call_tool(
+                "unsnooze_alert_rule", {**scoped, "schedule_id": snoozed["schedule_id"]})).data
+            unmuted_alert = (await client.call_tool(
+                "unmute_alert", {**scoped, "alert_id": "query matched"})).data
+            keyed = (await client.call_tool("update_alert_rule_api_key", scoped)).data
+            with pytest.raises(ToolError) as miss:
+                await client.call_tool(
+                    "unsnooze_alert_rule", {**scoped, "schedule_id": snoozed["schedule_id"]})
+            with pytest.raises(ToolError) as root:  # invisible from the root space
+                await client.call_tool("mute_alert_rule", {"rule_id": rid})
+        for result in (muted, unmuted, snoozed, unsnoozed, unmuted_alert, keyed):
+            assert result["space"] == space_id
+        assert str(miss.value).endswith(f" (in space '{space_id}')")
+        assert str(miss.value).count("(in space") == 1
+        assert f"alert rule '{rid}' not found" in str(root.value)
+
+
+
+# --- observability: the Synthetics write tier (D46) --------------------------
+# Every object is a throwaway this test creates (prefix contract-syn-) and
+# removes in `finally`, so the reads above keep seeing an empty Synthetics
+# surface. A private location needs a Fleet agent policy no other location uses:
+# each test makes its own and deletes it last (that removes the Synthetics
+# package policies Kibana adds to it, a test run's included). No agent is
+# enrolled in it, so a test run is accepted but does not execute here; D46
+# records the probe that saw one execute.
+
+
+def _obs_tool_server():
+    server = FastMCP("contract-observability")
+    ObservabilityToolbox().register(
+        server,
+        ToolboxDeps(
+            gateway_factory=lambda space=None: KibanaPyGateway.connect(
+                os.environ["KIBANA_URL"], os.environ["KIBANA_TEST_API_KEY"], space
+            ),
+            public_kibana_url="http://kb:5601",
+        ),
+    )
+    return server
+
+
+def _synthetics_cleanup(gateway, *policy_ids):
+    with _raw_kibana() as raw:
+        for m in raw.synthetics.get_monitors(per_page=100).body["monitors"]:
+            if m["name"].startswith("contract-syn-"):
+                raw.synthetics.delete_monitor(id=m["config_id"])
+        for p in raw.synthetics.get_params().body:
+            if p["key"].startswith("contract_syn_"):
+                raw.synthetics.delete_param(id=p["id"])
+        for loc in raw.synthetics.get_private_locations().body:
+            if loc["label"].startswith("contract-syn-"):
+                raw.synthetics.delete_private_location(id=loc["id"])
+    for policy_id in policy_ids:
+        if policy_id is not None:
+            gateway.delete_agent_policy(policy_id, force=True)
+
+
+async def test_synthetic_params_lifecycle_live(gateway):
+    # The value goes in and never comes out (Kibana's update echoes the OLD
+    # value); a key in use is refused (Kibana itself stores the duplicate); a
+    # miss on update or delete names list_synthetic_params.
+    key = f"contract_syn_{uuid.uuid4().hex[:8]}"
+    secret, rotated = f"s3cret-{uuid.uuid4().hex}", f"rotated-{uuid.uuid4().hex}"
+    try:
+        async with Client(_obs_tool_server()) as client:
+            created = await client.call_tool("create_synthetic_param", {
+                "key": key, "value": secret, "description": "contract", "tags": ["contract"],
+            })
+            with pytest.raises(ToolError) as dup:
+                await client.call_tool("create_synthetic_param", {"key": key, "value": "x-1"})
+            pid = created.data["id"]
+            updated = await client.call_tool("update_synthetic_param", {
+                "param_id": pid, "value": rotated, "description": "rotated",
+            })
+            listed = (await client.call_tool("list_synthetic_params", {})).data
+            with pytest.raises(ToolError) as miss:
+                await client.call_tool(
+                    "update_synthetic_param", {"param_id": "no-such-param", "tags": []})
+            deleted = (await client.call_tool("delete_synthetic_param", {"param_id": pid})).data
+            with pytest.raises(ToolError) as gone:
+                await client.call_tool("delete_synthetic_param", {"param_id": pid})
+        assert created.data == {"id": pid, "key": key, "description": "contract",
+                                "tags": ["contract"]}
+        assert updated.data == {"id": pid, "key": key, "description": "rotated",
+                                "tags": ["contract"]}
+        for shown in (created.content, updated.content, listed):
+            assert secret not in str(shown) and rotated not in str(shown)
+        assert f"a parameter with key '{key}' already exists (id '{pid}')" in str(dup.value)
+        assert "synthetic param 'no-such-param' not found" in str(miss.value)
+        assert "call list_synthetic_params" in str(miss.value)
+        assert deleted == {"id": pid, "deleted": True}
+        assert f"synthetic param '{pid}' not found" in str(gone.value)
+        assert [p for p in gateway.list_synthetic_params() if p.key == key] == []
+    finally:
+        _synthetics_cleanup(gateway)
+
+
+def _test_now_policies(gateway, agent_policy_id):
+    return [p for p in gateway.list_package_policies()
+            if p.agent_policy_id == agent_policy_id
+            and p.name == "LIGHTWEIGHT_SYNTHETICS_TEST_NOW_RUN"]
+
+
+async def test_synthetic_locations_and_monitors_lifecycle_live(gateway):
+    # A private location on a throwaway agent policy, a monitor placed on it by
+    # label, an in-place partial edit (tags replaced, not merged), a run request
+    # and the package policy it leaves on the agent policy, the refusal to
+    # delete a location still in use, the move to a second location that lets
+    # the first be deleted, and each delete with its miss.
+    tag = uuid.uuid4().hex[:8]
+    label, name = f"contract-syn-loc-{tag}", f"contract-syn-mon-{tag}"
+    label_b = f"contract-syn-locb-{tag}"
+    policy_id = policy_b = None
+    try:
+        policy_id = gateway.create_agent_policy(
+            name=f"contract-syn-policy-{tag}", namespace="default", monitoring_enabled=[]).id
+        policy_b = gateway.create_agent_policy(
+            name=f"contract-syn-policy-{tag}-b", namespace="default", monitoring_enabled=[]).id
+        async with Client(_obs_tool_server()) as client:
+            loc = (await client.call_tool("create_synthetic_private_location", {
+                "label": label, "agent_policy_id": policy_id, "tags": ["contract"],
+            })).data
+            with pytest.raises(ToolError) as taken_policy:
+                await client.call_tool("create_synthetic_private_location", {
+                    "label": f"{label}-2", "agent_policy_id": policy_id})
+            with pytest.raises(ToolError) as no_policy:
+                await client.call_tool("create_synthetic_private_location", {
+                    "label": f"{label}-3", "agent_policy_id": "no-such-agent-policy"})
+            renamed = (await client.call_tool("update_synthetic_private_location", {
+                "location_id": loc["id"], "label": f"{label}-renamed",
+            })).data
+            with pytest.raises(ToolError) as no_location:
+                await client.call_tool("update_synthetic_private_location", {
+                    "location_id": "no-such-location", "label": f"{label}-x"})
+            loc_b = (await client.call_tool("create_synthetic_private_location", {
+                "label": label_b, "agent_policy_id": policy_b,
+            })).data
+            created = (await client.call_tool("create_synthetic_monitor", {
+                "type": "http", "name": name, "url": "http://kibana:5601/api/status",
+                "private_locations": [f"{label}-renamed"], "schedule": "030s",
+                "enabled": False, "tags": ["contract"],
+            })).data
+            with pytest.raises(ToolError) as bad_schedule:
+                await client.call_tool("create_synthetic_monitor", {
+                    "type": "http", "name": f"{name}-2", "url": "http://x",
+                    "private_locations": [loc["id"]], "schedule": "45s"})
+            with pytest.raises(ToolError) as dup_name:
+                await client.call_tool("create_synthetic_monitor", {
+                    "type": "http", "name": name, "url": "http://x",
+                    "private_locations": [loc["id"]]})
+            edited = (await client.call_tool("update_synthetic_monitor", {
+                "monitor_id": created["id"], "schedule": "05m", "tags": ["edited"],
+            })).data
+            got = (await client.call_tool(
+                "get_synthetic_monitor", {"monitor_id": created["id"]})).data
+            with pytest.raises(ToolError) as wrong_target:
+                await client.call_tool("update_synthetic_monitor", {
+                    "monitor_id": created["id"], "host": "kibana:5601"})
+            with pytest.raises(ToolError) as no_monitor_read:
+                await client.call_tool("update_synthetic_monitor", {
+                    "monitor_id": "no-such-monitor", "url": "http://x"})
+            before_run = _test_now_policies(gateway, policy_id)
+            run = (await client.call_tool(
+                "test_synthetic_monitor", {"monitor_id": created["id"]})).data
+            after_run = _test_now_policies(gateway, policy_id)
+            with pytest.raises(ToolError) as no_monitor:
+                await client.call_tool("test_synthetic_monitor", {"monitor_id": "no-such-monitor"})
+            with pytest.raises(ToolError) as in_use:
+                await client.call_tool(
+                    "delete_synthetic_private_location", {"location_id": loc["id"]})
+            # The path the in-use refusal names: move the monitor, then delete.
+            moved = (await client.call_tool("update_synthetic_monitor", {
+                "monitor_id": created["id"], "private_locations": [loc_b["id"]],
+            })).data
+            loc_deleted = (await client.call_tool(
+                "delete_synthetic_private_location", {"location_id": loc["id"]})).data
+            after_location = _test_now_policies(gateway, policy_id)
+            with pytest.raises(ToolError) as loc_gone:
+                await client.call_tool(
+                    "delete_synthetic_private_location", {"location_id": loc["id"]})
+            deleted = (await client.call_tool(
+                "delete_synthetic_monitor", {"monitor_id": created["id"]})).data
+            with pytest.raises(ToolError) as monitor_gone:
+                await client.call_tool("delete_synthetic_monitor", {"monitor_id": created["id"]})
+            loc_b_deleted = (await client.call_tool(
+                "delete_synthetic_private_location", {"location_id": loc_b["id"]})).data
+        assert loc == {"id": loc["id"], "label": label, "agent_policy_id": policy_id,
+                       "is_invalid": False, "tags": ["contract"]}
+        assert f"agent policy '{policy_id}' already backs private location" in str(
+            taken_policy.value)
+        assert "Agent policy with id no-such-agent-policy not found" in str(no_policy.value)
+        assert "list_agent_policies shows them" in str(no_policy.value)
+        assert renamed == {**loc, "label": f"{label}-renamed"}
+        assert "private location 'no-such-location' not found" in str(no_location.value)
+        assert "call list_synthetic_private_locations" in str(no_location.value)
+        assert created["name"] == name and created["type"] == "http"
+        assert created["enabled"] is False and created["schedule"] == "30s"
+        assert created["locations"] == [f"{label}-renamed"]
+        assert created["target"] == "http://kibana:5601/api/status"
+        assert "1, 2, 3, 5, 10, 15, 20, 30, 60, 120 or 240" in str(bad_schedule.value)
+        assert "must be unique" in str(dup_name.value)
+        # Kibana's PUT is partial: the edit kept everything it did not name, and
+        # replaced the tag list ("contract" is gone); "05m" went out as "5m".
+        assert edited == got == {**created, "schedule": "5m", "tags": ["edited"]}
+        assert "is an http monitor: it takes `url`, not `host`" in str(wrong_target.value)
+        assert run["monitor_id"] == created["id"] and uuid.UUID(run["test_run_id"])
+        # Each run adds a test-now package policy to the location's agent policy;
+        # it outlives the location (Kibana's clean-up task removes it later).
+        assert len(after_run) == len(before_run) + 1
+        assert {p.id for p in after_location} >= {p.id for p in after_run}
+        assert "synthetic monitor 'no-such-monitor' not found" in str(no_monitor.value)
+        assert "call list_synthetic_monitors" in str(no_monitor_read.value)
+        assert "is used by 1 monitor(s)" in str(in_use.value)
+        assert "move those monitors to another private location" in str(in_use.value)
+        assert moved == {**edited, "locations": [label_b]}
+        assert deleted == {"id": created["id"], "deleted": True}
+        assert f"synthetic monitor '{created['id']}' not found" in str(monitor_gone.value)
+        assert loc_deleted == {"id": loc["id"], "deleted": True}
+        assert f"private location '{loc['id']}' not found" in str(loc_gone.value)
+        assert loc_b_deleted == {"id": loc_b["id"], "deleted": True}
+        assert gateway.list_synthetic_private_locations() == []
+        assert gateway.list_synthetic_monitors() == []
+    finally:
+        _synthetics_cleanup(gateway, policy_id, policy_b)
+
+
+# --- observability: the APM agent-configuration writes (D47) -----------------
+# Throwaway configs for services named contract-apm-<hex>, removed in `finally`
+# so the read above keeps seeing no configuration at all.
+
+
+def _apm_cleanup(*targets):
+    with _raw_kibana() as raw:
+        for name, env in targets:
+            with contextlib.suppress(kibana.NotFoundError):
+                raw.apm.delete_agent_configuration(service_name=name, service_environment=env)
+
+
+async def test_apm_agent_config_lifecycle_live(gateway):
+    # Create (a number sent as a string), a replacement that returns the old map
+    # and replaces rather than merges, a value Kibana rejects (its message omits
+    # the key; the tool names the settings), the delete with what it removed,
+    # and the miss that names list_apm_agent_configs.
+    name, env = f"contract-apm-{uuid.uuid4().hex[:8]}", "contract"
+    try:
+        async with Client(_obs_tool_server()) as client:
+            created = (await client.call_tool("upsert_apm_agent_config", {
+                "service_name": name, "environment": env,
+                "settings": {"transaction_sample_rate": 0.2},
+            })).data
+            replaced = (await client.call_tool("upsert_apm_agent_config", {
+                "service_name": name, "environment": env,
+                "settings": {"capture_body": "errors", "recording": False},
+            })).data
+            with pytest.raises(ToolError) as bad:
+                await client.call_tool("upsert_apm_agent_config", {
+                    "service_name": name, "environment": env,
+                    "settings": {"transaction_sample_rate": "7"},
+                })
+            with _raw_kibana() as raw:
+                stored = raw.apm.get_agent_configuration(name=name, environment=env).body
+            deleted = (await client.call_tool("delete_apm_agent_config", {
+                "service_name": name, "environment": env})).data
+            with pytest.raises(ToolError) as gone:
+                await client.call_tool("delete_apm_agent_config", {
+                    "service_name": name, "environment": env})
+        assert created["created"] is True and created["previous_settings"] is None
+        assert created["service_name"] == name and created["service_environment"] == env
+        assert created["settings"] == {"transaction_sample_rate": "0.2"}
+        assert created["etag"] and created["agent_name"] is None
+        assert replaced["created"] is False
+        assert replaced["previous_settings"] == {"transaction_sample_rate": "0.2"}
+        assert replaced["settings"] == {"capture_body": "errors", "recording": "false"}
+        assert "Must be a number between 0.0000 and 1" in str(bad.value)
+        assert "settings sent: {'transaction_sample_rate': '7'}" in str(bad.value)
+        assert stored["settings"] == {"capture_body": "errors", "recording": "false"}
+        assert deleted == {"service_name": name, "environment": env, "deleted": True,
+                           "settings": {"capture_body": "errors", "recording": "false"},
+                           "agent_name": None}
+        assert str(gone.value) == (
+            f"no APM agent configuration for service '{name}', environment '{env}' — "
+            "service_name and environment must match a configuration exactly (an omitted one "
+            "means all); call list_apm_agent_configs to see them")
+        with pytest.raises(KibanaNotFound):
+            gateway.get_apm_agent_config(name, env)
+    finally:
+        _apm_cleanup((name, env))
+
+
+async def test_apm_agent_config_agent_name_round_trip_live(gateway):
+    # A config written with agent_name (as Kibana's UI does) keeps it through a
+    # tool replacement: Kibana's PUT drops it unless it is sent again (probed);
+    # a replacement refuses a different one, which its result could not return.
+    # The delete returns it, and passing it back to the upsert recreates it.
+    name = f"contract-apm-{uuid.uuid4().hex[:8]}"
+    try:
+        with _raw_kibana() as raw:
+            raw.apm.create_or_update_agent_configuration(
+                service_name=name, settings={"capture_body": "all"}, agent_name="java")
+        async with Client(_obs_tool_server()) as client:
+            replaced = (await client.call_tool("upsert_apm_agent_config", {
+                "service_name": name, "settings": {"capture_body": "off"}})).data
+            with pytest.raises(ToolError) as renamed:
+                await client.call_tool("upsert_apm_agent_config", {
+                    "service_name": name, "agent_name": "go",
+                    "settings": {"capture_body": "errors"}})
+            with _raw_kibana() as raw:
+                stored = raw.apm.get_agent_configuration(name=name).body
+            deleted = (await client.call_tool("delete_apm_agent_config", {
+                "service_name": name})).data
+            recreated = (await client.call_tool("upsert_apm_agent_config", {
+                "service_name": name, "settings": deleted["settings"],
+                "agent_name": deleted["agent_name"]})).data
+        with _raw_kibana() as raw:
+            restored = raw.apm.get_agent_configuration(name=name).body
+        assert replaced["agent_name"] == "java" and replaced["service_environment"] is None
+        assert replaced["previous_settings"] == {"capture_body": "all"}
+        # A different agent_name on a replacement is refused before any write.
+        assert "has agent_name 'java', and a replacement keeps it" in str(renamed.value)
+        assert stored["agent_name"] == "java" and stored["settings"] == {"capture_body": "off"}
+        assert deleted["agent_name"] == "java"
+        assert recreated["created"] is True and recreated["agent_name"] == "java"
+        assert restored["agent_name"] == "java" and restored["settings"] == {"capture_body": "off"}
+    finally:
+        _apm_cleanup((name, None))
+
+
+async def test_apm_agent_config_literal_all_option_live(gateway):
+    # Kibana stores "ALL_OPTION_VALUE" as a literal environment and its view and
+    # delete match it exactly (probed): the tools replace and delete that one and
+    # leave the service's all-environments configuration alone; creating one is
+    # refused before any write.
+    name, literal = f"contract-apm-{uuid.uuid4().hex[:8]}", "ALL_OPTION_VALUE"
+    fresh = f"contract-apm-{uuid.uuid4().hex[:8]}"
+    try:
+        with _raw_kibana() as raw:
+            raw.apm.create_or_update_agent_configuration(
+                service_name=name, service_environment=literal,
+                settings={"recording": "true"})
+            raw.apm.create_or_update_agent_configuration(
+                service_name=name, settings={"recording": "false"})
+        async with Client(_obs_tool_server()) as client:
+            replaced = (await client.call_tool("upsert_apm_agent_config", {
+                "service_name": name, "environment": literal,
+                "settings": {"log_level": "debug"}})).data
+            deleted = (await client.call_tool("delete_apm_agent_config", {
+                "service_name": name, "environment": literal})).data
+            with pytest.raises(ToolError) as refused:
+                await client.call_tool("upsert_apm_agent_config", {
+                    "service_name": fresh, "environment": literal,
+                    "settings": {"recording": "true"}})
+        left = [(c.service_name, c.service_environment, c.settings)
+                for c in gateway.list_apm_agent_configs() if c.service_name in (name, fresh)]
+        assert replaced["created"] is False and replaced["previous_settings"] == {
+            "recording": "true"}
+        assert deleted["deleted"] is True and deleted["settings"] == {"log_level": "debug"}
+        assert str(refused.value).endswith(
+            f"omit environment to create or replace the configuration for service "
+            f"'{fresh}', all environments")
+        assert left == [(name, None, {"recording": "false"})]
+    finally:
+        _apm_cleanup((name, literal), (name, None), (fresh, literal))
+
+
+async def test_apm_agent_config_both_sentinels_live(gateway):
+    # With both names the sentinel and nothing stored under that pair, the
+    # refusal says to omit both: omitting only service_name would replace a
+    # configuration stored under {all services, literal "ALL_OPTION_VALUE"}.
+    literal = "ALL_OPTION_VALUE"
+    try:
+        with _raw_kibana() as raw:
+            raw.apm.create_or_update_agent_configuration(
+                service_environment=literal, settings={"recording": "true"})
+        async with Client(_obs_tool_server()) as client:
+            with pytest.raises(ToolError) as refused:
+                await client.call_tool("upsert_apm_agent_config", {
+                    "service_name": literal, "environment": literal,
+                    "settings": {"log_level": "debug"}})
+        with _raw_kibana() as raw:
+            kept = raw.apm.get_agent_configuration(environment=literal).body
+        assert str(refused.value).endswith(
+            "omit service_name and environment to create or replace the configuration for "
+            "all services, all environments")
+        assert kept["settings"] == {"recording": "true"}
+        assert not any(c.service_name == literal for c in gateway.list_apm_agent_configs())
+    finally:
+        _apm_cleanup((None, literal), (literal, literal))
+
+
+# --- data-management: runtime fields, the default data view, saved-objects reads (D48) ---
+
+
+def _flights_view_id(gateway):
+    # The seeded sample's view (other tests add views over the same pattern).
+    (view,) = [v for v in gateway.list_data_views()
+               if v.index_pattern == FLIGHTS and v.name == "Kibana Sample Data Flights"]
+    return view.id
+
+
+async def test_runtime_field_lifecycle_live(gateway, tmp_path):
+    # Through the MCP surface on a throwaway view over the flights fields: a
+    # create (the POST), a replacement that returns what it replaced and keeps
+    # the custom label Kibana's PUT drops, the refusals that name the fix, a
+    # script Kibana stores without compiling it, and the delete with its miss.
+    view = gateway.create_data_view(_dv_pattern(), f"ct-rt-{uuid.uuid4().hex[:6]}", "timestamp")
+    try:
+        async with Client(_dm_tool_server(tmp_path)) as client:
+            created = (await client.call_tool("upsert_runtime_field", {
+                "view_id": view.id, "name": "hour", "type": "long",
+                "script": "emit(doc['timestamp'].value.getHour())",
+            })).data
+            with _raw_kibana() as raw:  # a label set the way Kibana's UI does
+                raw.data_views.create_or_update_runtime_field(
+                    view_id=view.id, name="hour",
+                    runtime_field={**{"type": "long", "script": {"source": "emit(1)"}},
+                                   "customLabel": "Hour", "customDescription": "UTC hour"},
+                )
+            replaced = (await client.call_tool("upsert_runtime_field", {
+                "view_id": view.id, "name": "hour", "type": "keyword", "script": "emit('x')",
+            })).data
+            broken = (await client.call_tool("upsert_runtime_field", {
+                "view_id": view.id, "name": "broken", "type": "long",
+                "script": "this is not painless(((",
+            })).data
+            plain = (await client.call_tool("upsert_runtime_field", {
+                "view_id": view.id, "name": "Dest_rt", "type": "keyword",
+            })).data
+            with pytest.raises(ToolError) as mapped:
+                await client.call_tool("upsert_runtime_field", {
+                    "view_id": view.id, "name": "Carrier", "type": "keyword",
+                })
+            with _raw_kibana() as raw:
+                raw.data_views.create_or_update_runtime_field(
+                    view_id=view.id, name="comp",
+                    runtime_field={"type": "composite", "script": {"source": "emit(['a': 'x'])"},
+                                   "fields": {"a": {"type": "keyword"}}},
+                )
+                stored = raw.data_views.get(view_id=view.id).body["data_view"]
+            with pytest.raises(ToolError, match=r"is a composite field, which this tool does "
+                                                r"not replace"):
+                await client.call_tool("upsert_runtime_field", {
+                    "view_id": view.id, "name": "comp", "type": "keyword",
+                })
+            with pytest.raises(ToolError, match=r"delete 'comp' to remove it with its subfields"):
+                await client.call_tool("delete_runtime_field", {"view_id": view.id, "name": "comp.a"})
+            with pytest.raises(ToolError, match=r"only runtime fields can be deleted"):
+                await client.call_tool("delete_runtime_field", {"view_id": view.id, "name": "Carrier"})
+            comp = (await client.call_tool(
+                "delete_runtime_field", {"view_id": view.id, "name": "comp"})).data
+            for name in ("broken", "Dest_rt"):
+                await client.call_tool("delete_runtime_field", {"view_id": view.id, "name": name})
+            deleted = (await client.call_tool(
+                "delete_runtime_field", {"view_id": view.id, "name": "hour"})).data
+            with pytest.raises(ToolError) as gone:
+                await client.call_tool("delete_runtime_field", {"view_id": view.id, "name": "hour"})
+            with pytest.raises(ToolError, match=r"call list_data_views to find it$"):
+                await client.call_tool("upsert_runtime_field", {
+                    "view_id": "no-such-dv-xyz", "name": "h", "type": "long",
+                })
+            with _raw_kibana() as raw:
+                after = raw.data_views.get(view_id=view.id).body["data_view"]
+        assert created == {
+            "view_id": view.id, "created": True, "previous": None,
+            "field": {"name": "hour", "type": "long",
+                      "script": "emit(doc['timestamp'].value.getHour())"},
+        }
+        assert replaced["created"] is False
+        assert replaced["previous"] == {"name": "hour", "type": "long", "script": "emit(1)"}
+        assert replaced["field"] == {"name": "hour", "type": "keyword", "script": "emit('x')"}
+        # Kibana compiles nothing: the broken script is stored as sent.
+        assert broken["field"]["script"] == "this is not painless((("
+        assert plain["field"] == {"name": "Dest_rt", "type": "keyword", "script": None}
+        assert "'Carrier' is already a field of data view" in str(mapped.value)
+        assert stored["fieldAttrs"]["hour"] == {"customLabel": "Hour", "customDescription": "UTC hour"}
+        assert stored["runtimeFieldMap"]["hour"]["type"] == "keyword"
+        assert comp["field"] == {"name": "comp", "type": "composite",
+                                 "script": "emit(['a': 'x'])", "fields": {"a": "keyword"}}
+        assert deleted == {"view_id": view.id, "deleted": True, "field": replaced["field"]}
+        assert str(gone.value) == (
+            f"data view '{view.id}' has no runtime field 'hour' — it has no runtime fields"
+        )
+        assert after["runtimeFieldMap"] == {}
+    finally:
+        gateway.delete_data_view(view.id)
+
+
+async def test_default_data_view_set_get_and_clear_scoped_live(gateway, tmp_path):
+    # In a throwaway space, so the shared default space's default is untouched:
+    # unset → Kibana makes the space's first data view its default (probed on
+    # 9.5.4) → a set replaces it (force) → a refused unknown id leaves it → a
+    # deleted default reads as not existing → clear, with previous_id each time.
+    with _temp_space(gateway, "mcp-for-kibana-ct-default-dv") as space_id:
+        async with Client(_dm_tool_server(tmp_path)) as client:
+            unset = (await client.call_tool("get_default_data_view", {"space": space_id})).data
+            first = (await client.call_tool("create_data_view", {
+                "index_pattern": FLIGHTS, "name": "ct default a", "space": space_id})).data
+            auto = (await client.call_tool("get_default_data_view", {"space": space_id})).data
+            second = (await client.call_tool("create_data_view", {
+                "index_pattern": FLIGHTS, "name": "ct default b", "space": space_id})).data
+            set_a = (await client.call_tool("set_default_data_view", {
+                "view_id": first["id"], "space": space_id})).data
+            set_b = (await client.call_tool("set_default_data_view", {
+                "view_id": second["id"], "space": space_id})).data
+            with pytest.raises(ToolError) as bogus:
+                await client.call_tool("set_default_data_view", {
+                    "view_id": "no-such-dv-xyz", "space": space_id})
+            kept = (await client.call_tool("get_default_data_view", {"space": space_id})).data
+            await client.call_tool("delete_data_view", {"view_id": second["id"], "space": space_id})
+            dangling = (await client.call_tool("get_default_data_view", {"space": space_id})).data
+            # Over a dangling default the old id cannot be passed back (it names
+            # no view), so previous_exists says to undo with null instead.
+            over_dangling = (await client.call_tool("set_default_data_view", {
+                "view_id": first["id"], "space": space_id})).data
+            with pytest.raises(ToolError) as no_restore:
+                await client.call_tool("set_default_data_view", {
+                    "view_id": second["id"], "space": space_id})
+            cleared = (await client.call_tool("set_default_data_view", {
+                "view_id": None, "space": space_id})).data
+            with _raw_kibana(space_id) as raw:
+                stored = raw.data_views.get_default().body
+    assert unset == {"id": None, "name": None, "index_pattern": None, "exists": False,
+                     "space": space_id}
+    assert auto == {"id": first["id"], "name": "ct default a", "index_pattern": FLIGHTS,
+                    "exists": True, "space": space_id}
+    # a repeat changes nothing
+    assert set_a == {**auto, "previous_id": first["id"], "previous_exists": True}
+    assert set_b["id"] == second["id"] and set_b["previous_id"] == first["id"]
+    assert set_b["previous_exists"] is True
+    assert "call list_data_views to find it" in str(bogus.value)
+    assert str(bogus.value).endswith(f" (in space '{space_id}')")
+    assert kept["id"] == second["id"] and kept["exists"] is True
+    assert dangling == {"id": second["id"], "name": None, "index_pattern": None,
+                        "exists": False, "space": space_id}
+    assert over_dangling["previous_id"] == second["id"]
+    assert over_dangling["previous_exists"] is False
+    assert "call list_data_views to find it" in str(no_restore.value)
+    assert cleared["id"] is None and cleared["previous_id"] == first["id"]
+    assert cleared["previous_exists"] is True
+    assert stored == {"data_view_id": ""}
+
+
+async def test_find_and_get_saved_objects_live(gateway, tmp_path):
+    # The seeded flights sample: its dashboard references the flights data view,
+    # carries a panelsJSON over the cap, and is invisible from another space; a
+    # reference to no object and a word only in its description find nothing; a
+    # hidden type answers an empty page; get reads analytics content only, so
+    # Fleet's output (plain config_yaml / service_token attributes on 9.5.4) and
+    # proxy types are refused before Kibana is called, naming only ways forward
+    # that work for each type.
+    flights_id = _flights_view_id(gateway)
+    with _raw_kibana() as raw:
+        outputs = raw.saved_objects.find(type="ingest-outputs", fields=["name"]).body
+    async with Client(_dm_tool_server(tmp_path)) as client:
+        by_ref = (await client.call_tool("find_saved_objects", {
+            "types": ["dashboard"], "has_reference": {"type": "index-pattern", "id": flights_id},
+        })).data
+        no_ref = (await client.call_tool("find_saved_objects", {
+            "types": ["dashboard"],
+            "has_reference": {"type": "index-pattern", "id": f"no-such-{uuid.uuid4().hex}"},
+        })).data
+        by_word = (await client.call_tool("find_saved_objects", {
+            "types": ["dashboard", "index-pattern"], "search": "flight*", "per_page": 100,
+        })).data
+        # In the flights dashboard's description only, not its title.
+        by_description = (await client.call_tool("find_saved_objects", {
+            "types": ["dashboard"], "search": "JetBeats",
+        })).data
+        hidden = (await client.call_tool("find_saved_objects", {"types": ["action"]})).data
+        (dash,) = [o for o in by_ref["saved_objects"]
+                   if o["title"] == "[Flights] Global Flight Dashboard"]
+        got = (await client.call_tool("get_saved_object", {
+            "type": "dashboard", "id": dash["id"]})).data
+        view = (await client.call_tool("get_saved_object", {
+            "type": "index-pattern", "id": flights_id})).data
+        refused = {}
+        for type_, id_ in [("ingest-outputs", o["id"]) for o in outputs["saved_objects"]] + [
+            ("fleet-proxy", "x"), ("synthetics-param", "x"), ("action", "x"), ("alert", "x"),
+            ("config", "x"),  # not analytics, but Kibana exports it: the fallback text
+        ]:
+            with pytest.raises(ToolError) as exc:
+                await client.call_tool("get_saved_object", {"type": type_, "id": id_})
+            refused[type_] = str(exc.value)
+        with pytest.raises(ToolError, match=r"past the first 10,000 results"):
+            await client.call_tool("find_saved_objects", {
+                "types": ["dashboard"], "page": 101, "per_page": 100})
+    with _temp_space(gateway, "mcp-for-kibana-ct-so") as space_id:
+        async with Client(_dm_tool_server(tmp_path)) as client:
+            elsewhere = (await client.call_tool("find_saved_objects", {
+                "types": ["dashboard"], "space": space_id})).data
+            with pytest.raises(ToolError) as scoped_miss:
+                await client.call_tool("get_saved_object", {
+                    "type": "dashboard", "id": dash["id"], "space": space_id})
+    assert by_ref["total"] >= 1 and dash["namespaces"] == ["default"]
+    assert no_ref["total"] == 0 and no_ref["saved_objects"] == []
+    assert set(dash) == {"type", "id", "title", "name", "updated_at", "namespaces", "managed"}
+    found = {(o["type"], o["id"]) for o in by_word["saved_objects"]}
+    assert ("dashboard", dash["id"]) in found and ("index-pattern", flights_id) in found
+    assert by_description["total"] == 0
+    assert hidden["total"] == 0 and "check the type names" in hidden["note"]
+    assert got["attributes"]["title"] == "[Flights] Global Flight Dashboard"
+    assert "JetBeats" in got["attributes"]["description"]
+    assert got["omitted_attributes"]["panelsJSON"] > 4000
+    assert "panelsJSON" not in got["attributes"]
+    assert {"type": "index-pattern", "id": flights_id} in got["references"]
+    assert len(got["references"]) == len({(r["type"], r["id"]) for r in got["references"]})
+    assert view["attributes"]["title"] == FLIGHTS
+    assert outputs["total"] >= 1  # the stack's default Fleet output exists, and is refused
+    assert set(refused) == {
+        "ingest-outputs", "fleet-proxy", "synthetics-param", "action", "alert", "config"}
+    exported = []
+    for type_, message in refused.items():
+        assert f"does not read '{type_}' objects" in message
+        assert "config_yaml" not in message and "service_token" not in message
+        # The refusal names only ways that work for the type: export only where
+        # Kibana exports it (it 400s Fleet's and Synthetics' types), find only
+        # where the type is not hidden (find answers action/alert an empty page).
+        if "export_saved_objects" in message:
+            gateway.export_saved_objects([type_], None, False)
+            exported.append(type_)
+    assert exported == ["config"]  # the fallback's export path ran live
+    for type_ in ("ingest-outputs", "fleet-proxy", "synthetics-param"):
+        assert "export_saved_objects" not in refused[type_]
+        with pytest.raises(KibanaRejected):  # 400 "Trying to export non-exportable type(s)"
+            gateway.export_saved_objects([type_], None, False)
+    assert "find_saved_objects" not in refused["action"] + refused["alert"]
+    assert "list_outputs" in refused["ingest-outputs"]
+    assert "no tool reads" in refused["fleet-proxy"]
+    assert elsewhere["total"] == 0 and "space" in elsewhere
+    assert str(scoped_miss.value).endswith(f" (in space '{space_id}')")
+
+
+# --- saved objects between spaces (D49) -------------------------------------
+
+
+def _flights_dashboard_id(gateway):
+    page = gateway.find_saved_objects(["dashboard"], "Global", None, 1, 100)
+    (dash,) = [o for o in page.saved_objects if o.title == "[Flights] Global Flight Dashboard"]
+    return dash.id
+
+
+async def test_copy_and_overwrite_saved_objects_between_spaces_live(gateway):
+    # The flights dashboard copied with what it uses into a throwaway space as
+    # new objects; without its references it fails and nothing is written; a
+    # space that does not exist, the source space itself, a missing object and
+    # a type Kibana cannot copy are refused or reported with the fix. Then a
+    # throwaway data view is overwritten in place in that space: the copy's
+    # edit is replaced, and a repeat answers `overwritten`.
+    dash_id = _flights_dashboard_id(gateway)
+    with _raw_kibana() as raw:
+        output_id = raw.saved_objects.find(
+            type="ingest-outputs", fields=["name"]).body["saved_objects"][0]["id"]
+    ghost = f"mcp-for-kibana-ct-ghost-{uuid.uuid4().hex[:8]}"
+    view_id = f"mcp-for-kibana-ct-copy-{uuid.uuid4().hex[:8]}"
+    with _raw_kibana() as raw:
+        raw.data_views.create(data_view={"title": FLIGHTS, "name": "ct copy source", "id": view_id})
+    try:
+        with _temp_space(gateway, "mcp-for-kibana-ct-copy") as target:
+            async with Client(_platform_admin_tool_server()) as client:
+                copied = (await client.call_tool("copy_saved_objects_to_spaces", {
+                    "objects": [{"type": "dashboard", "id": dash_id}],
+                    "target_spaces": [target]})).data
+                bare = (await client.call_tool("copy_saved_objects_to_spaces", {
+                    "objects": [{"type": "dashboard", "id": dash_id}],
+                    "target_spaces": [target], "include_references": False})).data
+                refusals = {}
+                for name, args in {
+                    "ghost": {"objects": [{"type": "index-pattern", "id": view_id}],
+                              "target_spaces": [target, ghost]},
+                    "self": {"objects": [{"type": "index-pattern", "id": view_id}],
+                             "target_spaces": ["default"]},
+                    "missing": {"objects": [{"type": "index-pattern", "id": f"no-{ghost}"}],
+                                "target_spaces": [target]},
+                }.items():
+                    with pytest.raises(ToolError) as exc:
+                        await client.call_tool("copy_saved_objects_to_spaces", args)
+                    refusals[name] = str(exc.value)
+                uncopyable = (await client.call_tool("copy_saved_objects_to_spaces", {
+                    "objects": [{"type": "ingest-outputs", "id": output_id}],
+                    "target_spaces": [target]})).data
+                first = (await client.call_tool("overwrite_saved_objects_in_spaces", {
+                    "objects": [{"type": "index-pattern", "id": view_id}],
+                    "target_spaces": [target]})).data
+                (made,) = first["results"][0]["copied"]
+                with _raw_kibana(target) as raw:
+                    raw.data_views.update(
+                        view_id=made["destination_id"], data_view={"name": "edited in target"})
+                again = (await client.call_tool("overwrite_saved_objects_in_spaces", {
+                    "objects": [{"type": "index-pattern", "id": view_id}],
+                    "target_spaces": [target]})).data
+                with _raw_kibana(target) as raw:
+                    restored = raw.data_views.get(view_id=made["destination_id"]).body
+                    in_target = raw.saved_objects.find(
+                        type=["dashboard"], fields=["title"]).body
+            # Nothing reached the space that did not exist: one created with its
+            # id now holds no copy (Kibana would have written there, probed).
+            gateway.create_space(ghost, ghost, None, None, None, None, None)
+            try:
+                with _raw_kibana(ghost) as raw:
+                    leaked = raw.saved_objects.find(type=["index-pattern"]).body
+            finally:
+                gateway.delete_space(ghost, force=True)
+    finally:
+        with _raw_kibana() as raw, contextlib.suppress(kibana.NotFoundError):
+            raw.data_views.delete(view_id=view_id)
+    (result,) = copied["results"]
+    assert copied["include_references"] is True and "source_space" not in copied
+    assert result["space"] == target and result["success"] is True and result["failed"] == []
+    kinds = {c["type"] for c in result["copied"]}
+    assert {"dashboard", "index-pattern"} <= kinds
+    dash_copy = next(c for c in result["copied"] if c["type"] == "dashboard")
+    assert dash_copy["id"] == dash_id and dash_copy["destination_id"] != dash_id
+    assert dash_copy["title"] == "[Flights] Global Flight Dashboard"
+    assert dash_copy["overwritten"] is False
+    (bare_result,) = bare["results"]
+    assert bare_result["success"] is False and bare_result["copied"] == []
+    (missing_refs,) = bare_result["failed"]
+    assert missing_refs["error"] == "missing_references" and missing_refs["missing_references"]
+    assert "include_references=true" in missing_refs["fix"]
+    # one copy of the dashboard in the target: the failed copy wrote nothing
+    assert [o["id"] for o in in_target["saved_objects"]] == [dash_copy["destination_id"]]
+    assert f"space '{ghost}' not found" in refusals["ghost"] and "list_spaces" in refusals["ghost"]
+    assert "already in space 'default', the source space" in refusals["self"]
+    assert "find_saved_objects" in refusals["missing"] and f"no-{ghost}" in refusals["missing"]
+    assert leaked["total"] == 0
+    (failed,) = uncopyable["results"][0]["failed"]
+    assert failed["error"] == "unsupported_type" and "cannot copy this type" in failed["fix"]
+    assert made["overwritten"] is False and made["destination_id"] != view_id
+    (replaced,) = again["results"][0]["copied"]
+    assert replaced["overwritten"] is True
+    assert replaced["destination_id"] == made["destination_id"]
+    assert restored["data_view"]["name"] == "ct copy source"
+
+
+# Kibana's internal security routes (the ones its UI calls) want this header.
+_INTERNAL = {"x-elastic-internal-origin": "Kibana"}
+
+
+@contextlib.contextmanager
+def _restricted_key(kibana_privileges):
+    """A throwaway role, user and API key the user creates for itself (the
+    superuser key cannot: Elasticsearch gives a key made by a key no
+    privileges), so the key holds a snapshot of the role's privileges; yields
+    (encoded key, role name). Everything is removed afterwards."""
+    tag = uuid.uuid4().hex[:8]
+    role, user, password = f"mcp-for-kibana-ct-role-{tag}", f"mcp-for-kibana-ct-user-{tag}", uuid.uuid4().hex
+    key_id = None
+    with _raw_kibana() as raw:
+        try:
+            raw.security.create_or_update_role(
+                name=role, elasticsearch={"cluster": ["manage_own_api_key"]},
+                kibana=kibana_privileges)
+            raw.perform_request("POST", f"/internal/security/users/{user}", headers=_INTERNAL,
+                                body={"username": user, "password": password, "roles": [role]})
+            with contextlib.closing(
+                    kibana.Kibana(os.environ["KIBANA_URL"], basic_auth=(user, password))) as own:
+                made = own.perform_request(
+                    "POST", "/internal/security/api_key", headers=_INTERNAL,
+                    body={"name": f"mcp-for-kibana-ct-key-{tag}", "role_descriptors": {}}).body
+            key_id = made["id"]
+            yield made["encoded"], role
+        finally:
+            if key_id is not None:
+                raw.perform_request(
+                    "POST", "/internal/security/api_key/invalidate", headers=_INTERNAL,
+                    body={"apiKeys": [{"id": key_id, "name": "ct"}], "isAdmin": True})
+            with contextlib.suppress(kibana.NotFoundError):
+                raw.perform_request("DELETE", f"/internal/security/users/{user}", headers=_INTERNAL)
+            with contextlib.suppress(kibana.NotFoundError):
+                raw.security.delete_role(name=role)
+
+
+async def test_copy_reports_a_target_space_kibana_refuses_whole_live(gateway):
+    # A key with `all` in one target space and `read` in the other: Kibana
+    # answers the copy 200, the first space copied, the second a bare
+    # {statusCode, error, message} with no object (9.5.4). That space's object
+    # fails with `space_error`, the other keeps its destination_id. Granting the
+    # role `all` there afterwards does not change the key (a key keeps the
+    # privileges its owner had when it was made), as the fix says.
+    view_id = f"mcp-for-kibana-ct-denied-{uuid.uuid4().hex[:8]}"
+    with _raw_kibana() as raw:
+        raw.data_views.create(data_view={"title": FLIGHTS, "name": "ct denied", "id": view_id})
+    try:
+        with _temp_space(gateway, "mcp-for-kibana-ct-ok") as ok, \
+                _temp_space(gateway, "mcp-for-kibana-ct-ro") as ro:
+            grants = [{"base": ["all"], "spaces": [ok]}, {"base": ["read"], "spaces": ["default", ro]}]
+            with _restricted_key(grants) as (key, role):
+                args = {"objects": [{"type": "index-pattern", "id": view_id}],
+                        "target_spaces": [ro, ok]}
+                async with Client(_platform_admin_tool_server(key)) as client:
+                    out = (await client.call_tool("copy_saved_objects_to_spaces", args)).data
+                    with _raw_kibana() as raw:
+                        raw.security.create_or_update_role(
+                            name=role, elasticsearch={"cluster": ["manage_own_api_key"]},
+                            kibana=[{"base": ["all"], "spaces": ["default", ok, ro]}])
+                    again = (await client.call_tool("copy_saved_objects_to_spaces", args)).data
+            with _raw_kibana(ro) as raw:
+                in_ro = raw.saved_objects.find(type=["index-pattern"]).body
+    finally:
+        with _raw_kibana() as raw, contextlib.suppress(kibana.NotFoundError):
+            raw.data_views.delete(view_id=view_id)
+    denied, copied = out["results"]
+    assert [denied["space"], copied["space"]] == [ro, ok]  # in the order given
+    assert denied["success"] is False and denied["copied"] == [] and denied["unchanged"] == []
+    (failed,) = denied["failed"]
+    assert failed["error"] == "space_error" and failed["id"] == view_id
+    assert f"Kibana refused the whole copy into space '{ro}'" in failed["fix"]
+    assert "403 Forbidden: Unable to bulk_create index-pattern" in failed["fix"]
+    assert "use a new API key" in failed["fix"]
+    (made,) = copied["copied"]
+    assert copied["success"] is True and made["id"] == view_id and made["destination_id"]
+    # The role change did not reach the key: the same 403 in the refused space,
+    # while the space the key could already write still takes the copy.
+    still_denied, still_copied = again["results"]
+    (refused_again,) = still_denied["failed"]
+    assert refused_again["error"] == "space_error"
+    assert "403 Forbidden" in refused_again["fix"] and "use a new API key" in refused_again["fix"]
+    assert still_copied["success"] is True and still_copied["copied"]
+    assert in_ro["total"] == 0  # nothing was written into the refused space
+
+
+async def test_share_and_unshare_saved_objects_live(gateway):
+    # A throwaway data view in a throwaway source space: shared to the default
+    # space and a second throwaway space (the same id in each, a repeat adds
+    # nothing), an overwrite onto a space it is shared to leaves it unchanged,
+    # one-space types and missing spaces are refused before any change, a
+    # removal that removes nothing is refused, removing its last spaces is
+    # refused without force and deletes it with force.
+    dash_id = _flights_dashboard_id(gateway)
+    view_id = f"mcp-for-kibana-ct-share-{uuid.uuid4().hex[:8]}"
+    ghost = f"mcp-for-kibana-ct-ghost-{uuid.uuid4().hex[:8]}"
+    view = [{"type": "index-pattern", "id": view_id}]
+    with _temp_space(gateway, "mcp-for-kibana-ct-share-src") as source, \
+            _temp_space(gateway, "mcp-for-kibana-ct-share-dst") as other:
+        with _raw_kibana(source) as raw:
+            raw.data_views.create(data_view={"title": FLIGHTS, "name": "ct share", "id": view_id})
+        try:
+            async with Client(_platform_admin_tool_server()) as client:
+                shared = (await client.call_tool("share_saved_objects_to_spaces", {
+                    "objects": view, "spaces": ["default", other],
+                    "source_space": source})).data
+                repeat = (await client.call_tool("share_saved_objects_to_spaces", {
+                    "objects": view, "spaces": [other], "source_space": source})).data
+                with _raw_kibana(other) as raw:
+                    seen_there = raw.data_views.get(view_id=view_id).body["data_view"]
+                onto_shared = (await client.call_tool("overwrite_saved_objects_in_spaces", {
+                    "objects": view, "target_spaces": [other], "source_space": source})).data
+                refusals = {}
+                for name, (tool, args) in {
+                    "one_space": ("share_saved_objects_to_spaces", {
+                        "objects": [{"type": "dashboard", "id": dash_id}],
+                        "spaces": [other]}),
+                    "ghost": ("share_saved_objects_to_spaces", {
+                        "objects": view, "spaces": [ghost], "source_space": source}),
+                    "elsewhere": ("share_saved_objects_to_spaces", {
+                        "objects": [{"type": "index-pattern", "id": f"no-{view_id}"}],
+                        "spaces": [other], "source_space": source}),
+                    "nothing": ("unshare_saved_objects_from_spaces", {
+                        "objects": view, "spaces": [ghost], "source_space": source}),
+                }.items():
+                    with pytest.raises(ToolError) as exc:
+                        await client.call_tool(tool, args)
+                    refusals[name] = str(exc.value)
+                removed = (await client.call_tool("unshare_saved_objects_from_spaces", {
+                    "objects": view, "spaces": [source], "source_space": other})).data
+                with pytest.raises(ToolError) as last:
+                    await client.call_tool("unshare_saved_objects_from_spaces", {
+                        "objects": view, "spaces": ["default", other]})
+                with _raw_kibana() as raw:
+                    kept = raw.saved_objects.get(type="index-pattern", id=view_id).body
+                deleted = (await client.call_tool("unshare_saved_objects_from_spaces", {
+                    "objects": view, "spaces": ["default", other], "force": True})).data
+                with _raw_kibana(other) as raw, pytest.raises(kibana.NotFoundError):
+                    raw.saved_objects.get(type="index-pattern", id=view_id)
+        finally:
+            with _raw_kibana() as raw, contextlib.suppress(kibana.NotFoundError):
+                raw.data_views.delete(view_id=view_id)
+    (change,) = shared["objects"]
+    assert shared["source_space"] == source
+    assert set(change["spaces"]) == {source, "default", other}
+    assert set(change["added"]) == {"default", other} and change["removed"] == []
+    assert change["deleted"] is False and change["error"] is None
+    assert repeat["objects"][0]["added"] == []
+    assert seen_there["id"] == view_id  # the same object, not a copy
+    (onto,) = onto_shared["results"]
+    assert onto["copied"] == [] and onto["failed"] == [] and onto["unchanged"] == view
+    assert "keeps 'dashboard' objects in one space" in refusals["one_space"]
+    assert "copy_saved_objects_to_spaces" in refusals["one_space"]
+    assert f"space '{ghost}' not found" in refusals["ghost"]
+    assert "find_saved_objects" in refusals["elsewhere"]
+    assert "nothing to remove" in refusals["nothing"]
+    assert removed["objects"][0]["removed"] == [source]
+    assert set(removed["objects"][0]["spaces"]) == {"default", other}
+    assert "Kibana deletes an object left in no space" in str(last.value)
+    assert set(kept["namespaces"]) == {"default", other}
+    assert deleted["objects"][0]["deleted"] is True and deleted["objects"][0]["spaces"] == []
+
+
+# --- exception-list edit, copy, export and import (D50) ---
+
+_ENTRY = [{"field": "host.name", "value": "trusted", "operator": "included"}]
+
+
+def _item_ids(gateway, list_id, namespace_type="single"):
+    return sorted(i.item_id for i in gateway.find_exception_items(list_id, namespace_type))
+
+
+def _drop_list(raw, list_id, namespace_type="single"):
+    with contextlib.suppress(kibana.exceptions.NotFoundError):
+        raw.exception_lists.delete(list_id=list_id, namespace_type=namespace_type)
+
+
+def test_exception_list_import_premises_live(gateway):
+    # Why import_exception_list rewrites the export and checks the target first
+    # (D50): Kibana's as_new_list keeps the source item_ids, and a plain import
+    # onto an existing list_id skips the list but still adds the items to it.
+    tag = uuid.uuid4().hex[:8]
+    src, other = f"mcp-for-kibana-ct-prem-{tag}", f"mcp-for-kibana-ct-prem2-{tag}"
+    with _raw_kibana() as raw:
+        made: list[str] = [src, other]
+        try:
+            for list_id in (src, other):
+                raw.exception_lists.create(
+                    list_id=list_id, name=list_id, description="ct", type="detection",
+                    os_types=["linux"])
+            raw.exception_lists.create_item(
+                list_id=src, item_id=f"{src}-i", name="i", description="ct", type="simple",
+                entries=[{"field": "host.name", "operator": "included", "type": "match",
+                          "value": "x"}])
+            stored = raw.exception_lists.get(list_id=src).body
+            body = raw.exception_lists.export(
+                id=stored["id"], list_id=src, namespace_type="single").body
+            before = {x["list_id"] for x in raw.exception_lists.find(per_page=100).body["data"]}
+            result = raw.exception_lists.import_lists(file=body, as_new_list=True).body
+            assert result["success"] is True
+            after = raw.exception_lists.find(per_page=100).body["data"]
+            [copy] = [x for x in after if x["list_id"] not in before]
+            made.append(copy["list_id"])
+            assert copy["os_types"] == []  # the import does not carry os_types
+            copied = raw.exception_lists.find_items(list_id=copy["list_id"]).body["data"]
+            assert [i["item_id"] for i in copied] == [f"{src}-i"]  # the SAME item_id
+            # a plain import onto an existing list_id: the list is skipped (409)...
+            onto = [{**line, "list_id": other} for line in body[:-1]]
+            onto[1]["item_id"] = f"{other}-fresh"
+            plain = raw.exception_lists.import_lists(file=onto).body
+            assert plain["success"] is False  # what import_exception_list reports on its race
+            assert plain["success_count_exception_lists"] == 0
+            assert len(plain["errors"]) == 1
+            assert plain["errors"][0]["error"]["status_code"] == 409
+            # ...and its items land in that other list anyway, and are counted
+            assert plain["success_count_exception_list_items"] == 1
+            assert [i["item_id"] for i in raw.exception_lists.find_items(
+                list_id=other).body["data"]] == [f"{other}-fresh"]
+            # the gateway maps that body to the import result the tool returns
+            again = [{**line, "list_id": other} for line in body[:-1]]
+            again[1]["item_id"] = f"{other}-again"
+            mapped = gateway.import_exception_list(
+                "\n".join(json.dumps(x) for x in again).encode(), False)
+            assert (mapped.success, mapped.list_count, mapped.item_count) == (False, 0, 1)
+            assert mapped.errors == (f"{other}: 409 already exists",)
+            # the update PUT ignores os_types and 409s a stale _version
+            put = raw.exception_lists.update(
+                list_id=other, name="n", description="d", type="detection",
+                os_types=["windows"]).body
+            assert put["os_types"] == ["linux"]
+            with pytest.raises(kibana.exceptions.ConflictError):
+                raw.exception_lists.update(
+                    list_id=other, name="n2", description="d", type="detection",
+                    _version=stored["_version"])
+        finally:
+            for list_id in made:
+                _drop_list(raw, list_id)
+
+
+async def test_exception_list_edit_copy_export_import_overwrite_tools_live(gateway, tmp_path):
+    tag = uuid.uuid4().hex[:8]
+    list_id = f"mcp-for-kibana-ct-exc6-{tag}"
+    made = [list_id]
+    with _raw_kibana() as raw:
+        try:
+            async with Client(_sec_tool_server(tmp_path)) as client:
+                await client.call_tool("create_exception_list", {
+                    "name": "ct b6", "description": "before", "list_id": list_id,
+                    "tags": ["t1"]})
+                for n in ("a", "b"):
+                    await client.call_tool("create_exception_item", {
+                        "list_id": list_id, "name": n, "description": "ct",
+                        "entries": _ENTRY, "item_id": f"{list_id}-{n}"})
+                raw.exception_lists.create_item(  # an expired item (only raw sets expire_time)
+                    list_id=list_id, item_id=f"{list_id}-old", name="old", description="ct",
+                    type="simple", expire_time="2026-01-01T00:00:00.000Z",
+                    entries=[{"field": "host.name", "operator": "included", "type": "match",
+                              "value": "old"}])
+                source_items = sorted([f"{list_id}-a", f"{list_id}-b", f"{list_id}-old"])
+
+                # update: only the given field, previous returned, tags kept, then cleared
+                upd = (await client.call_tool("update_exception_list", {
+                    "list_id": list_id, "name": "ct b6 renamed"})).data
+                assert upd["name"] == "ct b6 renamed" and upd["tags"] == ["t1"]
+                assert upd["description"] == "before"
+                assert upd["previous"] == {"name": "ct b6", "description": "before",
+                                           "tags": ["t1"]}
+                cleared = (await client.call_tool("update_exception_list", {
+                    "list_id": list_id, "tags": []})).data
+                assert cleared["tags"] == [] and cleared["name"] == "ct b6 renamed"
+                with pytest.raises(ToolError, match="namespace_type='agnostic'"):
+                    await client.call_tool("update_exception_list", {
+                        "list_id": f"{list_id}-nope", "name": "x"})
+
+                # duplicate: a new list, new item ids, expired left out on request
+                dup = (await client.call_tool("duplicate_exception_list", {
+                    "list_id": list_id, "include_expired_exceptions": False})).data
+                made.append(dup["list_id"])
+                assert dup["name"] == "ct b6 renamed [Duplicate]"
+                assert dup["source_list_id"] == list_id and dup["list_id"] != list_id
+                dup_items = _item_ids(gateway, dup["list_id"])
+                assert len(dup_items) == 2 and not set(dup_items) & set(source_items)
+
+                # export: a handle and a summary, no content
+                exp = (await client.call_tool("export_exception_list", {"list_id": list_id})).data
+                assert exp["handle"].startswith("el-") and exp["item_count"] == 3
+                assert "trusted" not in str(exp)
+                assert (tmp_path / f"{exp['handle']}.ndjson").stat().st_size == exp["byte_size"]
+
+                # import: a NEW list with fresh item ids; the source untouched
+                imp = (await client.call_tool("import_exception_list", {
+                    "handle": exp["handle"]})).data
+                made.append(imp["list_id"])
+                assert imp["success"] is True and imp["errors"] == []
+                assert imp["imported_item_count"] == 3 and imp["source_list_id"] == list_id
+                new_items = _item_ids(gateway, imp["list_id"])
+                assert len(new_items) == 3 and not set(new_items) & set(source_items)
+                assert gateway.get_exception_list(None, imp["list_id"]).id == imp["id"]
+                assert _item_ids(gateway, list_id) == source_items
+                # an existing list_id is refused before anything is sent
+                with pytest.raises(ToolError, match="already exists"):
+                    await client.call_tool("import_exception_list", {
+                        "handle": exp["handle"], "list_id": dup["list_id"]})
+                assert len(_item_ids(gateway, dup["list_id"])) == 2
+
+                # overwrite: an added item is deleted and reported, the name restored
+                src_id = gateway.get_exception_list(None, list_id).id
+                await client.call_tool("create_exception_item", {
+                    "list_id": list_id, "name": "later", "description": "ct",
+                    "entries": _ENTRY, "item_id": f"{list_id}-later"})
+                await client.call_tool("update_exception_list", {
+                    "list_id": list_id, "name": "edited after export"})
+                ovw = (await client.call_tool("overwrite_exception_list", {
+                    "handle": exp["handle"]})).data
+                assert ovw["success"] is True and ovw["errors"] == []
+                assert ovw["removed_item_ids"] == [f"{list_id}-later"]
+                assert ovw["id"] == ovw["previous_id"] == src_id  # replaced in place
+                assert _item_ids(gateway, list_id) == source_items
+                assert gateway.get_exception_list(None, list_id).name == "ct b6 renamed"
+
+                # a deleted list is recreated, under a new id
+                await client.call_tool("delete_exception_list", {"list_id": list_id})
+                again = (await client.call_tool("overwrite_exception_list", {
+                    "handle": exp["handle"]})).data
+                assert again["previous_id"] is None and again["id"] != src_id
+                assert _item_ids(gateway, list_id) == source_items
+        finally:
+            for made_id in made:
+                _drop_list(raw, made_id)
+
+
+async def test_exception_list_import_into_another_space_tool_live(gateway, tmp_path):
+    list_id = f"mcp-for-kibana-ct-exc6s-{uuid.uuid4().hex[:8]}"
+    with _temp_space(gateway) as space_id, _raw_kibana() as raw:
+        try:
+            async with Client(_sec_tool_server(tmp_path)) as client:
+                await client.call_tool("create_exception_list", {
+                    "name": "ct b6 space", "description": "d", "list_id": list_id})
+                exp = (await client.call_tool("export_exception_list", {"list_id": list_id})).data
+                imp = (await client.call_tool("import_exception_list", {
+                    "handle": exp["handle"], "list_id": list_id, "space": space_id})).data
+                assert imp["space"] == space_id and imp["list_id"] == list_id
+                with KibanaPyGateway.connect(
+                        os.environ["KIBANA_URL"], os.environ["KIBANA_TEST_API_KEY"],
+                        space_id) as scoped:
+                    assert scoped.get_exception_list(None, list_id).id == imp["id"]
+                assert gateway.get_exception_list(None, list_id).id != imp["id"]
+                with pytest.raises(ToolError, match="not found"):
+                    await client.call_tool("import_exception_list", {
+                        "handle": exp["handle"], "space": f"{space_id}-missing"})
+        finally:
+            _drop_list(raw, list_id)
+
+
+async def test_exception_list_endpoint_and_agnostic_tools_live(gateway, tmp_path):
+    tag = uuid.uuid4().hex[:8]
+    ep, ag = f"mcp-for-kibana-ct-ep-{tag}", f"mcp-for-kibana-ct-ag-{tag}"
+    made = [(ep, "single"), (ag, "agnostic")]
+    with _raw_kibana() as raw:
+        try:
+            async with Client(_sec_tool_server(tmp_path)) as client:
+                await client.call_tool("create_exception_list", {
+                    "name": "ct ep", "description": "d", "list_id": ep, "type": "endpoint"})
+                with pytest.raises(ToolError, match="export_exception_list then import"):
+                    await client.call_tool("duplicate_exception_list", {"list_id": ep})
+                # the adapter's own 405 mapping, behind the toolbox's refusal
+                with pytest.raises(KibanaRejected, match="405"):
+                    gateway.duplicate_exception_list(ep, "single", True)
+                exp = (await client.call_tool("export_exception_list", {"list_id": ep})).data
+                imp = (await client.call_tool("import_exception_list", {
+                    "handle": exp["handle"]})).data
+                made.append((imp["list_id"], "single"))
+                assert imp["success"] is True
+
+                await client.call_tool("create_exception_list", {
+                    "name": "ct ag", "description": "d", "list_id": ag,
+                    "namespace_type": "agnostic"})
+                with pytest.raises(ToolError, match="namespace_type='agnostic'"):
+                    await client.call_tool("get_exception_list", {"list_id": ag})
+                with pytest.raises(ToolError, match="find_exception_lists.*namespace_type='agnostic'"):
+                    await client.call_tool("find_exception_items", {"list_id": ag})
+                upd = (await client.call_tool("update_exception_list", {
+                    "list_id": ag, "namespace_type": "agnostic", "description": "d2"})).data
+                assert upd["description"] == "d2" and upd["namespace_type"] == "agnostic"
+                exp_ag = (await client.call_tool("export_exception_list", {
+                    "list_id": ag, "namespace_type": "agnostic"})).data
+                assert exp_ag["namespace_type"] == "agnostic"
+                dup = (await client.call_tool("duplicate_exception_list", {
+                    "list_id": ag, "namespace_type": "agnostic"})).data
+                made.append((dup["list_id"], "agnostic"))
+                assert dup["namespace_type"] == "agnostic"
+                items = await client.call_tool("find_exception_items", {
+                    "list_id": dup["list_id"], "namespace_type": "agnostic"})
+                assert items.data == []
+                # the imports take the export's namespace: an agnostic copy
+                # routed through another space is still read from this one
+                with _temp_space(gateway) as space_id:
+                    imp_ag = (await client.call_tool("import_exception_list", {
+                        "handle": exp_ag["handle"], "space": space_id})).data
+                    made.append((imp_ag["list_id"], "agnostic"))
+                    assert imp_ag["success"] is True and imp_ag["space"] == space_id
+                    assert imp_ag["namespace_type"] == "agnostic"
+                    assert gateway.get_exception_list(
+                        None, imp_ag["list_id"], "agnostic").id == imp_ag["id"]
+                    over = (await client.call_tool("overwrite_exception_list", {
+                        "handle": exp_ag["handle"], "space": space_id})).data
+                    assert over["success"] is True and over["namespace_type"] == "agnostic"
+                    restored = gateway.get_exception_list(None, ag, "agnostic")
+                    assert over["previous_id"] == over["id"] == restored.id
+        finally:
+            for made_id, ns in made:
+                _drop_list(raw, made_id, ns)

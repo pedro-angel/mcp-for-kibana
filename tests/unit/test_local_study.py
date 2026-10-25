@@ -107,7 +107,7 @@ def test_pilot_records_scores_resets_and_traces(env):
     assert lr.run_matrix(cfg, "pilot") == 0
     recs = _records(env.out, "pilot")
     assert len(recs) == 8  # 2 models x 4 levels x 1
-    # the tool count each run had, as observed (the fake lists 31; the config says 33)
+    # the tool count each run had, as observed (the fake lists 31; the config says 46)
     assert {r["server_tools"] for r in recs} == {31}
 
     passing = {r["level"]: r for r in recs if r["model"] == "fake/pass"}
@@ -351,7 +351,7 @@ def test_preflight_passes_on_a_ready_setup(env, capsys):
     rc = lr.cmd_preflight(cfg, load=True)  # lists the real server's tools over stdio
     out = capsys.readouterr().out
     assert rc == 0, out
-    assert "PASS  server_tools: the entry starts and lists 33 tools" in out
+    assert "PASS  server_tools: the entry starts and lists 46 tools" in out
     assert "PASS  load fake/pass" in out
     assert KIBANA_KEY not in out and LM_TOKEN not in out
     assert env.mcp_json.read_bytes() == mcp_before
@@ -376,7 +376,7 @@ def test_preflight_names_the_fix_for_each_failure(env, capsys, monkeypatch):
         "FAIL  sample_data",
         "local_run.py install-sample",
         "FAIL  mcp_json_entry: KIBANA_MCP_TOOLBOXES is 'dashboards'",
-        "FAIL  server_tools: 1 tools (want 33)",
+        "FAIL  server_tools: 1 tools (want 46)",
         "FAIL  honeycomb_key",
     ):
         assert needle in out, needle

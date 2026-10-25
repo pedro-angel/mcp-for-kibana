@@ -1,5 +1,6 @@
 """The driven-side port: everything the domain needs from Kibana."""
 
+from datetime import datetime
 from types import TracebackType
 from typing import Any, Protocol
 
@@ -19,19 +20,28 @@ from kibana_mcp.core.models import (
     DashboardSummary,
     DataViewDetail,
     DataViewSummary,
+    DefaultDataView,
+    DefaultDataViewChange,
     DetectionAlert,
     DetectionRule,
     ExceptionItem,
     ExceptionList,
+    ExceptionListChange,
+    ExceptionListImportResult,
     FleetAgent,
+    FleetAgentDiagnostics,
     FleetAgentPolicy,
     FleetAgentStatus,
+    FleetAgentTagsResult,
+    FleetDiagnosticsRequest,
     FleetEnrollmentKey,
     FleetOutput,
     FleetOutputHealth,
     FleetPackage,
     FleetPackageCategory,
+    FleetPackageInstall,
     FleetPackagePolicy,
+    FleetPackageUninstall,
     FleetPermissions,
     FleetServerHost,
     FleetSettings,
@@ -40,9 +50,16 @@ from kibana_mcp.core.models import (
     KibanaStatus,
     PrepackagedRulesStatus,
     Role,
+    RuleSnooze,
+    RuntimeField,
+    RuntimeFieldUpsert,
+    SavedObjectDetail,
     SavedObjectImportResult,
+    SavedObjectPage,
     ShortUrl,
+    SharingChange,
     Space,
+    SpaceCopyResult,
     Stream,
     StreamIngest,
     StreamSummary,
@@ -87,6 +104,13 @@ class KibanaGateway(Protocol):
 
     def upsert_dashboard(self, dashboard_id: str, data: dict[str, Any]) -> str: ...
 
+    def get_tag_names(self, tag_ids: list[str]) -> dict[str, str]:
+        """Id -> name of each saved-object tag among `tag_ids` that exists in
+        this gateway's space; an id that names no tag there is left out (Kibana's
+        dashboard PUT stores any string as a tag id, probed on 9.5.4). No call
+        for an empty list."""
+        ...
+
     def create_visualization(self, config: dict[str, Any]) -> str: ...
 
     def search_visualizations(self, query: str | None) -> list[VisualizationSummary]: ...
@@ -116,6 +140,28 @@ class KibanaGateway(Protocol):
     ) -> DataViewDetail: ...
 
     def delete_data_view(self, view_id: str) -> None: ...
+
+    def upsert_runtime_field(self, view_id: str, field: RuntimeField) -> RuntimeFieldUpsert:
+        """Create or replace one single-value runtime field (D48). Must refuse a
+        name the view maps or a stored composite field before any write, and
+        return the definition it replaced."""
+        ...
+
+    def delete_runtime_field(self, view_id: str, name: str) -> RuntimeField:
+        """Delete one runtime field and return its definition; must delete
+        nothing otherwise. A field the view has that is not a runtime field (a
+        mapped field) and a composite field's subfield are KibanaRejected naming
+        what to delete instead; any other name is KibanaNotFound naming the
+        view's runtime fields."""
+        ...
+
+    def get_default_data_view(self) -> DefaultDataView: ...
+
+    def set_default_data_view(self, view_id: str | None) -> DefaultDataViewChange:
+        """Replace the space's default data view (None clears it). Must refuse an
+        id that names no data view in the space (Kibana stores any id), and
+        report whether the replaced default named one (`previous_exists`)."""
+        ...
 
     def create_short_url(self, locator_id: str, params: dict[str, Any]) -> ShortUrl: ...
 
@@ -154,7 +200,24 @@ class KibanaGateway(Protocol):
 
     def enable_alert_rule(self, rule_id: str) -> None: ...
 
-    def disable_alert_rule(self, rule_id: str) -> None: ...
+    def disable_alert_rule(self, rule_id: str, untrack: bool = False) -> None: ...
+
+    # Both return the per-alert mutes (alert ids) Kibana cleared on the call.
+    def mute_alert_rule(self, rule_id: str) -> tuple[str, ...]: ...
+
+    def unmute_alert_rule(self, rule_id: str) -> tuple[str, ...]: ...
+
+    def mute_alert(self, rule_id: str, alert_id: str) -> None: ...
+
+    def unmute_alert(self, rule_id: str, alert_id: str) -> None: ...
+
+    def snooze_alert_rule(
+        self, rule_id: str, duration: str, start: datetime, recurring: dict[str, Any] | None
+    ) -> RuleSnooze: ...
+
+    def unsnooze_alert_rule(self, rule_id: str, schedule_id: str) -> None: ...
+
+    def update_alert_rule_api_key(self, rule_id: str) -> None: ...
 
     def delete_alert_rule(self, rule_id: str) -> None: ...
 
@@ -213,6 +276,46 @@ class KibanaGateway(Protocol):
 
     def list_synthetic_private_locations(self) -> list[SyntheticPrivateLocation]: ...
 
+    # Synthetics write tier (D46). `private_locations` entries are ids or labels;
+    # `schedule` is "<n>m" / "<n>s" (the read shape); None leaves a field out.
+    def create_synthetic_monitor(
+        self, *, type: str, name: str, private_locations: list[str], url: str | None,
+        host: str | None, inline_script: str | None, schedule: str | None, enabled: bool,
+        tags: list[str] | None,
+    ) -> SyntheticMonitor: ...
+
+    def update_synthetic_monitor(
+        self, monitor_id: str, *, name: str | None = None, url: str | None = None,
+        host: str | None = None, inline_script: str | None = None, schedule: str | None = None,
+        enabled: bool | None = None, tags: list[str] | None = None,
+        private_locations: list[str] | None = None,
+    ) -> SyntheticMonitor: ...
+
+    def test_synthetic_monitor(self, monitor_id: str) -> str: ...
+
+    def delete_synthetic_monitor(self, monitor_id: str) -> None: ...
+
+    def create_synthetic_param(
+        self, key: str, value: str, description: str | None, tags: list[str] | None
+    ) -> SyntheticParam: ...
+
+    def update_synthetic_param(
+        self, param_id: str, *, key: str | None = None, value: str | None = None,
+        description: str | None = None, tags: list[str] | None = None,
+    ) -> SyntheticParam: ...
+
+    def delete_synthetic_param(self, param_id: str) -> None: ...
+
+    def create_synthetic_private_location(
+        self, label: str, agent_policy_id: str, tags: list[str] | None
+    ) -> SyntheticPrivateLocation: ...
+
+    def update_synthetic_private_location(
+        self, location_id: str, label: str
+    ) -> SyntheticPrivateLocation: ...
+
+    def delete_synthetic_private_location(self, location_id: str) -> None: ...
+
     def get_uptime_settings(self) -> UptimeSettings: ...
 
     def list_apm_agent_configs(self) -> list[ApmAgentConfig]: ...
@@ -220,6 +323,20 @@ class KibanaGateway(Protocol):
     def get_apm_agent_config(
         self, service_name: str | None, environment: str | None
     ) -> ApmAgentConfig: ...
+
+    def upsert_apm_agent_config(
+        self,
+        service_name: str | None,
+        environment: str | None,
+        settings: dict[str, str],
+        *,
+        agent_name: str | None,
+        overwrite: bool,
+    ) -> ApmAgentConfig: ...
+
+    def delete_apm_agent_config(
+        self, service_name: str | None, environment: str | None
+    ) -> None: ...
 
     def list_apm_environments(self, service_name: str | None) -> list[ApmEnvironment]: ...
 
@@ -243,9 +360,13 @@ class KibanaGateway(Protocol):
 
     def find_exception_lists(self) -> list[ExceptionList]: ...
 
-    def get_exception_list(self, id: str | None, list_id: str | None) -> ExceptionList: ...
+    def get_exception_list(
+        self, id: str | None, list_id: str | None, namespace_type: str = "single"
+    ) -> ExceptionList: ...
 
-    def find_exception_items(self, list_id: str) -> list[ExceptionItem]: ...
+    def find_exception_items(
+        self, list_id: str, namespace_type: str = "single"
+    ) -> list[ExceptionItem]: ...
 
     def find_value_lists(self) -> list[ValueList]: ...
 
@@ -297,6 +418,42 @@ class KibanaGateway(Protocol):
         self, id: str | None, item_id: str | None, namespace_type: str
     ) -> None: ...
 
+    # --- exception-list edit, copy, export and import (D50) ---
+
+    def update_exception_list(
+        self, id: str | None, list_id: str | None, namespace_type: str,
+        name: str | None, description: str | None, tags: list[str] | None,
+    ) -> ExceptionListChange:
+        """Read the list, then PUT its stored name/description/type with the
+        given fields on top (None keeps a field, tags=[] clears them) and the
+        read's `_version`, so a change made between the two is a 409, never
+        overwritten. Raises KibanaNotFound for an unknown list and
+        KibanaRejected (nothing written) on that conflict."""
+        ...
+
+    def duplicate_exception_list(
+        self, list_id: str, namespace_type: str, include_expired_exceptions: bool
+    ) -> ExceptionList:
+        """Kibana's duplicate: a new list "<name> [Duplicate]" with a fresh
+        list_id and fresh item_ids. KibanaRejected for an endpoint list (405)."""
+        ...
+
+    def export_exception_list(
+        self, id: str, list_id: str, namespace_type: str, include_expired_exceptions: bool
+    ) -> list[dict[str, Any]]:
+        """The export body (list line, item lines, details line). Kibana needs
+        both ids; an unknown pair is a 400 there, so callers read first."""
+        ...
+
+    def import_exception_list(
+        self, content: bytes, overwrite: bool
+    ) -> ExceptionListImportResult:
+        """A plain import (overwrite=False: an existing list_id is skipped but
+        its items are still added to that list, so callers check first) or an
+        overwrite (the stored list replaced in place and its items replaced by
+        the file's). Per-object failures come back in the result."""
+        ...
+
     def update_detection_rule(
         self, rule_id: str | None, id: str | None, name: str | None, description: str | None,
         tags: list[str] | None, severity: str | None, risk_score: int | None,
@@ -336,6 +493,24 @@ class KibanaGateway(Protocol):
         self, content: bytes, overwrite: bool
     ) -> SavedObjectImportResult: ...
 
+    def find_saved_objects(
+        self,
+        types: list[str],
+        search: str | None,
+        has_reference: dict[str, str] | None,
+        page: int,
+        per_page: int,
+    ) -> SavedObjectPage:
+        """One page of summaries (title and name only). `search` matches the
+        title and name attributes only, never the attributes a hit leaves out."""
+        ...
+
+    def get_saved_object(self, type: str, id: str) -> SavedObjectDetail:
+        """One saved object with its attributes. Must refuse a type outside
+        core.saved_objects.READABLE_TYPES (KibanaRejected) before calling
+        Kibana: other types can keep credentials in plain attributes."""
+        ...
+
     def list_spaces(self) -> list[Space]: ...
 
     def get_space(self, space_id: str) -> Space: ...
@@ -365,6 +540,37 @@ class KibanaGateway(Protocol):
     def delete_space(self, space_id: str, force: bool) -> None: ...
 
     def delete_role(self, name: str) -> None: ...
+
+    # Saved objects between spaces (D49). The source space is the gateway's own
+    # (the factory's `space`, else the default or the space KIBANA_URL pins).
+
+    def copy_saved_objects_to_spaces(
+        self, objects: list[dict[str, str]], spaces: list[str], include_references: bool,
+        overwrite: bool,
+    ) -> list[SpaceCopyResult]:
+        """One result per target space, in the order given. Must refuse a target
+        space that does not exist (Kibana writes into it, D5) and the source
+        space itself, before the copy. `overwrite=False` makes new copies
+        (new ids, nothing existing changes); `overwrite=True` replaces the
+        objects earlier copies made in the target spaces (destructive)."""
+        ...
+
+    def share_saved_objects(
+        self, objects: list[dict[str, str]], spaces: list[str]
+    ) -> list[SharingChange]:
+        """Add the objects to `spaces` ('*' = every space). Must refuse, before
+        the write, a space that does not exist, an object the source space does
+        not hold and a type that cannot be shared."""
+        ...
+
+    def unshare_saved_objects(
+        self, objects: list[dict[str, str]], spaces: list[str], force: bool
+    ) -> list[SharingChange]:
+        """Remove the objects from `spaces`. Must refuse, before the write, the
+        cases core.space_sharing refuses: a missing or unshareable object, a
+        removal that removes nothing, and (unless `force`) one that leaves an
+        object in no space, which Kibana answers by deleting it."""
+        ...
 
     def list_streams(self) -> list[StreamSummary]: ...
 
@@ -491,3 +697,64 @@ class KibanaGateway(Protocol):
     def bulk_unenroll(
         self, *, agent_ids: list[str], force: bool = False, revoke: bool = False
     ) -> str: ...
+
+    # --- fleet advanced ops (D51) ---
+
+    def list_agent_tags(self) -> list[str]:
+        """The distinct tags of every agent, inactive ones included."""
+        ...
+
+    def update_agent_tags(
+        self, *, agent_ids: list[str], tags_to_add: list[str], tags_to_remove: list[str]
+    ) -> FleetAgentTagsResult:
+        """Add and remove tags on exactly these agents. Reads every agent first:
+        an unknown id raises KibanaNotFound (naming list_agents) and nothing is
+        sent — Kibana skips an unknown id silently (probed). Reads them back
+        after the call (Kibana applies an id-list update before it answers,
+        probed), so each result carries the tags before and after, and an
+        agent the update did not reach is in `not_applied_agent_ids`."""
+        ...
+
+    def request_agent_diagnostics(
+        self, *, agent_id: str, include_cpu_metrics: bool = False
+    ) -> FleetDiagnosticsRequest:
+        """Ask one agent for a diagnostics bundle. Reads the agent first (an
+        unknown id raises KibanaNotFound naming list_agents) for its status:
+        an offline agent runs the request when it checks in, before the
+        action expires (3 hours on 9.5.4, probed)."""
+        ...
+
+    def list_agent_diagnostics(self, agent_id: str) -> list[FleetAgentDiagnostics]:
+        """The diagnostics bundles one agent uploaded (metadata only); an
+        unknown id raises KibanaNotFound naming list_agents."""
+        ...
+
+    def install_package(self, *, name: str, version: str | None = None) -> FleetPackageInstall:
+        """Install an integration package that is not installed (the latest
+        version, or `version`). Reads the package first: an unknown name raises
+        KibanaNotFound naming list_packages; a package installed at that
+        version (or any version when `version` is None) returns
+        `already_installed=True` with nothing sent; one installed at another
+        version raises KibanaRejected — an upgrade cannot be undone on Basic
+        (Kibana's rollback route answers 403, enterprise only; probed) and
+        Kibana refuses an older version."""
+        ...
+
+    def uninstall_package(self, *, name: str, force: bool = False) -> FleetPackageUninstall:
+        """Uninstall an installed integration package. Kibana deletes the
+        package's package policies with it (probed; with agents on them only
+        when forced), so a package that has any is refused unless `force`,
+        naming them, and `force` reaches Kibana only then. Refused regardless
+        of `force`, naming every guarded package policy: one on a managed or
+        the default Fleet Server agent policy, and any `fleet_server` one
+        (it runs the Fleet Servers on its agent policy); `elastic_agent` is
+        refused while any agent policy has `monitoring_enabled` (Kibana
+        uninstalls it unchecked, probed); a `fleet_server` package policy on
+        no agent policy is guarded too. With Fleet space awareness on, every
+        uninstall is refused, whatever `force` says, before any policy is
+        read: Kibana's uninstall deletes every space's package policies,
+        while the spaces listing hides each space the key cannot read
+        (probed), and nothing reachable proves the key reads them all. A
+        package that is not installed raises KibanaNotFound naming
+        list_installed_packages."""
+        ...

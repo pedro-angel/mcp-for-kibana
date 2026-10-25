@@ -21,14 +21,17 @@ from types import MappingProxyType
 BUILTIN_LISTS: Mapping[str, tuple[str, ...]] = MappingProxyType({
     "read-only-explorer": (
         "list_data_views", "describe_data_view", "resolve_short_url", "export_saved_objects",
+        "find_saved_objects", "get_saved_object", "get_default_data_view",
         "search_dashboards", "get_dashboard", "search_visualizations", "get_visualization",
         "get_kibana_status", "get_kibana_stats", "get_task_manager_health",
     ),
     "dashboards-analyst": (
         "list_data_views", "describe_data_view", "create_data_view", "update_data_view",
         "resolve_short_url", "create_short_url", "export_saved_objects", "import_saved_objects",
+        "find_saved_objects", "get_saved_object", "get_default_data_view",
+        "upsert_runtime_field", "set_default_data_view",
         "search_dashboards", "get_dashboard", "create_dashboard", "add_panel", "update_panel",
-        "add_esql_metric_panel", "add_esql_table_panel", "add_esql_xy_panel",
+        "update_dashboard", "add_esql_metric_panel", "add_esql_table_panel", "add_esql_xy_panel",
         "search_visualizations", "get_visualization", "create_visualization",
         "update_visualization", "add_library_panel",
     ),
@@ -56,6 +59,8 @@ DEPENDENCIES: Mapping[str, tuple[str, ...]] = MappingProxyType({
     "add_esql_table_panel": ("search_dashboards",),
     "add_esql_xy_panel": ("search_dashboards",),
     "update_panel": ("describe_data_view", "get_dashboard"),
+    # (B8: a not-found names search_dashboards, tag ids come from the find)
+    "update_dashboard": ("search_dashboards", "find_saved_objects"),
     "delete_panel": ("get_dashboard",),
     "delete_dashboard": ("search_dashboards",),
     "delete_visualization": ("search_visualizations",),
@@ -64,20 +69,66 @@ DEPENDENCIES: Mapping[str, tuple[str, ...]] = MappingProxyType({
     "update_data_view": ("list_data_views",),
     "import_saved_objects": ("export_saved_objects",),
     "overwrite_saved_objects": ("export_saved_objects",),
+    # (runtime fields, the default data view and the saved-objects reads, D48)
+    "upsert_runtime_field": ("list_data_views",),
+    "delete_runtime_field": ("list_data_views",),
+    "set_default_data_view": ("list_data_views",),
+    "get_saved_object": ("find_saved_objects",),
     # alerting
     "get_alert_rule": ("list_alert_rules",),
     "update_alert_rule": ("get_alert_rule",),
     "enable_alert_rule": ("list_alert_rules",),
     "disable_alert_rule": ("list_alert_rules",),
     "delete_alert_rule": ("list_alert_rules",),
+    "mute_alert_rule": ("list_alert_rules",),
+    "unmute_alert_rule": ("list_alert_rules",),
+    "mute_alert": ("list_alert_rules",),
+    "unmute_alert": ("get_alert_rule",),  # muted_alert_ids
+    "snooze_alert_rule": ("list_alert_rules",),
+    "unsnooze_alert_rule": ("snooze_alert_rule",),  # the only source of a schedule_id
+    "update_alert_rule_api_key": ("list_alert_rules",),
     "get_connector": ("list_connectors",),
     "update_connector": ("get_connector",),
-    # observability, platform-admin, fleet
+    # observability (the Synthetics write tier, D46), platform-admin, fleet
     "get_synthetic_monitor": ("list_synthetic_monitors",),
+    "create_synthetic_monitor": ("list_synthetic_private_locations",),
+    "update_synthetic_monitor": ("list_synthetic_monitors", "list_synthetic_private_locations"),
+    "test_synthetic_monitor": ("list_synthetic_monitors",),
+    "delete_synthetic_monitor": ("list_synthetic_monitors",),
+    "update_synthetic_param": ("list_synthetic_params",),
+    "delete_synthetic_param": ("list_synthetic_params",),
+    "create_synthetic_private_location": ("list_agent_policies",),
+    "update_synthetic_private_location": ("list_synthetic_private_locations",),
+    "delete_synthetic_private_location": ("list_synthetic_private_locations",),
+    # (the APM agent-config writes, D47)
+    "upsert_apm_agent_config": ("get_apm_agent_config",),
+    "delete_apm_agent_config": ("list_apm_agent_configs",),
     "get_space": ("list_spaces",),
+    # (saved objects between spaces, D49: the objects come from a find on the
+    # source space, the target space ids from list_spaces)
+    "copy_saved_objects_to_spaces": ("find_saved_objects", "list_spaces"),
+    "share_saved_objects_to_spaces": ("find_saved_objects", "list_spaces"),
+    "overwrite_saved_objects_in_spaces": ("find_saved_objects", "list_spaces"),
+    "unshare_saved_objects_from_spaces": ("find_saved_objects", "list_spaces"),
+    # security-detections (exception-list edit, copy, export and import, D50:
+    # a not-found names find_exception_lists; a handle comes from the export)
+    "get_exception_list": ("find_exception_lists",),
+    "find_exception_items": ("find_exception_lists",),
+    "update_exception_list": ("find_exception_lists",),
+    "duplicate_exception_list": ("find_exception_lists",),
+    "export_exception_list": ("find_exception_lists",),
+    "import_exception_list": ("export_exception_list",),
+    "overwrite_exception_list": ("export_exception_list",),
     "create_package_policy": ("get_package",),
     "update_package_policy": ("get_package",),
     "upgrade_agent": ("list_agent_versions",),
+    # (fleet advanced ops, D51: an unknown agent id names list_agents, an unknown
+    # package list_packages, a package that is not installed list_installed_packages)
+    "update_agent_tags": ("list_agents",),
+    "request_agent_diagnostics": ("list_agents",),
+    "list_agent_diagnostics": ("list_agents",),
+    "install_package": ("list_packages",),
+    "uninstall_package": ("list_installed_packages",),
 })
 
 LIST_FILE_VERSION = 1

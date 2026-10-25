@@ -9,7 +9,7 @@ via [`KIBANA_MCP_TOOLS`](configuration.md#tool-selection): **dashboards**,
 **[observability](#observability-toolbox)**,
 **[security-detections](#security-detections-toolbox)**,
 **[platform-admin](#platform-admin-toolbox)**,
-**[streams](#streams-toolbox)**, and **[fleet](#fleet-toolbox)** — 143 tools in
+**[streams](#streams-toolbox)**, and **[fleet](#fleet-toolbox)** — 184 tools in
 all. This reference details every toolbox in full. A drift-guard test
 (`tests/unit/test_docs_tool_reference.py`) asserts that every registered tool
 name appears on this page, so it cannot silently fall behind the code.
@@ -37,6 +37,7 @@ FastMCP's visibility API).
 | [`add_esql_table_panel`](#esql-panels-dedicated-add_esql__panel-tools) | write | Add an ES\|QL table panel to an existing dashboard: grouping columns as rows, metric columns as values. |
 | [`add_esql_xy_panel`](#esql-panels-dedicated-add_esql__panel-tools) | write | Add an ES\|QL bar/line/area panel to an existing dashboard. |
 | [`update_panel`](#update_panel) | write | Replace the visualization at a given panel index. |
+| [`update_dashboard`](#update_dashboard) | write | Change a dashboard's title, description, time range, auto-refresh or tags; its panels stay as they are. |
 | [`delete_dashboard`](#delete_dashboard) | destructive | Permanently delete a dashboard. |
 | [`delete_visualization`](#delete_visualization) | destructive | Permanently delete a library visualization; dashboards that show it keep a broken panel. |
 | [`delete_panel`](#delete_panel) | destructive | Permanently remove one panel from a dashboard. |
@@ -58,11 +59,13 @@ gating:
 |---|---|---|---|---|
 | read | `list_data_views`, `describe_data_view`, `search_dashboards`, `get_dashboard`, `search_visualizations`, `get_visualization` | `true` | — | — |
 | write | `create_visualization`, `add_library_panel`, `add_panel`, `add_esql_metric_panel`, `add_esql_table_panel`, `add_esql_xy_panel` | `false` | `false` | `false` |
-| write (upsert) | `create_dashboard`, `update_panel`, `update_visualization` | `false` | `false` | `true` — `update_panel`/`update_visualization`: replacing with the same spec twice is a no-op; `create_dashboard`: re-creating the same title overwrites, never duplicates. |
+| write (upsert) | `create_dashboard`, `update_panel`, `update_visualization`, `update_dashboard` | `false` | `false` | `true` — `update_panel`/`update_visualization`: replacing with the same spec twice is a no-op; `update_dashboard`: the same settings twice are `unchanged` (nothing written); `create_dashboard`: re-creating the same title overwrites, never duplicates. |
 | destructive | `delete_dashboard`, `delete_visualization`, `delete_panel` | `false` | `true` | `true` |
 
 All tools also set `openWorldHint=False` (Kibana is a closed, known system,
-not an open web search).
+not an open web search). The two tools elsewhere that reach past Kibana —
+alerting's `execute_connector` and observability's `test_synthetic_monitor` —
+set `openWorldHint=True`.
 
 At server assembly (`server.py`), `KIBANA_MCP_TIER` (default `write`)
 computes the set of *disallowed* tier tags and calls FastMCP's
@@ -335,6 +338,79 @@ by id, only by index; see `get_dashboard`).
 {"id": "...", "panel_index": 0}
 ```
 
+### `update_dashboard`
+
+Changes only the settings passed — `title`, `description`, `time_range`
+(`{"from", "to"}`, `to` defaulting to `now`), `clear_time_range=true`,
+`refresh_interval_seconds` (0 turns auto-refresh off), `tags_to_add` /
+`tags_to_remove` (tag ids) — and writes the dashboard back with its panels,
+sections, pinned panels (controls), filters, query and display options
+exactly as read:
+
+```json
+{
+  "id": "...", "url": "...", "status": "updated",
+  "title": "...", "description": "...",
+  "time_range": {"from": "now-24h", "to": "now"},
+  "refresh_interval_seconds": 30, "tags": ["<tag id>"],
+  "changed": ["time_range", "refresh_interval_seconds"],
+  "previous": {"time_range": null, "refresh_interval_seconds": null},
+  "undo": {"dashboard_id": "...", "clear_time_range": true},
+  "undo_omitted": []
+}
+```
+
+- `status` — `updated`, or `unchanged` when every value passed is already
+  stored (nothing is written); `changed` names the settings that changed,
+  `previous` holds their values before (`null`: none was stored), and `undo`
+  the whole `update_dashboard` call that puts them back — `dashboard_id`
+  and the `space` passed included, so pass it as it is (`{}` when there is
+  nothing to undo). A previous value Kibana stored that the tool itself
+  refuses — a blank title, a time the dashboard app cannot read, a negative,
+  under-1 ms or over-limit refresh — is left out of `undo`
+  and named in `undo_omitted` (`previous` still shows it), as is a refresh
+  that could then only come back without a time range. `refresh_interval_seconds` is `null` on a dashboard that stores no
+  time range (Kibana keeps a refresh there, but the dashboard app applies
+  one only with the stored time), and may be a fraction (Kibana stores
+  milliseconds: 1500 reads as `1.5`). A time range that was not stored is
+  undone with `clear_time_range=true`; a refresh that was not stored can
+  only come back paused (`0`), and is left out of an undo that clears the
+  time range; a paused refresh comes back paused at the interval the call
+  set. Tags are undone through `tags_to_add`/`tags_to_remove`. Two undos can
+  be refused by checks that read Kibana, naming the way out: renaming back
+  onto a title whose `create_dashboard` id another dashboard holds (refused
+  like any such rename), and re-adding a removed tag id that names no tag.
+- `time_range` values must be readable by Kibana's dashboard app: date math
+  (`now`, `now-24h`, `now-7d/d`, `now/w`; units `ms s m h d w M y`) or an ISO
+  8601 timestamp, optionally followed by `||` and date math. Kibana's API
+  itself stores any string (on 9.5.4, `"yesterday"` and a `from` later than
+  `to` both answered 200), so the tool refuses an unreadable value, and two
+  timestamps in the wrong order, before any call. Without a stored time range
+  the dashboard opens with the time picker's current time.
+- `refresh_interval_seconds` is refused unless the dashboard stores a time
+  range after the call (already, or `time_range` in the same call): Kibana
+  stores it either way, but its dashboard app applies a stored refresh only
+  together with the stored time (9.5.4). 0 pauses auto-refresh and keeps the
+  stored interval. At most 2147483.647 seconds (2³¹−1 ms, about 24.8 days):
+  the app waits with `window.setTimeout`, which fires a longer delay at once.
+- Tags are tag saved-object **ids** (find them with
+  `find_saved_objects(types=["tag"])`, which also shows each tag's `name`);
+  tags live in one space. Kibana stores any string as a tag id, so each id
+  being added is read first in the same space and an unknown one refuses the
+  call; removing an id the dashboard lacks is a no-op. At most 100 tags.
+  There is no tool that creates a tag.
+- Refuses, untouched, a dashboard holding panels or fields the API cannot
+  write back (the same refusal as `add_panel`/`update_panel`), and a rename
+  onto a title whose `create_dashboard` id belongs to another dashboard
+  (naming it). `create_dashboard` finds a dashboard by the id its title
+  derives, so after renaming a dashboard it made, `create_dashboard` with the
+  **old** title replaces this dashboard's panels and with the new title makes
+  a separate one.
+- Kibana's dashboard PUT replaces the whole dashboard and checks no version
+  (a stale `version` query parameter or `If-Match` header was ignored with a
+  200, one in the body is a 400), so an edit made in Kibana between the read
+  and the write is overwritten, as with every panel tool here.
+
 ### `delete_dashboard`
 
 ```json
@@ -450,9 +526,9 @@ This is a deliberate fail-closed guard — see
 
 ## Space targeting
 
-Every one of the 73 tools in the **dashboards**, **data-management**,
+Every one of the 92 tools in the **dashboards**, **data-management**,
 **alerting**, **cases**, and **security-detections** toolboxes — including
-the 15 destructive-tier ones — accepts an optional `space` parameter that
+the 17 destructive-tier ones — accepts an optional `space` parameter that
 targets a Kibana space by id:
 
 ```
@@ -529,14 +605,18 @@ sets `space`:
 
 Only the remaining toolboxes have no space axis and take no `space`
 parameter: `platform-admin` and `platform-health` manage instance-global
-objects, `streams` wraps cluster-global ES data streams, `fleet`'s space
+objects (the four platform-admin tools that move saved objects between spaces
+name theirs as arguments of the operation — `source_space`, `target_spaces`,
+`spaces` — never as the routing `space`, D49), `streams` wraps cluster-global ES data streams, `fleet`'s space
 awareness is an opt-in per-deployment migration, and `observability` mixes
 space-scoped synthetics/uptime objects with cluster-global APM
-configuration (deferred as a follow-up).
+configuration (deferred as a follow-up; the Synthetics write tools and the
+APM agent-config writes follow the toolbox and take no `space` either, D10).
 
 ## data-management toolbox
 
-Data views (the datasets you visualize) and short URLs. The saved-objects
+Data views (the datasets you visualize) with their runtime fields and the
+space's default, short URLs, and saved-objects reads. The saved-objects
 export/import/overwrite tools are also part of this toolbox — see
 [saved-objects export/import](#saved-objects-exportimport-data-management) below.
 
@@ -544,12 +624,21 @@ export/import/overwrite tools are also part of this toolbox — see
 |---|---|---|
 | `list_data_views` | read | List Kibana data views (the datasets you can visualize). |
 | `describe_data_view` | read | Get a data view's fields and types. |
+| `get_default_data_view` | read | Get the space's default data view (the one Discover opens with): id, name, index pattern, and whether the stored id still names a data view. |
 | `resolve_short_url` | read | Resolve a Kibana short-URL slug to its locator and target app path. |
+| `find_saved_objects` | read | Find saved objects of given `types`, optionally by `search` words and/or `has_reference` (the objects that reference one object); one page of summaries plus the total. |
+| `get_saved_object` | read | Get one saved object of an analytics type (dashboard, lens, visualization, search, index-pattern, map, tag, …) by `type` and `id`: attributes (long ones listed by size instead), the distinct objects it references, namespaces and timestamps. Other types are refused. |
 | `create_data_view` | write | Create a Kibana data view over an index pattern (e.g. `logs-*`). The time field must be a date field of the pattern; a refused call creates nothing. |
 | `update_data_view` | write | Edit a data view in place by id: `name`, `index_pattern` and/or `time_field`. Only the fields passed change; the time field must be a date field of the view. |
+| `upsert_runtime_field` | write (upsert) | Create or replace a single-value runtime field on a data view (`type`, optional Painless `script`); returns the definition it replaced as `previous`. |
+| `set_default_data_view` | write (upsert) | Make a data view the space's default by id, or clear the default with `view_id=null`; returns `previous_id`. |
 | `create_short_url` | write | Create a Kibana short URL for a locator + app path. |
 | `delete_data_view` | destructive | Permanently delete a data view by id. This cannot be recovered. |
+| `delete_runtime_field` | destructive | Permanently delete a runtime field from a data view; returns its definition. |
 | `delete_short_url` | destructive | Permanently delete a short URL by id. |
+
+The two upserts set `idempotentHint=true`: a repeat with the same arguments
+stores the same definition, or the same default.
 
 Notes on `create_data_view`:
 
@@ -622,12 +711,159 @@ Notes on `update_data_view`:
   `(in space '<id>')` suffix when `space` is set. Kibana validation failures
   keep the `Kibana rejected the payload:` prefix.
 
+Notes on `upsert_runtime_field` and `delete_runtime_field`:
+
+- **Kibana does not compile the script.** It stores any Painless source and
+  any type it emits (probed on 9.5.4: `this is not painless(((` was stored),
+  while Elasticsearch fails a whole search whose runtime mappings hold a
+  script that does not compile, even when the search does not use the field
+  (probed: `script_exception: compile error`). Kibana's apps send a data
+  view's runtime fields with their searches, so a broken script breaks
+  Discover and the visualizations that use the view until the field is fixed
+  or deleted. The description says so; no public Kibana route compiles a
+  script to check it first. Dashboard panels this server builds carry the
+  index pattern inline, not the view, so they do not see runtime fields.
+- **Single-value types only.** `type` is one of `keyword`, `long`, `double`,
+  `date`, `ip`, `boolean`, `geo_point` (Kibana's list, less `composite`).
+  Without `script` the field reads the `_source` value of the same name.
+- **What it reads first, and why.** The upsert reads the view: a name the
+  view already has as a mapped (or scripted) field is refused before any
+  write (Kibana's PUT 400s "Only runtime fields can be updated"), and so is
+  a stored composite field or one of its subfields (`comp.a`), which this
+  surface could not put back. A create uses Kibana's POST, so a field added
+  between the read and the write is a 400 "Field [name = x] already
+  exists." answered with "call upsert_runtime_field again"; a replacement
+  uses the PUT and returns the replaced definition as `previous` — pass its
+  `type` and `script` back to undo. Kibana's PUT (and its partial POST)
+  drops the field's custom label and description unless they are sent
+  again, so a replacement re-sends the stored ones. The read and the
+  replacement are not atomic: a change another client stores between them
+  is replaced, and `previous` is what this call read.
+- **Delete returns what it removed.** `delete_runtime_field` reads the view
+  first, because Kibana's DELETE answers 404 `Field [index_pattern = <id>,
+  field = <name>] not found.` alike for a missing name, a mapped field and a
+  composite's subfield: the tool says which, and lists the view's runtime
+  fields (`data view '<id>' has no runtime field 'zz' — its runtime fields:
+  comp, hour`). A composite field is deleted by its own name and comes back
+  with its `fields`. Kibana keeps the field's popularity count and format
+  after a delete (observed); they apply again if the name returns.
+- **A wrong view id** gets the data-view guidance `update_data_view` uses
+  (`... call list_data_views to find it`), plus the `(in space '<id>')`
+  suffix when `space` is set.
+
+Notes on `get_default_data_view` and `set_default_data_view`:
+
+- **The default is per space** (Kibana's `defaultIndex` advanced setting).
+  Kibana makes the first data view created in a space with no default its
+  default (probed on 9.5.4), and keeps the id when that view is deleted, so
+  the get reports `exists: false` for an id that names no data view in the
+  space; `id` is `null` when none is set.
+- **The set always replaces.** Without `force`, Kibana answers 200
+  `{"acknowledged": true}` and keeps a default that is already set (probed),
+  so the tool always sends `force: true`. Kibana stores any id as the
+  default (`bogus-id` answered 200), so the tool reads the view first and a
+  wrong id is the data-view guidance; `view_id=null` clears the default.
+  `previous_id` is the default before the call, and `previous_exists` says
+  whether it named a data view: when true, a second call with it undoes the
+  change; when false (a deleted view's id, which the tool will not store
+  again), `view_id=null` does — Kibana treats an id that names no view as no
+  default (it removes it and opens the first data view,
+  `getDefaultDataViewId` in its data-views service on 9.5.4).
+
+Notes on `find_saved_objects` and `get_saved_object`:
+
+- **Kibana's deprecated saved-objects API.** Both call
+  `GET /api/saved_objects/_find` and `GET /api/saved_objects/{type}/{id}`,
+  which Kibana 9.5.4 still serves with a `warning: 299 ... This endpoint is
+  deprecated` header. No other public route finds objects across types or
+  by reference; the type-specific tools stay the way to read and change a
+  dashboard, a visualization or a data view.
+- **An empty page proves little.** Kibana answers 200 with no hits for a
+  type name it does not know (`bogus`), for `*`, and for the types it hides
+  from this API (`action`, `alert`), so a result with `total: 0` carries a
+  `note` saying to check the type names, and `types` refuses `*` (use
+  `export_saved_objects(types=["*"])` for a whole space). A page past the
+  last one carries a note too.
+- **Search and references.** `search` is Elasticsearch's
+  `simple_query_string` over the `title` and `name` attributes only (the tool
+  sends `search_fields`): words match (`flight`), `flight*` matches a prefix.
+  Without `search_fields` Kibana matches every attribute (probed: `JetBeats`,
+  a word only in the flights dashboard's description, found it), so a hit
+  could rest on an attribute the summary does not show. `has_reference`
+  (`{"type": "index-pattern", "id": "<id>"}`) keeps the objects that
+  reference that object — for example the dashboards and visualizations
+  that use a data view, or the dashboards that place a library
+  visualization by reference.
+- **Paging.** `per_page` is at most 100 and `page * per_page` at most
+  10,000, which Kibana's find does not serve past (`Result window is too
+  large`, probed); the tool refuses it first, naming `search` and
+  `has_reference`. Each hit's attributes are fetched as `title` and `name`
+  only, so a summary stays small.
+- **Long attributes stay out of `get_saved_object`.** An attribute longer
+  than 4,000 characters (its JSON text for a non-string value) is left out
+  of `attributes` and listed in `omitted_attributes` with its size — the
+  flights sample dashboard's `panelsJSON` is 33,809. References are the
+  distinct `{type, id}` pairs, in first-seen order (the flights dashboard
+  holds 27 references to 4 objects). A miss names `find_saved_objects`.
+- **`get_saved_object` reads analytics content only.** It serves
+  `canvas-element`, `canvas-workpad`, `canvas-workpad-template`,
+  `dashboard`, `event-annotation-group`, `graph-workspace`,
+  `index-pattern`, `lens`, `links`, `map`, `query`, `search`, `tag` and
+  `visualization`, and refuses any other type before calling Kibana, naming
+  only ways forward that work for that type: `list_outputs` for
+  `ingest-outputs`, `list_connectors`/`list_alert_rules` for the hidden
+  `action`/`alert` (which `find_saved_objects` answers with an empty page),
+  `list_synthetic_params` for `synthetics-param`, the agent and package
+  policy, Fleet Server host, Synthetics monitor and private location tools
+  for their types, and for `fleet-proxy` that no tool reads it. It names the
+  toolbox of each tool it names and how to enable it, because the profiles
+  that ship `get_saved_object` publish none of them. Kibana refuses to export Fleet's and Synthetics' types
+  (400 "Trying to export non-exportable type(s)"), so `export_saved_objects`
+  is offered only for other types, and only if Kibana exports them.
+  Kibana strips only the attributes a plugin registers as encrypted, and
+  some types it serves keep credentials in plain ones: on 9.5.4
+  `fleet-proxy` stores `certificate_key` and `proxy_headers`, and
+  `ingest-outputs` stores `config_yaml` and, for a remote Elasticsearch
+  output, a `service_token` — read outputs with the fleet toolbox, whose
+  output tools return a fixed field set. Hidden types (`action`, `alert`)
+  are refused the same way.
+
 Returns:
 
 ```jsonc
 // update_data_view  (+ "space" when the caller passed one)
 {"id": "7902514d-...", "name": "Flights", "index_pattern": "kibana_sample_data_flights",
  "time_field": "timestamp", "field_count": 32}
+
+// upsert_runtime_field  (+ "space" when the caller passed one)
+{"view_id": "7902514d-...", "created": false,
+ "field": {"name": "hour", "type": "keyword", "script": "emit('x')"},
+ "previous": {"name": "hour", "type": "long",
+              "script": "emit(doc['timestamp'].value.getHour())"}}   // null on a create
+
+// delete_runtime_field  ("fields" only for a composite)
+{"view_id": "7902514d-...", "deleted": true,
+ "field": {"name": "comp", "type": "composite", "script": "emit(['a': 'x'])",
+           "fields": {"a": "keyword"}}}
+
+// get_default_data_view  (set_default_data_view adds "previous_id" and "previous_exists")
+{"id": "d3d7af60-...", "name": "Kibana Sample Data Flights",
+ "index_pattern": "kibana_sample_data_flights", "exists": true}
+
+// find_saved_objects  ("note" only on an empty result or a page past the end)
+{"total": 1, "page": 1, "per_page": 20,
+ "saved_objects": [{"type": "dashboard", "id": "7adfa750-...",
+                    "title": "[Flights] Global Flight Dashboard", "name": null,
+                    "updated_at": "2026-10-25T03:03:32.348Z", "namespaces": ["default"],
+                    "managed": false}]}
+
+// get_saved_object  ("omitted_attributes" only when one was left out)
+{"type": "dashboard", "id": "7adfa750-...", "namespaces": ["default"],
+ "created_at": "2026-10-25T03:03:32.348Z", "updated_at": "2026-10-25T03:03:32.348Z",
+ "managed": false, "attributes": {"title": "[Flights] Global Flight Dashboard", "...": "..."},
+ "references": [{"type": "search", "id": "571aaf70-..."},
+                {"type": "index-pattern", "id": "d3d7af60-..."}],
+ "omitted_attributes": {"panelsJSON": 33809}}
 ```
 
 ## alerting toolbox
@@ -637,7 +873,7 @@ Alerting rules and action connectors.
 | Tool | Tier | Description |
 |---|---|---|
 | `list_alert_rules` | read | List alerting rules (optionally filtered by a name search). |
-| `get_alert_rule` | read | Get one rule by id: the summary fields plus its full `params` and its `actions` (`id` = connector id, `uuid`, `group`, `params`, `frequency` when set). Read it before and after `update_alert_rule`. |
+| `get_alert_rule` | read | Get one rule by id: the summary fields plus its full `params`, its `actions` (`id` = connector id, `uuid`, `group`, `params`, `frequency` when set), `muted` and `muted_alert_ids`. Read it before and after `update_alert_rule`. |
 | `get_alerting_health` | read | Kibana alerting framework health status. |
 | `list_connectors` | read | List configured action connectors (id, name, connector_type_id). |
 | `list_rule_types` | read | List rule types: `id` (the `rule_type_id`), the `consumers` the caller may create it under, licence status. No `params` schema (Kibana's API has none). |
@@ -645,15 +881,22 @@ Alerting rules and action connectors.
 | `create_alert_rule` | write | Create an alerting rule (e.g. `rule_type_id` `.es-query`). |
 | `update_alert_rule` | write | Edit a rule in place by id (read-modify-write): `name`, `tags`, `schedule_interval`, `params` (merged key-by-key), `actions`. Never toggles `enabled`. |
 | `enable_alert_rule` | write | Enable (start running) an alerting rule. |
-| `disable_alert_rule` | write | Disable (stop running) an alerting rule. |
+| `disable_alert_rule` | write | Disable (stop running) an alerting rule; `untrack=True` (default off) also marks its active alerts untracked. |
 | `create_connector` | write | Create an action connector (e.g. `.index`, `.webhook`). |
 | `update_connector` | write | Edit a connector in place by id: `name`, `config` (merged key-by-key), and `secrets` only when passed. Refuses preconfigured connectors. |
+| `mute_alert_rule` | write | Mute a whole rule: it keeps running, no action fires, no end time. Clears per-alert mutes and returns them in `cleared_alert_ids`. |
+| `unmute_alert_rule` | write | Undo `mute_alert_rule`; also clears every per-alert mute, even on a rule not muted as a whole, and returns them in `cleared_alert_ids` (`mute_alert` on each restores them). |
+| `mute_alert` | write | Mute one alert (`alert_id`) of a rule; refused on a rule muted as a whole. |
+| `unmute_alert` | write | Undo `mute_alert` for one alert (an id from `muted_alert_ids`). |
+| `snooze_alert_rule` | write | Silence a rule's actions for a window: `duration` (`30m`, `2h`, `1d`), `start` (ISO-8601, default now), optional `recurring`. Returns the `schedule_id`. |
+| `unsnooze_alert_rule` | write | Cancel one snooze by the `schedule_id` `snooze_alert_rule` returned. |
+| `update_alert_rule_api_key` | write | Regenerate a rule's API key from this server's credentials (the rule then runs with its privileges). |
 | `delete_alert_rule` | destructive | Permanently delete an alerting rule. |
 | `delete_connector` | destructive | Permanently delete an action connector. This cannot be undone. |
 | `execute_connector` | destructive | Run a connector now with the given type-specific params. |
 
 A tier includes everything below it: `write` (the default) shows the 6 reads +
-6 writes; `destructive` adds the 2 deletes and `execute_connector`; `read`
+13 writes; `destructive` adds the 2 deletes and `execute_connector`; `read`
 shows only the 6 reads.
 
 Notes:
@@ -691,6 +934,35 @@ Notes:
 - **Preconfigured connectors cannot be edited.** A connector defined in
   `kibana.yml` (`is_preconfigured: true`) is refused before any write, with a
   pointer to `kibana.yml` or `create_connector`.
+- **Mute, snooze, or untrack — three ways to quiet a rule that keeps its
+  definition.** All three leave the rule's params and actions as they are.
+  `mute_alert_rule` stops every action until `unmute_alert_rule`, with no end
+  time; the rule keeps running and tracking alerts. Kibana's rule-wide mute and
+  unmute both clear the per-alert mutes (the unmute even on a rule that is not
+  muted), so both return the cleared ids in `cleared_alert_ids` — no tool lists
+  a rule's alert ids, and `mute_alert` on each puts them back. On a rule muted
+  as a whole Kibana accepts a per-alert mute but records nothing, so
+  `mute_alert` refuses that case and says to unmute the rule first. `mute_alert` takes the id of an alert
+  the rule has raised — the group's value for a rule grouped by a field (e.g.
+  a host name), `query matched` for an ungrouped `.es-query` rule; Kibana
+  refuses an id the rule has not raised, and unmuting an alert that is not
+  muted succeeds. `snooze_alert_rule` stops actions for a window: `duration`
+  is a whole number and `s`, `m`, `h` or `d` (Kibana has no week unit here),
+  `start` any ISO-8601 instant (no offset means UTC; sent to Kibana as
+  `YYYY-MM-DDTHH:mm:ss.sssZ`, the only form it takes), and `recurring`
+  (`every` such as `1d`/`2w`/`1M`, bounded by `end` or `occurrences`,
+  narrowed by `onWeekDay`/`onMonthDay`/`onMonth`) repeats it.
+  **Keep the `schedule_id`**: Kibana's public API never lists a rule's
+  snoozes, so `unsnooze_alert_rule` has no other source, and a rule holds at
+  most 5 snoozes, expired ones included (a sixth is refused, naming
+  `unsnooze_alert_rule`; lost ids are cancelled in Kibana's Rules page).
+  `disable_alert_rule(untrack=True)` stops the rule and marks its active
+  alerts untracked; without it they stay active.
+- **`update_alert_rule_api_key` changes who the rule runs as.** Kibana
+  regenerates the rule's API key from the caller's credentials — this
+  server's API key — so the rule's queries and actions then run with that
+  key's privileges. Use it when a rule fails because its key was revoked; no
+  key material is returned.
 - **A wrong id names its source.** An id that matches nothing fails with
   `connector '<id>' not found — connector_id is the id that create_connector
   or list_connectors returns, not the connector's name; call list_connectors
@@ -707,12 +979,25 @@ Returns:
  "is_preconfigured": false, "is_system_action": false, "is_deprecated": false,
  "is_missing_secrets": false, "is_connector_type_deprecated": false}
 
+// snooze_alert_rule  (+ "space" when the caller passed one)
+{"rule_id": "8b1c...", "schedule_id": "f828e368-...", "duration": "2h",
+ "start": "2026-10-25T07:00:00.000Z", "timezone": "UTC",
+ "recurring": {"every": "1w", "onWeekDay": ["SA"], "end": "2026-12-31T00:00:00.000Z"}}
+
+// mute_alert_rule / unmute_alert_rule · mute_alert / unmute_alert ·
+// unsnooze_alert_rule · update_alert_rule_api_key · disable_alert_rule
+{"id": "8b1c...", "muted": false, "cleared_alert_ids": ["host-a", "host-b"]}
+{"rule_id": "8b1c...", "alert_id": "query matched", "muted": true}
+{"rule_id": "8b1c...", "schedule_id": "f828e368-...", "unsnoozed": true}
+{"id": "8b1c...", "api_key_updated": true}
+{"id": "8b1c...", "enabled": false, "untracked": true}   // "untracked" only with untrack=true
+
 // update_alert_rule  (the summary each list_alert_rules row carries)
 {"id": "8b1c...", "name": "Flights over threshold", "rule_type_id": ".es-query",
  "consumer": "stackAlerts", "enabled": true, "schedule_interval": "5m",
  "status": "ok", "tags": ["flights"]}
 
-// get_alert_rule  (the summary + params as Kibana stores them + actions)
+// get_alert_rule  (the summary + params as Kibana stores them + actions + mute state)
 {"id": "8b1c...", "name": "Flights over threshold", "rule_type_id": ".es-query",
  "consumer": "stackAlerts", "enabled": true, "schedule_interval": "5m",
  "status": "ok", "tags": ["flights"],
@@ -724,7 +1009,8 @@ Returns:
  "actions": [{"id": "032a5771-...", "uuid": "5f0e...", "group": "query matched",
               "params": {"message": "{{rule.name}} matched"},
               "frequency": {"summary": false, "notify_when": "onActionGroupChange",
-                            "throttle": null}}]}
+                            "throttle": null}}],
+ "muted": false, "muted_alert_ids": ["JetBeats"]}
 ```
 
 ## cases toolbox
@@ -774,20 +1060,30 @@ Returns:
 
 ## observability toolbox
 
-Ten read-only tools (`src/kibana_mcp/toolboxes/observability/toolbox.py`), all
-`read` tier (`readOnlyHint=true`), tagged `{"observability", "read"}`. Enable
-with `KIBANA_MCP_TOOLBOXES=observability` (or alongside others). Read access to
-the Kibana observability surface an operator can reach on a **Basic** license:
-Synthetics monitoring, Uptime settings, and APM **configuration**.
+Twenty-two tools (`src/kibana_mcp/toolboxes/observability/toolbox.py`): 10
+`read`, 8 `write`, 4 `destructive`, tagged `{"observability", <tier>}`. Enable
+with `KIBANA_MCP_TOOLBOXES=observability` (or alongside others). Access to the
+Kibana observability surface an operator can reach on a **Basic** license:
+Synthetics monitoring (read, and the write tier: monitors, global parameters and
+private locations — create, edit, run once, delete), Uptime settings, and APM
+**configuration** (read, and agent configurations created, replaced and
+deleted). No tool takes `space` (see [Space targeting](#space-targeting)).
+Hints: reads `readOnlyHint=true`; the three Synthetics updates and
+`upsert_apm_agent_config` `idempotentHint=true`; the deletes
+`destructiveHint=true`;
+`test_synthetic_monitor` `openWorldHint=true` (the run sends the monitor's
+requests to its target), every other tool `openWorldHint=false`.
 
 !!! note "v1 scope — what this is *not*"
     This toolbox intentionally does **not** expose APM **service/transaction/
     trace/service-map telemetry** — those are internal-only Kibana APIs
     (`/internal/apm/*`), unreachable by an external client on 9.x and not wrapped
     by kibana-py. It also does not expose **SLOs**, which require a Platinum
-    license (they return `403` on a Basic stack). Both are out of scope: the APM
-    telemetry has no supported external path, and subscription-gated surfaces are
-    not built here.
+    license (they return `403` on a Basic stack), and it does not **create APM
+    annotations**, which need a Gold license (`403` "Annotations require at least
+    a gold license or a trial license." on Basic; `search_apm_annotations` reads
+    them). All are out of scope: the APM telemetry has no supported external
+    path, and subscription-gated surfaces are not built here.
 
 | Tool | Tier | Description |
 |---|---|---|
@@ -801,6 +1097,101 @@ Synthetics monitoring, Uptime settings, and APM **configuration**.
 | `list_apm_environments` | read | List APM environments for agent config. `ALL_OPTION_VALUE` is a sentinel meaning "all environments". |
 | `list_apm_sourcemaps` | read | List uploaded RUM source-map artifacts (identifier, created). |
 | `search_apm_annotations` | read | Search APM annotations (e.g. deployment markers) for a service in an ISO-8601 `[start, end]` window. |
+| `create_synthetic_monitor` | write | Create an http/tcp/icmp/browser monitor on private locations (ids or labels); returns it as `get_synthetic_monitor` does. |
+| `update_synthetic_monitor` | write | Edit a monitor in place: only the fields passed change (`enabled=False` pauses it); the type cannot change. |
+| `test_synthetic_monitor` | write | Run a monitor once now, a paused one too (requests reach its target); adds a short-lived package policy to the location's agent policy; returns its `test_run_id` (no tool reads the result). |
+| `create_synthetic_param` | write | Create a global parameter monitors reference as `${key}`; the value is never returned. |
+| `update_synthetic_param` | write | Rename, rotate or re-describe a parameter in place; no value is ever returned, so a replaced value cannot be recovered by any tool. |
+| `create_synthetic_private_location` | write | Create a private location on a Fleet agent policy no other location uses. |
+| `update_synthetic_private_location` | write | Rename a private location (the label is all Kibana lets change). |
+| `delete_synthetic_monitor` | destructive | Permanently delete a monitor. |
+| `delete_synthetic_param` | destructive | Permanently delete a parameter; its value is lost and monitors lose `${key}`. |
+| `delete_synthetic_private_location` | destructive | Permanently delete a private location no monitor uses; its agent policy stays. |
+| `upsert_apm_agent_config` | write | Create or replace the APM agent configuration of a service + environment (omit either for all): `settings` replaces the stored map; optional `agent_name` (on a create; a replacement keeps the stored one); returns `created` and the replaced `previous_settings`. |
+| `delete_apm_agent_config` | destructive | Permanently delete one APM agent configuration (exact service + environment match); returns the deleted settings and `agent_name`. |
+
+Synthetics write tier, as probed on Kibana 9.5.4 (decision
+[D46](spec/decisions.md)):
+
+- **Monitors.** Each type takes its own target: `url` (http), `host` (tcp, with
+  its port; icmp), `inline_script` (browser, a Playwright journey). The tools
+  refuse a missing target and another type's field — Kibana stores a `url` on a
+  tcp monitor without complaint. `private_locations` entries are ids or labels
+  from `list_synthetic_private_locations`, checked before the write; this server
+  offers no Elastic-managed locations (a self-managed stack has none).
+  `schedule` takes the read shape (`10m`, `30s`): the number must be one of 1,
+  2, 3, 5, 10, 15, 20, 30, 60, 120, 240, with unit `m` or `s` (Kibana checks the
+  number against its minute list whatever the unit). Leading zeros are dropped
+  before the call (`05m` is sent as `5m`; Kibana refuses `"05"`). `tags` and
+  `private_locations` on an update replace the whole list. Names are unique (Kibana's
+  400 passes through). `update_synthetic_monitor` sends only the fields given —
+  Kibana's PUT keeps the rest — and reads the monitor first only to check a
+  target field against its type. Created monitors start enabled
+  (`enabled=False` to create one paused).
+- **Runs.** `test_synthetic_monitor` returns `{"monitor_id", "test_run_id"}`. The
+  check executes on the Elastic Agents enrolled in the location's agent policy;
+  with none running, Kibana still accepts the request and nothing runs. A
+  paused monitor runs too, so the run can send requests its schedule would
+  not; every call is a new run. Each run adds a
+  `LIGHTWEIGHT_SYNTHETICS_TEST_NOW_RUN` package policy
+  (`BROWSER_SYNTHETICS_TEST_NOW_RUN` for browser) to that agent policy, and it
+  stays there after the location is deleted until Kibana's clean-up task
+  removes it (lightweight ones older than 2 minutes, browser ones older than
+  15; the task runs right after a run and then every 20 minutes while any
+  remain, so about 20 minutes). The
+  result is written to the `synthetics-*` data streams under that
+  `test_run_id` (shown in Kibana's Synthetics app); no tool reads it.
+- **Parameters.** The value is a secret: no result carries it (Kibana's update
+  response echoes the *previous* value; the tools drop it), and a rejection's
+  text is scrubbed of it. A key already in use is refused — Kibana stores a
+  second parameter with the same key, which would make `${key}` ambiguous.
+  `update_synthetic_param` and both create tools refuse an empty change or value.
+  A value replaced by `update_synthetic_param` cannot be read back by any tool,
+  so setting it back needs the caller to hold the old one.
+- **Private locations.** One per Fleet agent policy, labels unique (both
+  checked before the write); a missing policy is Kibana's 400 plus where policy
+  ids come from (`list_agent_policies`, `create_agent_policy` in the
+  [fleet toolbox](#fleet-toolbox)). Deleting one that monitors use is refused by
+  Kibana; the error names `update_synthetic_monitor` and
+  `delete_synthetic_monitor`.
+- **APM agent configurations** (decision [D47](spec/decisions.md)). A
+  configuration is named by `service_name` and `environment`, matched exactly:
+  an omitted one means *all services* or *all environments*, never *any*, so
+  `{service_name: "cart"}` and `{service_name: "cart", environment: "prod"}` are
+  two configurations. `list_apm_environments`' `ALL_OPTION_VALUE` is not
+  created as a name (Kibana would store it literally, and no agent reads it as
+  *all*; the refusal says to omit every name holding it); one another client
+  stored under that literal name is matched exactly,
+  so the tools replace and delete it, not the all-* one. An empty string is
+  refused (Kibana stores `""` and then cannot find it again).
+  `upsert_apm_agent_config` reads the configuration first and replaces it only
+  if it read one, so a configuration created in between is refused, not
+  overwritten unreported; Kibana's PUT takes no etag, though, so a change
+  another client stores to an existing one between the read and the write is
+  replaced unreported (`previous_settings` is the map the call read).
+  `settings` replaces the whole map (to change one setting, pass the map from
+  `get_apm_agent_config` with that key changed); values go out as strings
+  (`0.5` → `"0.5"`, `false` → `"false"`). Kibana checks the values of the
+  settings it knows (a rejection lists the settings sent, since Kibana's message
+  can omit the key) but stores setting names it does not know, which agents
+  ignore. A stored `agent_name` (Kibana's UI writes one) is sent again on a
+  replacement, since Kibana's PUT drops it otherwise; a replacement given a
+  different `agent_name` is refused before any write ("… has agent_name
+  'java', and a replacement keeps it — omit agent_name, or to change it
+  delete_apm_agent_config and recreate the configuration with agent_name
+  'go'"), since the result returns only `previous_settings`. A new
+  configuration has one only when passed. The delete
+  returns `settings` and `agent_name`, which an upsert takes back to recreate it. A miss reads "no APM agent
+  configuration for service 'cart', all environments — service_name and
+  environment must match a configuration exactly (an omitted one means all);
+  call list_apm_agent_configs to see them", on `get_apm_agent_config` too.
+- **Misses.** A wrong id names where ids come from (D17), e.g. "synthetic
+  monitor 'x' not found — monitor_id is the id that create_synthetic_monitor or
+  list_synthetic_monitors returns, not the monitor's name; call
+  list_synthetic_monitors to find it". Kibana answers a monitor or parameter
+  delete of an unknown id with `200 [{"deleted": false}]` and a private-location
+  one with a 400 "does not exist" (its update with a 404); all read as
+  not-found here.
 
 Returns:
 
@@ -815,32 +1206,64 @@ Returns:
  "cert_age_threshold": 730, "default_connectors": [],
  "default_email": {"to": [], "cc": [], "bcc": []}}
 
-// list_apm_agent_configs -> list
+// list_apm_agent_configs -> list  (get_apm_agent_config: one of these)
 [{"service_name": "checkout", "service_environment": "production",
-  "settings": {"transaction_sample_rate": "0.5"}, "applied_by_agent": true, "etag": "e1"}]
+  "settings": {"transaction_sample_rate": "0.5"}, "applied_by_agent": true, "etag": "e1",
+  "agent_name": "java"}]
 
 // list_apm_environments -> list  (ALL_OPTION_VALUE = "all environments")
 [{"name": "ALL_OPTION_VALUE", "already_configured": false}]
 
 // search_apm_annotations -> list
 [{"id": "a1", "timestamp": "2026-07-12T00:00:00.000Z", "text": "v2 deploy", "type": "deployment"}]
+
+// create_synthetic_monitor / update_synthetic_monitor  (the get_synthetic_monitor shape)
+{"id": "2820...fc76", "name": "api health", "type": "http", "enabled": true,
+ "tags": ["api"], "locations": ["dc1"], "schedule": "30s",
+ "target": "https://example.com/health"}
+
+// test_synthetic_monitor
+{"monitor_id": "2820...fc76", "test_run_id": "2962b617-4d24-4d2b-8923-1a497e6d4898"}
+
+// create_synthetic_param / update_synthetic_param  (never a value)
+{"id": "7c2e...88f7", "key": "api_token", "description": "RUM token", "tags": ["shared"]}
+
+// create_synthetic_private_location / update_synthetic_private_location
+{"id": "bbce...8def", "label": "dc1", "agent_policy_id": "9d19...d417",
+ "is_invalid": false, "tags": []}
+
+// delete_synthetic_monitor / delete_synthetic_param / delete_synthetic_private_location
+{"id": "2820...fc76", "deleted": true}
+
+// upsert_apm_agent_config  (the get_apm_agent_config shape + created, previous_settings)
+{"service_name": "checkout", "service_environment": "production",
+ "settings": {"capture_body": "errors"}, "applied_by_agent": false,
+ "etag": "8176...5555", "agent_name": null,
+ "created": false, "previous_settings": {"transaction_sample_rate": "0.5"}}
+
+// delete_apm_agent_config
+{"service_name": "checkout", "environment": "production", "deleted": true,
+ "settings": {"capture_body": "errors"}, "agent_name": null}
 ```
 
 ## security-detections toolbox
 
-25 tools across three tiers (`src/kibana_mcp/toolboxes/security_detections/toolbox.py`),
+30 tools across three tiers (`src/kibana_mcp/toolboxes/security_detections/toolbox.py`),
 tagged `{"security-detections", <tier>}`. Enable with
 `KIBANA_MCP_TOOLBOXES=security-detections`. Read/write access to the Kibana
 Security **detection engine** and its supporting objects — all GA and available
 on a **Basic** license (the SIEM detection engine ships in the free tier; only
 ML-type *rules* need Platinum, and only to create them).
 
-!!! note "scope — full rule lifecycle (incl. enable/disable) + value-list items"
-    Reads never mutate. The **write** tier creates detection rules (query-type) +
-    exception lists/items, partial- and full-replace-updates a rule's fields
+!!! note "scope — full rule lifecycle (incl. enable/disable), exception-list copies + value-list items"
+    Reads never mutate (`export_exception_list` writes only a server-side file).
+    The **write** tier creates detection rules (query-type) + exception
+    lists/items, edits, duplicates and imports exception lists (D50),
+    partial- and full-replace-updates a rule's fields
     (including `enabled`, via `enable_detection_rule` / `disable_detection_rule`),
     and creates value lists + their items; the **destructive** tier deletes
-    rules/exceptions/value lists and value-list items. Enable/disable looked
+    rules/exceptions/value lists and value-list items and restores an
+    exception list in place (`overwrite_exception_list`). Enable/disable looked
     privilege-gated on the deployment key at first pass (403/500 on
     `bulk_action_rules`/`patch_rule`), but `update_rule` (full-replace) works —
     `replace_detection_rule` and enable/disable all ride that read-modify-write
@@ -856,14 +1279,18 @@ ML-type *rules* need Platinum, and only to create them).
 | `list_detection_rule_tags` | read | The distinct tags used across detection rules. |
 | `search_detection_alerts` | read | The most recent detection alerts (id, rule_name, severity, status, timestamp); `size` caps the count. |
 | `find_exception_lists` | read | List exception-list containers. |
-| `get_exception_list` | read | Get one exception-list container by `id` or `list_id`. |
-| `find_exception_items` | read | List the exception items within an exception list (by `list_id`). |
+| `get_exception_list` | read | Get one exception-list container by `id` or `list_id` (`namespace_type="agnostic"` for an agnostic list). |
+| `find_exception_items` | read | List the exception items within an exception list (by `list_id`; `namespace_type` as above). |
+| `export_exception_list` | read | Export one exception list and its items to a server-side NDJSON file; returns an `el-` `handle` + a summary, never the content. |
 | `find_value_lists` | read | List value lists (shared value sets referenced by rule exceptions). |
 | `find_value_list_items` | read | List the items of a value list, by the list's `id` (passed as `list_id`). |
 | `find_timelines` | read | List investigation timelines. |
 | `create_detection_rule` | write | Create a custom KQL/Lucene `query` rule (`enabled` defaults false — a new rule starts inactive). Returns the created rule. |
 | `create_exception_list` | write | Create an exception-list container. |
 | `create_exception_item` | write | Add an exception item (field==/!=value `entries`) to a list. |
+| `update_exception_list` | write | Edit a list's name, description or tags by `id` / `list_id` (only the fields passed; `tags=[]` clears). Writes nothing if the list changed after its read. Returns `previous`. |
+| `duplicate_exception_list` | write | Copy a list and its items into a new list `"<name> [Duplicate]"` (new `list_id`, new item ids) in the same space. Refuses endpoint lists (Kibana 405s them). |
+| `import_exception_list` | write | Create a **new** list from an `export_exception_list` handle (in any space): a chosen or generated `list_id`, new item ids. Refuses an existing `list_id`. |
 | `update_detection_rule` | write | Partial-update a rule's non-`enabled` fields (name/description/tags/severity/risk_score/query/interval) by `rule_id` / `id`. Does not toggle `enabled`. |
 | `replace_detection_rule` | write | Full-replace (PUT) a rule by `rule_id` / `id` — read-modify-write, so it can reach fields `update_detection_rule` can't (e.g. `index`, `language`). Refuses an Elastic-prebuilt (immutable) rule. |
 | `enable_detection_rule` | write | Enable a rule's schedule by `rule_id` / `id`. |
@@ -875,9 +1302,40 @@ ML-type *rules* need Platinum, and only to create them).
 | `delete_exception_item` | destructive | Delete an exception item by `id` / `item_id`. |
 | `delete_value_list` | destructive | Delete a value list (+ its items) by `id`. Refuses a referenced list unless `force=True`. |
 | `delete_value_list_item` | destructive | Delete a single value-list item by `item_id` (the parent list and its other items are untouched). |
+| `overwrite_exception_list` | destructive | Restore a list **in place** from an `export_exception_list` handle: its fields reverted, its items **replaced** by the export's (items added since are deleted and listed in `removed_item_ids`). A deleted list is recreated under a new `id`. Cannot be undone. |
 
-A tier includes everything below it: `write` (the default) shows the 11 reads +
-9 writes; `destructive` adds the 5 deletes; `read` shows only the 11 reads.
+A tier includes everything below it: `write` (the default) shows the 12 reads +
+12 writes; `destructive` adds the 5 deletes and `overwrite_exception_list`;
+`read` shows only the 12 reads.
+
+Exception-list edit, copy, export and import (D50), probed on 9.5.4:
+
+- **Namespaces.** A list made with `namespace_type="agnostic"` is found only
+  with `namespace_type="agnostic"` (a `"single"` read answers 404), so
+  `get_exception_list`, `find_exception_items`, `update_exception_list`,
+  `duplicate_exception_list` and `export_exception_list` take it;
+  `import_exception_list` and `overwrite_exception_list` use the export's,
+  so an agnostic export makes or restores a list shared across every space,
+  whatever `space` routes the import. `find_exception_lists` lists only
+  `"single"` lists.
+- **`update_exception_list`** sends the read's `_version`: a change made
+  between its read and its write is a 409 that writes nothing (the error
+  says to call again). It never changes the list's type and never sends
+  `os_types` (Kibana's update ignores them).
+- **New copies, never merged.** `import_exception_list` rewrites the export
+  with a fresh `item_id` per item rather than using Kibana's `as_new_list`,
+  which keeps the source `item_id`s (two lists then share them) and does not
+  report the new `list_id`; and it refuses an existing `list_id`, because a
+  plain import onto one skips the list but still adds the items to it. The
+  check and the import are two calls: a list created between them under the
+  same `list_id` still receives the items, and the result then shows
+  `success: false` with the list's 409 in `errors` and `id: null`.
+  Kibana's import does not carry `os_types`.
+- **Handles.** `el-` handles share the server-side export directory with the
+  saved-objects `so-` handles (20 kept per kind); each import takes only its
+  own kind and names the right tools for the other.
+- **Import errors** come per object as `"list_id[/item_id]: <status> <kind>"`
+  (e.g. `"a/i: 409 already exists"`), never Kibana's message.
 
 Returns:
 
@@ -893,8 +1351,34 @@ Returns:
  "timelines_not_updated": 0}
 
 // find_exception_lists -> list
-[{"id": "33c0...ae32", "list_id": "endpoint_list", "name": "Endpoint Security",
-  "type": "endpoint", "namespace_type": "agnostic", "tags": [], "os_types": []}]
+[{"id": "33c0...ae32", "list_id": "trusted-hosts", "name": "Trusted hosts",
+  "type": "detection", "namespace_type": "single", "tags": [], "os_types": [],
+  "description": "Hosts we trust"}]
+
+// update_exception_list
+{"id": "ba67...a1ec", "list_id": "trusted-hosts", "name": "Trusted hosts v2",
+ "type": "detection", "namespace_type": "single", "tags": ["prod"], "os_types": [],
+ "description": "Hosts we trust",
+ "previous": {"name": "Trusted hosts", "description": "Hosts we trust", "tags": ["prod"]}}
+
+// duplicate_exception_list
+{"id": "a4e7...b177", "list_id": "66fd...f7f6", "name": "Trusted hosts [Duplicate]",
+ "type": "detection", "namespace_type": "single", "tags": ["prod"], "os_types": [],
+ "description": "Hosts we trust", "source_list_id": "trusted-hosts"}
+
+// export_exception_list
+{"handle": "el-3f9c0a1b2d4e", "id": "ba67...a1ec", "list_id": "trusted-hosts",
+ "name": "Trusted hosts", "namespace_type": "single", "item_count": 2, "byte_size": 1663}
+
+// import_exception_list
+{"success": true, "list_id": "7c1d...90ab", "id": "e4ad...d965", "name": "Trusted hosts",
+ "namespace_type": "single", "source_list_id": "trusted-hosts",
+ "imported_item_count": 2, "errors": []}
+
+// overwrite_exception_list
+{"success": true, "list_id": "trusted-hosts", "id": "ba67...a1ec",
+ "previous_id": "ba67...a1ec", "namespace_type": "single", "restored_item_count": 2,
+ "removed_item_ids": ["added-after-export"], "errors": []}
 
 // search_detection_alerts -> list  (kibana.alert.* fields, defensive)
 [{"id": "a1", "rule_name": "Suspicious login", "severity": "high",
@@ -935,17 +1419,19 @@ Notes:
   an import that Kibana rejects returns a content-free failure (never object bytes).
 - **Not multi-tenant.** Export handles live in one server-side directory shared
   by all callers — a handle is a bearer token for that export, and the 20-file
-  retention cap is global, so concurrent HTTP callers can expire each other's
+  retention cap is global (per handle kind: the exception-list `el-` handles,
+  D50, keep their own 20), so concurrent HTTP callers can expire each other's
   handles.
 
 ## platform-admin toolbox
 
-Ten tools across three tiers (`src/kibana_mcp/toolboxes/platform_admin/toolbox.py`),
+Fourteen tools across three tiers (`src/kibana_mcp/toolboxes/platform_admin/toolbox.py`),
 tagged `{"platform-admin", <tier>}`. Enable with `KIBANA_MCP_TOOLBOXES=platform-admin`.
 Manage core Kibana administration objects — **Spaces**, security **Roles**, and
-read **Upgrade Assistant** readiness — all GA and available on a **Basic** license.
-Five `read` tools are visible at every tier; the three `write` tools appear at the
-default `write` tier; the two `destructive` deletes require `KIBANA_MCP_TIER=destructive`.
+read **Upgrade Assistant** readiness — and move **saved objects between spaces**
+(copy, share), all GA and available on a **Basic** license.
+Five `read` tools are visible at every tier; the five `write` tools appear at the
+default `write` tier; the four `destructive` tools require `KIBANA_MCP_TIER=destructive`.
 
 !!! warning "Destructive tier wipes data"
     `delete_space` permanently removes **every saved object in the space**
@@ -955,12 +1441,18 @@ default `write` tier; the two `destructive` deletes require `KIBANA_MCP_TIER=des
     is a **full replace** — `create_only` defaults `true` so a bare call on an
     existing role is rejected rather than silently dropping its other grants; pass
     `create_only=false` to deliberately overwrite.
+    `overwrite_saved_objects_in_spaces` replaces the copies earlier copies made
+    in the target spaces, and what changed in them is lost.
+    `unshare_saved_objects_from_spaces` removes objects from spaces — Kibana
+    **deletes** an object removed from every space it is in, so that is refused
+    unless `force=true`.
 
 !!! note "Out of scope"
     **Logstash pipeline** management needs a **Platinum** license (403 on Basic,
     confirmed live), so it is out of scope like the rest of this list;
-    **session invalidation**, space object copy/move, feature-level role grants,
-    and avatar-image editing are out of scope too. Reading roles surfaces
+    **session invalidation**, resolving copy conflicts one by one
+    (`_resolve_copy_saved_objects_errors`), feature-level role grants, and
+    avatar-image editing are out of scope too. Reading roles surfaces
     RBAC *configuration* (privilege grants), never secrets, and every write is
     bounded by the API key's own privileges.
 
@@ -976,6 +1468,10 @@ default `write` tier; the two `destructive` deletes require `KIBANA_MCP_TIER=des
 | `create_or_update_role` | write | Create or **full-replace** a role: ES cluster + index privileges, a Kibana base grant across spaces. `create_only` defaults `true` (rejects an existing role); pass `false` to overwrite. |
 | `delete_space` | destructive | Delete a space — **wipes every saved object in it**; requires `force=true`; refuses `default` + reserved spaces. |
 | `delete_role` | destructive | Delete a role by name; refuses reserved system roles. |
+| `copy_saved_objects_to_spaces` | write | Copy saved objects (`objects`: `{type, id}` from `find_saved_objects`) from `source_space` (default: the default space) into each of `target_spaces` as **new** objects with new ids; `include_references` (default `true`) copies what they use too. Nothing existing changes; a repeat makes more copies. |
+| `share_saved_objects_to_spaces` | write | Share saved objects to more `spaces` (`*` = every space): the **same** object then shows in each. Adds only; idempotent. Refuses types Kibana keeps in one space (dashboards, visualizations, saved searches, maps, tags) — data views can be shared. |
+| `overwrite_saved_objects_in_spaces` | destructive | Copy saved objects into `target_spaces`, **replacing** the objects earlier copies made there (what changed in them is lost). |
+| `unshare_saved_objects_from_spaces` | destructive | Remove saved objects from `spaces`. Kibana **deletes** an object removed from its last space: refused unless `force=true`. |
 
 Notes:
 
@@ -994,6 +1490,55 @@ Notes:
 - **`delete_space` is always force-gated.** A reliable per-space object count isn't
   available (the count API requires an explicit type list and is deprecated on 9.4),
   so rather than a fail-open count the whole-space wipe always demands `force=true`.
+- **Copy versus share (D49).** A copy makes separate objects (new ids) in the target
+  space; a share makes the same object show in more spaces, so an edit shows in all
+  of them. Kibana shares only some types (on 9.5.4: data views, not dashboards,
+  visualizations, saved searches, maps, tags or advanced settings); the share and
+  unshare tools read each object's spaces first and refuse a one-space type, an
+  object the source space does not hold, a removal that removes nothing, and (unless
+  `force=true`) a removal that leaves an object in no space — before any change.
+- **Every space written into must exist.** Kibana's copy and share routes accept a
+  space id that names no space and write into it without an error (the objects then
+  appear in a space created later with that id, probed), so the tools check
+  `target_spaces`/`spaces` against `list_spaces` first; `*` needs no check. A
+  removal is not checked (it writes nothing, and can clean such a space id).
+- **`source_space` is where the objects are read.** Omitted, it is the default space,
+  or the space a `/s/<id>` `KIBANA_URL` pins. `source_space` is refused where either
+  `KIBANA_URL` or `KIBANA_PUBLIC_URL` is space-pinned (with only the public URL
+  pinned, the source is the default space), and the guidance then names the URL
+  that fixes the source instead of offering `source_space`. The source space is
+  refused as a copy target; the result echoes `source_space` only when it was
+  passed (D7).
+- **Not atomic.** The share and unshare read each object's spaces, then write; a
+  change another client makes between them is not seen (the last-space check reads
+  the state before the write).
+
+Returns:
+
+- `copy_saved_objects_to_spaces` / `overwrite_saved_objects_in_spaces` —
+  `{"include_references": bool, "results": [{"space", "success", "copied": [{"type",
+  "id", "title", "destination_id", "overwritten"}], "failed": [{"type", "id", "title",
+  "error", "fix", "missing_references": [{"type", "id"}], "destinations": [{"id",
+  "title"}]}], "unchanged": [{"type", "id"}]}]}` plus `source_space` when passed — one
+  result per target space, in the order given. `id` is the object's id in the source
+  space and `destination_id` its id in the target. `failed[].error` is Kibana's:
+  `missing_references` (a reference not copied with it), `unsupported_type` (Kibana
+  does not export the type), `ambiguous_conflict` (overwrite only: more than one
+  object in the target came from this one, listed in `destinations`), or
+  `space_error` (Kibana refused the whole copy into that space, e.g. the key cannot
+  write saved objects there; `fix` carries Kibana's status and message, and the other
+  target spaces keep their results; on a 403 it says a new API key (sent as `Authorization: ApiKey <key>` or set in `KIBANA_API_KEY`, the latter ignored in HTTP mode by default) is
+  needed, since a key keeps the privileges its owner had when it was created and a
+  role change does not reach it); nothing was written for a failed object.
+  `unchanged` lists requested objects Kibana neither copied nor failed: already in
+  that space by sharing.
+- `share_saved_objects_to_spaces` / `unshare_saved_objects_from_spaces` —
+  `{"objects": [{"type", "id", "spaces", "added", "removed", "deleted",
+  "spaces_with_matching_origins", "error"}]}` plus `source_space` when passed, in
+  request order. `spaces` is after the call; `deleted` is true when an unshare removed
+  the last one; `spaces_with_matching_origins` lists spaces holding a copy made from
+  the object, which a share leaves beside it; `error` is Kibana's per-object error
+  (that object unchanged, the others still updated).
 
 ## streams toolbox
 
@@ -1054,14 +1599,15 @@ Notes:
 
 ## fleet toolbox
 
-Thirty-five tools across three tiers (`src/kibana_mcp/toolboxes/fleet/toolbox.py`),
+Forty-one tools across three tiers (`src/kibana_mcp/toolboxes/fleet/toolbox.py`),
 tagged `{"fleet", <tier>}`. Enable with `KIBANA_MCP_TOOLBOXES=fleet`. Read,
 configure, and operate **Fleet** — the Elastic Agent fleet, agent + integration
-(package) policies, enrolled agents, integrations (EPM), and outputs — all GA on
-a **Basic** license. Twenty `read` tools are visible at every tier; the six
-`write` tools appear at the default `write` tier; the nine `destructive` tools
-(policy/output deletes, plus single and bulk agent-lifecycle commands) require
-`KIBANA_MCP_TIER=destructive`.
+(package) policies, enrolled agents (their tags and diagnostics bundles),
+integrations (EPM, installed and uninstalled), and outputs — all GA on a
+**Basic** license. Twenty-two `read` tools are visible at every tier; the nine
+`write` tools appear at the default `write` tier; the ten `destructive` tools
+(policy/output deletes, the package uninstall, plus single and bulk
+agent-lifecycle commands) require `KIBANA_MCP_TIER=destructive`.
 
 !!! warning "Agent-lifecycle actions are destructive-tier, not write-tier"
     Every tool that commands a running enrolled agent — `reassign_agent`,
@@ -1072,6 +1618,9 @@ a **Basic** license. Twenty `read` tools are visible at every tier; the six
     tools act ONLY on the explicit `agent_ids` list given (never a fleet-wide
     sweep or kuery) and require `confirm=True`, like `disable_streams`; they are
     async and return an `action_id`, not the immediate per-agent result.
+    `request_agent_diagnostics` also sends a live agent an action, but it is
+    `write`: the agent only collects and uploads a bundle, and nothing it
+    collects or ships changes (D51).
 
 !!! note "Secret-redacted reads; enrollment-key mint/revoke deferred"
     Three read families are SECRET-REDACTED: `list_enrollment_keys` /
@@ -1080,16 +1629,18 @@ a **Basic** license. Twenty `read` tools are visible at every tier; the six
     fields only — no TLS/authenticated outputs); `list_uninstall_tokens` never
     fetches token *values* (metadata only). Enrollment-key minting/revocation —
     the only secret-minting surface in this toolbox — is deliberately out of
-    scope, deferred for a vetted credential-handling design. EPM package
-    install/delete and Cloud-only surfaces (agentless policies, cloud
-    connectors, proxies) are also out of scope.
+    scope, deferred for a vetted credential-handling design. Cloud-only
+    surfaces (agentless policies, cloud connectors, proxies) are also out of
+    scope.
 
 | Tool | Tier | Description |
 |---|---|---|
 | `get_fleet_settings` | read | Global Fleet settings: whether prerelease integrations and the integration knowledge base are enabled, and the space-awareness migration status. |
 | `check_fleet_permissions` | read | Check whether the current API key has the privileges to operate Fleet. Use first if other fleet tools return authorization errors. |
-| `list_agents` | read | List enrolled Elastic Agents (including inactive ones): id, status, assigned policy_id, hostname, version, last check-in. Empty when no agents are enrolled. |
-| `get_agent` | read | Get one Elastic Agent by id: status, assigned policy_id, hostname, version, enrolled-at, last check-in. |
+| `list_agents` | read | List enrolled Elastic Agents (including inactive ones): id, status, assigned policy_id, hostname, version, last check-in, tags. Empty when no agents are enrolled. |
+| `get_agent` | read | Get one Elastic Agent by id: status, assigned policy_id, hostname, version, enrolled-at, last check-in, tags. |
+| `list_agent_tags` | read | List the distinct tags set on agents (inactive ones included). Empty when no agent has a tag. |
+| `list_agent_diagnostics` | read | List the diagnostics bundles requested from one agent: id, file name, status (`IN_PROGRESS` until uploaded, then `READY`; `FAILED`, `EXPIRED`), created-at, and the `action_id` of the request. Metadata only — download a bundle from the agent's Diagnostics tab in Kibana. |
 | `get_agent_status_summary` | read | Fleet-wide agent status counts: online, error, offline, inactive, updating, unenrolled, and total. |
 | `list_agent_versions` | read | List the Elastic Agent versions available for upgrade on this deployment (newest first). |
 | `list_agent_policies` | read | List agent policies: id, name, namespace, assigned agent_count, status, managed flag, enabled monitoring (logs/metrics). |
@@ -1112,9 +1663,13 @@ a **Basic** license. Twenty `read` tools are visible at every tier; the six
 | `update_package_policy` | write | Update a package (integration) policy's fields (read-modify-write). `agent_policy_id` re-parents it; `package` changes the integration/version; `inputs` overrides the input config. |
 | `create_output` | write | Create a Fleet output (where agent data is shipped). Non-secret fields only (no ssl/secrets/config_yaml). `is_default`/`is_default_monitoring` promote this output, auto-un-defaulting the prior one. |
 | `update_output` | write | Update a Fleet output (read-modify-write). Setting `is_default`/`is_default_monitoring=True` PROMOTES it (the prior default becomes deletable). Editing a currently-default output requires `confirm=True`. |
+| `install_package` | write | Install an integration package that is not installed (latest version, or `version`), creating its Elasticsearch and Kibana assets (and, for a package with Kibana assets, the managed `logs-*`/`metrics-*` data views in every space if missing). Already installed at that version (or any, without `version`): `already_installed: true`, nothing sent. Never changes an installed version (an upgrade cannot be undone on Basic). Idempotent. |
+| `update_agent_tags` | write | Add and/or remove tags on the exact `agent_ids` given (1–100, never a query). Refuses an unknown id before changing anything. Returns `action_id`, each agent's `previous_tags` and `tags` (read back), and `not_applied_agent_ids`. Idempotent. |
+| `request_agent_diagnostics` | write | Ask one agent to collect and upload a diagnostics bundle (`include_cpu_metrics` adds a CPU profile). Changes nothing the agent collects or ships. Returns `action_id`, `agent_id`, `agent_status`; an offline agent runs it at check-in, within the 3-hour expiry. |
 | `delete_agent_policy` | destructive | Delete an agent policy — removes it and its package policies. Refuses a managed policy and the default Fleet Server policy regardless of `force`. `force=True` bypasses the assigned-agent check. |
 | `delete_package_policy` | destructive | Delete a package (integration) policy — detaches the integration; agents stop collecting that data. `force=True` bypasses Kibana's in-use checks. |
 | `delete_output` | destructive | Delete a Fleet output. Refuses the default output(s) — promote a replacement first (`update_output` `is_default=True`), then delete the old one. No force escape. |
+| `uninstall_package` | destructive | Uninstall an installed integration package — removes its assets and DELETES its package policies (agents stop collecting its data; ingested data and the shared `logs-*`/`metrics-*` data views stay). Refused unless `force=True` when it has package policies (they are named; `force` reaches Kibana only then); refused regardless of `force` when one is on a managed or the default Fleet Server agent policy, for `fleet_server` with any package policy, and for `elastic_agent` while an agent policy has monitoring on. With Fleet space awareness on, refused regardless of `force`: Kibana deletes every space's package policies and this server cannot prove its key reads every space (the error names Kibana's Integrations UI). Returns `uninstalled`, `name`, `version`, `deleted_package_policies`. |
 | `reassign_agent` | destructive | Reassign one enrolled agent to a different agent policy — changes what the live agent collects/ships. Refuses a managed or default Fleet Server target policy. |
 | `upgrade_agent` | destructive | Upgrade one enrolled agent to `version` (must be one of `list_agent_versions`). Commands a live binary swap; async — the agent applies it on its own schedule. |
 | `unenroll_agent` | destructive | Unenroll one Elastic Agent — it stops shipping data. `force=True` unenrolls an already-unenrolled/offline agent; `revoke=True` also invalidates its API key immediately. |
@@ -1144,5 +1699,49 @@ Notes:
   `unenroll_agent` return `{"ok": true, "agent_id": ...}` once Kibana accepts the
   command, not once the agent has applied it; the bulk equivalents return
   `{"action_id": ...}` for the same reason.
-- **No enrollment-key mint/revoke, no EPM install/delete.** See the note above —
-  both are deliberately out of scope for this tier.
+- **Agent tags (D51) are edited on explicit ids only.** `update_agent_tags` reads
+  every agent first, because Kibana answers 200 and skips an id that names no
+  agent; it reads them back after the call (Kibana applies an id-list update
+  before it answers), so `previous_tags` → `tags` is the whole change and
+  passing the difference back undoes it. An agent whose read-back tags do not
+  show the change — one Kibana skipped — is in `not_applied_agent_ids`. Tags are
+  Fleet-side labels: the agents' policies and data are untouched.
+- **Diagnostics (D51).** `request_agent_diagnostics` returns once Kibana accepts
+  the request; the demo agent uploaded its bundle within seconds (probed). Watch
+  it with `list_agent_diagnostics` (the request's `action_id`, status `READY`).
+  A bundle with `include_cpu_metrics` took ~66 s, and the agent takes one
+  request a minute: a second one within it ended `FAILED` ("rate limit
+  exceeded", probed).
+  The bundle itself is not returned to the model: it holds the agent's logs and
+  configuration, so it is downloaded from Kibana's UI.
+- **Package install and uninstall (D51).** `install_package` installs only a
+  package that is not installed: without a version Kibana would upgrade one
+  installed at an older version, and the rollback route needs an Enterprise
+  license (403 on Basic), so a version change is refused (Kibana's UI, or
+  uninstall then install). Kibana installs only a package's latest version (an
+  older one answers 400 out-of-date; the error says to omit `version`). An input
+  package such as `tcp` creates its index templates and pipelines only once a
+  package policy uses it. Installing `nginx` also created the managed `logs-*`
+  and `metrics-*` data views, shared to every space (`namespaces: ["*"]`), and
+  its uninstall left them (probed). `uninstall_package` lists the package's package
+  policies first: Kibana deletes them with the package (without `force` when no
+  agent uses them, with it otherwise; probed), so any is a refusal unless
+  `force=True`, and the result names what was deleted. A package policy created
+  between that read and the uninstall is deleted unreported. Packages Fleet
+  itself runs on are refused whatever `force` says: `fleet_server` with any
+  package policy (on the default Fleet Server policy or any other, it runs the
+  Fleet Servers there), and `elastic_agent` while an agent policy has
+  monitoring on (Kibana uninstalled it under one without a check, removing the
+  monitoring data streams' templates and pipelines; probed). With Fleet space
+  awareness on (`get_fleet_settings`' `space_awareness_migration_status`), each
+  space lists only its own agent and package policies, yet Kibana's uninstall
+  deleted another space's package policy (probed), and Kibana's spaces listing
+  leaves out, without an error, each space the API key cannot read (probed with
+  a key limited to the default space, whose uninstall, no `force`, deleted a
+  package policy in a space it was never shown). Nothing this server calls
+  proves a key reads every space, so `uninstall_package` is refused with
+  awareness on, `force` or not, and the error names Kibana's Integrations UI,
+  as a user with Fleet and Integrations in all spaces. The other fleet tools
+  read the default (or pinned) space only.
+- **No enrollment-key mint/revoke.** See the note above — deliberately out of
+  scope for this tier.

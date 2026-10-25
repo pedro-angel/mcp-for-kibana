@@ -6,7 +6,8 @@ items, value lists (and their items), and timelines.
 Reads (v1) never mutate. The write/destructive tiers author + remove detection
 rules and exception lists/items (v2), partial-update a rule's non-`enabled`
 fields (v2), create/delete value lists (v3, #60), and full-replace-update,
-enable/disable a rule and create/find/delete value-list items (v4, #73). This
+enable/disable a rule and create/find/delete value-list items (v4, #73), and
+edit, duplicate, export and import exception lists (v5, D50). This
 toolbox does NOT include the `security-ai` assistant / attack-discovery surface
 (a separate toolbox that needs an LLM connector). Some read object shapes
 (alerts, timelines) could not be seeded on the test stack, so their fields are
@@ -21,6 +22,17 @@ from fastmcp.exceptions import ToolError
 from mcp.types import ToolAnnotations
 from pydantic import BaseModel, Field
 
+from kibana_mcp.core.errors import KibanaNotFound, KibanaRejected, KibanaSpaceNotFound
+from kibana_mcp.core.exception_lists import (
+    ExceptionExportFile,
+    as_new_copy,
+    duplicable,
+    item_count,
+    parse_export,
+)
+from kibana_mcp.core.models import ExceptionListExport
+from kibana_mcp.core.saved_objects import EXCEPTION_LIST, read_export, to_ndjson, write_export
+from kibana_mcp.ports.gateway import KibanaGateway
 from kibana_mcp.toolboxes.base import SPACE_ID_PATTERN, ToolboxDeps, gateway_errors, with_space
 
 _READ = ToolAnnotations(readOnlyHint=True, openWorldHint=False)
@@ -30,6 +42,48 @@ _WRITE = ToolAnnotations(
 _DESTRUCTIVE = ToolAnnotations(
     readOnlyHint=False, destructiveHint=True, idempotentHint=True, openWorldHint=False
 )
+NamespaceType = Literal["single", "agnostic"]
+
+
+def _one_list_id(id: str | None, list_id: str | None) -> None:
+    if bool(id) == bool(list_id):
+        raise ToolError("provide exactly one of id or list_id")
+
+
+def _load_export(deps: ToolboxDeps, handle: str) -> tuple[bytes, ExceptionExportFile]:
+    """Read an `el-` handle and parse it. A missing or expired handle
+    (KibanaNotFound) goes through gateway_errors and a malformed one
+    (ValueError) is raised directly, so both reach the model as a ToolError
+    that names the fix even when the server masks other errors."""
+    with gateway_errors():
+        try:
+            content = read_export(deps.export_dir, handle, EXCEPTION_LIST)
+            return content, parse_export(content)
+        except ValueError as e:
+            raise ToolError(str(e)) from e
+
+
+def _existing(gw: KibanaGateway, list_id: str, namespace_type: str) -> Any:
+    """The stored list with this list_id, or None (a missing space still raises)."""
+    try:
+        return gw.get_exception_list(None, list_id, namespace_type)
+    except KibanaSpaceNotFound:
+        raise
+    except KibanaNotFound:
+        return None
+
+
+def _imported(gw: KibanaGateway, content: bytes, overwrite: bool, handle: str) -> Any:
+    try:
+        return gw.import_exception_list(content, overwrite)
+    except KibanaRejected as e:
+        # Content-free (the #37 rule): Kibana's 400 detail can echo values.
+        verb = "overwrite" if overwrite else "import"
+        raise ToolError(
+            f"{verb} failed for handle '{handle}': Kibana rejected the export as invalid "
+            "or incompatible with this Kibana version — export the list again with "
+            "export_exception_list"
+        ) from e
 
 
 class ExceptionEntry(BaseModel):
@@ -125,26 +179,69 @@ class SecurityDetectionsToolbox:
         def get_exception_list(
             id: str | None = None,
             list_id: str | None = None,
+            namespace_type: NamespaceType = "single",
             space: Annotated[str, Field(pattern=SPACE_ID_PATTERN)] | None = None,
         ) -> dict[str, Any]:
             """Get one exception-list container by its `id` (uuid) or stable
             `list_id`. Provide exactly one. Errors if no matching list exists.
+            A list created with namespace_type="agnostic" is found only with
+            namespace_type="agnostic".
 
             `space` targets a Kibana space by id (default: the default space)."""
             with gateway_errors(), deps.gateway_factory(space) as gw:
-                return with_space(asdict(gw.get_exception_list(id, list_id)), space)
+                return with_space(
+                    asdict(gw.get_exception_list(id, list_id, namespace_type)), space
+                )
 
         @mcp.tool(tags={self.name, "read"}, annotations=_READ)
         def find_exception_items(
             list_id: str,
+            namespace_type: NamespaceType = "single",
             space: Annotated[str, Field(pattern=SPACE_ID_PATTERN)] | None = None,
         ) -> list[dict[str, Any]]:
             """List the exception items within an exception list (by its
             `list_id`): id, item_id, name, list_id. Paginated to completion.
+            Pass namespace_type="agnostic" for an agnostic list.
 
             `space` targets a Kibana space by id (default: the default space)."""
             with gateway_errors(), deps.gateway_factory(space) as gw:
-                return [asdict(x) for x in gw.find_exception_items(list_id)]
+                return [asdict(x) for x in gw.find_exception_items(list_id, namespace_type)]
+
+        @mcp.tool(tags={self.name, "read"}, annotations=_READ)
+        def export_exception_list(
+            id: str | None = None,
+            list_id: str | None = None,
+            namespace_type: NamespaceType = "single",
+            include_expired_exceptions: bool = True,
+            space: Annotated[str, Field(pattern=SPACE_ID_PATTERN)] | None = None,
+        ) -> dict[str, Any]:
+            """Export one exception list and its items as an NDJSON file kept on
+            the server, by its `id` or `list_id` (exactly one). Returns a summary
+            and an opaque `handle` (el-…), NOT the content: pass the handle to
+            import_exception_list (a new copy) or overwrite_exception_list
+            (restore in place). `include_expired_exceptions=False` leaves out
+            items whose expire_time has passed. The server keeps the last 20
+            exception-list exports.
+
+            `space` targets a Kibana space by id (default: the default space)."""
+            _one_list_id(id, list_id)
+            with gateway_errors(), deps.gateway_factory(space) as gw:
+                # Kibana's export needs both ids and answers an unknown pair
+                # with a 400 (probed): the read finds both and a clean 404.
+                source = gw.get_exception_list(id, list_id, namespace_type)
+                body = gw.export_exception_list(
+                    source.id, source.list_id, namespace_type, include_expired_exceptions
+                )
+            content = to_ndjson(body)
+            try:
+                handle = write_export(deps.export_dir, content, EXCEPTION_LIST)
+            except OSError as e:  # ENOSPC, missing export_dir, etc. -> clean tool error
+                raise ToolError(f"could not store the export: {e.strerror or e}") from e
+            return with_space(asdict(ExceptionListExport(
+                handle=handle, id=source.id, list_id=source.list_id, name=source.name,
+                namespace_type=source.namespace_type or namespace_type,
+                item_count=item_count(body), byte_size=len(content),
+            )), space)
 
         @mcp.tool(tags={self.name, "read"}, annotations=_READ)
         def find_value_lists(
@@ -264,6 +361,112 @@ class SecurityDetectionsToolbox:
                 return with_space(asdict(gw.create_exception_item(
                     list_id, name, description, mapped, item_id, namespace_type, tags or [],
                 )), space)
+
+        @mcp.tool(tags={self.name, "write"}, annotations=_WRITE)
+        def update_exception_list(
+            id: str | None = None,
+            list_id: str | None = None,
+            namespace_type: NamespaceType = "single",
+            name: Annotated[str, Field(min_length=1)] | None = None,
+            description: Annotated[str, Field(min_length=1)] | None = None,
+            tags: list[Annotated[str, Field(min_length=1)]] | None = None,
+            space: Annotated[str, Field(pattern=SPACE_ID_PATTERN)] | None = None,
+        ) -> dict[str, Any]:
+            """Edit an exception list's name, description or tags, by its `id`
+            or `list_id` (exactly one); pass at least one field. Only the fields
+            you pass change; `tags=[]` clears the tags. The list's type, items
+            and os_types are untouched (Kibana's update ignores os_types). If the
+            list changes between this tool's read and its write, nothing is
+            written and the error says to call again. Returns the list and
+            `previous` (name, description, tags): passing those back undoes it.
+
+            `namespace_type="agnostic"` objects are shared across ALL spaces; `space` chooses the routing space but does not isolate them.
+            `space` targets a Kibana space by id (default: the default space)."""
+            _one_list_id(id, list_id)
+            if name is None and description is None and tags is None:
+                raise ToolError("provide at least one of name, description or tags to change")
+            with gateway_errors(), deps.gateway_factory(space) as gw:
+                change = gw.update_exception_list(
+                    id, list_id, namespace_type, name, description, tags
+                )
+            prev = change.previous
+            return with_space({**asdict(change.list), "previous": {
+                "name": prev.name, "description": prev.description, "tags": list(prev.tags),
+            }}, space)
+
+        @mcp.tool(tags={self.name, "write"}, annotations=_WRITE)
+        def duplicate_exception_list(
+            id: str | None = None,
+            list_id: str | None = None,
+            namespace_type: NamespaceType = "single",
+            include_expired_exceptions: bool = True,
+            space: Annotated[str, Field(pattern=SPACE_ID_PATTERN)] | None = None,
+        ) -> dict[str, Any]:
+            """Copy an exception list and its items into a new list in the same
+            space, by the source's `id` or `list_id` (exactly one). The copy is
+            named "<name> [Duplicate]" with a new `list_id` and new item ids; the
+            source is untouched (delete_exception_list removes the copy).
+            `include_expired_exceptions=False` leaves out expired items. Kibana
+            refuses to duplicate endpoint lists: copy one with
+            export_exception_list + import_exception_list. To copy into another
+            space, use those two tools. Returns the new list and `source_list_id`.
+
+            `namespace_type="agnostic"` objects are shared across ALL spaces; `space` chooses the routing space but does not isolate them.
+            `space` targets a Kibana space by id (default: the default space)."""
+            _one_list_id(id, list_id)
+            with gateway_errors(), deps.gateway_factory(space) as gw:
+                source = gw.get_exception_list(id, list_id, namespace_type)
+                if not duplicable(source.type):
+                    raise ToolError(
+                        f"Kibana refuses to duplicate exception list '{source.list_id}': it "
+                        f"is an '{source.type}' list (405 action not allowed) — "
+                        "export_exception_list then import_exception_list makes a copy"
+                    )
+                copy = gw.duplicate_exception_list(
+                    source.list_id, namespace_type, include_expired_exceptions
+                )
+            return with_space({**asdict(copy), "source_list_id": source.list_id}, space)
+
+        @mcp.tool(tags={self.name, "write"}, annotations=_WRITE)
+        def import_exception_list(
+            handle: Annotated[str, Field(min_length=1)],
+            list_id: Annotated[str, Field(min_length=1)] | None = None,
+            space: Annotated[str, Field(pattern=SPACE_ID_PATTERN)] | None = None,
+        ) -> dict[str, Any]:
+            """Create a NEW exception list from the `handle` export_exception_list
+            returned (into `space`, which may differ from the export's): the
+            list and its items under `list_id` (omit it for a generated one) and
+            new item ids, so nothing existing is touched. Refuses a `list_id`
+            that already exists (Kibana would add the items to that list). To
+            restore a list in place, use overwrite_exception_list. Kibana's import
+            does not carry the list's os_types. Returns `list_id`, `id`,
+            `source_list_id`, the imported item count and any per-object errors.
+
+            An export of a `namespace_type="agnostic"` list makes an agnostic list: it is shared across ALL spaces; `space` chooses the routing space but does not isolate it.
+            `space` targets a Kibana space by id (default: the default space)."""
+            _, export = _load_export(deps, handle)
+            content, new_list_id = as_new_copy(export, list_id)
+            namespace = export.namespace_type
+            with gateway_errors(), deps.gateway_factory(space) as gw:
+                if _existing(gw, new_list_id, namespace) is not None:
+                    raise ToolError(
+                        f"exception list '{new_list_id}' already exists (namespace_type "
+                        f"'{namespace}'): Kibana's import would skip the list and still add "
+                        "the export's items to it — pass another list_id, or omit it for a "
+                        "generated one (to replace that list with the export, use "
+                        "overwrite_exception_list)"
+                    )
+                result = _imported(gw, content, False, handle)
+                created = _existing(gw, new_list_id, namespace) if result.list_count else None
+            return with_space({
+                "success": result.success, "list_id": new_list_id,
+                "id": created.id if created else None,
+                # Nothing created (e.g. a list took list_id between the check and the
+                # import): no name, since the list under list_id is not the export's.
+                "name": created.name if created else None,
+                "namespace_type": namespace, "source_list_id": export.list_id,
+                "imported_item_count": result.item_count, "errors": list(result.errors),
+            }, space)
 
         @mcp.tool(tags={self.name, "write"}, annotations=_WRITE)
         def update_detection_rule(
@@ -428,6 +631,44 @@ class SecurityDetectionsToolbox:
             with gateway_errors(), deps.gateway_factory(space) as gw:
                 gw.delete_exception_list(id, list_id, namespace_type)
             return with_space({"deleted": True, "id": id, "list_id": list_id}, space)
+
+        @mcp.tool(tags={self.name, "destructive"}, annotations=_DESTRUCTIVE)
+        def overwrite_exception_list(
+            handle: Annotated[str, Field(min_length=1)],
+            space: Annotated[str, Field(pattern=SPACE_ID_PATTERN)] | None = None,
+        ) -> dict[str, Any]:
+            """Restore an exception list IN PLACE from the `handle`
+            export_exception_list returned: the stored list with the export's
+            `list_id` gets the export's name, description and tags, and its
+            items are REPLACED by the export's — items added since the export
+            are permanently deleted (listed in `removed_item_ids`) and edited
+            ones reverted. Cannot be undone. A list that no longer exists is
+            recreated, with a new `id` (rules that referenced the old id are not
+            reattached). Unlike import_exception_list, which creates a new list.
+            Returns `list_id`, `id`, `previous_id` (null when it was recreated),
+            the restored item count, `removed_item_ids` and any per-object errors.
+
+            An export of a `namespace_type="agnostic"` list restores an agnostic list: it is shared across ALL spaces; `space` chooses the routing space but does not isolate it.
+            `space` targets a Kibana space by id (default: the default space)."""
+            content, export = _load_export(deps, handle)
+            namespace = export.namespace_type
+            with gateway_errors(), deps.gateway_factory(space) as gw:
+                current = _existing(gw, export.list_id, namespace)
+                before = (
+                    {i.item_id for i in gw.find_exception_items(export.list_id, namespace)}
+                    if current is not None else set()
+                )
+                result = _imported(gw, content, True, handle)
+                after = _existing(gw, export.list_id, namespace)
+            return with_space({
+                "success": result.success, "list_id": export.list_id,
+                "id": after.id if after else None,
+                "previous_id": current.id if current else None,
+                "namespace_type": namespace,
+                "restored_item_count": result.item_count,
+                "removed_item_ids": sorted(before - set(export.item_ids)),
+                "errors": list(result.errors),
+            }, space)
 
         @mcp.tool(tags={self.name, "destructive"}, annotations=_DESTRUCTIVE)
         def delete_exception_item(

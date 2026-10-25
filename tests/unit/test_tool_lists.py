@@ -319,7 +319,7 @@ async def test_file_without_the_list_is_ignored_with_one_line(tmp_path, caplog):
     # Read only when KIBANA_MCP_TOOLS is set: the default path never opens it.
     with caplog.at_level(logging.WARNING, logger=_LOGGER):
         names = await _visible(tool_lists_file=str(tmp_path / "nope.toml"))
-    assert len(names) == 21
+    assert len(names) == 27
     (line,) = _lines(caplog, "KIBANA_MCP_TOOL_LISTS_FILE")
     assert "ignored" in line and "KIBANA_MCP_TOOLS is not set" in line
 

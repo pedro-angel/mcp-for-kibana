@@ -7,7 +7,9 @@ subscription-gated surfaces are not built here). Two safety choices: rules are c
 because it fires the connector's real external action irreversibly.
 """
 
+import re
 from dataclasses import asdict
+from datetime import UTC, datetime
 from typing import Annotated, Any
 
 from fastmcp import FastMCP
@@ -24,11 +26,43 @@ _WRITE = ToolAnnotations(
 _DESTRUCTIVE = ToolAnnotations(
     readOnlyHint=False, destructiveHint=True, idempotentHint=True, openWorldHint=False
 )
+# A repeat of a mute, an unmute, an unsnooze or an API-key refresh leaves the
+# rule as the first call did (Kibana answers 204 again, probed on 9.5.4).
+_WRITE_IDEMPOTENT = ToolAnnotations(
+    readOnlyHint=False, destructiveHint=False, idempotentHint=True, openWorldHint=False
+)
 # execute_connector fires a real external action: NOT idempotent (repeats repeat
 # the side effect) and open-world (reaches systems outside Kibana).
 _EXECUTE = ToolAnnotations(
     readOnlyHint=False, destructiveHint=True, idempotentHint=False, openWorldHint=True
 )
+
+# Kibana's snooze durations: a whole number and one of s/m/h/d (probed on 9.5.4:
+# '1w', '1M', '1y', '1.5h', '2H' and '-1' are 400s). 0 is refused here too.
+_SNOOZE_DURATION_RE = re.compile(r"[1-9][0-9]*[smhd]")
+
+
+def _snooze_duration(value: str) -> str:
+    if not _SNOOZE_DURATION_RE.fullmatch(value):
+        raise ToolError(
+            f"duration '{value}' is not a snooze duration — pass a whole number and one unit, "
+            "s, m, h or d (e.g. '30m', '2h', '1d'; '1.5h' is '90m'); Kibana takes no week, "
+            "month or year unit here"
+        )
+    return value
+
+
+def _instant(name: str, value: str, hint: str = "") -> datetime:
+    """An ISO-8601 date or date-time as an aware UTC datetime (no offset: UTC).
+    Kibana itself takes only YYYY-MM-DDTHH:mm:ss.sssZ; the adapter formats it."""
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        raise ToolError(
+            f"{name} '{value}' is not an ISO-8601 date — pass e.g. '2026-10-25T09:00:00Z' "
+            f"(UTC) or '2026-10-25T11:00:00+02:00'{hint}"
+        ) from None
+    return (parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)).astimezone(UTC)
 
 
 class AlertingToolbox:
@@ -37,6 +71,7 @@ class AlertingToolbox:
     def register(self, mcp: FastMCP, deps: ToolboxDeps) -> None:
         self._register_read(mcp, deps)
         self._register_write(mcp, deps)
+        self._register_lifecycle(mcp, deps)
         self._register_destructive(mcp, deps)
 
     def _register_read(self, mcp: FastMCP, deps: ToolboxDeps) -> None:
@@ -66,6 +101,10 @@ class AlertingToolbox:
             update_alert_rule takes (pass `uuid` back to keep the action's
             identity). Read a rule here before update_alert_rule
             merges into its params, and again afterwards to confirm the change.
+            `muted` is the rule-wide mute (mute_alert_rule / unmute_alert_rule) and
+            `muted_alert_ids` the alerts muted one by one (mute_alert / unmute_alert).
+            Snoozes are not shown: Kibana's public API does not expose them (keep
+            the schedule_id snooze_alert_rule returns).
             Rules hold no secrets (connectors do; see get_connector).
 
             `space` targets a Kibana space by id (default: the default space)."""
@@ -209,14 +248,21 @@ class AlertingToolbox:
         @mcp.tool(tags={self.name, "write"}, annotations=_WRITE)
         def disable_alert_rule(
             rule_id: str,
+            untrack: bool = False,
             space: Annotated[str, Field(pattern=SPACE_ID_PATTERN)] | None = None,
         ) -> dict[str, Any]:
-            """Disable (stop running) an alerting rule.
+            """Disable (stop running) an alerting rule. By default its active
+            alerts stay active, as Kibana leaves them; `untrack=True` also marks
+            them untracked, so they stop being reported as active (the alert
+            documents are kept). Re-enabling the rule raises alerts afresh either way.
 
             `space` targets a Kibana space by id (default: the default space)."""
             with gateway_errors(), deps.gateway_factory(space) as gw:
-                gw.disable_alert_rule(rule_id)
-            return with_space({"id": rule_id, "enabled": False}, space)
+                gw.disable_alert_rule(rule_id, untrack=untrack)
+            result: dict[str, Any] = {"id": rule_id, "enabled": False}
+            if untrack:
+                result["untracked"] = True
+            return with_space(result, space)
 
         @mcp.tool(tags={self.name, "write"}, annotations=_WRITE)
         def create_connector(
@@ -261,6 +307,159 @@ class AlertingToolbox:
                 return with_space(
                     asdict(gw.update_connector(connector_id, name, config, secrets)), space
                 )
+
+    def _register_lifecycle(self, mcp: FastMCP, deps: ToolboxDeps) -> None:
+        # Notifications and credentials of an existing rule: mute (no end),
+        # snooze (a time window), and the rule's API key. Each is reversible
+        # (unmute, unsnooze, a second key refresh) and deletes nothing: write tier.
+        @mcp.tool(tags={self.name, "write"}, annotations=_WRITE_IDEMPOTENT)
+        def mute_alert_rule(
+            rule_id: Annotated[str, Field(min_length=1)],
+            space: Annotated[str, Field(pattern=SPACE_ID_PATTERN)] | None = None,
+        ) -> dict[str, Any]:
+            """Mute a whole alerting rule, by id: the rule keeps running and
+            tracking its alerts, but none of its actions fire (no notifications)
+            until unmute_alert_rule. A mute has no end time; for a time window use
+            snooze_alert_rule. It does not enable or disable the rule. Kibana
+            drops the rule's per-alert mutes (mute_alert) when it mutes the whole
+            rule; the result lists them in `cleared_alert_ids` — keep them: no
+            tool lists a rule's alert ids, so after unmute_alert_rule they are
+            restored only by mute_alert on each, and a repeat of this call
+            returns an empty list. get_alert_rule shows `muted`.
+
+            `space` targets a Kibana space by id (default: the default space)."""
+            with gateway_errors(), deps.gateway_factory(space) as gw:
+                cleared = gw.mute_alert_rule(rule_id)
+            return with_space(
+                {"id": rule_id, "muted": True, "cleared_alert_ids": list(cleared)}, space
+            )
+
+        @mcp.tool(tags={self.name, "write"}, annotations=_WRITE_IDEMPOTENT)
+        def unmute_alert_rule(
+            rule_id: Annotated[str, Field(min_length=1)],
+            space: Annotated[str, Field(pattern=SPACE_ID_PATTERN)] | None = None,
+        ) -> dict[str, Any]:
+            """Undo mute_alert_rule: the rule's actions fire again. Kibana also
+            clears every per-alert mute (mute_alert) on this call, even on a rule
+            that is not muted as a whole, so afterwards no alert of the rule is
+            muted; snoozes stay (unsnooze_alert_rule). The result lists the
+            alerts it unmuted in `cleared_alert_ids`; to keep any of them muted,
+            call mute_alert on each (no tool lists a rule's alert ids). To unmute
+            one alert only, use unmute_alert.
+
+            `space` targets a Kibana space by id (default: the default space)."""
+            with gateway_errors(), deps.gateway_factory(space) as gw:
+                cleared = gw.unmute_alert_rule(rule_id)
+            return with_space(
+                {"id": rule_id, "muted": False, "cleared_alert_ids": list(cleared)}, space
+            )
+
+        @mcp.tool(tags={self.name, "write"}, annotations=_WRITE_IDEMPOTENT)
+        def mute_alert(
+            rule_id: Annotated[str, Field(min_length=1)],
+            alert_id: Annotated[str, Field(min_length=1)],
+            space: Annotated[str, Field(pattern=SPACE_ID_PATTERN)] | None = None,
+        ) -> dict[str, Any]:
+            """Mute one alert of a rule: that alert's actions stop firing while
+            the rule's other alerts still notify; undo with unmute_alert.
+            `alert_id` is the id of an alert the rule has already raised — for a
+            rule grouped by a field, the group's value (e.g. a host name); for an
+            ungrouped .es-query rule, 'query matched'. Kibana refuses an id the
+            rule has not raised, and this tool refuses a rule muted as a whole
+            (Kibana would record nothing). get_alert_rule lists muted alerts in
+            `muted_alert_ids`. To silence the whole rule use mute_alert_rule.
+
+            `space` targets a Kibana space by id (default: the default space)."""
+            with gateway_errors(), deps.gateway_factory(space) as gw:
+                gw.mute_alert(rule_id, alert_id)
+            return with_space({"rule_id": rule_id, "alert_id": alert_id, "muted": True}, space)
+
+        @mcp.tool(tags={self.name, "write"}, annotations=_WRITE_IDEMPOTENT)
+        def unmute_alert(
+            rule_id: Annotated[str, Field(min_length=1)],
+            alert_id: Annotated[str, Field(min_length=1)],
+            space: Annotated[str, Field(pattern=SPACE_ID_PATTERN)] | None = None,
+        ) -> dict[str, Any]:
+            """Undo mute_alert for one alert of a rule: its actions fire again.
+            `alert_id` is one of the ids get_alert_rule lists in
+            `muted_alert_ids`. Unmuting an alert that is not muted succeeds and
+            changes nothing.
+
+            `space` targets a Kibana space by id (default: the default space)."""
+            with gateway_errors(), deps.gateway_factory(space) as gw:
+                gw.unmute_alert(rule_id, alert_id)
+            return with_space({"rule_id": rule_id, "alert_id": alert_id, "muted": False}, space)
+
+        @mcp.tool(tags={self.name, "write"}, annotations=_WRITE)
+        def snooze_alert_rule(
+            rule_id: Annotated[str, Field(min_length=1)],
+            duration: str,
+            start: str | None = None,
+            recurring: dict[str, Any] | None = None,
+            space: Annotated[str, Field(pattern=SPACE_ID_PATTERN)] | None = None,
+        ) -> dict[str, Any]:
+            """Snooze an alerting rule's notifications for a time window: the rule
+            keeps running, but its actions do not fire from `start` for
+            `duration`. `duration` is a whole number and s, m, h or d ('30m',
+            '2h', '1d'). `start` is an ISO-8601 date-time (no offset means UTC;
+            default: now). `recurring` repeats the window, e.g.
+            {"every": "1w", "onWeekDay": ["SA", "SU"], "end": "2026-12-31T00:00:00Z"}
+            — `every` is a number and h, d, w, M or y and must be longer than
+            `duration`; `end` (ISO-8601) or `occurrences` (a count) bounds it;
+            `onWeekDay` (MO..SU), `onMonthDay` and `onMonth` (1-12) narrow it.
+            Returns the snooze with its `schedule_id`: keep it, because
+            unsnooze_alert_rule takes it and Kibana's public API never lists a
+            rule's snoozes (get_alert_rule cannot show them). A rule holds at most
+            5 snoozes, expired ones included. For no end time use mute_alert_rule.
+
+            `space` targets a Kibana space by id (default: the default space)."""
+            window = _snooze_duration(duration)
+            begin = (_instant("start", start, "; omit start to begin now")
+                     if start is not None else datetime.now(UTC))
+            repeat = None
+            if recurring is not None:
+                repeat = dict(recurring)
+                if isinstance(repeat.get("end"), str):
+                    repeat["end"] = _instant("recurring.end", repeat["end"])
+            with gateway_errors(), deps.gateway_factory(space) as gw:
+                return with_space(
+                    asdict(gw.snooze_alert_rule(rule_id, window, begin, repeat)), space
+                )
+
+        @mcp.tool(tags={self.name, "write"}, annotations=_WRITE_IDEMPOTENT)
+        def unsnooze_alert_rule(
+            rule_id: Annotated[str, Field(min_length=1)],
+            schedule_id: Annotated[str, Field(min_length=1)],
+            space: Annotated[str, Field(pattern=SPACE_ID_PATTERN)] | None = None,
+        ) -> dict[str, Any]:
+            """Cancel one snooze of an alerting rule, so its actions fire again in
+            that window. `schedule_id` is the `schedule_id` snooze_alert_rule
+            returned — Kibana's public API lists no snoozes, so there is no other
+            source. A cancelled snooze no longer counts toward the rule's 5.
+
+            `space` targets a Kibana space by id (default: the default space)."""
+            with gateway_errors(), deps.gateway_factory(space) as gw:
+                gw.unsnooze_alert_rule(rule_id, schedule_id)
+            return with_space(
+                {"rule_id": rule_id, "schedule_id": schedule_id, "unsnoozed": True}, space
+            )
+
+        @mcp.tool(tags={self.name, "write"}, annotations=_WRITE_IDEMPOTENT)
+        def update_alert_rule_api_key(
+            rule_id: Annotated[str, Field(min_length=1)],
+            space: Annotated[str, Field(pattern=SPACE_ID_PATTERN)] | None = None,
+        ) -> dict[str, Any]:
+            """Regenerate an alerting rule's API key from this server's
+            credentials, by id: from then on the rule runs its queries and actions
+            with this server's API key's privileges. Use it when a rule fails
+            because the key it ran with was revoked or lost privileges. It does not
+            change the rule's definition or enabled state, and no key material is
+            returned.
+
+            `space` targets a Kibana space by id (default: the default space)."""
+            with gateway_errors(), deps.gateway_factory(space) as gw:
+                gw.update_alert_rule_api_key(rule_id)
+            return with_space({"id": rule_id, "api_key_updated": True}, space)
 
     def _register_destructive(self, mcp: FastMCP, deps: ToolboxDeps) -> None:
         @mcp.tool(tags={self.name, "destructive"}, annotations=_DESTRUCTIVE)

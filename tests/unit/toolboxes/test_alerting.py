@@ -1,3 +1,5 @@
+from datetime import UTC, datetime, timedelta
+
 import pytest
 from fastmcp import Client, FastMCP
 from fastmcp.exceptions import ToolError
@@ -30,6 +32,8 @@ async def test_exposes_expected_tools(mcp):
         "list_rule_types", "get_connector",
         "create_alert_rule", "update_alert_rule", "enable_alert_rule", "disable_alert_rule",
         "create_connector", "update_connector",
+        "mute_alert_rule", "unmute_alert_rule", "mute_alert", "unmute_alert",
+        "snooze_alert_rule", "unsnooze_alert_rule", "update_alert_rule_api_key",
         "delete_alert_rule", "delete_connector", "execute_connector",
     }
 
@@ -283,3 +287,205 @@ async def test_empty_identifiers_and_names_fail_the_schema(mcp, tool, args):
     async with Client(mcp) as client:
         with pytest.raises(ToolError):
             await client.call_tool(tool, args)
+
+
+# --- rule lifecycle: mute, snooze, API key, untrack (B1) ---
+
+LIFECYCLE_TOOLS = (
+    "mute_alert_rule", "unmute_alert_rule", "mute_alert", "unmute_alert",
+    "snooze_alert_rule", "unsnooze_alert_rule", "update_alert_rule_api_key",
+)
+
+
+def _counting_server(gateway):
+    calls = []
+
+    def factory(space=None):
+        calls.append(space)
+        return gateway
+
+    server = FastMCP("test")
+    AlertingToolbox().register(
+        server, ToolboxDeps(gateway_factory=factory, public_kibana_url="http://kb:5601")
+    )
+    return server, calls
+
+
+async def test_lifecycle_tools_are_write_tier_and_say_which_repeat_safely(mcp):
+    async with Client(mcp) as client:
+        tools = {t.name: t for t in await client.list_tools()}
+    for name in LIFECYCLE_TOOLS:
+        ann = tools[name].annotations
+        assert ann.readOnlyHint is False and ann.destructiveHint is False, name
+        assert ann.openWorldHint is False, name
+    # a repeat of a mute, an unmute or an API-key refresh changes nothing more;
+    # each snooze adds a schedule (Kibana keeps at most 5), so it is not idempotent
+    for name in ("mute_alert_rule", "unmute_alert_rule", "mute_alert", "unmute_alert",
+                 "unsnooze_alert_rule", "update_alert_rule_api_key"):
+        assert tools[name].annotations.idempotentHint is True, name
+    assert tools["snooze_alert_rule"].annotations.idempotentHint is False
+
+
+async def test_mutes_show_in_get_alert_rule_and_unmutes_clear_them(mcp, gateway):
+    async with Client(mcp) as client:
+        rid = (await client.call_tool("create_alert_rule", RULE)).data["id"]
+        assert (await client.call_tool(
+            "mute_alert", {"rule_id": rid, "alert_id": "JetBeats"})).data == {
+            "rule_id": rid, "alert_id": "JetBeats", "muted": True}
+        got = (await client.call_tool("get_alert_rule", {"rule_id": rid})).data
+        assert got["muted"] is False and got["muted_alert_ids"] == ["JetBeats"]
+        assert (await client.call_tool(
+            "unmute_alert", {"rule_id": rid, "alert_id": "JetBeats"})).data == {
+            "rule_id": rid, "alert_id": "JetBeats", "muted": False}
+        await client.call_tool("mute_alert", {"rule_id": rid, "alert_id": "ES-Air"})
+        # the rule-wide mute clears the per-alert mutes and names them
+        assert (await client.call_tool("mute_alert_rule", {"rule_id": rid})).data == {
+            "id": rid, "muted": True, "cleared_alert_ids": ["ES-Air"]}
+        got = (await client.call_tool("get_alert_rule", {"rule_id": rid})).data
+        assert got["muted"] is True and got["muted_alert_ids"] == []
+        with pytest.raises(ToolError, match=r"muted as a whole"):
+            await client.call_tool("mute_alert", {"rule_id": rid, "alert_id": "JetBeats"})
+        assert (await client.call_tool("unmute_alert_rule", {"rule_id": rid})).data == {
+            "id": rid, "muted": False, "cleared_alert_ids": []}
+        got = (await client.call_tool("get_alert_rule", {"rule_id": rid})).data
+    assert got["muted"] is False and got["muted_alert_ids"] == []
+    assert gateway.alert_rules[rid].enabled is False  # muting never starts or stops a rule
+
+
+async def test_unmute_alert_rule_on_an_unmuted_rule_names_the_alerts_it_unmuted(mcp):
+    # Kibana's rule-wide unmute clears per-alert mutes even on a rule that is
+    # not muted as a whole; the ids come back so mute_alert can restore them.
+    async with Client(mcp) as client:
+        rid = (await client.call_tool("create_alert_rule", RULE)).data["id"]
+        for alert_id in ("host-a", "host-b"):
+            await client.call_tool("mute_alert", {"rule_id": rid, "alert_id": alert_id})
+        cleared = (await client.call_tool("unmute_alert_rule", {"rule_id": rid})).data
+        assert cleared == {"id": rid, "muted": False, "cleared_alert_ids": ["host-a", "host-b"]}
+        for alert_id in cleared["cleared_alert_ids"]:
+            await client.call_tool("mute_alert", {"rule_id": rid, "alert_id": alert_id})
+        got = (await client.call_tool("get_alert_rule", {"rule_id": rid})).data
+    assert got["muted_alert_ids"] == ["host-a", "host-b"]  # restored
+
+
+async def test_snooze_returns_the_schedule_id_unsnooze_takes(mcp, gateway):
+    async with Client(mcp) as client:
+        rid = (await client.call_tool("create_alert_rule", RULE)).data["id"]
+        before = datetime.now(UTC)
+        snoozed = (await client.call_tool(
+            "snooze_alert_rule", {"rule_id": rid, "duration": "2h"})).data
+        after = datetime.now(UTC)
+        sid = snoozed["schedule_id"]
+        assert snoozed["rule_id"] == rid and snoozed["duration"] == "2h"
+        assert set(snoozed) == {"rule_id", "schedule_id", "duration", "start", "timezone",
+                                "recurring"}
+        sent = gateway.rule_snoozes[rid][sid]["start"]
+        assert sent.tzinfo is not None and before <= sent <= after  # default: now, in UTC
+        gone = (await client.call_tool(
+            "unsnooze_alert_rule", {"rule_id": rid, "schedule_id": sid})).data
+        assert gone == {"rule_id": rid, "schedule_id": sid, "unsnoozed": True}
+        assert gateway.rule_snoozes[rid] == {}
+        with pytest.raises(ToolError, match=r"not found"):
+            await client.call_tool("unsnooze_alert_rule", {"rule_id": rid, "schedule_id": sid})
+
+
+@pytest.mark.parametrize("start,expected", [
+    ("2026-10-25T00:00:00Z", datetime(2026, 10, 25, tzinfo=UTC)),
+    ("2026-10-25T02:00:00+02:00", datetime(2026, 10, 25, tzinfo=UTC)),
+    ("2026-10-25T00:00:00.000Z", datetime(2026, 10, 25, tzinfo=UTC)),
+    ("2026-10-25T00:00", datetime(2026, 10, 25, tzinfo=UTC)),  # no offset: read as UTC
+    ("2026-10-25", datetime(2026, 10, 25, tzinfo=UTC)),
+])
+async def test_snooze_start_takes_any_iso_8601_instant(mcp, gateway, start, expected):
+    async with Client(mcp) as client:
+        rid = (await client.call_tool("create_alert_rule", RULE)).data["id"]
+        sid = (await client.call_tool("snooze_alert_rule", {
+            "rule_id": rid, "duration": "30m", "start": start,
+            "recurring": {"every": "1d", "occurrences": 3, "end": start},
+        })).data["schedule_id"]
+    sent = gateway.rule_snoozes[rid][sid]
+    assert sent["start"] == expected and sent["start"].utcoffset() == timedelta(0)
+    assert sent["recurring"] == {"every": "1d", "occurrences": 3, "end": expected}
+
+
+@pytest.mark.parametrize("args,message", [
+    ({"duration": "1w"}, r"duration '1w' is not a snooze duration — .*'30m', '2h', '1d'"),
+    ({"duration": "90x"}, r"duration '90x' is not a snooze duration"),
+    ({"duration": "1.5h"}, r"duration '1.5h' is not a snooze duration .*'90m'"),
+    ({"duration": "0h"}, r"duration '0h' is not a snooze duration"),
+    ({"duration": "1h", "start": "tomorrow"}, r"start 'tomorrow' is not an ISO-8601 date"),
+    ({"duration": "1h", "recurring": {"every": "1d", "end": "soon"}},
+     r"recurring\.end 'soon' is not an ISO-8601 date"),
+])
+async def test_snooze_arguments_are_checked_before_the_gateway(gateway, args, message):
+    server, calls = _counting_server(gateway)
+    async with Client(server) as client:
+        with pytest.raises(ToolError, match=message):
+            await client.call_tool("snooze_alert_rule", {"rule_id": "r1", **args, "space": "s"})
+    assert calls == []
+
+
+async def test_disable_untrack_is_off_by_default_and_echoed_only_when_on(mcp, gateway):
+    async with Client(mcp) as client:
+        rid = (await client.call_tool("create_alert_rule", {**RULE, "enabled": True})).data["id"]
+        plain = (await client.call_tool("disable_alert_rule", {"rule_id": rid})).data
+        untracked = (await client.call_tool(
+            "disable_alert_rule", {"rule_id": rid, "untrack": True})).data
+        tools = {t.name: t for t in await client.list_tools()}
+    assert plain == {"id": rid, "enabled": False}  # byte-identical to before untrack existed
+    assert untracked == {"id": rid, "enabled": False, "untracked": True}
+    assert gateway.disable_untracks == [False, True]
+    untrack = tools["disable_alert_rule"].inputSchema["properties"]["untrack"]
+    assert untrack["default"] is False
+    assert "untrack" not in tools["disable_alert_rule"].inputSchema.get("required", [])
+
+
+async def test_update_alert_rule_api_key_reports_the_refresh(mcp, gateway):
+    async with Client(mcp) as client:
+        rid = (await client.call_tool("create_alert_rule", RULE)).data["id"]
+        out = (await client.call_tool("update_alert_rule_api_key", {"rule_id": rid})).data
+    assert out == {"id": rid, "api_key_updated": True}
+    assert gateway.api_key_updates == [rid]
+    assert "api_key" not in str(out).replace("api_key_updated", "")  # no key material
+
+
+async def test_lifecycle_tool_descriptions_name_their_partners(mcp):
+    async with Client(mcp) as client:
+        d = {t.name: " ".join(t.description.split()) for t in await client.list_tools()}
+    assert "unsnooze_alert_rule" in d["snooze_alert_rule"]
+    assert "at most 5" in d["snooze_alert_rule"] and "schedule_id" in d["snooze_alert_rule"]
+    assert "snooze_alert_rule" in d["unsnooze_alert_rule"]
+    assert "unmute_alert_rule" in d["mute_alert_rule"] and "snooze_alert_rule" in d["mute_alert_rule"]
+    for name in ("mute_alert_rule", "unmute_alert_rule"):  # the cleared mutes can be restored
+        assert "cleared_alert_ids" in d[name] and "mute_alert on each" in d[name], name
+    assert "get_alert_rule" in d["mute_alert"] and "muted_alert_ids" in d["unmute_alert"]
+    assert "mute_alert_rule" in d["get_alert_rule"]  # the read half shows the mute state
+    assert "untrack" in d["disable_alert_rule"]
+
+
+@pytest.mark.parametrize("tool,args", [
+    ("mute_alert_rule", {"rule_id": ""}),
+    ("unmute_alert_rule", {"rule_id": ""}),
+    ("mute_alert", {"rule_id": "r1", "alert_id": ""}),
+    ("unmute_alert", {"rule_id": "", "alert_id": "a"}),
+    ("snooze_alert_rule", {"rule_id": "", "duration": "1h"}),
+    ("unsnooze_alert_rule", {"rule_id": "r1", "schedule_id": ""}),
+    ("update_alert_rule_api_key", {"rule_id": ""}),
+])
+async def test_lifecycle_tools_refuse_empty_ids_at_the_schema(gateway, tool, args):
+    server, calls = _counting_server(gateway)
+    async with Client(server) as client:
+        with pytest.raises(ToolError):
+            await client.call_tool(tool, args)
+    assert calls == []
+
+
+async def test_lifecycle_tools_on_a_missing_rule_surface_not_found(mcp):
+    async with Client(mcp) as client:
+        for tool, args in (
+            ("mute_alert_rule", {"rule_id": "nope"}),
+            ("unmute_alert", {"rule_id": "nope", "alert_id": "a"}),
+            ("snooze_alert_rule", {"rule_id": "nope", "duration": "1h"}),
+            ("update_alert_rule_api_key", {"rule_id": "nope"}),
+        ):
+            with pytest.raises(ToolError, match=r"not found"):
+                await client.call_tool(tool, args)

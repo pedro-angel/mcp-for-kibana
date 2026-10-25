@@ -1,21 +1,37 @@
 """In-memory KibanaGateway for unit tests."""
 
 import itertools
+import json
 from dataclasses import replace
 
-from kibana_mcp.core.errors import KibanaNotFound, KibanaRejected
+from kibana_mcp.core.errors import KibanaNotFound, KibanaRejected, KibanaSpaceNotFound
 from kibana_mcp.core.models import (
     AlertingHealth, AlertRule, AlertRuleDetail, RuleType, ApiDeprecation, ApmAgentConfig, ApmAnnotation, ApmEnvironment,
-    ApmSourcemap, Case, Connector, ConnectorDetail, DashboardDetail, DashboardSummary, DataViewDetail,
-    DataViewSummary, DetectionAlert, DetectionRule, EmailDefaults, ExceptionItem, ExceptionList,
-    FleetAgent, FleetAgentPolicy, FleetAgentStatus, FleetEnrollmentKey, FleetOutput, FleetOutputHealth,
-    FleetPackage, FleetPackageCategory, FleetPackagePolicy, FleetPermissions, FleetServerHost,
-    FleetSettings, FleetUninstallToken,
-    ImportedObject, KibanaStats, KibanaStatus, PanelSummary, PrepackagedRulesStatus, Role,
-    RoleIndexPrivilege, RoleKibanaPrivilege, SavedObjectImportResult, ShortUrl, Space, Stream,
+    ApmSourcemap, Case, Connector, ConnectorDetail, CopiedObject, CopyFailure, DashboardDetail, DashboardSummary, DataViewDetail,
+    DataViewSummary, DefaultDataView, DefaultDataViewChange, DetectionAlert, DetectionRule, EmailDefaults, ExceptionItem, ExceptionList, ExceptionListChange, ExceptionListImportResult,
+    FleetAgent, FleetAgentDiagnostics, FleetAgentPolicy, FleetAgentStatus, FleetAgentTagChange,
+    FleetAgentTagsResult, FleetDiagnosticsRequest, FleetEnrollmentKey, FleetOutput, FleetOutputHealth,
+    FleetPackage, FleetPackageCategory, FleetPackageInstall, FleetPackagePolicy, FleetPackageUninstall,
+    FleetPermissions, FleetServerHost, FleetSettings, FleetUninstallToken,
+    ImportedObject, KibanaStats, KibanaStatus, ObjectSpaces, PanelSummary, PrepackagedRulesStatus, Role,
+    RoleIndexPrivilege, RoleKibanaPrivilege, RuleSnooze, RuntimeField, RuntimeFieldUpsert,
+    SavedObjectDetail, SavedObjectImportResult, SavedObjectPage, SavedObjectSummary, SharingChange,
+    ShortUrl, Space, SpaceCopyResult,
+    Stream,
     StreamIngest, StreamSummary, StreamWriteResult, SyntheticMonitor, SyntheticParam, SyntheticPrivateLocation,
     TaskManagerHealth, Timeline, UpgradeReadiness, UptimeSettings, ValueList, ValueListItem,
     VisualizationDetail, VisualizationSummary,
+)
+from kibana_mcp.core.fleet_ops import (
+    AGENT_MONITORING_PACKAGE, guard_reason, guarded_policy_refusal, installed_version_refusal,
+    missing_agents_message, monitoring_refusal, not_installed_message, package_policies_refusal,
+    space_awareness_refusal, tags_not_applied, unattached_guard_reason, unknown_agent_message,
+    unknown_package_message,
+)
+from kibana_mcp.core.saved_objects import READABLE_TYPES, unreadable_type_message
+from kibana_mcp.core.space_sharing import (
+    ALL_SPACES, copy_fix, missing_spaces_message, objects_not_found_message, self_target_message,
+    sharing_refusal, unshare_refusal,
 )
 from kibana_mcp.core.visualizations.translate import describe_lens_config, lens_chart_type
 
@@ -46,6 +62,28 @@ class FakeGateway:
     def __init__(self):
         self.data_views = {FLIGHTS_DV.id: FLIGHTS_DV}
         self.data_view_updates: list[dict] = []  # update_data_view calls, as passed
+        # view id -> {name -> RuntimeField} (D48); dv1 starts with none.
+        self.runtime_fields: dict[str, dict[str, RuntimeField]] = {}
+        self.default_data_view_id: str | None = None  # the space's defaultIndex
+        # Saved objects find/get serve (D48): one data view and one dashboard
+        # that references it, with a long attribute to exercise the cap.
+        self.saved_objects: list[SavedObjectDetail] = [
+            SavedObjectDetail(
+                type="index-pattern", id="dv1", namespaces=("default",),
+                created_at="2026-10-25T00:00:00.000Z", updated_at="2026-10-25T00:00:00.000Z",
+                managed=False,
+                attributes={"title": "kibana_sample_data_flights", "name": "flights"},
+                references=(),
+            ),
+            SavedObjectDetail(
+                type="dashboard", id="dash-1", namespaces=("default",),
+                created_at="2026-10-25T00:00:00.000Z", updated_at="2026-10-25T00:00:00.000Z",
+                managed=False,
+                attributes={"title": "[Flights] Global Flight Dashboard", "panelsJSON": "x" * 5000},
+                references=({"type": "index-pattern", "id": "dv1"},),
+            ),
+        ]
+        self.saved_object_finds: list[dict] = []  # find_saved_objects calls, as passed
         self.dashboards: dict[str, dict] = {}
         self.visualizations: dict[str, dict] = {}
         self.short_urls: dict[str, ShortUrl] = {}
@@ -60,6 +98,13 @@ class FakeGateway:
         # summary stored directly has none: get_alert_rule then reads {} / []).
         self.rule_params: dict[str, dict] = {}
         self.rule_actions: dict[str, list] = {}
+        # Rule lifecycle state: rule-wide mute, per-alert mutes, snoozes by
+        # schedule id (the arguments as passed), API-key refreshes, untrack flags.
+        self.rule_muted: dict[str, bool] = {}
+        self.rule_muted_alerts: dict[str, list[str]] = {}
+        self.rule_snoozes: dict[str, dict[str, dict]] = {}
+        self.api_key_updates: list[str] = []
+        self.disable_untracks: list[bool] = []
         self.cases: dict[str, Case] = {}
         self.alerting_health = AlertingHealth(
             status="ok", has_permanent_encryption_key=True, is_sufficiently_secure=True
@@ -90,6 +135,12 @@ class FakeGateway:
                 id="loc-1", label="dc1", agent_policy_id="ap-1", is_invalid=False, tags=()
             )
         ]
+        # Synthetics write tier (D46): every write is recorded; ids per kind.
+        self.monitor_writes: list[tuple] = []
+        self.param_writes: list[tuple] = []
+        self.location_writes: list[tuple] = []
+        self._synthetic_ids = {k: itertools.count(2) for k in ("mon", "p", "loc")}
+        self._test_runs = itertools.count(1)
         self.uptime_settings = UptimeSettings(
             heartbeat_indices="heartbeat-*", cert_expiration_threshold=30, cert_age_threshold=730,
             default_connectors=(), default_email=EmailDefaults(to=(), cc=(), bcc=()),
@@ -100,6 +151,8 @@ class FakeGateway:
                 settings={"transaction_sample_rate": "0.5"}, applied_by_agent=True, etag="e1",
             )
         ]
+        # APM agent-config writes (D47): every write is recorded.
+        self.apm_config_writes: list[tuple] = []
         self.apm_environments = [ApmEnvironment(name="ALL_OPTION_VALUE", already_configured=False)]
         self.apm_sourcemaps = [ApmSourcemap(identifier="checkout-1.0.0", created="2026-07-12T00:00:00Z")]
         self.apm_annotations: list[ApmAnnotation] = []
@@ -169,6 +222,17 @@ class FakeGateway:
                 ),
             )
         ]
+        # Saved objects between spaces (D49): the space the gateway was opened
+        # on (tests set it), each object's spaces ([] = a type kept in one
+        # space), the types Kibana cannot copy, and the calls as passed.
+        self.current_space = "default"
+        self.object_spaces: dict[tuple[str, str], list[str]] = {
+            ("index-pattern", "dv1"): ["default"],
+            ("dashboard", "dash-1"): [],
+        }
+        self.uncopyable_types = {"ingest-outputs"}
+        self.space_copies: list[dict] = []
+        self.sharing_updates: list[dict] = []
         self.upgrade_readiness = UpgradeReadiness(
             ready_for_upgrade=True, details="All deprecation warnings have been resolved.",
             es_deprecation_count=0,
@@ -257,9 +321,22 @@ class FakeGateway:
             id="fleet-default-settings", prerelease_integrations_enabled=False,
             integration_knowledge_enabled=True, space_awareness_migration_status="success")
         self.fleet_permissions = FleetPermissions(success=True)
+        # fleet advanced ops (D51): test-controlled state.
+        self.fleet_default_fleet_server_policy_ids = {"fleet-server-policy"}
+        self.fleet_tag_refused_agent_ids: set[str] = set()  # e.g. hosted agents Kibana skips
+        self.fleet_diagnostics: dict[str, list[FleetAgentDiagnostics]] = {}
         self._ids = itertools.count(1)
         self.deleted: list[tuple[str, str | None]] = []  # (kind, identifier) for write-tier asserts
         self.last_exception_entries: list[dict] | None = None
+        # exception-list edit/copy/export/import (D50): test-controlled faults.
+        self.exception_list_conflict = False
+        self.exception_import_rejected = False
+        self.last_exception_import: tuple[bytes, bool] | None = None
+        # a list another caller creates between import_exception_list's
+        # check and its import (the race the spec's import invariant names)
+        self.exception_list_created_before_import: ExceptionList | None = None
+        self.last_duplicate_include_expired: bool | None = None
+        self.last_export_include_expired: bool | None = None
         self.closed = False
 
     def __enter__(self):
@@ -327,6 +404,115 @@ class FakeGateway:
             raise KibanaNotFound(f"data view '{view_id}' not found")
         del self.data_views[view_id]
 
+    def _view(self, view_id):
+        if view_id not in self.data_views:
+            raise KibanaNotFound(
+                f"data view '{view_id}' not found — view_id is the id that create_data_view "
+                "or list_data_views returns, not the view's name or index pattern; "
+                "call list_data_views to find it"
+            )
+        return self.data_views[view_id]
+
+    def upsert_runtime_field(self, view_id, field):
+        # Mirrors the adapter's contract: a mapped name and a stored composite
+        # field are refused before any write; the replaced definition returns.
+        view = self._view(view_id)
+        stored = self.runtime_fields.setdefault(view_id, {})
+        previous = stored.get(field.name)
+        if previous is None and field.name in view.fields:
+            raise KibanaRejected(
+                f"'{field.name}' is already a field of data view '{view_id}' and not a runtime field"
+            )
+        if previous is not None and previous.type == "composite":
+            raise KibanaRejected(f"runtime field '{field.name}' is a composite field")
+        stored[field.name] = field
+        return RuntimeFieldUpsert(view_id=view_id, field=field, previous=previous)
+
+    def delete_runtime_field(self, view_id, name):
+        # Mirrors the adapter's contract: a composite's subfield and a mapped
+        # field are refused (KibanaRejected), any other miss is KibanaNotFound.
+        view = self._view(view_id)
+        stored = self.runtime_fields.get(view_id, {})
+        if name not in stored:
+            parent, _, sub = name.partition(".")
+            composite = stored.get(parent)
+            if composite is not None and composite.type == "composite" and sub in (
+                composite.fields or {}
+            ):
+                raise KibanaRejected(
+                    f"'{name}' is a subfield of the composite runtime field '{parent}' of data "
+                    f"view '{view_id}' — delete '{parent}' to remove it with its subfields"
+                )
+            if name in view.fields:
+                raise KibanaRejected(
+                    f"'{name}' is a field of data view '{view_id}' but not a runtime field — "
+                    "only runtime fields can be deleted"
+                )
+            raise KibanaNotFound(f"data view '{view_id}' has no runtime field '{name}'")
+        return stored.pop(name)
+
+    def _default(self, view_id):
+        if view_id is None:
+            return DefaultDataView(id=None, name=None, index_pattern=None, exists=False)
+        view = self.data_views.get(view_id)
+        if view is None:
+            return DefaultDataView(id=view_id, name=None, index_pattern=None, exists=False)
+        return DefaultDataView(
+            id=view_id, name=view.name, index_pattern=view.index_pattern, exists=True
+        )
+
+    def get_default_data_view(self):
+        return self._default(self.default_data_view_id)
+
+    def set_default_data_view(self, view_id):
+        if view_id is not None:
+            self._view(view_id)
+        previous, self.default_data_view_id = self.default_data_view_id, view_id
+        return DefaultDataViewChange(
+            current=self._default(view_id), previous_id=previous,
+            previous_exists=previous is not None and previous in self.data_views,
+        )
+
+    def find_saved_objects(self, types, search, has_reference, page, per_page):
+        self.saved_object_finds.append({
+            "types": list(types), "search": search, "has_reference": has_reference,
+            "page": page, "per_page": per_page,
+        })
+        hits = [
+            o for o in self.saved_objects
+            if o.type in types
+            # The adapter sends search_fields=[title, name]: other attributes
+            # never match.
+            and (search is None or any(
+                search.lower().rstrip("*") in str(o.attributes.get(k) or "").lower()
+                for k in ("title", "name")
+            ))
+            and (has_reference is None or has_reference in o.references)
+        ]
+        start = (page - 1) * per_page
+        return SavedObjectPage(
+            total=len(hits), page=page, per_page=per_page,
+            saved_objects=tuple(
+                SavedObjectSummary(
+                    type=o.type, id=o.id, title=o.attributes.get("title"),
+                    name=o.attributes.get("name"), updated_at=o.updated_at,
+                    namespaces=o.namespaces, managed=o.managed,
+                )
+                for o in hits[start:start + per_page]
+            ),
+        )
+
+    def get_saved_object(self, type, id):
+        if type not in READABLE_TYPES:
+            raise KibanaRejected(unreadable_type_message(type))
+        for o in self.saved_objects:
+            if (o.type, o.id) == (type, id):
+                return o
+        raise KibanaNotFound(
+            f"saved object '{type}/{id}' not found — check the type and id with "
+            f"find_saved_objects(types=['{type}'])"
+        )
+
     def create_short_url(self, locator_id, params):
         new_id = f"su-{next(self._ids)}"
         su = ShortUrl(id=new_id, slug=f"slug-{new_id}", locator_id=locator_id, url=params.get("url"))
@@ -362,6 +548,8 @@ class FakeGateway:
             enabled=r.enabled, schedule_interval=r.schedule_interval, status=r.status,
             tags=r.tags, params=dict(self.rule_params.get(rule_id, {})),
             actions=tuple(dict(a) for a in self.rule_actions.get(rule_id, [])),
+            muted=self.rule_muted.get(rule_id, False),
+            muted_alert_ids=tuple(self.rule_muted_alerts.get(rule_id, [])),
         )
 
     def get_alerting_health(self):
@@ -400,8 +588,60 @@ class FakeGateway:
     def enable_alert_rule(self, rule_id):
         self.alert_rules[rule_id] = replace(self._rule(rule_id), enabled=True)
 
-    def disable_alert_rule(self, rule_id):
+    def disable_alert_rule(self, rule_id, untrack=False):
         self.alert_rules[rule_id] = replace(self._rule(rule_id), enabled=False)
+        self.disable_untracks.append(untrack)
+
+    # Kibana's rule-wide mute and unmute both clear the per-alert mutes (probed);
+    # the gateway returns the ids it cleared.
+    def mute_alert_rule(self, rule_id):
+        self._rule(rule_id)
+        self.rule_muted[rule_id] = True
+        return tuple(self.rule_muted_alerts.pop(rule_id, []))
+
+    def unmute_alert_rule(self, rule_id):
+        self._rule(rule_id)
+        self.rule_muted[rule_id] = False
+        return tuple(self.rule_muted_alerts.pop(rule_id, []))
+
+    def mute_alert(self, rule_id, alert_id):
+        self._rule(rule_id)
+        if self.rule_muted.get(rule_id):
+            raise KibanaRejected(f"alert rule '{rule_id}' is muted as a whole (mute_alert_rule)")
+        muted = self.rule_muted_alerts.setdefault(rule_id, [])
+        if alert_id not in muted:
+            muted.append(alert_id)
+
+    def unmute_alert(self, rule_id, alert_id):
+        self._rule(rule_id)
+        muted = self.rule_muted_alerts.get(rule_id, [])
+        if alert_id in muted:
+            muted.remove(alert_id)
+
+    def snooze_alert_rule(self, rule_id, duration, start, recurring):
+        self._rule(rule_id)
+        schedule_id = f"snooze-{next(self._ids)}"
+        self.rule_snoozes.setdefault(rule_id, {})[schedule_id] = {
+            "duration": duration, "start": start, "recurring": recurring,
+        }
+        return RuleSnooze(
+            rule_id=rule_id, schedule_id=schedule_id, duration=duration,
+            start=start.isoformat(), timezone="UTC",
+            recurring=None if recurring is None else {
+                k: v.isoformat() if hasattr(v, "isoformat") else v for k, v in recurring.items()
+            },
+        )
+
+    def unsnooze_alert_rule(self, rule_id, schedule_id):
+        self._rule(rule_id)
+        snoozes = self.rule_snoozes.get(rule_id, {})
+        if schedule_id not in snoozes:
+            raise KibanaNotFound(f"snooze schedule '{schedule_id}' not found")
+        del snoozes[schedule_id]
+
+    def update_alert_rule_api_key(self, rule_id):
+        self._rule(rule_id)
+        self.api_key_updates.append(rule_id)
 
     def delete_alert_rule(self, rule_id):
         self._rule(rule_id)
@@ -546,6 +786,13 @@ class FakeGateway:
         self.dashboards[dashboard_id] = data  # create-if-absent (no _get)
         return dashboard_id
 
+    def get_tag_names(self, tag_ids):
+        # Tags are `tag` saved objects (find_saved_objects serves the same list);
+        # an id that names no tag is left out, as the adapter's bulk get does.
+        tags = {o.id: str(o.attributes.get("name", "")) for o in self.saved_objects
+                if o.type == "tag"}
+        return {t: tags[t] for t in tag_ids if t in tags}
+
     def _panel_summary(self, index, panel):
         # Mirrors the adapter: a by-reference panel reports its library item's
         # id and title ("" once that item is deleted).
@@ -627,6 +874,125 @@ class FakeGateway:
     def list_synthetic_private_locations(self):
         return list(self.synthetic_private_locations)
 
+    # --- Synthetics write tier (D46) ---
+
+    def _location_label(self, ref):
+        for loc in self.synthetic_private_locations:
+            if ref in (loc.id, loc.label):
+                return loc.label
+        raise KibanaRejected("Kibana rejected the payload", detail=f"Private Location(s) '{ref}' not found")
+
+    def create_synthetic_monitor(self, *, type, name, private_locations, url, host,
+                                 inline_script, schedule, enabled, tags):
+        self.monitor_writes.append(("create", {
+            "type": type, "name": name, "private_locations": private_locations, "url": url,
+            "host": host, "inline_script": inline_script, "schedule": schedule,
+            "enabled": enabled, "tags": tags,
+        }))
+        monitor = SyntheticMonitor(
+            id=f"mon-{next(self._synthetic_ids['mon'])}", name=name, type=type, enabled=enabled,
+            tags=tuple(tags or ()),
+            locations=tuple(self._location_label(r) for r in private_locations),
+            schedule=schedule or ("10m" if type == "browser" else "3m"),
+            target=url or host,
+        )
+        self.synthetic_monitors.append(monitor)
+        return monitor
+
+    def update_synthetic_monitor(self, monitor_id, *, name=None, url=None, host=None,
+                                 inline_script=None, schedule=None, enabled=None, tags=None,
+                                 private_locations=None):
+        current = self.get_synthetic_monitor(monitor_id)
+        given = {k: v for k, v in {
+            "name": name, "url": url, "host": host, "inline_script": inline_script,
+            "schedule": schedule, "enabled": enabled, "tags": tags,
+            "private_locations": private_locations,
+        }.items() if v is not None}
+        self.monitor_writes.append(("update", monitor_id, given))
+        changes = {k: v for k, v in given.items() if k in ("name", "schedule", "enabled")}
+        if tags is not None:
+            changes["tags"] = tuple(tags)
+        if private_locations is not None:
+            changes["locations"] = tuple(self._location_label(r) for r in private_locations)
+        if url or host:
+            changes["target"] = url or host
+        updated = replace(current, **changes)
+        self.synthetic_monitors = [updated if m.id == monitor_id else m
+                                   for m in self.synthetic_monitors]
+        return updated
+
+    def test_synthetic_monitor(self, monitor_id):
+        self.get_synthetic_monitor(monitor_id)
+        return f"run-{next(self._test_runs)}"
+
+    def delete_synthetic_monitor(self, monitor_id):
+        self.get_synthetic_monitor(monitor_id)
+        self.monitor_writes.append(("delete", monitor_id))
+        self.synthetic_monitors = [m for m in self.synthetic_monitors if m.id != monitor_id]
+
+    def _param(self, param_id):
+        for p in self.synthetic_params:
+            if p.id == param_id:
+                return p
+        raise KibanaNotFound(f"synthetic param '{param_id}' not found")
+
+    def create_synthetic_param(self, key, value, description, tags):
+        self.param_writes.append(("create", key))  # the value is never recorded
+        param = SyntheticParam(id=f"p-{next(self._synthetic_ids['p'])}", key=key,
+                               description=description or "", tags=tuple(tags or ()))
+        self.synthetic_params.append(param)
+        return param
+
+    def update_synthetic_param(self, param_id, *, key=None, value=None, description=None,
+                               tags=None):
+        current = self._param(param_id)
+        given = {k: v for k, v in {"key": key, "value": value, "description": description,
+                                   "tags": tags}.items() if v is not None}
+        self.param_writes.append(("update", param_id, given))
+        changes = {k: v for k, v in given.items() if k in ("key", "description")}
+        if tags is not None:
+            changes["tags"] = tuple(tags)
+        updated = replace(current, **changes)
+        self.synthetic_params = [updated if p.id == param_id else p for p in self.synthetic_params]
+        return updated
+
+    def delete_synthetic_param(self, param_id):
+        self._param(param_id)
+        self.param_writes.append(("delete", param_id))
+        self.synthetic_params = [p for p in self.synthetic_params if p.id != param_id]
+
+    def _location(self, location_id):
+        for loc in self.synthetic_private_locations:
+            if loc.id == location_id:
+                return loc
+        raise KibanaNotFound(f"private location '{location_id}' not found")
+
+    def create_synthetic_private_location(self, label, agent_policy_id, tags):
+        self.location_writes.append(("create", label, agent_policy_id))
+        loc = SyntheticPrivateLocation(
+            id=f"loc-{next(self._synthetic_ids['loc'])}", label=label,
+            agent_policy_id=agent_policy_id, is_invalid=False, tags=tuple(tags or ()),
+        )
+        self.synthetic_private_locations.append(loc)
+        return loc
+
+    def update_synthetic_private_location(self, location_id, label):
+        updated = replace(self._location(location_id), label=label)
+        self.location_writes.append(("update", location_id, label))
+        self.synthetic_private_locations = [
+            updated if loc.id == location_id else loc for loc in self.synthetic_private_locations]
+        return updated
+
+    def delete_synthetic_private_location(self, location_id):
+        loc = self._location(location_id)
+        if any(loc.label in m.locations for m in self.synthetic_monitors):
+            raise KibanaRejected("Kibana refused to delete the private location",
+                                 detail=f"Private location with id {location_id} cannot be "
+                                        "deleted because it is used by 1 monitor(s).")
+        self.location_writes.append(("delete", location_id))
+        self.synthetic_private_locations = [
+            x for x in self.synthetic_private_locations if x.id != location_id]
+
     def get_uptime_settings(self):
         return self.uptime_settings
 
@@ -637,9 +1003,39 @@ class FakeGateway:
         for c in self.apm_agent_configs:
             if c.service_name == service_name and c.service_environment == environment:
                 return c
+        service = f"service '{service_name}'" if service_name is not None else "all services"
+        env = f"environment '{environment}'" if environment is not None else "all environments"
         raise KibanaNotFound(
-            f"no APM agent config for service={service_name!r} environment={environment!r}"
+            f"no APM agent configuration for {service}, {env} — service_name and environment "
+            "must match a configuration exactly (an omitted one means all); call "
+            "list_apm_agent_configs to see them"
         )
+
+    def upsert_apm_agent_config(self, service_name, environment, settings, *, agent_name,
+                                overwrite):
+        self.apm_config_writes.append(("upsert", {
+            "service_name": service_name, "environment": environment, "settings": settings,
+            "agent_name": agent_name, "overwrite": overwrite,
+        }))
+        kept = [c for c in self.apm_agent_configs
+                if (c.service_name, c.service_environment) != (service_name, environment)]
+        if len(kept) != len(self.apm_agent_configs) and not overwrite:
+            raise KibanaRejected("Kibana refused to replace the APM agent configuration")
+        config = ApmAgentConfig(
+            service_name=service_name, service_environment=environment, settings=dict(settings),
+            applied_by_agent=False, etag=f"e{len(self.apm_config_writes) + 1}",
+            agent_name=agent_name,
+        )
+        self.apm_agent_configs = [*kept, config]
+        return config
+
+    def delete_apm_agent_config(self, service_name, environment):
+        self.get_apm_agent_config(service_name, environment)
+        self.apm_config_writes.append(("delete", {
+            "service_name": service_name, "environment": environment}))
+        self.apm_agent_configs = [
+            c for c in self.apm_agent_configs
+            if (c.service_name, c.service_environment) != (service_name, environment)]
 
     def list_apm_environments(self, service_name):
         return list(self.apm_environments)
@@ -671,16 +1067,124 @@ class FakeGateway:
     def find_exception_lists(self):
         return list(self.exception_lists)
 
-    def get_exception_list(self, id, list_id):
+    def get_exception_list(self, id, list_id, namespace_type="single"):
         for x in self.exception_lists:
+            if x.namespace_type != namespace_type:
+                continue  # Kibana answers 404 across namespaces (D50, probed)
             if (id and x.id == id) or (list_id and x.list_id == list_id):
                 return x
         raise KibanaNotFound("exception list not found")
 
-    def find_exception_items(self, list_id):
+    def find_exception_items(self, list_id, namespace_type="single"):
         if list_id not in self.exception_items:
-            raise KibanaNotFound(f"exception list '{list_id}' not found")
+            raise KibanaNotFound(
+                f"exception list list_id '{list_id}' not found (namespace_type "
+                f"'{namespace_type}') — find_exception_lists returns the ids"
+            )
         return list(self.exception_items[list_id])
+
+    # --- exception-list edit, copy, export and import (D50): models the
+    # probed 9.5.4 behaviour (see the port docstrings) ---
+
+    def _replace_exception_list(self, new):
+        self.exception_lists = [
+            new if (x.list_id, x.namespace_type) == (new.list_id, new.namespace_type) else x
+            for x in self.exception_lists
+        ]
+
+    def update_exception_list(self, id, list_id, namespace_type, name, description, tags):
+        old = self.get_exception_list(id, list_id, namespace_type)
+        if self.exception_list_conflict:
+            raise KibanaRejected(
+                f"exception list '{old.list_id}' changed after update_exception_list read it "
+                "(Kibana answered 409, version conflict); nothing was written — call "
+                "update_exception_list again"
+            )
+        new = replace(
+            old,
+            name=name if name is not None else old.name,
+            description=description if description is not None else old.description,
+            tags=tuple(tags) if tags is not None else old.tags,
+        )
+        self._replace_exception_list(new)
+        return ExceptionListChange(list=new, previous=old)
+
+    def duplicate_exception_list(self, list_id, namespace_type, include_expired_exceptions):
+        src = self.get_exception_list(None, list_id, namespace_type)
+        self.last_duplicate_include_expired = include_expired_exceptions
+        n = sum(1 for x in self.exception_lists if x.name.startswith(src.name))
+        copy = replace(
+            src, id=f"dup-el-{n}", list_id=f"dup-list-{n}", name=f"{src.name} [Duplicate]"
+        )
+        self.exception_lists.append(copy)
+        self.exception_items[copy.list_id] = [
+            ExceptionItem(id=f"dup-ei-{i}", item_id=f"dup-item-{n}-{i}", name=it.name,
+                          list_id=copy.list_id)
+            for i, it in enumerate(self.exception_items.get(src.list_id, []))
+        ]
+        return copy
+
+    def export_exception_list(self, id, list_id, namespace_type, include_expired_exceptions):
+        src = self.get_exception_list(id, list_id, namespace_type)
+        if src.id != id or src.list_id != list_id:
+            raise KibanaRejected("Kibana rejected the payload", detail="unknown id/list_id pair")
+        self.last_export_include_expired = include_expired_exceptions
+        items = self.exception_items.get(src.list_id, [])
+        return [
+            {"id": src.id, "list_id": src.list_id, "name": src.name, "type": src.type,
+             "description": src.description, "namespace_type": src.namespace_type,
+             "tags": list(src.tags), "os_types": list(src.os_types), "_version": "v1"},
+            *({"id": it.id, "item_id": it.item_id, "list_id": src.list_id, "name": it.name,
+               "description": "d", "type": "simple", "namespace_type": src.namespace_type,
+               "entries": [{"field": "host.name", "operator": "included", "type": "match",
+                            "value": "h"}]} for it in items),
+            {"exported_exception_list_count": 1,
+             "exported_exception_list_item_count": len(items)},
+        ]
+
+    def import_exception_list(self, content, overwrite):
+        if self.exception_import_rejected:
+            raise KibanaRejected("Kibana rejected the payload", detail='value "secret-host"')
+        self.last_exception_import = (content, overwrite)
+        if self.exception_list_created_before_import is not None:
+            self.exception_lists.append(self.exception_list_created_before_import)
+            self.exception_list_created_before_import = None
+        lines = [json.loads(x) for x in content.decode().splitlines() if x.strip()]
+        containers = [o for o in lines if "list_id" in o and "item_id" not in o
+                      and "exported_exception_list_count" not in o]
+        items = [o for o in lines if "item_id" in o]
+        errors: list[str] = []
+        list_count = 0
+        for c in containers:
+            ns = c.get("namespace_type", "single")
+            exists = any((x.list_id, x.namespace_type) == (c["list_id"], ns)
+                         for x in self.exception_lists)
+            if exists and not overwrite:
+                errors.append(f"{c['list_id']}: 409 already exists")
+                continue  # Kibana skips the list but still imports the items
+            stored = ExceptionList(
+                id=f"imp-el-{len(self.exception_lists)}", list_id=c["list_id"],
+                name=c.get("name", ""), type=c.get("type", "detection"), namespace_type=ns,
+                tags=tuple(c.get("tags") or ()), os_types=(),
+                description=c.get("description", ""),
+            )
+            if exists:
+                old = self.get_exception_list(None, c["list_id"], ns)
+                self._replace_exception_list(replace(stored, id=old.id))
+            else:
+                self.exception_lists.append(stored)
+            list_count += 1
+            if overwrite:
+                self.exception_items[c["list_id"]] = []
+        for i, it in enumerate(items):
+            self.exception_items.setdefault(it["list_id"], []).append(ExceptionItem(
+                id=f"imp-ei-{i}", item_id=it["item_id"], name=it.get("name", ""),
+                list_id=it["list_id"],
+            ))
+        return ExceptionListImportResult(
+            success=not errors, list_count=list_count, item_count=len(items),
+            errors=tuple(errors),
+        )
 
     def find_value_lists(self):
         return list(self.value_lists)
@@ -775,6 +1279,89 @@ class FakeGateway:
 
     def get_upgrade_status(self):
         return self.upgrade_readiness
+
+    def _require_spaces(self, spaces):
+        known = {sp.id for sp in self.spaces}
+        missing = [x for x in dict.fromkeys(spaces) if x != ALL_SPACES and x not in known]
+        if missing:
+            raise KibanaSpaceNotFound(missing_spaces_message(missing))
+
+    def _held(self, objects):
+        misses = [f"{o['type']}/{o['id']}" for o in objects
+                  if (o["type"], o["id"]) not in self.object_spaces]
+        if misses:
+            raise KibanaNotFound(objects_not_found_message(misses))
+
+    def copy_saved_objects_to_spaces(self, objects, spaces, include_references, overwrite):
+        if self.current_space in spaces:
+            raise KibanaRejected(self_target_message(self.current_space))
+        self._require_spaces(spaces)
+        self._held(objects)
+        self.space_copies.append({"objects": objects, "spaces": spaces,
+                                  "include_references": include_references,
+                                  "overwrite": overwrite})
+        results = []
+        for space in spaces:
+            copied, failed = [], []
+            for o in objects:
+                if o["type"] in self.uncopyable_types:
+                    failed.append(CopyFailure(
+                        type=o["type"], id=o["id"], title=None, error="unsupported_type",
+                        fix=copy_fix("unsupported_type", overwrite),
+                        missing_references=(), destinations=()))
+                else:
+                    copied.append(CopiedObject(
+                        type=o["type"], id=o["id"], title=None,
+                        destination_id=f"{space}-{o['id']}", overwritten=overwrite))
+            results.append(SpaceCopyResult(
+                space=space, success=not failed, copied=tuple(copied), failed=tuple(failed),
+                unchanged=()))
+        return results
+
+    def _object_states(self, objects):
+        return [
+            ObjectSpaces(
+                type=o["type"], id=o["id"],
+                spaces=tuple(self.object_spaces.get((o["type"], o["id"]), ())),
+                missing=(o["type"], o["id"]) not in self.object_spaces,
+                spaces_with_matching_origins=(),
+            )
+            for o in objects
+        ]
+
+    def _apply_sharing(self, before, add, remove):
+        changes = []
+        for state in before:
+            after = [x for x in state.spaces if x not in remove]
+            after += [x for x in add if x not in after]
+            if after:
+                self.object_spaces[(state.type, state.id)] = after
+            else:
+                del self.object_spaces[(state.type, state.id)]
+                self.deleted.append((state.type, state.id))
+            changes.append(SharingChange(
+                type=state.type, id=state.id, spaces=tuple(after),
+                added=tuple(x for x in after if x not in state.spaces),
+                removed=tuple(x for x in state.spaces if x not in after),
+                deleted=not after, spaces_with_matching_origins=(), error=None))
+        return changes
+
+    def share_saved_objects(self, objects, spaces):
+        self._require_spaces(spaces)
+        before = self._object_states(objects)
+        refusal = sharing_refusal(before)
+        if refusal:
+            raise KibanaRejected(refusal)
+        self.sharing_updates.append({"objects": objects, "add": spaces, "remove": []})
+        return self._apply_sharing(before, spaces, [])
+
+    def unshare_saved_objects(self, objects, spaces, force):
+        before = self._object_states(objects)
+        refusal = sharing_refusal(before) or unshare_refusal(before, spaces, force)
+        if refusal:
+            raise KibanaRejected(refusal)
+        self.sharing_updates.append({"objects": objects, "add": [], "remove": spaces})
+        return self._apply_sharing(before, [], spaces)
 
     def create_detection_rule(
         self, name, description, query, index, severity, risk_score,
@@ -1144,6 +1731,106 @@ class FakeGateway:
 
     def bulk_unenroll(self, *, agent_ids, force=False, revoke=False):
         return "fake-action-id"
+
+    # --- fleet advanced ops (D51): mirrors the adapter's checks and guidance ---
+
+    def list_agent_tags(self):
+        return sorted({t for a in self.fleet_agents_data for t in a.tags})
+
+    def update_agent_tags(self, *, agent_ids, tags_to_add, tags_to_remove):
+        ids = list(dict.fromkeys(agent_ids))
+        by_id = {a.id: a for a in self.fleet_agents_data}
+        missing = [i for i in ids if i not in by_id]
+        if missing:
+            raise KibanaNotFound(missing_agents_message(missing))
+        changes = []
+        for agent_id in ids:
+            before = by_id[agent_id].tags
+            after = before
+            if agent_id not in self.fleet_tag_refused_agent_ids:
+                kept = [t for t in before if t not in tags_to_remove]
+                after = tuple(kept + [t for t in tags_to_add if t not in kept])
+                self.fleet_agents_data = [
+                    replace(a, tags=after) if a.id == agent_id else a for a in self.fleet_agents_data
+                ]
+            changes.append(FleetAgentTagChange(agent_id=agent_id, previous_tags=before, tags=after))
+        return FleetAgentTagsResult(
+            action_id=f"fake-tags-action-{next(self._ids)}", agents=tuple(changes),
+            not_applied_agent_ids=tags_not_applied(changes, tags_to_add, tags_to_remove))
+
+    def _fake_agent(self, agent_id):
+        for a in self.fleet_agents_data:
+            if a.id == agent_id:
+                return a
+        raise KibanaNotFound(unknown_agent_message(agent_id))
+
+    def request_agent_diagnostics(self, *, agent_id, include_cpu_metrics=False):
+        agent = self._fake_agent(agent_id)
+        action_id = f"fake-diag-action-{next(self._ids)}"
+        self.fleet_diagnostics.setdefault(agent_id, []).append(FleetAgentDiagnostics(
+            id=f"{action_id}.{agent_id}", name="elastic-agent-diagnostics.zip",
+            status="READY" if agent.status == "online" else "IN_PROGRESS",
+            created_at="2026-10-25T00:00:00Z", action_id=action_id))
+        return FleetDiagnosticsRequest(action_id=action_id, agent_id=agent_id, agent_status=agent.status)
+
+    def list_agent_diagnostics(self, agent_id):
+        self._fake_agent(agent_id)
+        return list(self.fleet_diagnostics.get(agent_id, []))
+
+    def _fake_package(self, name):
+        for p in self.fleet_packages:
+            if p.name == name:
+                return p
+        raise KibanaNotFound(unknown_package_message(name))
+
+    def install_package(self, *, name, version=None):
+        pkg = self._fake_package(name)
+        if pkg.status == "installed":
+            if version is None or version == pkg.version:
+                return FleetPackageInstall(
+                    name=name, version=pkg.version, status="installed", already_installed=True)
+            raise KibanaRejected(installed_version_refusal(name, pkg.version, version))
+        installed = replace(pkg, status="installed", version=version or pkg.version)
+        self.fleet_packages = [installed if p.name == name else p for p in self.fleet_packages]
+        self.fleet_installed_packages.append(replace(installed, type=None))
+        return FleetPackageInstall(
+            name=name, version=installed.version, status="installed", already_installed=False)
+
+    def uninstall_package(self, *, name, force=False):
+        pkg = self._fake_package(name)
+        if pkg.status != "installed":
+            raise KibanaNotFound(not_installed_message(name))
+        if self.fleet_settings.space_awareness_migration_status:
+            raise KibanaRejected(space_awareness_refusal(name))
+        if name == AGENT_MONITORING_PACKAGE:
+            monitoring = [ap.id for ap in self.fleet_agent_policies if ap.monitoring_enabled]
+            if monitoring:
+                raise KibanaRejected(monitoring_refusal(name, monitoring))
+        pps = [pp for pp in self.fleet_package_policies if pp.package_name == name]
+        listed, guarded = [], []
+        for pp in pps:
+            if pp.agent_policy_id is None:  # as the adapter: no agent policy to read
+                unattached = unattached_guard_reason(name)
+                if unattached is not None:
+                    guarded.append((pp.id, "", unattached))
+                listed.append((pp.id, pp.name, "", 0))
+                continue
+            ap = self.get_agent_policy(pp.agent_policy_id)
+            why = guard_reason(name, is_managed=ap.is_managed, is_default_fleet_server=(
+                ap.id in self.fleet_default_fleet_server_policy_ids))
+            if why is not None:
+                guarded.append((pp.id, ap.id, why))
+            listed.append((pp.id, pp.name, ap.id, ap.agent_count))
+        if guarded:
+            raise KibanaRejected(guarded_policy_refusal(name, guarded))
+        if pps and not force:
+            raise KibanaRejected(package_policies_refusal(name, listed))
+        self.fleet_package_policies = [pp for pp in self.fleet_package_policies if pp not in pps]
+        self.fleet_packages = [
+            replace(p, status="not_installed") if p.name == name else p for p in self.fleet_packages]
+        self.fleet_installed_packages = [p for p in self.fleet_installed_packages if p.name != name]
+        self.deleted.append(("package", name))
+        return FleetPackageUninstall(name=name, version=pkg.version, deleted_package_policies=tuple(pps))
 
     def _get(self, dashboard_id):
         if dashboard_id not in self.dashboards:

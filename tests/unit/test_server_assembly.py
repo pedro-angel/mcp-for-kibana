@@ -11,13 +11,13 @@ from tests.fakes import FakeGateway
 DASHBOARDS_TOOLS = {
     "search_dashboards", "get_dashboard", "search_visualizations", "get_visualization",
     "create_dashboard", "create_visualization", "update_visualization", "add_library_panel",
-    "add_panel", "update_panel",
+    "add_panel", "update_panel", "update_dashboard",
     "add_esql_metric_panel", "add_esql_table_panel", "add_esql_xy_panel",
     "delete_dashboard", "delete_visualization", "delete_panel",
 }
 DASHBOARDS_WRITE = {
     "create_dashboard", "create_visualization", "update_visualization", "add_library_panel",
-    "add_panel", "update_panel",
+    "add_panel", "update_panel", "update_dashboard",
     "add_esql_metric_panel", "add_esql_table_panel", "add_esql_xy_panel",
 }
 DASHBOARDS_DESTRUCTIVE = {"delete_dashboard", "delete_visualization", "delete_panel"}
@@ -27,12 +27,20 @@ DATA_MGMT_TOOLS = {
     "list_data_views", "describe_data_view", "resolve_short_url", "export_saved_objects",
     "create_data_view", "update_data_view", "create_short_url", "import_saved_objects",
     "delete_data_view", "delete_short_url", "overwrite_saved_objects",
+    "find_saved_objects", "get_saved_object", "get_default_data_view",
+    "upsert_runtime_field", "set_default_data_view", "delete_runtime_field",
 }
-DATA_MGMT_READ = {"list_data_views", "describe_data_view", "resolve_short_url", "export_saved_objects"}
+DATA_MGMT_READ = {
+    "list_data_views", "describe_data_view", "resolve_short_url", "export_saved_objects",
+    "find_saved_objects", "get_saved_object", "get_default_data_view",
+}
 DATA_MGMT_WRITE = {
     "create_data_view", "update_data_view", "create_short_url", "import_saved_objects",
+    "upsert_runtime_field", "set_default_data_view",
 }
-DATA_MGMT_DESTRUCTIVE = {"delete_data_view", "delete_short_url", "overwrite_saved_objects"}
+DATA_MGMT_DESTRUCTIVE = {
+    "delete_data_view", "delete_short_url", "overwrite_saved_objects", "delete_runtime_field",
+}
 
 PLATFORM_HEALTH_TOOLS = {"get_kibana_status", "get_kibana_stats", "get_task_manager_health"}
 
@@ -67,6 +75,8 @@ ALERTING_TOOLS = {
     "list_alert_rules", "get_alert_rule", "get_alerting_health", "list_connectors",
     "list_rule_types", "get_connector", "create_alert_rule", "update_alert_rule",
     "enable_alert_rule", "disable_alert_rule", "create_connector", "update_connector",
+    "mute_alert_rule", "unmute_alert_rule", "mute_alert", "unmute_alert",
+    "snooze_alert_rule", "unsnooze_alert_rule", "update_alert_rule_api_key",
     "delete_alert_rule", "delete_connector", "execute_connector",
 }
 ALERTING_READ = {
@@ -107,33 +117,50 @@ async def test_platform_health_toolbox_boots_read_only():
     assert names == PLATFORM_HEALTH_TOOLS  # all read-tier, visible at default write tier
 
 
-OBSERVABILITY_TOOLS = {
+OBSERVABILITY_READ = {
     "list_synthetic_monitors", "get_synthetic_monitor", "list_synthetic_params",
     "list_synthetic_private_locations", "get_uptime_settings",
     "list_apm_agent_configs", "get_apm_agent_config", "list_apm_environments",
     "list_apm_sourcemaps", "search_apm_annotations",
 }
+OBSERVABILITY_WRITE = {
+    "create_synthetic_monitor", "update_synthetic_monitor", "test_synthetic_monitor",
+    "create_synthetic_param", "update_synthetic_param",
+    "create_synthetic_private_location", "update_synthetic_private_location",
+    "upsert_apm_agent_config",
+}
+OBSERVABILITY_DESTRUCTIVE = {
+    "delete_synthetic_monitor", "delete_synthetic_param", "delete_synthetic_private_location",
+    "delete_apm_agent_config",
+}
+OBSERVABILITY_TOOLS = OBSERVABILITY_READ | OBSERVABILITY_WRITE | OBSERVABILITY_DESTRUCTIVE
 
 
-async def test_observability_toolbox_boots_read_only():
-    names = await visible_tools(Settings(toolboxes=["observability"]))
-    assert names == OBSERVABILITY_TOOLS  # all read-tier, visible at default write tier
+async def test_observability_toolbox_boots_all_tiers():
+    names = await visible_tools(Settings(toolboxes=["observability"], tier=Tier.DESTRUCTIVE))
+    assert names == OBSERVABILITY_TOOLS
+    assert len(names) == 22
+    read_only = await visible_tools(Settings(toolboxes=["observability"], tier=Tier.READ))
+    assert read_only == OBSERVABILITY_READ
+    write = await visible_tools(Settings(toolboxes=["observability"]))
+    assert write == OBSERVABILITY_READ | OBSERVABILITY_WRITE  # the default tier
 
 
 SECURITY_DETECTIONS_READ = {
     "find_detection_rules", "get_detection_rule", "get_prepackaged_rules_status",
     "list_detection_rule_tags", "search_detection_alerts", "find_exception_lists",
     "get_exception_list", "find_exception_items", "find_value_lists",
-    "find_value_list_items", "find_timelines",
+    "find_value_list_items", "find_timelines", "export_exception_list",
 }
 SECURITY_DETECTIONS_WRITE = {
     "create_detection_rule", "create_exception_list", "create_exception_item",
     "update_detection_rule", "replace_detection_rule", "enable_detection_rule",
     "disable_detection_rule", "create_value_list", "create_value_list_item",
+    "update_exception_list", "duplicate_exception_list", "import_exception_list",
 }
 SECURITY_DETECTIONS_DESTRUCTIVE = {
     "delete_detection_rule", "delete_exception_list", "delete_exception_item",
-    "delete_value_list", "delete_value_list_item",
+    "delete_value_list", "delete_value_list_item", "overwrite_exception_list",
 }
 SECURITY_DETECTIONS_TOOLS = (
     SECURITY_DETECTIONS_READ | SECURITY_DETECTIONS_WRITE | SECURITY_DETECTIONS_DESTRUCTIVE
@@ -161,8 +188,14 @@ async def test_security_detections_destructive_tier_shows_everything():
 PLATFORM_ADMIN_READ = {
     "list_spaces", "get_space", "list_roles", "get_role", "get_upgrade_status",
 }
-PLATFORM_ADMIN_WRITE = {"create_space", "update_space", "create_or_update_role"}
-PLATFORM_ADMIN_DESTRUCTIVE = {"delete_space", "delete_role"}
+PLATFORM_ADMIN_WRITE = {
+    "create_space", "update_space", "create_or_update_role",
+    "copy_saved_objects_to_spaces", "share_saved_objects_to_spaces",
+}
+PLATFORM_ADMIN_DESTRUCTIVE = {
+    "delete_space", "delete_role",
+    "overwrite_saved_objects_in_spaces", "unshare_saved_objects_from_spaces",
+}
 
 
 async def test_platform_admin_tier_boundary_acceptance():
@@ -206,14 +239,16 @@ FLEET_READ = {
     "list_enrollment_keys", "get_enrollment_key", "list_uninstall_tokens",
     "list_packages", "list_installed_packages", "get_package", "list_package_categories",
     "list_outputs", "get_output_health", "list_fleet_server_hosts",
+    "list_agent_tags", "list_agent_diagnostics",
 }
 FLEET_WRITE = {
     "create_agent_policy", "update_agent_policy",
     "create_package_policy", "update_package_policy",
     "create_output", "update_output",
+    "install_package", "update_agent_tags", "request_agent_diagnostics",
 }
 FLEET_DESTRUCTIVE = {
-    "delete_agent_policy", "delete_package_policy", "delete_output",
+    "delete_agent_policy", "delete_package_policy", "delete_output", "uninstall_package",
     "reassign_agent", "upgrade_agent", "unenroll_agent",
     "bulk_reassign", "bulk_upgrade", "bulk_unenroll",
 }
@@ -224,12 +259,12 @@ async def test_fleet_toolbox_boots_all_tiers():
     # destructive tools (which command live agents or delete objects) must be
     # HIDDEN (not merely registered) below the destructive tier.
     reads = await visible_tools(Settings(toolboxes=["fleet"], tier=Tier.READ))
-    assert len(reads) == 20 and reads == FLEET_READ and not (reads & FLEET_DESTRUCTIVE)
+    assert len(reads) == 22 and reads == FLEET_READ and not (reads & FLEET_DESTRUCTIVE)
     writes = await visible_tools(Settings(toolboxes=["fleet"], tier=Tier.WRITE))
     assert FLEET_WRITE <= writes and not (writes & FLEET_DESTRUCTIVE)  # destructive HIDDEN
     assert writes == FLEET_READ | FLEET_WRITE
     dest = await visible_tools(Settings(toolboxes=["fleet"], tier=Tier.DESTRUCTIVE))
-    assert len(dest) == 35 and FLEET_DESTRUCTIVE <= dest
+    assert len(dest) == 41 and FLEET_DESTRUCTIVE <= dest
     assert dest == FLEET_READ | FLEET_WRITE | FLEET_DESTRUCTIVE
 
 
@@ -249,10 +284,11 @@ async def test_platform_health_combines_with_dashboards():
     assert names == DASHBOARDS_TOOLS | PLATFORM_HEALTH_TOOLS
 
 
-async def test_read_only_explorer_profile_is_eleven_read_tools():
+async def test_read_only_explorer_profile_is_fourteen_read_tools():
     # read-only-explorer: dashboards + platform-health + data-management at read tier
-    # (data-management read grew by export_saved_objects with #37; dashboards read by
-    # search_visualizations + get_visualization, D37).
+    # (data-management read grew by export_saved_objects with #37, and by
+    # find_saved_objects, get_saved_object and get_default_data_view with D48;
+    # dashboards read by search_visualizations + get_visualization, D37).
     names = await visible_tools(
         Settings(
             toolboxes=["dashboards", "platform-health", "data-management"], tier=Tier.READ
@@ -262,7 +298,7 @@ async def test_read_only_explorer_profile_is_eleven_read_tools():
         "search_dashboards", "get_dashboard", "search_visualizations", "get_visualization",
     }
     assert names == dashboards_read | PLATFORM_HEALTH_TOOLS | DATA_MGMT_READ
-    assert len(names) == 11
+    assert len(names) == 14
 
 
 def _probe_toolbox(box_name, retval):
@@ -355,6 +391,27 @@ def test_factory_neither_pinned_builds_scoped_gateway(monkeypatch):
     monkeypatch.setattr(gateway_mod.kibana, "Kibana", lambda url, api_key: _Stub())
     gw = build_gateway_factory(_settings())("sales")
     assert gw._space == "sales"
+
+
+@pytest.mark.parametrize(("kibana_url", "public_url", "fixed"), [
+    ("http://kb:5601", None, None),
+    ("http://kb:5601/s/team-a", None, "KIBANA_URL pins"),
+    ("http://kb:5601", "https://pub.example.com/s/team-a", "KIBANA_PUBLIC_URL"),
+    ("http://kb:5601", "https://pub.example.com", None),
+])
+def test_factory_tells_the_gateway_when_source_space_is_refused(
+    monkeypatch, kibana_url, public_url, fixed
+):
+    # Unscoped gateways only: the copy and share guidance offers source_space
+    # exactly where the factory would accept it.
+    import kibana_mcp.adapters.kibana.gateway as gateway_mod
+    monkeypatch.setattr(gateway_mod.kibana, "Kibana", lambda url, api_key: object())
+    gw = build_gateway_factory(
+        _settings(kibana_url=kibana_url, public_kibana_url=public_url))()
+    if fixed is None:
+        assert gw._source_fixed is None
+    else:
+        assert fixed in gw._source_fixed
 
 
 def test_with_space_echo_helper():

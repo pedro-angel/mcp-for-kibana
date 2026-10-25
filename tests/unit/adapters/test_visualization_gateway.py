@@ -161,3 +161,32 @@ def test_get_dashboard_names_a_library_panel_by_its_visualization():
         (2, "custom", "v1"),  # a per-panel title override wins
         (3, "", "gone"),  # the item was deleted: Kibana keeps the ref
     ]
+
+
+# --- update_dashboard's tag check (B8): tags are `tag` saved objects read with
+# the bulk get; a miss is a per-object 404 inside the 200 (live 9.5.4 shape).
+
+
+def test_get_tag_names_keeps_only_the_tags_that_exist():
+    seen = []
+
+    def bulk_get(objects):
+        seen.append(objects)
+        return FakeResponse({"saved_objects": [
+            {"id": "t1", "type": "tag", "attributes": {"name": "prod", "color": "#f00"}},
+            {"id": "nope", "type": "tag", "error": {
+                "statusCode": 404, "error": "Not Found",
+                "message": "Saved object [tag/nope] not found"}},
+        ]})
+
+    gw = KibanaPyGateway(make_fake_client(saved_objects=SimpleNamespace(bulk_get=bulk_get)))
+    assert gw.get_tag_names(["t1", "nope"]) == {"t1": "prod"}
+    assert seen == [[{"type": "tag", "id": "t1"}, {"type": "tag", "id": "nope"}]]
+
+
+def test_get_tag_names_makes_no_call_for_no_ids():
+    def bulk_get(objects):
+        raise AssertionError("no call expected")
+
+    gw = KibanaPyGateway(make_fake_client(saved_objects=SimpleNamespace(bulk_get=bulk_get)))
+    assert gw.get_tag_names([]) == {}

@@ -38,14 +38,14 @@ edit one, edit both.
 it" (`read` ⊂ `write` ⊂ `destructive`):
 
 Every tool in every toolbox is tagged with its tier (across all 10 toolboxes:
-68 read, 45 write, 30 destructive):
+74 read, 71 write, 39 destructive):
 
-- `read` — read-only tools (68 of 143), e.g. `list_data_views`,
+- `read` — read-only tools (74 of 184), e.g. `list_data_views`,
   `describe_data_view`, `search_dashboards`, `get_dashboard`.
-- `write` (**default**) — read tools plus creates/updates (45), e.g.
+- `write` (**default**) — read tools plus creates/updates (71), e.g.
   `create_dashboard`, `create_visualization`, `add_panel`, `update_panel`.
   Destructive tools do not exist as far as the model can tell.
-- `destructive` — everything (30 more), including `delete_dashboard`,
+- `destructive` — everything (39 more), including `delete_dashboard`,
   `delete_panel`, and the other irreversible actions.
 
 At server assembly, tools above the configured tier are not merely
@@ -157,8 +157,8 @@ against them and each list against its profile.
 
 | List | Tools | Meant for tier |
 |---|---|---|
-| `read-only-explorer` | `list_data_views`, `describe_data_view`, `resolve_short_url`, `export_saved_objects`, `search_dashboards`, `get_dashboard`, `search_visualizations`, `get_visualization`, `get_kibana_status`, `get_kibana_stats`, `get_task_manager_health` | `read` (11 tools) |
-| `dashboards-analyst` | `list_data_views`, `describe_data_view`, `create_data_view`, `update_data_view`, `resolve_short_url`, `create_short_url`, `export_saved_objects`, `import_saved_objects`, `search_dashboards`, `get_dashboard`, `create_dashboard`, `add_panel`, `update_panel`, `add_esql_metric_panel`, `add_esql_table_panel`, `add_esql_xy_panel`, `search_visualizations`, `get_visualization`, `create_visualization`, `update_visualization`, `add_library_panel` | `write` (21 tools — the default selection) |
+| `read-only-explorer` | `list_data_views`, `describe_data_view`, `resolve_short_url`, `export_saved_objects`, `find_saved_objects`, `get_saved_object`, `get_default_data_view`, `search_dashboards`, `get_dashboard`, `search_visualizations`, `get_visualization`, `get_kibana_status`, `get_kibana_stats`, `get_task_manager_health` | `read` (14 tools) |
+| `dashboards-analyst` | `list_data_views`, `describe_data_view`, `create_data_view`, `update_data_view`, `resolve_short_url`, `create_short_url`, `export_saved_objects`, `import_saved_objects`, `find_saved_objects`, `get_saved_object`, `get_default_data_view`, `upsert_runtime_field`, `set_default_data_view`, `search_dashboards`, `get_dashboard`, `create_dashboard`, `add_panel`, `update_panel`, `update_dashboard`, `add_esql_metric_panel`, `add_esql_table_panel`, `add_esql_xy_panel`, `search_visualizations`, `get_visualization`, `create_visualization`, `update_visualization`, `add_library_panel` | `write` (27 tools — the default selection) |
 
 The `fleet-admin` persona has no list: it is the whole `fleet` toolbox at
 `destructive`, which `KIBANA_MCP_TOOLBOXES=fleet` already says exactly.
@@ -385,6 +385,16 @@ so a local run needs only the enable flag and the token. Point
 `KIBANA_MCP_OTEL_ENDPOINT` at any OTLP/HTTP collector for a real deployment.
 Standard `OTEL_*` env vars (e.g. `OTEL_RESOURCE_ATTRIBUTES`) are also honored by
 the SDK. The `.env.otel.example` template documents the full set.
+
+Spans leave the process 500 ms after they end (the SDK's own default is 5 s;
+set `OTEL_BSP_SCHEDULE_DELAY` to choose another delay), and the queue is
+flushed when the server exits, on SIGTERM too. A stdio client can stop its
+server within half a second of the last call (Claude Code sends SIGINT, then
+SIGTERM, then SIGKILL), and the 5 s delay lost the last spans of a session
+(D44). The SIGTERM flush waits at most 2 s, so an unreachable collector delays
+the exit by that much rather than by the exporter's 10 s timeout, and a second
+SIGTERM ends the process at once. The HTTP transport exits through the same
+flush: uvicorn re-raises the SIGTERM it caught after its graceful shutdown.
 
 A stdio server has no request headers to carry trace context, and Claude Code
 puts none in the MCP request `_meta`; its child processes inherit only a

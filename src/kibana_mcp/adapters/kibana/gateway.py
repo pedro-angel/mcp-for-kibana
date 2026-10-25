@@ -4,14 +4,16 @@ import kibana (machine-enforced)."""
 import contextlib
 import functools
 import inspect
+import json
 import re
 import urllib.parse
 from collections.abc import Callable, Iterator
+from datetime import UTC, datetime
 from types import TracebackType
 from typing import Any
 
 import kibana
-from kibana import SpaceScopedKibana
+from kibana import SpacesClient, SpaceScopedKibana
 from kibana.exceptions import (
     ApiError,
     AuthenticationException,
@@ -46,24 +48,36 @@ from kibana_mcp.core.models import (
     Case,
     Connector,
     ConnectorDetail,
+    CopiedObject,
+    CopyFailure,
     DashboardDetail,
     DashboardSummary,
     DataViewDetail,
     DataViewSummary,
+    DefaultDataView,
+    DefaultDataViewChange,
     DetectionAlert,
     DetectionRule,
     EmailDefaults,
     ExceptionItem,
     ExceptionList,
+    ExceptionListChange,
+    ExceptionListImportResult,
     FleetAgent,
+    FleetAgentDiagnostics,
     FleetAgentPolicy,
     FleetAgentStatus,
+    FleetAgentTagChange,
+    FleetAgentTagsResult,
+    FleetDiagnosticsRequest,
     FleetEnrollmentKey,
     FleetOutput,
     FleetOutputHealth,
     FleetPackage,
     FleetPackageCategory,
+    FleetPackageInstall,
     FleetPackagePolicy,
+    FleetPackageUninstall,
     FleetPermissions,
     FleetServerHost,
     FleetSettings,
@@ -71,15 +85,24 @@ from kibana_mcp.core.models import (
     ImportedObject,
     KibanaStats,
     KibanaStatus,
+    ObjectSpaces,
     PanelSummary,
     PrepackagedRulesStatus,
     Role,
+    RuleSnooze,
     RoleIndexPrivilege,
     RoleKibanaPrivilege,
+    RuntimeField,
+    RuntimeFieldUpsert,
+    SavedObjectDetail,
     SavedObjectImportResult,
+    SavedObjectPage,
+    SavedObjectSummary,
     ServiceHealth,
+    SharingChange,
     ShortUrl,
     Space,
+    SpaceCopyResult,
     Stream,
     StreamIngest,
     StreamSummary,
@@ -96,6 +119,37 @@ from kibana_mcp.core.models import (
     VisualizationDetail,
     VisualizationSummary,
 )
+from kibana_mcp.core.exception_lists import import_error_text
+from kibana_mcp.core.fleet_ops import (
+    AGENT_MONITORING_PACKAGE,
+    guard_reason,
+    guarded_policy_refusal,
+    installed_version_refusal,
+    missing_agents_message,
+    monitoring_refusal,
+    not_installed_message,
+    outdated_version_message,
+    package_policies_refusal,
+    space_awareness_refusal,
+    tags_not_applied,
+    unattached_guard_reason,
+    unknown_agent_message,
+    unknown_package_message,
+    unknown_version_message,
+)
+from kibana_mcp.core.saved_objects import READABLE_TYPES, unreadable_type_message
+from kibana_mcp.core.space_sharing import (
+    ALL_SPACES,
+    SPACE_ERROR,
+    copy_fix,
+    missing_spaces_message,
+    objects_not_found_message,
+    self_target_message,
+    sharing_refusal,
+    source_fixed_reason,
+    space_failure_fix,
+    unshare_refusal,
+)
 from kibana_mcp.core.visualizations.translate import describe_lens_config, lens_chart_type
 from kibana_mcp.ports.gateway import KibanaGateway
 
@@ -108,8 +162,15 @@ def is_space_pinned(url: str) -> bool:
     '/s/<space-id-grammar>'. Purely syntactic: a reverse-proxy base path
     ending in s/<id-shaped-segment> false-positives, and a proxy that
     rewrites to /s/<id> is invisible — both documented limitations."""
+    return pinned_space(url) is not None
+
+
+def pinned_space(url: str) -> str | None:
+    """The space id a '/s/<id>' base path pins, else None (same limits as
+    is_space_pinned)."""
     path = urllib.parse.urlsplit(url).path.rstrip("/")
-    return _PINNED_PATH_RE.search(path) is not None
+    match = _PINNED_PATH_RE.search(path)
+    return match.group(0).rsplit("/", 1)[1] if match else None
 
 
 _SPACE_GUIDANCE = (
@@ -159,6 +220,15 @@ _ID_SOURCES = {
     "visualization": (
         "visualization_id", "create_visualization or search_visualizations", "title"
     ),
+    "synthetic monitor": (
+        "monitor_id", "create_synthetic_monitor or list_synthetic_monitors", "name"
+    ),
+    "synthetic param": ("param_id", "create_synthetic_param or list_synthetic_params", "key"),
+    "private location": (
+        "location_id",
+        "create_synthetic_private_location or list_synthetic_private_locations",
+        "label",
+    ),
 }
 
 # How many date fields a time-field rejection lists before eliding the rest.
@@ -184,7 +254,7 @@ def _known_id(kind: str, value: str) -> Iterator[None]:
     """Reject an empty id before kibana-py does (its bare ValueError is
     unmapped), and turn a 404 on the id into guidance naming where ids come
     from. A missing *space* still surfaces as the space (fail-closed)."""
-    param, sources, label = _ID_SOURCES[kind]
+    param, sources, _label = _ID_SOURCES[kind]
     if not value.strip():
         raise KibanaRejected(f"{param} is empty — pass the id that {sources} returns")
     try:
@@ -192,11 +262,18 @@ def _known_id(kind: str, value: str) -> Iterator[None]:
     except SpaceNotFoundError:
         raise
     except NotFoundError as e:
-        lookup = sources.split(" or ")[1]
-        raise KibanaNotFound(
-            f"{kind} '{value}' not found — {param} is the id that {sources} returns, "
-            f"not the {kind.split()[-1]}'s {label}; call {lookup} to find it"
-        ) from e
+        raise _unknown_id(kind, value) from e
+
+
+def _unknown_id(kind: str, value: str) -> KibanaNotFound:
+    """D17's not-found text for `kind`: also raised where Kibana reports a miss
+    without a 404 (a Synthetics delete answers 200 with `deleted: false`)."""
+    param, sources, label = _ID_SOURCES[kind]
+    lookup = sources.split(" or ")[1]
+    return KibanaNotFound(
+        f"{kind} '{value}' not found — {param} is the id that {sources} returns, "
+        f"not the {kind.split()[-1]}'s {label}; call {lookup} to find it"
+    )
 
 
 def _scoped(gw: "KibanaPyGateway", e: KibanaNotFound) -> KibanaNotFound:
@@ -310,6 +387,82 @@ def _with_state(e: BaseException, space: str | None, state: str) -> BaseExceptio
     return type(d)(f"{d.message} — {state}")
 
 
+def _to_runtime_field(name: str, raw: dict[str, Any]) -> RuntimeField:
+    sub = raw.get("fields")
+    return RuntimeField(
+        name=name,
+        type=str(raw.get("type", "")),
+        script=(raw.get("script") or {}).get("source"),
+        fields=(
+            {k: str((v or {}).get("type", "")) for k, v in sub.items()}
+            if isinstance(sub, dict) else None
+        ),
+    )
+
+
+def _composite_parent(name: str, stored: dict[str, Any]) -> str | None:
+    """The composite runtime field `name` is a subfield of ('comp' for
+    'comp.a'), or None. Kibana lists a composite's subfields among the view's
+    fields under '<parent>.<sub>' (probed on 9.5.4)."""
+    for parent, raw in stored.items():
+        subfields = (raw or {}).get("fields") or {}
+        if (raw or {}).get("type") == "composite" and name.startswith(f"{parent}."):
+            if name[len(parent) + 1:] in subfields:
+                return parent
+    return None
+
+
+# How many runtime-field names a not-found error lists before eliding the rest.
+_RUNTIME_NAMES_SHOWN = 20
+
+
+def _runtime_names(stored: dict[str, Any]) -> str:
+    names = sorted(stored)
+    if not names:
+        return "it has no runtime fields"
+    shown = ", ".join(names[:_RUNTIME_NAMES_SHOWN])
+    return f"its runtime fields: {shown}" + (", …" if len(names) > _RUNTIME_NAMES_SHOWN else "")
+
+
+def _to_saved_object_summary(body: dict[str, Any]) -> SavedObjectSummary:
+    attributes = body.get("attributes") or {}
+    title, name = attributes.get("title"), attributes.get("name")
+    return SavedObjectSummary(
+        type=body["type"],
+        id=body["id"],
+        title=title if isinstance(title, str) else None,
+        name=name if isinstance(name, str) else None,
+        updated_at=body.get("updated_at"),
+        namespaces=tuple(body.get("namespaces") or ()),
+        managed=bool(body.get("managed", False)),
+    )
+
+
+def _to_saved_object_detail(body: dict[str, Any]) -> SavedObjectDetail:
+    # A dashboard holds one reference per panel layer (the flights sample: 27
+    # references to 4 objects), so the distinct objects are what is returned.
+    seen: dict[tuple[str, str], None] = {}
+    for ref in body.get("references") or ():
+        seen.setdefault((str(ref.get("type", "")), str(ref.get("id", ""))), None)
+    return SavedObjectDetail(
+        type=body["type"],
+        id=body["id"],
+        namespaces=tuple(body.get("namespaces") or ()),
+        created_at=body.get("created_at"),
+        updated_at=body.get("updated_at"),
+        managed=bool(body.get("managed", False)),
+        attributes=dict(body.get("attributes") or {}),
+        references=tuple({"type": t, "id": i} for t, i in seen),
+    )
+
+
+def _saved_object_miss(type: str, id: str) -> KibanaNotFound:
+    return KibanaNotFound(
+        f"saved object '{type}/{id}' not found — check the type and id with "
+        f"find_saved_objects(types=['{type}'])"
+    )
+
+
 def _to_short_url(body: dict[str, Any]) -> ShortUrl:
     return ShortUrl(
         id=body["id"],
@@ -377,7 +530,68 @@ def _to_alert_rule_detail(body: dict[str, Any]) -> AlertRuleDetail:
         tags=s.tags,
         params=dict(body.get("params") or {}),
         actions=tuple(_to_rule_action(a) for a in body.get("actions") or []),
+        # mute_all / muted_alert_ids are on every GET (probed on 9.5.4); the
+        # rule's snoozes are not, on any public route, so none is returned.
+        muted=bool(body.get("mute_all", False)),
+        muted_alert_ids=tuple(str(a) for a in body.get("muted_alert_ids") or []),
     )
+
+
+def _kibana_instant(value: datetime) -> str:
+    """An aware datetime in the only form the snooze API accepts:
+    YYYY-MM-DDTHH:mm:ss.sssZ (probed on 9.5.4: '...:00Z' and '+02:00' are 400s)."""
+    utc = value.astimezone(UTC)
+    return utc.strftime("%Y-%m-%dT%H:%M:%S.") + f"{utc.microsecond // 1000:03d}Z"
+
+
+def _to_rule_snooze(rule_id: str, body: dict[str, Any]) -> RuleSnooze:
+    schedule = body.get("schedule") or {}
+    custom = schedule.get("custom") or {}
+    recurring = custom.get("recurring")
+    return RuleSnooze(
+        rule_id=rule_id,
+        schedule_id=str(schedule.get("id", "")),
+        duration=str(custom.get("duration", "")),
+        start=str(custom.get("start", "")),
+        timezone=str(custom.get("timezone", "")),
+        recurring=dict(recurring) if isinstance(recurring, dict) else None,
+    )
+
+
+# Kibana's 404 bodies for a part of a rule that is missing while the rule
+# itself exists (probed on 9.5.4). Any other 404 on these routes — "Saved
+# object [alert/<id>] not found" — is the rule, so it gets the rule guidance.
+_MISSING_ALERT_MARK = "Alert instance with id"
+_MISSING_SNOOZE_MARKS = ("has no snooze schedule",)
+_SNOOZE_LIMIT_MARK = "cannot have more than 5 snooze schedules"
+_ALERT_ID_FIX = (
+    "pass the id of an alert the rule has raised (get_alert_rule lists the muted ones "
+    "in muted_alert_ids)"
+)
+
+
+def _alert_not_found(rule_id: str, alert_id: str) -> KibanaNotFound:
+    return KibanaNotFound(
+        f"alert '{alert_id}' not found on alert rule '{rule_id}' — alert_id is the id of an "
+        "alert the rule has raised (for a rule grouped by a field, the group's value, e.g. "
+        "a host name; for an ungrouped .es-query rule, 'query matched'), not the rule's "
+        "name; an alert can be muted only once the rule has raised it — to silence the "
+        "whole rule use mute_alert_rule"
+    )
+
+
+def _snooze_not_found(rule_id: str, schedule_id: str) -> KibanaNotFound:
+    return KibanaNotFound(
+        f"snooze schedule '{schedule_id}' not found on alert rule '{rule_id}' — schedule_id "
+        "is the schedule_id that snooze_alert_rule returned (Kibana's public API does not "
+        "list a rule's snoozes); it may already have been removed"
+    )
+
+
+def _blank(param: str, value: str, fix: str) -> None:
+    """Refuse an empty id before kibana-py does (its bare ValueError is unmapped)."""
+    if not value.strip():
+        raise KibanaRejected(f"{param} is empty — {fix}")
 
 
 def _to_connector(body: dict[str, Any]) -> Connector:
@@ -463,6 +677,60 @@ def _to_private_location(body: dict[str, Any]) -> SyntheticPrivateLocation:
     )
 
 
+def _given(**kwargs: Any) -> dict[str, Any]:
+    """The keyword arguments that were given: None means "leave it out"."""
+    return {k: v for k, v in kwargs.items() if v is not None}
+
+
+def _monitor_schedule(schedule: str) -> dict[str, str]:
+    # "10m" / "30s" (the read shape, validated by the tool) -> Kibana's
+    # {"number": "10", "unit": "m"}; Kibana stores the number as a string and
+    # compares it as text, so "05" is a 400 (9.5.4): send the canonical digits.
+    return {"number": str(int(schedule[:-1])), "unit": schedule[-1]}
+
+
+def _deleted(body: Any, kind: str, value: str) -> None:
+    """A Synthetics monitor/param DELETE answers 200 with a per-id result list,
+    also for an id that matches nothing: `deleted: false` (a monitor adds
+    "Monitor id <id> not found!", a param no text; probed on 9.5.4)."""
+    results = [r for r in (body if isinstance(body, list) else []) if isinstance(r, dict)]
+    if any(r.get("deleted") is True for r in results):
+        return
+    error = next((str(r["error"]) for r in results if r.get("error")), "")
+    if error and "not found" not in error.lower():
+        raise KibanaRejected(f"Kibana did not delete the {kind}", detail=error)
+    raise _unknown_id(kind, value)
+
+
+@contextlib.contextmanager
+def _secret_withheld(secret: str | None) -> Iterator[None]:
+    """A Synthetics param's value is a secret: a payload rejection never carries
+    it back to the model, whatever Kibana's text quotes."""
+    try:
+        yield
+    except (BadRequestError, ConflictError) as e:
+        d = _translated(e, None)
+        if not isinstance(d, KibanaRejected):
+            raise
+        if secret:
+            d = KibanaRejected(
+                d.message.replace(secret, "[redacted]"),
+                detail=d.detail.replace(secret, "[redacted]"),
+            )
+        raise d from e
+
+
+_AGENT_POLICY_HINT = (
+    "agent_policy_id is the id of a Fleet agent policy that no other private location uses: "
+    "list_agent_policies shows them, create_agent_policy creates one (fleet toolbox)"
+)
+_LOCATION_IN_USE_HINT = (
+    "move those monitors to another private location with update_synthetic_monitor "
+    "(private_locations) or delete them with delete_synthetic_monitor first; "
+    "list_synthetic_monitors shows each monitor's locations"
+)
+
+
 def _to_uptime_settings(body: dict[str, Any]) -> UptimeSettings:
     email = body.get("defaultEmail")
     email = email if isinstance(email, dict) else {}
@@ -488,7 +756,34 @@ def _to_apm_agent_config(body: dict[str, Any]) -> ApmAgentConfig:
         settings=body.get("settings") or {},
         applied_by_agent=bool(body.get("applied_by_agent", False)),
         etag=body.get("etag", ""),
+        agent_name=body.get("agent_name") or None,
     )
+
+
+def _apm_scope(service_name: str | None, environment: str | None) -> str:
+    service = f"service '{service_name}'" if service_name is not None else "all services"
+    env = f"environment '{environment}'" if environment is not None else "all environments"
+    return f"{service}, {env}"
+
+
+@contextlib.contextmanager
+def _known_apm_config(service_name: str | None, environment: str | None) -> Iterator[None]:
+    """Kibana's 404 on an APM agent config (view, delete) says only "Not Found"
+    (probed on 9.5.4): name the exact-match rule and where configs are listed."""
+    try:
+        yield
+    except NotFoundError as e:
+        raise KibanaNotFound(
+            f"no APM agent configuration for {_apm_scope(service_name, environment)} — "
+            "service_name and environment must match a configuration exactly (an omitted one "
+            "means all); call list_apm_agent_configs to see them"
+        ) from e
+
+
+_APM_SETTINGS_HINT = (
+    "each value is a string in the form the setting takes (a number such as '0.5', 'true' or "
+    "'false', a duration such as '10s', or one of the setting's words)"
+)
 
 
 def _to_apm_environment(body: dict[str, Any]) -> ApmEnvironment:
@@ -552,6 +847,42 @@ def _to_exception_list(body: dict[str, Any]) -> ExceptionList:
         namespace_type=body.get("namespace_type", ""),
         tags=tuple(body.get("tags") or []),
         os_types=tuple(body.get("os_types") or []),
+        description=body.get("description") or "",
+    )
+
+
+def _unknown_exception_list(
+    id: str | None, list_id: str | None, namespace_type: str, *, list_id_only: bool = False
+) -> KibanaNotFound:
+    """D17's not-found text for an exception list: where the ids come from,
+    and the namespace a list is found in (a list made with
+    namespace_type='agnostic' answers 404 to a 'single' read, probed). A tool
+    that takes only `list_id` says which field that is: the list's uuid `id`
+    is the likeliest wrong value."""
+    which = f"list_id '{list_id}'" if list_id else f"id '{id}'"
+    other = "agnostic" if namespace_type == "single" else "single"
+    where = (
+        "pass the list's `list_id` field from find_exception_lists or "
+        "create_exception_list, not its `id` (a uuid) or its name"
+        if list_id_only else
+        "`id` and `list_id` are the values find_exception_lists or create_exception_list "
+        "return, not the list's name"
+    )
+    return KibanaNotFound(
+        f"exception list {which} not found (namespace_type '{namespace_type}') — {where}; "
+        f"a list created with namespace_type='{other}' is found "
+        f"only with namespace_type='{other}'"
+    )
+
+
+def _to_exception_import(body: dict[str, Any]) -> ExceptionListImportResult:
+    return ExceptionListImportResult(
+        success=bool(body.get("success", False)),
+        list_count=int(body.get("success_count_exception_lists", 0) or 0),
+        item_count=int(body.get("success_count_exception_list_items", 0) or 0),
+        errors=tuple(
+            import_error_text(e) for e in (body.get("errors") or []) if isinstance(e, dict)
+        ),
     )
 
 
@@ -651,6 +982,103 @@ def _to_space(body: dict[str, Any]) -> Space:
         disabled_features=tuple(body.get("disabledFeatures") or []),
         reserved=bool(body.get("_reserved", False)),
     )
+
+
+def _ref_pair(raw: dict[str, Any]) -> dict[str, str]:
+    return {"type": str(raw.get("type", "")), "id": str(raw.get("id", ""))}
+
+
+def _to_copy_failure(raw: dict[str, Any], overwrite: bool) -> CopyFailure:
+    error = raw.get("error") or {}
+    kind = str(error.get("type") or "unknown")
+    return CopyFailure(
+        type=str(raw.get("type", "")), id=str(raw.get("id", "")),
+        title=(raw.get("meta") or {}).get("title"), error=kind,
+        fix=copy_fix(kind, overwrite),
+        missing_references=tuple(_ref_pair(r) for r in error.get("references") or ()),
+        destinations=tuple(
+            {"id": str(d.get("id", "")), "title": str(d.get("title", ""))}
+            for d in error.get("destinations") or ()
+        ),
+    )
+
+
+def _to_space_copy_result(
+    space: str, raw: dict[str, Any], objects: list[dict[str, str]], overwrite: bool
+) -> SpaceCopyResult:
+    """One target space's entry of the `_copy_saved_objects` map. A requested
+    object in neither list is already in the space (overwriting an object
+    shared to it answers successCount 0 and nothing else, probed)."""
+    copied = tuple(
+        CopiedObject(
+            type=str(r.get("type", "")), id=str(r.get("id", "")),
+            title=(r.get("meta") or {}).get("title"),
+            # Kibana omits destinationId when the copy keeps the source id.
+            destination_id=str(r.get("destinationId") or r.get("id", "")),
+            overwritten=bool(r.get("overwrite")),
+        )
+        for r in raw.get("successResults") or ()
+    )
+    entries = [e for e in raw.get("errors") or () if isinstance(e, dict)]
+    failed = tuple(_to_copy_failure(e, overwrite) for e in entries if _is_object_error(e))
+    seen = {(c.type, c.id) for c in copied} | {(f.type, f.id) for f in failed}
+    rest = [o for o in objects if (o["type"], o["id"]) not in seen]
+    whole = [e for e in entries if not _is_object_error(e)]
+    if whole:
+        # Kibana refused the import into this space as a whole (its copy route
+        # answers that space with a Boom payload {statusCode, error, message},
+        # no object): nothing else was written here, so the rest failed too —
+        # never "unchanged". The other target spaces keep their own results.
+        e = whole[0]
+        fix = space_failure_fix(
+            space, e.get("statusCode"), str(e.get("error") or ""), str(e.get("message") or ""))
+        failed += tuple(
+            CopyFailure(type=o["type"], id=o["id"], title=None, error=SPACE_ERROR, fix=fix,
+                        missing_references=(), destinations=())
+            for o in rest
+        )
+        rest = []
+    return SpaceCopyResult(
+        space=space, success=bool(raw.get("success")) and not whole, copied=copied,
+        failed=failed, unchanged=tuple(_ref_pair(o) for o in rest),
+    )
+
+
+def _is_object_error(entry: dict[str, Any]) -> bool:
+    """A per-object import failure ({type, id, error: {type, …}}), as opposed to
+    the bare error Kibana answers when a whole target space failed."""
+    return isinstance(entry.get("error"), dict) and "type" in entry and "id" in entry
+
+
+def _to_object_spaces(raw: dict[str, Any]) -> ObjectSpaces:
+    return ObjectSpaces(
+        type=str(raw.get("type", "")), id=str(raw.get("id", "")),
+        spaces=tuple(raw.get("spaces") or ()), missing=bool(raw.get("isMissing")),
+        spaces_with_matching_origins=tuple(raw.get("spacesWithMatchingOrigins") or ()),
+    )
+
+
+def _to_sharing_changes(
+    before: list[ObjectSpaces], body: dict[str, Any]
+) -> list[SharingChange]:
+    """Each object's spaces after `_update_objects_spaces`, against what the
+    read before it saw. A per-object error (200 with `error`, spaces []) left
+    that object as it was; the others were still updated."""
+    after = {(o.get("type"), o.get("id")): o for o in body.get("objects") or ()}
+    changes = []
+    for state in before:
+        raw = after.get((state.type, state.id)) or {}
+        error = raw.get("error")
+        spaces = state.spaces if error else tuple(raw.get("spaces") or ())
+        changes.append(SharingChange(
+            type=state.type, id=state.id, spaces=spaces,
+            added=tuple(s for s in spaces if s not in state.spaces),
+            removed=tuple(s for s in state.spaces if s not in spaces),
+            deleted=not error and not spaces,
+            spaces_with_matching_origins=state.spaces_with_matching_origins,
+            error=str(error.get("message") or error) if error else None,
+        ))
+    return changes
 
 
 def _to_role(body: dict[str, Any]) -> Role:
@@ -833,6 +1261,19 @@ def _to_fleet_agent(body: dict[str, Any]) -> FleetAgent:
         enrolled_at=body.get("enrolled_at", ""),
         last_checkin=body.get("last_checkin"),
         last_checkin_status=body.get("last_checkin_status"),
+        tags=tuple(body.get("tags") or ()),
+    )
+
+
+def _to_fleet_agent_diagnostics(body: dict[str, Any]) -> FleetAgentDiagnostics:
+    # filePath (a Kibana download route) is left out: the bundle is fetched in
+    # Kibana's UI, never through the model.
+    return FleetAgentDiagnostics(
+        id=body.get("id", ""),
+        name=body.get("name", ""),
+        status=body.get("status", ""),
+        created_at=body.get("createTime", ""),
+        action_id=body.get("actionId", ""),
     )
 
 
@@ -975,15 +1416,46 @@ def _rmw_body(
     return body
 
 
+class _SourceSpaceSpaces(SpacesClient):
+    """kibana-py's SpacesClient with every path under `/s/<space>`. Kibana's
+    copy and share routes act on the space of the request ("copies from the
+    current space"), but kibana-py serves `spaces` unscoped on a space-scoped
+    client and never prefixes these paths: a share from a throwaway space read
+    `isMissing` for a data view created in it (probed on 9.5.4, D49)."""
+
+    def __init__(self, client: kibana.Kibana, space: str) -> None:
+        super().__init__(client, default_space_id=space, validate_spaces=False)
+
+    def perform_request(
+        self, method: str, path: str, *, params: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None, body: dict[str, Any] | None = None,
+    ) -> Any:
+        return super().perform_request(
+            method, self._build_space_path(path), params=params, headers=headers, body=body)
+
+
 class KibanaPyGateway:
     def __init__(
-        self, client: kibana.Kibana | SpaceScopedKibana, space: str | None = None
+        self, client: kibana.Kibana | SpaceScopedKibana, space: str | None = None,
+        pinned_space: str | None = None, public_url_pinned: bool = False,
     ) -> None:
         self._client = client
         self._space = space
+        # The space a '/s/<id>' KIBANA_URL pins (connect sets it): the source
+        # space of the copy and share calls when no `space` scopes the gateway.
+        self._pinned_space = pinned_space
+        # Why this deployment refuses source_space (either URL pinned, D8),
+        # None when it accepts it: the copy and share guidance names the URL
+        # that fixes the source instead of offering source_space.
+        self._source_fixed = source_fixed_reason(pinned_space is not None, public_url_pinned)
 
     @classmethod
-    def connect(cls, url: str, api_key: str, space: str | None = None) -> "KibanaPyGateway":
+    def connect(
+        cls, url: str, api_key: str, space: str | None = None, *,
+        public_url_pinned: bool = False,
+    ) -> "KibanaPyGateway":
+        """`public_url_pinned`: the factory refuses `space` because the public
+        URL is space-pinned (only it can see that URL)."""
         if space is not None and is_space_pinned(url):
             # connect owns this URL, so it enforces its own precondition; the
             # factory adds only the public-URL half it alone can see.
@@ -1013,7 +1485,8 @@ class KibanaPyGateway:
                 if translated is e:
                     raise  # pass-through unchanged, no self-referential cause
                 raise translated from e
-        return cls(client, space)
+        return cls(
+            client, space, pinned_space=pinned_space(url), public_url_pinned=public_url_pinned)
 
     # Returns the port type, not the concrete one: `with KibanaPyGateway...` is
     # the only way callers obtain a gateway, so narrowing here would leak the
@@ -1203,6 +1676,163 @@ class KibanaPyGateway:
     def delete_data_view(self, view_id: str) -> None:
         self._client.data_views.delete(view_id=view_id)
 
+    def _read_view(self, view_id: str) -> dict[str, Any]:
+        with _known_id("data view", view_id):
+            return dict(self._client.data_views.get(view_id=view_id).body["data_view"])
+
+    @_translate_errors
+    def upsert_runtime_field(self, view_id: str, field: RuntimeField) -> RuntimeFieldUpsert:
+        # Kibana's PUT .../runtime_field creates or replaces, and stores any
+        # script: it compiles nothing (probed on 9.5.4), so the read here is for
+        # what it does not report — the definition a replacement loses, the
+        # custom label and description its PUT drops unless re-sent, a mapped
+        # name (its PUT 400s "Only runtime fields can be updated"), and a stored
+        # composite field, which this single-value surface cannot put back.
+        cur = self._read_view(view_id)
+        stored = dict(cur.get("runtimeFieldMap") or {})
+        name = field.name
+        prev_raw = stored.get(name)
+        if prev_raw is None:
+            parent = _composite_parent(name, stored)
+            if parent is not None:
+                raise KibanaRejected(
+                    f"'{name}' is a subfield of the composite runtime field '{parent}' of data "
+                    f"view '{view_id}', which this tool does not manage — pick another name"
+                )
+            if name in (cur.get("fields") or {}):
+                raise KibanaRejected(
+                    f"'{name}' is already a field of data view '{view_id}' "
+                    f"('{cur.get('title', '')}') and not a runtime field (a mapped or scripted "
+                    "field) — pick a name the view does not have; describe_data_view lists "
+                    "its fields"
+                )
+        elif prev_raw.get("type") == "composite":
+            raise KibanaRejected(
+                f"runtime field '{name}' of data view '{view_id}' is a composite field, which "
+                "this tool does not replace — remove it with delete_runtime_field first, or "
+                "pick another name"
+            )
+        spec: dict[str, Any] = {"type": field.type}
+        if field.script is not None:
+            spec["script"] = {"source": field.script}
+        if prev_raw is None:
+            # A create uses the POST, which refuses a name taken in the meantime
+            # ("Field [name = x] already exists.", probed) instead of replacing
+            # a definition this call never read.
+            try:
+                with _known_id("data view", view_id):
+                    body = self._client.data_views.create_runtime_field(
+                        view_id=view_id, name=name, runtime_field=spec
+                    ).body
+            except BadRequestError as e:
+                if "already exists" not in str(e.message):
+                    raise
+                raise KibanaRejected(
+                    "Kibana rejected the payload",
+                    detail=(
+                        f"{e.message} — a field '{name}' was added to data view '{view_id}' "
+                        "after this call read it; call upsert_runtime_field again (a runtime "
+                        "field is then replaced and returned as `previous`)"
+                    ),
+                ) from e
+        else:
+            attrs = (cur.get("fieldAttrs") or {}).get(name) or {}
+            for key in ("customLabel", "customDescription"):
+                if attrs.get(key):
+                    spec[key] = attrs[key]
+            with _known_id("data view", view_id):
+                body = self._client.data_views.create_or_update_runtime_field(
+                    view_id=view_id, name=name, runtime_field=spec
+                ).body
+        written = ((body.get("data_view") or {}).get("runtimeFieldMap") or {}).get(name)
+        return RuntimeFieldUpsert(
+            view_id=view_id,
+            field=_to_runtime_field(name, written) if written else field,
+            previous=_to_runtime_field(name, prev_raw) if prev_raw is not None else None,
+        )
+
+    @_translate_errors
+    def delete_runtime_field(self, view_id: str, name: str) -> RuntimeField:
+        # Read first: the DELETE answers 200 with no body, and its 404 says only
+        # "Field [index_pattern = <id>, field = <name>] not found." for a
+        # missing name, a mapped field and a composite's subfield alike (probed).
+        cur = self._read_view(view_id)
+        stored = dict(cur.get("runtimeFieldMap") or {})
+        raw = stored.get(name)
+        if raw is None:
+            parent = _composite_parent(name, stored)
+            if parent is not None:
+                raise KibanaRejected(
+                    f"'{name}' is a subfield of the composite runtime field '{parent}' of data "
+                    f"view '{view_id}' — delete '{parent}' to remove it with its subfields"
+                )
+            if name in (cur.get("fields") or {}):
+                raise KibanaRejected(
+                    f"'{name}' is a field of data view '{view_id}' but not a runtime field — "
+                    f"only runtime fields can be deleted ({_runtime_names(stored)})"
+                )
+            raise KibanaNotFound(
+                f"data view '{view_id}' has no runtime field '{name}' — {_runtime_names(stored)}"
+            )
+        try:
+            self._client.data_views.delete_runtime_field(view_id=view_id, name=name)
+        except SpaceNotFoundError:
+            raise
+        except NotFoundError as e:
+            raise KibanaNotFound(
+                f"runtime field '{name}' of data view '{view_id}' (or the view) was deleted "
+                "after this call read it — this call deleted nothing; call list_data_views "
+                "to see what exists"
+            ) from e
+        return _to_runtime_field(name, raw)
+
+    def _default_view(self, view_id: str | None) -> DefaultDataView:
+        if not view_id:
+            return DefaultDataView(id=None, name=None, index_pattern=None, exists=False)
+        try:
+            raw = self._client.data_views.get(view_id=view_id).body["data_view"]
+        except SpaceNotFoundError:
+            raise
+        except NotFoundError:
+            # Kibana keeps the id of a default view that was deleted (probed).
+            return DefaultDataView(id=view_id, name=None, index_pattern=None, exists=False)
+        return DefaultDataView(
+            id=view_id, name=raw.get("name") or raw["title"], index_pattern=raw["title"],
+            exists=True,
+        )
+
+    @_translate_errors
+    def get_default_data_view(self) -> DefaultDataView:
+        # GET /api/data_views/default answers {"data_view_id": ""} when none is set.
+        return self._default_view(self._client.data_views.get_default().body.get("data_view_id"))
+
+    @_translate_errors
+    def set_default_data_view(self, view_id: str | None) -> DefaultDataViewChange:
+        previous = self._client.data_views.get_default().body.get("data_view_id") or None
+        if view_id is None:
+            current = DefaultDataView(id=None, name=None, index_pattern=None, exists=False)
+        else:
+            # Kibana stores any id as the default (probed: "bogus-id" answered 200),
+            # so the view is read first; a miss is D17's guidance.
+            raw = self._read_view(view_id)
+            current = DefaultDataView(
+                id=view_id, name=raw.get("name") or raw["title"], index_pattern=raw["title"],
+                exists=True,
+            )
+        # force=True: without it Kibana answers 200 {"acknowledged": true} and
+        # keeps a default that is already set (probed on 9.5.4).
+        # Whether the old default names a view: Kibana keeps a deleted view's id,
+        # which this tool will not store again, and treats it as no default (it
+        # removes it and opens the first data view, data_views.js
+        # getDefaultDataViewId on 9.5.4) — so view_id=None is that undo.
+        previous_exists = previous is not None and (
+            previous == view_id or self._default_view(previous).exists
+        )
+        self._client.data_views.set_default(data_view_id=view_id, force=True)
+        return DefaultDataViewChange(
+            current=current, previous_id=previous, previous_exists=previous_exists
+        )
+
     @_translate_errors
     def create_short_url(self, locator_id: str, params: dict[str, Any]) -> ShortUrl:
         return _to_short_url(
@@ -1328,9 +1958,118 @@ class KibanaPyGateway:
             self._client.alerting.rule.enable(id=rule_id)
 
     @_translate_errors
-    def disable_alert_rule(self, rule_id: str) -> None:
+    def disable_alert_rule(self, rule_id: str, untrack: bool = False) -> None:
+        # untrack is sent only when asked: without it the request is the one
+        # disable_alert_rule always sent, and the rule's active alerts stay
+        # active; with it Kibana marks them untracked (probed on 9.5.4).
+        kwargs: dict[str, Any] = {"id": rule_id}
+        if untrack:
+            kwargs["untrack"] = True
         with _known_id("alert rule", rule_id):
-            self._client.alerting.rule.disable(id=rule_id)
+            self._client.alerting.rule.disable(**kwargs)
+
+    # Kibana's rule-wide mute and unmute both reset muted_alert_ids to [] (probed
+    # on 9.5.4), and no public route lists a rule's alert ids: the per-alert
+    # mutes are read first and returned, so the caller can restore them.
+    def _muted_alert_ids(self, rule_id: str) -> tuple[str, ...]:
+        body = self._client.alerting.rule.get(id=rule_id).body
+        return tuple(str(a) for a in body.get("muted_alert_ids") or [])
+
+    @_translate_errors
+    def mute_alert_rule(self, rule_id: str) -> tuple[str, ...]:
+        with _known_id("alert rule", rule_id):
+            cleared = self._muted_alert_ids(rule_id)
+            self._client.alerting.rule.mute_all(id=rule_id)
+        return cleared
+
+    @_translate_errors
+    def unmute_alert_rule(self, rule_id: str) -> tuple[str, ...]:
+        with _known_id("alert rule", rule_id):
+            cleared = self._muted_alert_ids(rule_id)
+            self._client.alerting.rule.unmute_all(id=rule_id)
+        return cleared
+
+    @_translate_errors
+    def mute_alert(self, rule_id: str, alert_id: str) -> None:
+        _blank("alert_id", alert_id, _ALERT_ID_FIX)
+        with _known_id("alert rule", rule_id):
+            # On a rule muted as a whole Kibana answers 204 but records no
+            # per-alert mute, and unmuting the rule clears every per-alert mute
+            # (probed on 9.5.4), so this mute would vanish unseen: refuse it.
+            if self._client.alerting.rule.get(id=rule_id).body.get("mute_all"):
+                raise KibanaRejected(
+                    f"alert rule '{rule_id}' is muted as a whole (mute_alert_rule), and Kibana "
+                    "records no per-alert mute on a muted rule — its alerts are already "
+                    "silent; to keep only this alert muted, call unmute_alert_rule first "
+                    "(it clears every per-alert mute), then mute_alert"
+                )
+            # validate_alerts_existence is left to Kibana's default (true): an alert
+            # id the rule has never raised is a 404, not a silent mute of a typo.
+            try:
+                self._client.alerting.rule.mute_alert(rule_id=rule_id, alert_id=alert_id)
+            except SpaceNotFoundError:
+                raise
+            except NotFoundError as e:
+                if _MISSING_ALERT_MARK in str(e.message):
+                    raise _alert_not_found(rule_id, alert_id) from e
+                raise
+
+    @_translate_errors
+    def unmute_alert(self, rule_id: str, alert_id: str) -> None:
+        # Kibana answers 204 for an alert that is not muted, or never existed
+        # (probed): unmuting is idempotent, so there is no alert-level 404 here.
+        _blank("alert_id", alert_id, _ALERT_ID_FIX)
+        with _known_id("alert rule", rule_id):
+            self._client.alerting.rule.unmute_alert(rule_id=rule_id, alert_id=alert_id)
+
+    @_translate_errors
+    def snooze_alert_rule(
+        self, rule_id: str, duration: str, start: datetime, recurring: dict[str, Any] | None
+    ) -> RuleSnooze:
+        custom: dict[str, Any] = {"duration": duration, "start": _kibana_instant(start)}
+        if recurring is not None:
+            custom["recurring"] = {
+                k: _kibana_instant(v) if isinstance(v, datetime) else v
+                for k, v in recurring.items()
+            }
+        with _known_id("alert rule", rule_id):
+            try:
+                body = self._client.alerting.rule.snooze(
+                    id=rule_id, schedule={"custom": custom}
+                ).body
+            except BadRequestError as e:
+                if _SNOOZE_LIMIT_MARK in str(e.message):
+                    raise KibanaRejected(
+                        f"alert rule '{rule_id}' already has 5 snooze schedules, Kibana's limit "
+                        "(expired ones count) — remove one with unsnooze_alert_rule and a "
+                        "schedule_id that snooze_alert_rule returned (Kibana's public API does "
+                        "not list a rule's snoozes); if those ids are lost, cancel the snoozes "
+                        "on the rule in Kibana's Rules page"
+                    ) from e
+                raise
+        return _to_rule_snooze(rule_id, body or {})
+
+    @_translate_errors
+    def unsnooze_alert_rule(self, rule_id: str, schedule_id: str) -> None:
+        _blank("schedule_id", schedule_id, "pass the schedule_id that snooze_alert_rule returned")
+        with _known_id("alert rule", rule_id):
+            try:
+                self._client.alerting.rule.unsnooze(rule_id=rule_id, schedule_id=schedule_id)
+            except SpaceNotFoundError:
+                raise
+            except (NotFoundError, BadRequestError) as e:
+                # 404 "Rule has no snooze schedule with id <id>." when the rule has
+                # others, 400 "Rule has no snooze schedules." when it has none.
+                if any(m in str(e.message) for m in _MISSING_SNOOZE_MARKS):
+                    raise _snooze_not_found(rule_id, schedule_id) from e
+                raise
+
+    @_translate_errors
+    def update_alert_rule_api_key(self, rule_id: str) -> None:
+        # Kibana regenerates the rule's API key from the caller's credentials:
+        # the rule then runs with this server's API key's privileges. 204, no body.
+        with _known_id("alert rule", rule_id):
+            self._client.alerting.rule.update_api_key(id=rule_id)
 
     @_translate_errors
     def delete_alert_rule(self, rule_id: str) -> None:
@@ -1570,6 +2309,24 @@ class KibanaPyGateway:
         return dashboard_id
 
     @_translate_errors
+    def get_tag_names(self, tag_ids: list[str]) -> dict[str, str]:
+        # No public tags API in kibana-py: tags are `tag` saved objects, read
+        # with the saved-objects bulk get on this gateway's (space-scoped)
+        # client. A miss is a per-object 404 inside a 200 (probed on 9.5.4:
+        # "Saved object [tag/nope] not found"; a default-space tag read from
+        # another space is a 404 too, tags live in one space).
+        if not tag_ids:
+            return {}
+        body = self._client.saved_objects.bulk_get(
+            objects=[{"type": "tag", "id": tag_id} for tag_id in tag_ids]
+        ).body
+        return {
+            str(o["id"]): str((o.get("attributes") or {}).get("name", ""))
+            for o in body.get("saved_objects", [])
+            if not o.get("error") and o.get("type") == "tag"
+        }
+
+    @_translate_errors
     def create_visualization(self, config: dict[str, Any]) -> str:
         visualization_id: str = self._client.visualizations.create(data=config).body["id"]
         return visualization_id
@@ -1704,7 +2461,11 @@ class KibanaPyGateway:
 
     @_translate_errors
     def get_synthetic_monitor(self, monitor_id: str) -> SyntheticMonitor:
-        return _to_synthetic_monitor(self._client.synthetics.get_monitor(id=monitor_id).body)
+        # D17 guidance, shared with the write tier (update_synthetic_monitor
+        # reads the monitor first to learn its type).
+        with _known_id("synthetic monitor", monitor_id):
+            body = self._client.synthetics.get_monitor(id=monitor_id).body
+        return _to_synthetic_monitor(body)
 
     @_translate_errors
     def list_synthetic_params(self) -> list[SyntheticParam]:
@@ -1719,6 +2480,126 @@ class KibanaPyGateway:
             for loc in self._client.synthetics.get_private_locations().body
         ]
 
+    # --- observability: the Synthetics write tier (D46) ---
+
+    @_translate_errors
+    def create_synthetic_monitor(
+        self, *, type: str, name: str, private_locations: list[str], url: str | None,
+        host: str | None, inline_script: str | None, schedule: str | None, enabled: bool,
+        tags: list[str] | None,
+    ) -> SyntheticMonitor:
+        # Only private locations: a self-managed stack has no Elastic-managed
+        # ones ("No Elastic managed location available to use", 9.5.4).
+        body = self._client.synthetics.create_monitor(**_given(
+            type=type, name=name, private_locations=private_locations, url=url, host=host,
+            inline_script=inline_script,
+            schedule=_monitor_schedule(schedule) if schedule is not None else None,
+            enabled=enabled, tags=tags,
+        )).body
+        return _to_synthetic_monitor(body)
+
+    @_translate_errors
+    def update_synthetic_monitor(
+        self, monitor_id: str, *, name: str | None = None, url: str | None = None,
+        host: str | None = None, inline_script: str | None = None, schedule: str | None = None,
+        enabled: bool | None = None, tags: list[str] | None = None,
+        private_locations: list[str] | None = None,
+    ) -> SyntheticMonitor:
+        # The PUT is partial: omitted fields keep their values (probed on 9.5.4),
+        # so only the given ones are sent and nothing is read back first.
+        with _known_id("synthetic monitor", monitor_id):
+            body = self._client.synthetics.update_monitor(**_given(
+                id=monitor_id, name=name, url=url, host=host, inline_script=inline_script,
+                schedule=_monitor_schedule(schedule) if schedule is not None else None,
+                enabled=enabled, tags=tags, private_locations=private_locations,
+            )).body
+        return _to_synthetic_monitor(body)
+
+    @_translate_errors
+    def test_synthetic_monitor(self, monitor_id: str) -> str:
+        with _known_id("synthetic monitor", monitor_id):
+            body = self._client.synthetics.test_monitor(monitor_id=monitor_id).body
+        return str(body.get("testRunId", ""))
+
+    @_translate_errors
+    def delete_synthetic_monitor(self, monitor_id: str) -> None:
+        with _known_id("synthetic monitor", monitor_id):
+            body = self._client.synthetics.delete_monitor(id=monitor_id).body
+        _deleted(body, "synthetic monitor", monitor_id)
+
+    @_translate_errors
+    def create_synthetic_param(
+        self, key: str, value: str, description: str | None, tags: list[str] | None
+    ) -> SyntheticParam:
+        with _secret_withheld(value):
+            body = self._client.synthetics.create_param(**_given(
+                key=key, value=value, description=description, tags=tags
+            )).body
+        return _to_synthetic_param(body)
+
+    @_translate_errors
+    def update_synthetic_param(
+        self, param_id: str, *, key: str | None = None, value: str | None = None,
+        description: str | None = None, tags: list[str] | None = None,
+    ) -> SyntheticParam:
+        # Kibana's response echoes the PREVIOUS value (probed on 9.5.4); the
+        # SyntheticParam shape has no value field, so neither value surfaces.
+        with _known_id("synthetic param", param_id), _secret_withheld(value):
+            body = self._client.synthetics.update_param(**_given(
+                id=param_id, key=key, value=value, description=description, tags=tags
+            )).body
+        return _to_synthetic_param(body)
+
+    @_translate_errors
+    def delete_synthetic_param(self, param_id: str) -> None:
+        with _known_id("synthetic param", param_id):
+            body = self._client.synthetics.delete_param(id=param_id).body
+        _deleted(body, "synthetic param", param_id)
+
+    @_translate_errors
+    def create_synthetic_private_location(
+        self, label: str, agent_policy_id: str, tags: list[str] | None
+    ) -> SyntheticPrivateLocation:
+        try:
+            body = self._client.synthetics.create_private_location(**_given(
+                label=label, agent_policy_id=agent_policy_id, tags=tags
+            )).body
+        except BadRequestError as e:
+            # A missing policy, or one another location uses (probed on 9.5.4).
+            raise KibanaRejected(
+                "Kibana rejected the payload", detail=f"{e.message} — {_AGENT_POLICY_HINT}"
+            ) from e
+        return _to_private_location(body)
+
+    @_translate_errors
+    def update_synthetic_private_location(
+        self, location_id: str, label: str
+    ) -> SyntheticPrivateLocation:
+        # The label is the only editable attribute (kibana-py, Kibana's schema).
+        with _known_id("private location", location_id):
+            body = self._client.synthetics.update_private_location(
+                id=location_id, label=label
+            ).body
+        return _to_private_location(body)
+
+    @_translate_errors
+    def delete_synthetic_private_location(self, location_id: str) -> None:
+        # The agent policy behind it stays (it belongs to Fleet).
+        with _known_id("private location", location_id):
+            try:
+                self._client.synthetics.delete_private_location(id=location_id)
+            except BadRequestError as e:
+                # 9.5.4 answers a missing id with a 400 "... does not exist." and
+                # a location monitors still use with a 400 "... used by N monitor(s).".
+                if "does not exist" in str(e.message):
+                    raise _unknown_id("private location", location_id) from e
+                if "used by" in str(e.message):
+                    raise KibanaRejected(
+                        "Kibana refused to delete the private location",
+                        detail=f"{e.message} — {_LOCATION_IN_USE_HINT}",
+                    ) from e
+                raise
+
     @_translate_errors
     def get_uptime_settings(self) -> UptimeSettings:
         return _to_uptime_settings(self._client.uptime.get_settings().body)
@@ -1732,12 +2613,57 @@ class KibanaPyGateway:
     def get_apm_agent_config(
         self, service_name: str | None, environment: str | None
     ) -> ApmAgentConfig:
-        # /view 404s when no matching config exists -> NotFoundError -> KibanaNotFound.
-        return _to_apm_agent_config(
-            self._client.apm.get_agent_configuration(
-                name=service_name, environment=environment
+        # /view matches exactly (an omitted name or environment means "all", not
+        # "any") and 404s when nothing matches; the miss names the list tool.
+        with _known_apm_config(service_name, environment):
+            body = self._client.apm.get_agent_configuration(
+                **_given(name=service_name, environment=environment)
             ).body
-        )
+        return _to_apm_agent_config(body)
+
+    @_translate_errors
+    def upsert_apm_agent_config(
+        self,
+        service_name: str | None,
+        environment: str | None,
+        settings: dict[str, str],
+        *,
+        agent_name: str | None,
+        overwrite: bool,
+    ) -> ApmAgentConfig:
+        # The PUT answers {} and replaces the whole settings map; without
+        # ?overwrite=true an existing config is a 400 (probed on 9.5.4), so the
+        # caller overwrites only a config it has read.
+        try:
+            self._client.apm.create_or_update_agent_configuration(**_given(
+                service_name=service_name, service_environment=environment,
+                settings=settings, agent_name=agent_name, overwrite=True if overwrite else None,
+            ))
+        except BadRequestError as e:
+            if "already exists" in str(e.message):
+                raise KibanaRejected(
+                    "Kibana refused to replace the APM agent configuration",
+                    detail=(
+                        f"a configuration for {_apm_scope(service_name, environment)} was "
+                        "created after this call read none — call upsert_apm_agent_config "
+                        "again: it then replaces that one and returns its settings as "
+                        "previous_settings"
+                    ),
+                ) from e
+            # Kibana checks the values of the settings it knows, and its message
+            # can omit which one failed ("Must be a number between 0.0000 and 1").
+            raise KibanaRejected(
+                "Kibana rejected the payload",
+                detail=f"{e.message} — settings sent: {settings}; {_APM_SETTINGS_HINT}",
+            ) from e
+        return self.get_apm_agent_config(service_name, environment)
+
+    @_translate_errors
+    def delete_apm_agent_config(self, service_name: str | None, environment: str | None) -> None:
+        with _known_apm_config(service_name, environment):
+            self._client.apm.delete_agent_configuration(
+                **_given(service_name=service_name, service_environment=environment)
+            )
 
     @_translate_errors
     def list_apm_environments(self, service_name: str | None) -> list[ApmEnvironment]:
@@ -1850,26 +2776,48 @@ class KibanaPyGateway:
             page += 1
         return lists
 
-    @_translate_errors
-    def get_exception_list(self, id: str | None, list_id: str | None) -> ExceptionList:
+    def _read_exception_list(
+        self, id: str | None, list_id: str | None, namespace_type: str
+    ) -> dict[str, Any]:
         # exception_lists.get tolerates both; it only raises on neither.
         id = id or None
         list_id = list_id or None
         if id is None and list_id is None:
             raise KibanaRejected("provide an id or list_id to identify the exception list")
-        return _to_exception_list(
-            self._client.exception_lists.get(id=id, list_id=list_id).body
-        )
+        try:
+            body: dict[str, Any] = self._client.exception_lists.get(
+                id=id, list_id=list_id, namespace_type=namespace_type
+            ).body
+        except SpaceNotFoundError:
+            raise
+        except NotFoundError as e:
+            raise _unknown_exception_list(id, list_id, namespace_type) from e
+        return body
 
     @_translate_errors
-    def find_exception_items(self, list_id: str) -> list[ExceptionItem]:
-        # list_id required; a bogus one 404s -> KibanaNotFound.
+    def get_exception_list(
+        self, id: str | None, list_id: str | None, namespace_type: str = "single"
+    ) -> ExceptionList:
+        return _to_exception_list(self._read_exception_list(id, list_id, namespace_type))
+
+    @_translate_errors
+    def find_exception_items(
+        self, list_id: str, namespace_type: str = "single"
+    ) -> list[ExceptionItem]:
+        # list_id required; a bogus one (or one in the other namespace) 404s ->
+        # the same not-found text get_exception_list gives.
         items: list[ExceptionItem] = []
         page = 1
         while True:
-            body = self._client.exception_lists.find_items(
-                list_id=list_id, page=page, per_page=100
-            ).body
+            try:
+                body = self._client.exception_lists.find_items(
+                    list_id=list_id, namespace_type=namespace_type, page=page, per_page=100
+                ).body
+            except SpaceNotFoundError:
+                raise
+            except NotFoundError as e:
+                raise _unknown_exception_list(
+                    None, list_id, namespace_type, list_id_only=True) from e
             batch = body.get("data", [])
             items.extend(_to_exception_item(x) for x in batch)
             total = body.get("total")
@@ -1981,6 +2929,88 @@ class KibanaPyGateway:
         if (id is None) == (item_id is None):
             raise KibanaRejected("provide exactly one of id or item_id to identify the exception item")
         self._client.exception_lists.delete_item(id=id, item_id=item_id, namespace_type=namespace_type)
+
+    # --- exception-list edit, copy, export and import (D50) ---
+
+    @_translate_errors
+    def update_exception_list(
+        self, id: str | None, list_id: str | None, namespace_type: str,
+        name: str | None, description: str | None, tags: list[str] | None,
+    ) -> ExceptionListChange:
+        # PUT /api/exception_lists requires name, description and type (a PUT
+        # without them 400s) and keeps omitted tags; tags=[] clears them. It
+        # ignores os_types (a PUT of ["windows"] left ["linux"], probed), so
+        # they are never sent. The read's `_version` makes a change made in
+        # between a 409 version_conflict instead of a silent overwrite.
+        raw = self._read_exception_list(id, list_id, namespace_type)
+        try:
+            body = self._client.exception_lists.update(
+                id=raw.get("id"),
+                name=name if name is not None else raw.get("name", ""),
+                description=description if description is not None else raw.get("description", ""),
+                type=raw.get("type", "detection"),
+                namespace_type=namespace_type,
+                tags=list(tags) if tags is not None else None,
+                _version=raw.get("_version"),
+            ).body
+        except ConflictError as e:
+            raise KibanaRejected(
+                f"exception list '{raw.get('list_id', list_id or id)}' changed after "
+                "update_exception_list read it (Kibana answered 409, version conflict); "
+                "nothing was written — call update_exception_list again"
+            ) from e
+        return ExceptionListChange(list=_to_exception_list(body), previous=_to_exception_list(raw))
+
+    @_translate_errors
+    def duplicate_exception_list(
+        self, list_id: str, namespace_type: str, include_expired_exceptions: bool
+    ) -> ExceptionList:
+        try:
+            body = self._client.exception_lists.duplicate(
+                list_id=list_id, namespace_type=namespace_type,
+                include_expired_exceptions=include_expired_exceptions,
+            ).body
+        except SpaceNotFoundError:
+            raise
+        except NotFoundError as e:
+            raise _unknown_exception_list(
+                None, list_id, namespace_type, list_id_only=True) from e
+        except ApiError as e:
+            # 405 "unable to duplicate exception list with list_id: ... - action
+            # not allowed" for an endpoint list (probed); unmapped it would read
+            # as an outage.
+            if getattr(e, "status_code", None) != 405:
+                raise
+            raise KibanaRejected(
+                f"Kibana refuses to duplicate exception list '{list_id}' (405 action not "
+                "allowed: it refuses endpoint lists) — export_exception_list then "
+                "import_exception_list makes a copy"
+            ) from e
+        return _to_exception_list(body)
+
+    @_translate_errors
+    def export_exception_list(
+        self, id: str, list_id: str, namespace_type: str, include_expired_exceptions: bool
+    ) -> list[dict[str, Any]]:
+        body = self._client.exception_lists.export(
+            id=id, list_id=list_id, namespace_type=namespace_type,
+            include_expired_exceptions=include_expired_exceptions,
+        ).body
+        if isinstance(body, (bytes, str)):  # kibana-py parses application/ndjson; be defensive
+            text = body.decode("utf-8") if isinstance(body, bytes) else body
+            return [json.loads(line) for line in text.splitlines() if line.strip()]
+        return list(body)
+
+    @_translate_errors
+    def import_exception_list(
+        self, content: bytes, overwrite: bool
+    ) -> ExceptionListImportResult:
+        # Never `as_new_list`: it keeps the source item_ids (D50, probed); a
+        # new copy is rewritten in core.exception_lists and imported plainly.
+        body = self._client.exception_lists.import_lists(
+            file=content, overwrite=True if overwrite else None,
+        ).body
+        return _to_exception_import(body)
 
     # --- security-detections writes (v3, #60): update rule + value lists ---
 
@@ -2147,6 +3177,55 @@ class KibanaPyGateway:
         body = self._client.saved_objects.import_objects(file=content, **mode).body
         return _to_import_result(body)
 
+    @_translate_errors
+    def find_saved_objects(
+        self,
+        types: list[str],
+        search: str | None,
+        has_reference: dict[str, str] | None,
+        page: int,
+        per_page: int,
+    ) -> SavedObjectPage:
+        # GET /api/saved_objects/_find (deprecated, still served by 9.5.4 with a
+        # `warning: 299 ... This endpoint is deprecated` header). `fields` keeps
+        # each hit's attributes to its title and name: a dashboard's are ~40 KB.
+        kwargs: dict[str, Any] = {
+            "type": list(types), "fields": ["title", "name"], "page": page, "per_page": per_page,
+        }
+        if search is not None:
+            # Without search_fields Kibana matches the words against every
+            # attribute (probed: "JetBeats", only in the flights dashboard's
+            # description, found it), so it would also answer for words in
+            # attributes this tool never returns; title and name are the ones
+            # a hit carries.
+            kwargs["search"] = search
+            kwargs["search_fields"] = ["title", "name"]
+        if has_reference is not None:
+            kwargs["has_reference"] = dict(has_reference)
+        body = self._client.saved_objects.find(**kwargs).body
+        return SavedObjectPage(
+            total=int(body.get("total", 0)),
+            page=int(body.get("page", page)),
+            per_page=int(body.get("per_page", per_page)),
+            saved_objects=tuple(_to_saved_object_summary(o) for o in body.get("saved_objects", [])),
+        )
+
+    @_translate_errors
+    def get_saved_object(self, type: str, id: str) -> SavedObjectDetail:
+        if not type.strip() or not id.strip():
+            raise KibanaRejected(
+                "type and id must not be blank — pass the ones find_saved_objects returns"
+            )
+        if type not in READABLE_TYPES:
+            raise KibanaRejected(unreadable_type_message(type))
+        try:
+            body = self._client.saved_objects.get(type=type, id=id).body
+        except SpaceNotFoundError:
+            raise
+        except NotFoundError as e:
+            raise _saved_object_miss(type, id) from e
+        return _to_saved_object_detail(body)
+
     # --- platform-admin: spaces + roles + upgrade reads (read-first) ---
 
     @_translate_errors
@@ -2255,6 +3334,99 @@ class KibanaPyGateway:
         if (r.get("metadata") or {}).get("_reserved"):
             raise KibanaRejected(f"role '{name}' is reserved and cannot be deleted")
         self._client.security.delete_role(name=name)
+
+    # --- platform-admin: saved objects between spaces (D49) ---
+
+    def _require_spaces(self, spaces: list[str]) -> None:
+        """D5 for every space written into: Kibana's copy and share routes
+        write into a space id that names no space without an error (probed)."""
+        wanted = [s for s in dict.fromkeys(spaces) if s != ALL_SPACES]
+        if not wanted:
+            return
+        known = {str(s.get("id")) for s in self._client.spaces.get_all().body}
+        missing = [s for s in wanted if s not in known]
+        if missing:
+            raise KibanaSpaceNotFound(missing_spaces_message(missing))
+
+    def _source_spaces(self) -> SpacesClient:
+        """The spaces routes on the source space. Unscoped, the base path is
+        the source: the default space, or the space KIBANA_URL pins."""
+        if isinstance(self._client, SpaceScopedKibana) and self._space is not None:
+            # SpaceScopedKibana keeps its root client in `_client` (no public
+            # accessor); the contract tier pins the routing this relies on.
+            return _SourceSpaceSpaces(self._client._client, self._space)
+        return self._client.spaces
+
+    def _object_spaces(self, objects: list[dict[str, str]]) -> list[ObjectSpaces]:
+        # `_get_shareable_references` may also list related objects: keep the
+        # requested ones, in request order.
+        body = self._source_spaces().get_shareable_references(objects=objects).body
+        found = {(o.get("type"), o.get("id")): o for o in body.get("objects") or ()}
+        return [
+            _to_object_spaces(found.get((o["type"], o["id"])) or {**o, "isMissing": True})
+            for o in objects
+        ]
+
+    @_translate_errors
+    def copy_saved_objects_to_spaces(
+        self, objects: list[dict[str, str]], spaces: list[str], include_references: bool,
+        overwrite: bool,
+    ) -> list[SpaceCopyResult]:
+        source = self._space or self._pinned_space or "default"
+        if source in spaces:
+            raise KibanaRejected(self_target_message(source, self._source_fixed))
+        self._require_spaces(spaces)
+        # create_new_copies (Kibana's default) mints new ids and never touches an
+        # existing object; overwrite replaces the object an earlier copy made
+        # (matched by origin). Kibana 400s the two together.
+        mode: dict[str, Any] = (
+            {"create_new_copies": False, "overwrite": True} if overwrite
+            else {"create_new_copies": True}
+        )
+        try:
+            body = self._source_spaces().copy_saved_objects(
+                spaces=spaces, objects=objects, include_references=include_references, **mode,
+            ).body
+        except NotFoundError as e:
+            # 404 "Saved objects not found" + attributes.objects: the misses.
+            attributes = (e.body or {}).get("attributes") if isinstance(e.body, dict) else None
+            misses = [
+                f"{o.get('type')}/{o.get('id')}"
+                for o in (attributes or {}).get("objects") or ()
+            ] or [f"{o['type']}/{o['id']}" for o in objects]
+            raise KibanaNotFound(objects_not_found_message(misses, self._source_fixed)) from e
+        return [
+            _to_space_copy_result(space, body.get(space) or {}, objects, overwrite)
+            for space in spaces
+        ]
+
+    @_translate_errors
+    def share_saved_objects(
+        self, objects: list[dict[str, str]], spaces: list[str]
+    ) -> list[SharingChange]:
+        self._require_spaces(spaces)
+        before = self._object_spaces(objects)
+        refusal = sharing_refusal(before, self._source_fixed)
+        if refusal:
+            raise KibanaRejected(refusal)
+        body = self._source_spaces().update_objects_spaces(
+            objects=objects, spaces_to_add=spaces, spaces_to_remove=[]).body
+        return _to_sharing_changes(before, body)
+
+    @_translate_errors
+    def unshare_saved_objects(
+        self, objects: list[dict[str, str]], spaces: list[str], force: bool
+    ) -> list[SharingChange]:
+        # No existence check: removing a space adds nothing, and an object can
+        # sit in a space id that names no space (written there before D5).
+        before = self._object_spaces(objects)
+        refusal = (sharing_refusal(before, self._source_fixed)
+                   or unshare_refusal(before, spaces, force))
+        if refusal:
+            raise KibanaRejected(refusal)
+        body = self._source_spaces().update_objects_spaces(
+            objects=objects, spaces_to_add=[], spaces_to_remove=spaces).body
+        return _to_sharing_changes(before, body)
 
     # --- streams: stream reads (read-first; Tech-Preview API) ---
 
@@ -2755,3 +3927,170 @@ class KibanaPyGateway:
         action_id: str = self._client.fleet_agents.bulk_unenroll(
             agents=agent_ids, force=force, revoke=revoke).body["actionId"]
         return action_id
+
+    # --- fleet advanced ops: agent tags, diagnostics, package install/uninstall (D51) ---
+
+    def _read_agent(self, agent_id: str) -> dict[str, Any]:
+        try:
+            item: dict[str, Any] = self._client.fleet_agents.get(agent_id=agent_id).body["item"]
+        except NotFoundError as e:
+            raise KibanaNotFound(unknown_agent_message(agent_id)) from e
+        return item
+
+    @_translate_errors
+    def list_agent_tags(self) -> list[str]:
+        # show_inactive like list_agents: the tags of every agent it lists.
+        return list(self._client.fleet_agents.get_tags(show_inactive=True).body.get("items", []))
+
+    @_translate_errors
+    def update_agent_tags(
+        self, *, agent_ids: list[str], tags_to_add: list[str], tags_to_remove: list[str]
+    ) -> FleetAgentTagsResult:
+        ids = list(dict.fromkeys(agent_ids))
+        before: dict[str, tuple[str, ...]] = {}
+        missing: list[str] = []
+        for agent_id in ids:
+            try:
+                raw = self._client.fleet_agents.get(agent_id=agent_id).body["item"]
+            except NotFoundError:
+                missing.append(agent_id)
+                continue
+            before[agent_id] = tuple(raw.get("tags") or ())
+        if missing:
+            # Kibana answers 200 and skips an unknown id (probed): refuse first.
+            raise KibanaNotFound(missing_agents_message(missing))
+        kwargs: dict[str, Any] = {"agents": ids}
+        if tags_to_add:
+            kwargs["tags_to_add"] = tags_to_add
+        if tags_to_remove:
+            kwargs["tags_to_remove"] = tags_to_remove
+        action_id: str = self._client.fleet_agents.bulk_update_tags(**kwargs).body["actionId"]
+        changes = tuple(
+            FleetAgentTagChange(
+                agent_id=agent_id, previous_tags=before[agent_id],
+                tags=tuple(self._client.fleet_agents.get(
+                    agent_id=agent_id).body["item"].get("tags") or ()),
+            )
+            for agent_id in ids
+        )
+        return FleetAgentTagsResult(
+            action_id=action_id, agents=changes,
+            not_applied_agent_ids=tags_not_applied(changes, tags_to_add, tags_to_remove),
+        )
+
+    @_translate_errors
+    def request_agent_diagnostics(
+        self, *, agent_id: str, include_cpu_metrics: bool = False
+    ) -> FleetDiagnosticsRequest:
+        agent = self._read_agent(agent_id)
+        kwargs: dict[str, Any] = {"agent_id": agent_id}
+        if include_cpu_metrics:
+            kwargs["additional_metrics"] = ["CPU"]  # the only value Kibana accepts (probed)
+        action_id: str = self._client.fleet_agents.request_diagnostics(**kwargs).body["actionId"]
+        return FleetDiagnosticsRequest(
+            action_id=action_id, agent_id=agent_id, agent_status=agent.get("status", ""))
+
+    @_translate_errors
+    def list_agent_diagnostics(self, agent_id: str) -> list[FleetAgentDiagnostics]:
+        try:
+            body = self._client.fleet_agents.get_uploads(agent_id=agent_id).body
+        except NotFoundError as e:
+            raise KibanaNotFound(unknown_agent_message(agent_id)) from e
+        return [_to_fleet_agent_diagnostics(u) for u in body.get("items", [])]
+
+    def _read_package(self, name: str) -> dict[str, Any]:
+        try:
+            item: dict[str, Any] = (
+                self._client.fleet_epm.get_package(pkg_name=name).body.get("item") or {})
+        except NotFoundError as e:
+            raise KibanaNotFound(unknown_package_message(name)) from e
+        if not item:
+            raise KibanaNotFound(unknown_package_message(name))
+        return item
+
+    @_translate_errors
+    def install_package(self, *, name: str, version: str | None = None) -> FleetPackageInstall:
+        item = self._read_package(name)
+        latest = str(item.get("latestVersion") or item.get("version") or "")
+        if item.get("status") == "installed":
+            # item.version is the installed version once installed (probed).
+            installed = str(item.get("version", ""))
+            if version is None or version == installed:
+                return FleetPackageInstall(
+                    name=name, version=installed, status="installed", already_installed=True)
+            raise KibanaRejected(installed_version_refusal(name, installed, version))
+        kwargs: dict[str, Any] = {"pkg_name": name}
+        if version is not None:
+            kwargs["pkg_version"] = version
+        try:
+            self._client.fleet_epm.install_package(**kwargs)
+        except NotFoundError as e:
+            # Only a version can be unknown here: the read found the name.
+            raise KibanaNotFound(unknown_version_message(name, version or "", latest)) from e
+        except BadRequestError as e:
+            if "out-of-date" not in str(e.message):
+                raise
+            raise KibanaRejected(outdated_version_message(name, version or "", latest)) from e
+        after = self._read_package(name)
+        return FleetPackageInstall(
+            name=name, version=str(after.get("version", "")),
+            status=str(after.get("status", "")), already_installed=False)
+
+    @_translate_errors
+    def uninstall_package(self, *, name: str, force: bool = False) -> FleetPackageUninstall:
+        item = self._read_package(name)
+        if item.get("status") != "installed":
+            raise KibanaNotFound(not_installed_message(name))
+        # With space awareness on, Kibana's uninstall deletes every space's package
+        # policies, while spaces.get_all leaves out each space the key cannot read
+        # (probed with a key restricted to 'default'): nothing listed is provably
+        # complete, so refuse before reading any policy, whatever force says.
+        settings = self._client.fleet.get_settings().body.get("item") or {}
+        if settings.get("use_space_awareness_migration_status"):
+            raise KibanaRejected(space_awareness_refusal(name))
+        policies = self._client.fleet_policies
+
+        def every(list_page: Callable[..., Any]) -> list[dict[str, Any]]:
+            return _fleet_all_items(lambda p: list_page(page=p, per_page=100).body)
+
+        if name == AGENT_MONITORING_PACKAGE:
+            # Kibana uninstalls it under a monitoring agent policy unchecked (probed).
+            monitoring = [ap["id"] for ap in every(policies.get_agent_policies)
+                          if ap.get("monitoring_enabled")]
+            if monitoring:
+                raise KibanaRejected(monitoring_refusal(name, monitoring))
+        package_policies = [pp for pp in every(policies.get_package_policies)
+                            if (pp.get("package") or {}).get("name") == name]
+        listed: list[tuple[str, str, str, int]] = []
+        guarded: list[tuple[str, str, str]] = []
+        agent_policies: dict[str, dict[str, Any]] = {}
+        for pp in package_policies:
+            ap_ids = [i for i in (pp.get("policy_ids") or [pp.get("policy_id")]) if i]
+            if not ap_ids:
+                unattached = unattached_guard_reason(name)
+                if unattached is not None:
+                    guarded.append((pp["id"], "", unattached))
+                listed.append((pp["id"], pp.get("name", ""), "", 0))
+            for ap_id in ap_ids:
+                if ap_id not in agent_policies:
+                    agent_policies[ap_id] = policies.get_agent_policy(
+                        agent_policy_id=ap_id).body["item"]
+                ap = agent_policies[ap_id]
+                why = guard_reason(name, is_managed=bool(ap.get("is_managed")),
+                                   is_default_fleet_server=bool(ap.get("is_default_fleet_server")))
+                if why is not None:
+                    guarded.append((pp["id"], ap_id, why))
+                listed.append((pp["id"], pp.get("name", ""), ap_id, int(ap.get("agents") or 0)))
+        if guarded:
+            raise KibanaRejected(guarded_policy_refusal(name, guarded))
+        if package_policies and not force:
+            raise KibanaRejected(package_policies_refusal(name, listed))
+        # force lets Kibana delete package policies agents use (400 without it);
+        # it is sent only then, so it can never reach Kibana for anything else.
+        self._client.fleet_epm.uninstall_package(
+            pkg_name=name, force=(True if force and package_policies else None))
+        return FleetPackageUninstall(
+            name=name, version=str(item.get("version", "")),
+            deleted_package_policies=tuple(
+                _to_fleet_package_policy(pp) for pp in package_policies),
+        )

@@ -13,9 +13,11 @@ families stay SECRET-REDACTED: enrollment keys drop the `api_key` value,
 outputs never accept or return ssl/secret fields, and uninstall-token *values*
 are never fetched (only their metadata). Enrollment-key minting/revocation —
 the only secret-minting surface — is deliberately out of scope (deferred to
-#82 for a vetted credential-handling design); so are EPM package install/
-delete and Cloud-only surfaces (agentless policies, cloud connectors,
-proxies).
+#82 for a vetted credential-handling design); so are Cloud-only surfaces
+(agentless policies, cloud connectors, proxies). D51 adds agent tags (read and
+edit on explicit ids), diagnostics requests and their bundles' status, and EPM
+package install (a package that is not installed) / uninstall (destructive:
+Kibana deletes the package's package policies with it).
 """
 
 from dataclasses import asdict
@@ -33,6 +35,12 @@ _WRITE = ToolAnnotations(
     readOnlyHint=False, destructiveHint=False, idempotentHint=False, openWorldHint=False)
 _DESTRUCTIVE = ToolAnnotations(
     readOnlyHint=False, destructiveHint=True, idempotentHint=True, openWorldHint=False)
+# A write whose repeat leaves the same state (D51: a tag edit, a fresh install).
+_IDEMPOTENT_WRITE = ToolAnnotations(
+    readOnlyHint=False, destructiveHint=False, idempotentHint=True, openWorldHint=False)
+# Kibana's limit-free id list, bounded so the per-agent reads before and after
+# the call stay small (D51).
+_MAX_TAGGED_AGENTS = 100
 
 
 class FleetToolbox:
@@ -68,16 +76,16 @@ class FleetToolbox:
         def list_agents() -> list[dict[str, Any]]:
             """List enrolled Elastic Agents (including inactive ones): each
             agent's id, status ('online'/'offline'/'error'/'degraded'/...),
-            assigned policy_id, hostname, version, and last check-in. Empty when
-            no agents are enrolled."""
+            assigned policy_id, hostname, version, last check-in and tags.
+            Empty when no agents are enrolled."""
             with gateway_errors(), deps.gateway_factory() as gw:
                 return [asdict(a) for a in gw.list_agents()]
 
         @mcp.tool(tags={self.name, "read"}, annotations=_READ)
         def get_agent(agent_id: Annotated[str, Field(min_length=1)]) -> dict[str, Any]:
             """Get one Elastic Agent by its id: status, assigned policy_id,
-            hostname, version, enrolled-at and last check-in. Errors if no agent
-            with that id exists."""
+            hostname, version, enrolled-at, last check-in and tags. Errors if no
+            agent with that id exists."""
             with gateway_errors(), deps.gateway_factory() as gw:
                 return asdict(gw.get_agent(agent_id))
 
@@ -87,6 +95,29 @@ class FleetToolbox:
             error, offline, inactive, updating, unenrolled, and the total."""
             with gateway_errors(), deps.gateway_factory() as gw:
                 return asdict(gw.get_agent_status())
+
+        @mcp.tool(tags={self.name, "read"}, annotations=_READ)
+        def list_agent_tags() -> list[str]:
+            """List the distinct tags set on enrolled agents (inactive ones
+            included), e.g. ['production', 'linux']. Empty when no agent has a
+            tag. get_agent and list_agents show each agent's own tags;
+            update_agent_tags adds or removes them."""
+            with gateway_errors(), deps.gateway_factory() as gw:
+                return gw.list_agent_tags()
+
+        @mcp.tool(tags={self.name, "read"}, annotations=_READ)
+        def list_agent_diagnostics(
+            agent_id: Annotated[str, Field(min_length=1)],
+        ) -> list[dict[str, Any]]:
+            """List the diagnostics bundles requested from one agent: each
+            bundle's id, file name, status
+            ('IN_PROGRESS' until the agent uploads it, then 'READY'; 'FAILED',
+            'EXPIRED'), created-at and the action_id request_agent_diagnostics
+            returned. Metadata only — download a bundle from the agent's
+            Diagnostics tab in Kibana (Fleet > Agents). Errors if no agent with
+            that id exists (list_agents shows the ids)."""
+            with gateway_errors(), deps.gateway_factory() as gw:
+                return [asdict(d) for d in gw.list_agent_diagnostics(agent_id)]
 
         @mcp.tool(tags={self.name, "read"}, annotations=_READ)
         def list_agent_versions() -> list[str]:
@@ -298,6 +329,80 @@ class FleetToolbox:
                 return asdict(gw.update_package_policy(
                     package_policy_id=package_policy_id, changes=changes))
 
+        # --- Integrations (EPM) install, agent tags and diagnostics (D51) ---
+
+        @mcp.tool(tags={self.name, "write"}, annotations=_IDEMPOTENT_WRITE)
+        def install_package(
+            name: Annotated[str, Field(min_length=1)],
+            version: Annotated[str, Field(min_length=1)] | None = None,
+        ) -> dict[str, Any]:
+            """Install an integration package that is not installed yet (e.g.
+            'nginx'; names from list_packages), at its latest version or at
+            `version` (Kibana installs only the latest one). Creates the
+            package's Elasticsearch and Kibana assets (one with Kibana assets
+            also adds the managed 'logs-*' and 'metrics-*' data views to every
+            space if missing); attach it to an agent policy afterwards with
+            create_package_policy. A package already
+            installed at that version (or at any version when `version` is
+            omitted) is left as it is: already_installed=true, nothing sent.
+            Never changes an installed version — an upgrade cannot be undone on
+            this license; that is refused, naming what to do instead.
+            uninstall_package undoes an install. Returns {name, version,
+            status, already_installed}."""
+            with gateway_errors(), deps.gateway_factory() as gw:
+                return asdict(gw.install_package(name=name, version=version))
+
+        @mcp.tool(tags={self.name, "write"}, annotations=_IDEMPOTENT_WRITE)
+        def update_agent_tags(
+            agent_ids: Annotated[
+                list[Annotated[str, Field(min_length=1)]],
+                Field(min_length=1, max_length=_MAX_TAGGED_AGENTS),
+            ],
+            tags_to_add: list[Annotated[str, Field(min_length=1)]] | None = None,
+            tags_to_remove: list[Annotated[str, Field(min_length=1)]] | None = None,
+        ) -> dict[str, Any]:
+            """Add and/or remove tags on the exact agents given (agent ids from
+            list_agents, at most 100; never a fleet-wide query). Other tags
+            are kept; removing a tag an agent lacks is a no-op. Tags are
+            Fleet-side labels for finding agents: the agents themselves, their
+            policies and data are unchanged (an offline agent is tagged at
+            once). Refuses an unknown agent id before changing
+            anything. Returns the action_id and, per agent, previous_tags and
+            tags (read back after the call: passing the difference back undoes
+            it); not_applied_agent_ids lists any agent Kibana did not update."""
+            add = list(dict.fromkeys(tags_to_add or []))
+            remove = list(dict.fromkeys(tags_to_remove or []))
+            if not add and not remove:
+                raise ToolError(
+                    "nothing to change: pass tags_to_add and/or tags_to_remove "
+                    "(a non-empty list of tags)")
+            both = [t for t in add if t in remove]
+            if both:
+                raise ToolError(
+                    f"tag(s) {both} are in both tags_to_add and tags_to_remove — pass each "
+                    "tag in one list only (Kibana would keep it)")
+            with gateway_errors(), deps.gateway_factory() as gw:
+                return asdict(gw.update_agent_tags(
+                    agent_ids=agent_ids, tags_to_add=add, tags_to_remove=remove))
+
+        @mcp.tool(tags={self.name, "write"}, annotations=_WRITE)
+        def request_agent_diagnostics(
+            agent_id: Annotated[str, Field(min_length=1)],
+            include_cpu_metrics: bool = False,
+        ) -> dict[str, Any]:
+            """Ask one Elastic Agent (id from list_agents) to collect a
+            diagnostics bundle (its logs, configuration and state) and upload
+            it to Fleet. It does not change what the agent collects or ships.
+            include_cpu_metrics=True adds a CPU profile. An online agent
+            uploads within seconds; an offline one when it next checks in, if
+            within the 3-hour action expiry. Returns {action_id, agent_id,
+            agent_status}; follow it with list_agent_diagnostics (status
+            READY = uploaded; download it from the agent's Diagnostics tab in
+            Kibana). Each call makes a new bundle."""
+            with gateway_errors(), deps.gateway_factory() as gw:
+                return asdict(gw.request_agent_diagnostics(
+                    agent_id=agent_id, include_cpu_metrics=include_cpu_metrics))
+
         # --- Outputs ---
 
         @mcp.tool(tags={self.name, "write"}, annotations=_WRITE)
@@ -377,6 +482,34 @@ class FleetToolbox:
             with gateway_errors(), deps.gateway_factory() as gw:
                 gw.delete_output(output_id=output_id)
             return {"deleted": True, "output_id": output_id}
+
+        @mcp.tool(tags={self.name, "destructive"}, annotations=_DESTRUCTIVE)
+        def uninstall_package(
+            name: Annotated[str, Field(min_length=1)], force: bool = False
+        ) -> dict[str, Any]:
+            """Uninstall an installed integration package (names from
+            list_installed_packages). DESTRUCTIVE: removes the package's
+            Elasticsearch and Kibana assets (index templates, ingest pipelines,
+            its dashboards) and DELETES its package policies, so agents stop
+            collecting its data; ingested data and the shared 'logs-*'/
+            'metrics-*' data views stay. A package with package
+            policies is refused unless force=True (the refusal names them;
+            delete_package_policy removes one at a time; force is sent to
+            Kibana only then); one with a package policy on a managed or the
+            default Fleet Server agent policy, and fleet_server with any
+            package policy, are refused regardless of force, as is
+            elastic_agent while an agent policy has monitoring on (it holds
+            the monitoring data streams' templates and pipelines). With Fleet
+            space awareness on (get_fleet_settings
+            space_awareness_migration_status set) every uninstall is refused,
+            force or not: Kibana deletes the package policies of every space
+            and this server cannot prove its key reads them all. Returns
+            {uninstalled, name, version,
+            deleted_package_policies} (as read before the call);
+            install_package reinstalls the package, not its policies."""
+            with gateway_errors(), deps.gateway_factory() as gw:
+                result = gw.uninstall_package(name=name, force=force)
+            return {"uninstalled": True, **asdict(result)}
 
         # --- Agent lifecycle: single ---
 

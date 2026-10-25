@@ -18,6 +18,9 @@ stack. Off by default in `make check`; the local Definition-of-Done gate's
     CLAUDE_E2E_BUDGET_USD  stop for the session's cumulative cost (default: 5)
     CLAUDE_E2E_OUT         run-record directory
                            (default: scripts/experiment/runs/claude-e2e/adhoc)
+    KIBANA_MCP_OTEL_*      with KIBANA_MCP_OTEL_ENABLED on, these and every
+    OTEL_*                 OTEL_* variable go to the server's env block, so
+                           its per-tool spans export (default off; D44)
 
 Every run writes prompt.txt, transcript.jsonl (stream-json, key-redacted),
 record.json and, when non-empty, stderr.txt to its own directory under
@@ -236,7 +239,8 @@ def test_claude_completes_task(task, run_index, creds, root_gateway, session_inf
             workdir = tmp / "work"
             workdir.mkdir()
             cfg = cli.write_mcp_config(
-                tmp / "mcp.json", _REPO_ROOT, kibana_url, api_key, t.toolboxes
+                tmp / "mcp.json", _REPO_ROOT, kibana_url, api_key, t.toolboxes,
+                cli.server_telemetry_env(),
             )
             metrics, transcript, stderr, leaked, timed_out = cli.run_claude(
                 t.prompt, model, workdir, cfg, api_key

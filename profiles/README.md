@@ -51,28 +51,29 @@ for mixing with tools from other toolboxes; their tools are listed once, in
 each list equal to its profile's surface, so a tool added to those toolboxes
 fails the test until the list names it too.
 
-### [`read-only-explorer.mcp.json`](./read-only-explorer.mcp.json) — 11 tools · `read`
+### [`read-only-explorer.mcp.json`](./read-only-explorer.mcp.json) — 14 tools · `read`
 The small-/local-model reference. Explore existing dashboards, library
 visualizations and data views and check stack health; change nothing.
 Toolboxes: `dashboards` + `platform-health` + `data-management` at `read`: their
-read tools. The same 11 tools are the built-in list `@read-only-explorer`, for
+read tools. The same 14 tools are the built-in list `@read-only-explorer`, for
 mixing with tools from other toolboxes.
 *Persona:* an analyst or on-device model browsing what's already in Kibana.
 
-### [`dashboards-analyst.mcp.json`](./dashboards-analyst.mcp.json) — 21 tools · `write`
+### [`dashboards-analyst.mcp.json`](./dashboards-analyst.mcp.json) — 27 tools · `write`
 Turn plain-English asks into real Lens visualizations and dashboards (idempotent —
 re-creating the same title updates rather than duplicates). Toolboxes: `dashboards`
 + `data-management` at `write`: their read tools plus the creates and in-place
-updates. The same 21 tools are the built-in list `@dashboards-analyst`, for
+updates. The same 27 tools are the built-in list `@dashboards-analyst`, for
 mixing with tools from other toolboxes. This is the project's MVP default.
 *Persona:* data/BI analyst, dashboard builder.
 *(Deletion tools exist but are `destructive`-tier — raise `KIBANA_MCP_TIER` to
 `destructive` only if you want the model to delete dashboards, panels or library
 visualizations.)*
 
-### [`fleet-admin.mcp.json`](./fleet-admin.mcp.json) — 35 tools · `destructive`
-Administer the Elastic Agent fleet: agents, agent + integration policies, enrolled
-integrations (EPM), enrollment keys (metadata only), outputs, and full CRUD on
+### [`fleet-admin.mcp.json`](./fleet-admin.mcp.json) — 41 tools · `destructive`
+Administer the Elastic Agent fleet: agents (with their tags and diagnostics
+bundles), agent + integration policies, integrations (EPM, with install and
+uninstall), enrollment keys (metadata only), outputs, and full CRUD on
 policies and outputs. Toolbox: `fleet` (read + write + destructive). *Persona:*
 a platform/fleet admin managing agent and integration state at scale.
 *(Enrollment-key and output secrets are never returned.)*

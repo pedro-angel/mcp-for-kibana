@@ -172,6 +172,59 @@ def test_mcp_config_holds_the_key_and_is_private(tmp_path):
                             "KIBANA_MCP_TOOLBOXES": "alerting", "KIBANA_MCP_TIER": "write"}
 
 
+HC = "hcaik_01telemetry-team-key"
+
+
+def test_server_telemetry_env_is_off_by_default():
+    assert cli.server_telemetry_env({"OTEL_EXPORTER_OTLP_HEADERS": f"x-honeycomb-team={HC}"}) == {}
+    assert cli.server_telemetry_env({"KIBANA_MCP_OTEL_ENABLED": "0"}) == {}
+    assert cli.server_telemetry_env({"KIBANA_MCP_OTEL_ENABLED": "false"}) == {}
+
+
+def test_server_telemetry_env_passes_otel_settings_through_when_enabled():
+    env = cli.server_telemetry_env({
+        "KIBANA_MCP_OTEL_ENABLED": "1",
+        "KIBANA_MCP_OTEL_ENDPOINT": "https://api.eu1.honeycomb.io",
+        "KIBANA_MCP_OTEL_SERVICE_NAME": "mcp-for-kibana-roadmap",
+        "OTEL_EXPORTER_OTLP_HEADERS": f"x-honeycomb-team={HC}",
+        "OTEL_RESOURCE_ATTRIBUTES": "vcs.ref.head.revision=abc",
+        "KIBANA_MCP_TOOLS": "list_spaces",  # selection never rides along
+        "TRACEPARENT": "00-" + "1" * 32 + "-" + "2" * 16 + "-01",  # parent session's trace
+        "HONEYCOMB_API_KEY": HC,
+        "PATH": "/bin",
+    })
+    assert env == {
+        "KIBANA_MCP_OTEL_ENABLED": "1",
+        "KIBANA_MCP_OTEL_ENDPOINT": "https://api.eu1.honeycomb.io",
+        "KIBANA_MCP_OTEL_SERVICE_NAME": "mcp-for-kibana-roadmap",
+        "OTEL_EXPORTER_OTLP_HEADERS": f"x-honeycomb-team={HC}",
+        "OTEL_RESOURCE_ATTRIBUTES": "vcs.ref.head.revision=abc",
+    }
+
+
+def test_model_env_drops_telemetry_secrets_only_when_enabled():
+    base = {"PATH": "/bin", "HONEYCOMB_API_KEY": HC, "OTEL_EXPORTER_OTLP_HEADERS": f"x-honeycomb-team={HC}"}
+    # off: the model environment is exactly what it was before the pass-through
+    assert cli.model_env(base, KEY) == base
+    on = cli.model_env({**base, "KIBANA_MCP_OTEL_ENABLED": "true"}, KEY)
+    assert on == {"PATH": "/bin"}
+
+
+def test_mcp_config_carries_telemetry_env_only_when_given(tmp_path):
+    tele = {"KIBANA_MCP_OTEL_ENABLED": "1", "OTEL_EXPORTER_OTLP_HEADERS": f"x-honeycomb-team={HC}"}
+    path = cli.write_mcp_config(tmp_path / "mcp.json", "/repo", "http://k", KEY, "alerting", tele)
+    assert path.stat().st_mode & 0o777 == 0o600
+    entry = json.loads(path.read_text())["mcpServers"][cli.MCP_SERVER]
+    assert entry["env"] == {**tele, "KIBANA_URL": "http://k", "KIBANA_API_KEY": KEY,
+                            "KIBANA_MCP_TOOLBOXES": "alerting", "KIBANA_MCP_TIER": "write"}
+    # telemetry can never move the server's surface or credentials
+    hostile = {"KIBANA_MCP_OTEL_ENABLED": "1", "KIBANA_MCP_TIER": "destructive"}
+    entry = json.loads(cli.write_mcp_config(
+        tmp_path / "m2.json", "/repo", "http://k", KEY, "alerting", hostile).read_text()
+    )["mcpServers"][cli.MCP_SERVER]
+    assert entry["env"]["KIBANA_MCP_TIER"] == "write"
+
+
 def test_command_offers_only_the_server():
     cmd = cli.command("do it", "haiku", "/tmp/mcp.json")
     assert cmd[cmd.index("--tools") + 1] == ""

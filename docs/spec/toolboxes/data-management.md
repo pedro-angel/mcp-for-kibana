@@ -1,18 +1,22 @@
 # data-management — behavior contract
 
-Status: Draft v1.2 (2026-10-17) — regeneration corpus, reconciled to shipped code
+Status: Draft v1.6 (2026-10-25) — regeneration corpus, reconciled to shipped code
 Surface reference: docs/tools.md#data-management-toolbox · Enforcement: named per section below
 
 ## Purpose & persona
 
 Owns two independent object types — data views (the datasets a visualization
-or dashboard reads) and short URLs (shareable Kibana app links) — plus a
-saved-objects export/import/overwrite trio that moves whole sets of saved
-objects between spaces or takes a portable snapshot, without ever routing
-their bytes through the model. It is bundled with `dashboards` in both live
-profiles: `read-only-explorer` (`read` tier — browse data views, resolve
-links, take an export) and `dashboards-analyst` (`write` tier — also create
-and edit data views and create short URLs), because charting needs to know what datasets
+or dashboard reads, with their runtime fields and the space's default data
+view) and short URLs (shareable Kibana app links) — plus a saved-objects
+export/import/overwrite trio that moves whole sets of saved objects between
+spaces or takes a portable snapshot, without ever routing their bytes
+through the model, and a find/get pair: the find lists saved objects of
+any type Kibana serves by title and name, the get reads one object of an
+analytics content type in full. It is bundled with `dashboards` in both live
+profiles: `read-only-explorer` (`read` tier — browse data views and saved
+objects, resolve links, take an export) and `dashboards-analyst` (`write`
+tier — also create and edit data views and their runtime fields, set the
+default data view and create short URLs), because charting needs to know what datasets
 exist before it can chart them. The export/import/overwrite trio additionally
 serves a portability job — cloning content into a new space, or restoring a
 space from a prior export — that the planned `platform-admin` profile pairs
@@ -20,16 +24,19 @@ this toolbox with.
 
 ## Surface
 
-11 tools across three tiers (`src/kibana_mcp/toolboxes/data_management/toolbox.py`),
+17 tools across three tiers (`src/kibana_mcp/toolboxes/data_management/toolbox.py`),
 tagged `{"data-management", <tier>}`:
 
-- read (4): `list_data_views`, `describe_data_view`, `resolve_short_url`, `export_saved_objects`
-- write (4): `import_saved_objects`, `create_data_view`, `update_data_view`, `create_short_url`
-- destructive (3): `delete_data_view`, `delete_short_url`, `overwrite_saved_objects`
+- read (7): `list_data_views`, `describe_data_view`, `resolve_short_url`, `export_saved_objects`,
+  `find_saved_objects`, `get_saved_object`, `get_default_data_view`
+- write (6): `import_saved_objects`, `create_data_view`, `update_data_view`, `create_short_url`,
+  `upsert_runtime_field`, `set_default_data_view` (both `idempotentHint=true`)
+- destructive (4): `delete_data_view`, `delete_short_url`, `overwrite_saved_objects`,
+  `delete_runtime_field`
 
 A tier includes everything below it (docs/tools.md#tiers-and-annotations):
-the default `write` tier exposes 8 tools, `destructive` all 11, `read` only
-the 4. `export_saved_objects` sits in `read` despite writing a file on the
+the default `write` tier exposes 13 tools, `destructive` all 17, `read` only
+the 7. `export_saved_objects` sits in `read` despite writing a file on the
 server, because the tier reflects Kibana-side mutation, not local disk
 activity — it stays a sensitive read regardless (see Deliberate exclusions).
 Per-tool arguments and return shapes: docs/tools.md#data-management-toolbox
@@ -37,16 +44,21 @@ and docs/tools.md#saved-objects-exportimport-data-management.
 
 ## Behavioral guarantees
 
-- **Space targeting.** All 11 tools accept optional `space` per
+- **Space targeting.** All 17 tools accept optional `space` per
   docs/tools.md#space-targeting. `list_data_views` never carries the `space`
   echo (the one list-returning tool here); every other tool echoes it only
   when set. Data views and short URLs are cleanly space-isolated — neither
   is one of the global-visibility exceptions docs/tools.md#space-targeting
-  catalogues for other toolboxes.
+  catalogues for other toolboxes. The default data view is a per-space
+  setting, and the saved-objects reads see only the objects of the space
+  the gateway is scoped to.
 - **Guard-before-gateway ordering.** `export_saved_objects`'s exactly-one-of
   `types`/`objects` check, `create_short_url`'s locator/url/`/s/`-prefix
   checks, `update_data_view`'s at-least-one-field and no-blank-field checks,
-  and the import/overwrite handle-format-and-existence check all run
+  the import/overwrite handle-format-and-existence check,
+  `find_saved_objects`' type, search, reference and result-window checks,
+  `get_saved_object`'s blank-argument check, and `upsert_runtime_field`'s
+  and `delete_runtime_field`'s blank-name/script checks all run
   before the tool obtains a gateway via `deps.gateway_factory(space)` on the
   gateway PORT (`ports/gateway.py`) — a guard failure performs no space
   validation and reaches Kibana never.
@@ -114,19 +126,76 @@ and docs/tools.md#saved-objects-exportimport-data-management.
   holds (the new pattern) and the `update_data_view` call that finishes or
   undoes it. An empty field list skips the check (a pattern for
   data not yet ingested is legitimate, as `create_data_view` allows).
+- **Runtime fields read first and refuse what they could not put back
+  (D48).** Probed on 9.5.4: Kibana's runtime-field PUT creates or replaces
+  and compiles nothing — a script that does not compile is stored, and
+  Elasticsearch then fails every search whose runtime mappings carry it,
+  even one that does not use the field — so `upsert_runtime_field`'s
+  description states that and the way back (another upsert, or
+  `delete_runtime_field`). The upsert reads the view: a name the view has
+  as a mapped or scripted field, a stored composite field and a
+  composite's subfield are refused before any write; a create uses the
+  POST (which 400s "Field [name = x] already exists." for a name taken in
+  the meantime, answered with "call upsert_runtime_field again"); a
+  replacement uses the PUT, re-sends the stored custom label and
+  description (the PUT drops them otherwise, probed) and returns the
+  replaced definition as `previous`. `type` is the seven single-value types
+  (`composite` is not offered). `delete_runtime_field` reads the view too,
+  because Kibana's 404 does not tell a missing name from a mapped field or a
+  subfield; a mapped field and a composite's subfield are refused naming
+  what to delete instead, any other miss lists the view's runtime fields,
+  and it returns the deleted definition (a composite's `fields` included).
+- **The default data view is checked and always replaced (D48).** Kibana
+  stores any id as a space's default and, without `force`, answers 200 and
+  keeps a default that is set (probed), so `set_default_data_view` reads
+  the view first (D17 guidance on a miss), always sends `force: true`, and
+  returns `previous_id` and `previous_exists` (whether that id names a
+  view: a dangling one cannot be passed back, and `view_id=null` undoes it,
+  since Kibana treats an id that names no view as no default);
+  `view_id=null` clears the default. Kibana makes
+  the first data view created in a space with no default its default, and
+  keeps the id of a deleted default, so `get_default_data_view` returns
+  `exists: false` for an id that names no view.
+- **Saved-objects reads stay small and say what an empty page means
+  (D48).** `find_saved_objects` asks Kibana for each hit's `title` and
+  `name` only, matches `search` against those two only (`search_fields`;
+  without it Kibana matches every attribute), returns one page (`per_page`
+  ≤ 100, `page * per_page` ≤
+  10,000, Kibana's result window) and adds a `note` when nothing matched —
+  Kibana answers an empty page for unknown and hidden types alike — or the
+  page is past the end; `types` refuses `*`. `get_saved_object` reads only
+  a fixed allowlist of analytics content types
+  (`core/saved_objects.py` `READABLE_TYPES`: dashboards, Lens and legacy
+  visualizations, saved searches, data views, maps, tags, saved queries,
+  Canvas, Graph, links and annotation groups) and refuses any other type
+  before calling Kibana, naming only ways forward that work for that type
+  (`_UNREADABLE_WAYS`: no export for Fleet's and Synthetics' types, which
+  Kibana does not export; no find for hidden ones; the toolbox serving each
+  named tool, with how to enable it, since the profiles that ship
+  `get_saved_object` publish none of them; for an unknown type, that no
+  tool reads it, plus find and export each with its condition): Kibana strips only attributes registered as
+  encrypted, and Fleet's `fleet-proxy` and `ingest-outputs` keep
+  certificate keys, proxy headers, `config_yaml` and service tokens in
+  plain attributes (the fleet contract's field-allowlist rule). It leaves out
+  any attribute longer than 4,000 characters (`omitted_attributes` gives
+  each one's size), returns the distinct references, and its miss names
+  `find_saved_objects`. Both use Kibana's deprecated saved-objects routes
+  (no public replacement finds across types or by reference).
 - **No derived identity, no confirm gate beyond tier.** Every other
   write/destructive tool opens one scoped gateway and performs exactly one
   Kibana operation, except `create_data_view`'s cleanup delete after a
-  refused time field and its id lookup after a duplicate name. Data-view and short-url ids are minted by Kibana, never derived
+  refused time field and its id lookup after a duplicate name, and the
+  reads before a write in `upsert_runtime_field`, `delete_runtime_field`
+  and `set_default_data_view`. Data-view and short-url ids are minted by Kibana, never derived
   (unlike the dashboards toolbox's title-derived id). `delete_data_view`,
-  `delete_short_url`, and `overwrite_saved_objects` require nothing beyond
+  `delete_short_url`, `delete_runtime_field` and `overwrite_saved_objects` require nothing beyond
   the `destructive` tier cap — no `force`/`confirm` parameter, unlike
   `platform-admin`'s `delete_space` or `security-detections`'
   `delete_value_list`.
 
 ## Invariants
 
-- Exposes exactly 11 tools tagged `data-management`, tiered as in Surface.
+- Exposes exactly 17 tools tagged `data-management`, tiered as in Surface.
 - Every tool accepts optional `space` (`^[a-z0-9_-]+$`, no maximum length),
   byte-identical to today's behavior when omitted.
 - Call order is always: a tool's own argument guard (if any) → space
@@ -168,6 +237,23 @@ and docs/tools.md#saved-objects-exportimport-data-management.
 - `update_data_view`'s result must carry `field_count`, never the field map
   (a broad pattern has thousands of fields; `describe_data_view` returns
   them).
+- `upsert_runtime_field` must never replace a runtime field without
+  returning the definition it replaced, must never write over a mapped
+  field or a stored composite field, and must keep a replaced field's
+  custom label and description.
+- `delete_runtime_field` must return the definition it deleted and must
+  delete nothing when the name is not a runtime field of the view.
+- `set_default_data_view` must never store an id that names no data view in
+  the space, and must return the default it replaced.
+- `find_saved_objects` must never return more than each hit's summary, and
+  an empty result must say that unknown and hidden types also answer empty.
+- `get_saved_object` must never return an attribute longer than 4,000
+  characters; it lists such attributes by size.
+- `get_saved_object` must never fetch an object whose type is outside
+  `READABLE_TYPES`; `find_saved_objects` must never match `search` against
+  an attribute other than `title` and `name`.
+- `set_default_data_view` must say whether the default it replaced names a
+  data view (`previous_exists`).
 
 ## Deliberate exclusions & caveats
 
@@ -198,9 +284,17 @@ and docs/tools.md#saved-objects-exportimport-data-management.
   toolbox built embed the pattern and time field inline
   (`data_view_spec`, observed on 9.5.4), so an edit does not reach them;
   `update_panel` rebuilds one against the edited view.
-- **Deferred, recorded on the roadmap, not stubbed:** data-view runtime-field
-  management and default-data-view get/set; granular `saved_objects` find/get
-  reads (raw CRUD stays out — Kibana itself marks it deprecated).
+- **Deferred, recorded on the roadmap, not stubbed:** composite runtime
+  fields (create and replace; delete is supported), checking a runtime
+  field's script before it is stored (no public Kibana route compiles one),
+  and raw saved-objects writes (create, update, delete, bulk — Kibana marks
+  them deprecated and the type-specific tools cover them). The find/get
+  reads use deprecated routes too, deliberately: no public replacement
+  finds across types or by reference (D48).
+- **Runtime-field writes are not atomic with their read.** A change another
+  client stores between `upsert_runtime_field`'s read and its PUT is
+  replaced, and `previous` is the definition the call read (D45/D47
+  precedent: the window is within one call).
 - **Short URLs are create/resolve/delete only** — no update tool is wrapped,
   matching Kibana's own short-URL surface.
 
@@ -233,8 +327,23 @@ and docs/tools.md#saved-objects-exportimport-data-management.
   cleanup with the view's id, the fix and the original cause, and turns
   Kibana's duplicate-name 400 into guidance naming the existing view's id
   and `update_data_view` (other 400s unchanged).
-- **Unit — `tests/unit/toolboxes/test_space_threading.py`.** All 11 tools
-  inside the shared 73-tool cross-toolbox matrix: threading (the factory
+- **Unit — the D48 tools.** `tests/unit/toolboxes/test_data_management.py`:
+  tiers and hints, the upsert's create/replace with `previous`, its type
+  enum without `composite`, blank-argument guards before the factory, the
+  description's compile warning; the delete's definition and misses; the
+  default's get/set/clear round trip, a dangling id and `previous_exists`
+  over it; the delete's mapped-field and subfield refusals; find's filters,
+  notes, guards, schema bounds and title-or-name search; get's attribute
+  cap, references, miss, the type allowlist before the factory and the
+  description listing every allowed type. `tests/unit/adapters/test_data_management_gateway.py`: POST for a
+  create and PUT for a replacement, the label and description re-sent, the
+  refusals before any write, the create race, the delete's read-first
+  guidance and scoped suffix, `force: true` and the unknown-id refusal,
+  find's `fields`/`search_fields`/filters and summary mapping, get's
+  distinct references, miss and the type refusal before Kibana, and
+  `previous_exists`. `tests/unit/test_saved_objects_core.py`: the attribute cap.
+- **Unit — `tests/unit/toolboxes/test_space_threading.py`.** All 17 tools
+  inside the shared 86-tool cross-toolbox matrix: threading (the factory
   sees exactly the caller's space), schema (space present, optional,
   correctly patterned), echo (dict rows only, only when set), and the two
   shared error-path cases (space-not-found guidance, auth-error passthrough).
@@ -251,7 +360,18 @@ and docs/tools.md#saved-objects-exportimport-data-management.
   `test_scoped_gateway_full_chain_live`,
   `test_visualization_and_short_url_scoped_live`,
   `test_cross_space_import_clones`, `test_cross_space_overwrite_replaces_twin`,
-  `test_update_data_view_tool_scoped_live` (MCP surface, echo, suffix).
+  `test_update_data_view_tool_scoped_live` (MCP surface, echo, suffix);
+  the D48 block — `test_runtime_field_lifecycle_live` (create, replacement
+  with `previous` and the kept label, a stored broken script, the
+  refusals, composite delete, the miss), and, through the MCP surface,
+  `test_default_data_view_set_get_and_clear_scoped_live` (in a throwaway
+  space: Kibana's automatic first default, replace, refused id, dangling,
+  clear, with `previous_exists` over the dangling id) and
+  `test_find_and_get_saved_objects_live` (the flights sample by reference,
+  none for a reference to no object, by word but not by a word only in its
+  description, a hidden type, the cap, distinct references, the stack's
+  Fleet output and other unlisted types refused, the result window, another
+  space).
 - **e2e-replay — `tests/e2e_replay/transcripts/`.** `space-dashboard.json`
   (and its gemma variant) pin `create_data_view`'s space echo through a real
   MCP client and server; `flights-dashboard.json` pins the data-view

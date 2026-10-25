@@ -29,6 +29,75 @@ class ShortUrl:
 
 
 @dataclass(frozen=True, slots=True)
+class RuntimeField:
+    """A data view's runtime field as Kibana stores it (`runtimeFieldMap`, D48)."""
+    name: str
+    type: str  # keyword | long | double | date | ip | boolean | geo_point | composite
+    script: str | None  # Painless source; None reads the _source value of the same name
+    # A composite field's subfields (name -> type); None for every other type.
+    fields: dict[str, str] | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class RuntimeFieldUpsert:
+    view_id: str
+    field: RuntimeField  # as stored after the write
+    previous: RuntimeField | None  # the definition replaced; None when the call created it
+
+
+@dataclass(frozen=True, slots=True)
+class DefaultDataView:
+    """A space's default data view (Kibana's `defaultIndex` setting, D48)."""
+    id: str | None  # None when no default is set
+    name: str | None  # None when unset, or when the id names no data view
+    index_pattern: str | None
+    # False when unset, or when the stored id names no data view in the space
+    # (Kibana keeps the id of a deleted view, probed on 9.5.4).
+    exists: bool
+
+
+@dataclass(frozen=True, slots=True)
+class DefaultDataViewChange:
+    current: DefaultDataView
+    previous_id: str | None  # the default before the call; None when none was set
+    # False when previous_id is None or names no data view in the space (a
+    # deleted view's id, which set_default_data_view will not store again).
+    previous_exists: bool
+
+
+@dataclass(frozen=True, slots=True)
+class SavedObjectSummary:
+    type: str
+    id: str
+    title: str | None  # attributes.title, when the type has one
+    name: str | None  # attributes.name (a data view's display name, a tag's name, …)
+    updated_at: str | None
+    namespaces: tuple[str, ...]
+    managed: bool
+
+
+@dataclass(frozen=True, slots=True)
+class SavedObjectPage:
+    total: int
+    page: int
+    per_page: int
+    saved_objects: tuple[SavedObjectSummary, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class SavedObjectDetail:
+    type: str
+    id: str
+    namespaces: tuple[str, ...]
+    created_at: str | None
+    updated_at: str | None
+    managed: bool
+    attributes: dict[str, Any]
+    # The distinct objects it references, in first-seen order: {"type", "id"}.
+    references: tuple[dict[str, str], ...]
+
+
+@dataclass(frozen=True, slots=True)
 class PanelSummary:
     index: int
     type: str
@@ -137,6 +206,20 @@ class AlertRuleDetail:
     tags: tuple[str, ...]
     params: dict[str, object]              # as Kibana stores them, defaults included
     actions: tuple[dict[str, object], ...]  # id, group, params, frequency: update_alert_rule's shape
+    muted: bool                            # rule-wide mute (mute_alert_rule): no action fires
+    muted_alert_ids: tuple[str, ...]       # alerts muted one by one (mute_alert)
+
+
+@dataclass(frozen=True, slots=True)
+class RuleSnooze:
+    # One snooze schedule as Kibana stored it. schedule_id is the only handle
+    # unsnooze_alert_rule takes: Kibana's public API never lists a rule's snoozes.
+    rule_id: str
+    schedule_id: str
+    duration: str                          # e.g. "2h", as sent
+    start: str                             # UTC, Kibana's YYYY-MM-DDTHH:mm:ss.sssZ
+    timezone: str                          # Kibana's recurrence zone ("UTC" unless set)
+    recurring: dict[str, object] | None    # every / end / occurrences / onWeekDay / ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -256,6 +339,10 @@ class ApmAgentConfig:
     settings: dict[str, str]
     applied_by_agent: bool
     etag: str
+    # The APM agent the config was written for ("java"), as Kibana's UI stores
+    # it; absent (None) when none was sent. Kibana's PUT drops it unless it is
+    # sent again, so upsert_apm_agent_config carries it over (D47).
+    agent_name: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -316,6 +403,39 @@ class ExceptionList:
     namespace_type: str
     tags: tuple[str, ...]
     os_types: tuple[str, ...]
+    description: str = ""  # D50: update_exception_list returns the previous one
+
+
+@dataclass(frozen=True, slots=True)
+class ExceptionListChange:
+    # update_exception_list (D50): the list as Kibana stored it, and as the
+    # read before the PUT found it (what passing its fields back restores).
+    list: ExceptionList
+    previous: ExceptionList
+
+
+@dataclass(frozen=True, slots=True)
+class ExceptionListExport:
+    # export_exception_list (D50): what the model sees of an export kept on
+    # the server; `handle` goes to import_exception_list/overwrite_exception_list.
+    handle: str
+    id: str
+    list_id: str
+    name: str
+    namespace_type: str
+    item_count: int
+    byte_size: int
+
+
+@dataclass(frozen=True, slots=True)
+class ExceptionListImportResult:
+    # POST /api/exception_lists/_import (D50). Kibana reports per-object
+    # failures in a 200; `errors` keeps identity + status only ("list_id[/item_id]:
+    # 409 already exists"), never Kibana's message (a 400's echoes values).
+    success: bool
+    list_count: int
+    item_count: int
+    errors: tuple[str, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -443,6 +563,63 @@ class Role:
     kibana_privileges: tuple[RoleKibanaPrivilege, ...]
 
 
+# --- platform-admin: saved objects between spaces (D49) ---
+
+
+@dataclass(frozen=True, slots=True)
+class CopiedObject:
+    type: str
+    id: str  # its id in the source space
+    title: str | None
+    destination_id: str  # its id in the target space (a new id for a new copy)
+    overwritten: bool  # True when it replaced an object already in the target space
+
+
+@dataclass(frozen=True, slots=True)
+class CopyFailure:
+    type: str
+    id: str
+    title: str | None
+    error: str  # Kibana's error type: missing_references, unsupported_type, ambiguous_conflict, …
+    fix: str  # what to do about it (core.space_sharing.copy_fix)
+    missing_references: tuple[dict[str, str], ...]  # {"type", "id"} not copied with it
+    destinations: tuple[dict[str, str], ...]  # ambiguous_conflict: {"id", "title"} candidates
+
+
+@dataclass(frozen=True, slots=True)
+class SpaceCopyResult:
+    space: str
+    success: bool
+    copied: tuple[CopiedObject, ...]
+    failed: tuple[CopyFailure, ...]
+    # Requested objects Kibana neither copied nor failed: already in the space
+    # (shared to it), left as they are.
+    unchanged: tuple[dict[str, str], ...]
+
+
+@dataclass(frozen=True, slots=True)
+class ObjectSpaces:
+    """Which spaces one saved object is shared to, as the source space sees it."""
+
+    type: str
+    id: str
+    spaces: tuple[str, ...]  # empty for a type that lives in one space only
+    missing: bool  # no such object in the source space
+    spaces_with_matching_origins: tuple[str, ...]  # spaces holding a copy made from it
+
+
+@dataclass(frozen=True, slots=True)
+class SharingChange:
+    type: str
+    id: str
+    spaces: tuple[str, ...]  # after the call
+    added: tuple[str, ...]
+    removed: tuple[str, ...]
+    deleted: bool  # removed from its last space, so Kibana deleted it
+    spaces_with_matching_origins: tuple[str, ...]
+    error: str | None  # Kibana's per-object error; the other objects were still updated
+
+
 @dataclass(frozen=True, slots=True)
 class ApiDeprecation:
     # Nested inside UpgradeReadiness only. message[]/correctiveActions are dropped
@@ -522,6 +699,7 @@ class FleetAgent:
     enrolled_at: str
     last_checkin: str | None
     last_checkin_status: str | None
+    tags: tuple[str, ...] = ()  # Fleet-side labels (D51); () when none
 
 
 @dataclass(frozen=True, slots=True)
@@ -639,3 +817,59 @@ class FleetSettings:
 class FleetPermissions:
     # /api/fleet/check_permissions: whether the current key can operate Fleet.
     success: bool
+
+
+# --- fleet advanced ops (D51): agent tags, diagnostics, package install/uninstall ---
+
+
+@dataclass(frozen=True, slots=True)
+class FleetAgentTagChange:
+    # One agent of an update_agent_tags call: its tags read before the call and
+    # read back after it, so passing the difference back undoes the change.
+    agent_id: str
+    previous_tags: tuple[str, ...]
+    tags: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class FleetAgentTagsResult:
+    action_id: str
+    agents: tuple[FleetAgentTagChange, ...]
+    # Agents whose read-back tags lack a tag to add or keep a tag to remove:
+    # Kibana answered 200 but did not apply the change to them.
+    not_applied_agent_ids: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class FleetDiagnosticsRequest:
+    action_id: str
+    agent_id: str
+    agent_status: str  # the agent's status when asked; an offline agent runs it at check-in
+
+
+@dataclass(frozen=True, slots=True)
+class FleetAgentDiagnostics:
+    # One diagnostics bundle an agent uploaded (GET /api/fleet/agents/{id}/uploads):
+    # metadata only — the bundle itself is downloaded from Kibana's UI.
+    id: str
+    name: str
+    status: str  # 'AWAITING_UPLOAD' | 'IN_PROGRESS' | 'READY' | 'FAILED' | 'EXPIRED' | ...
+    created_at: str
+    action_id: str
+
+
+@dataclass(frozen=True, slots=True)
+class FleetPackageInstall:
+    name: str
+    version: str  # the installed version, read back after the call
+    status: str
+    already_installed: bool  # True: it was installed at that version; nothing was sent
+
+
+@dataclass(frozen=True, slots=True)
+class FleetPackageUninstall:
+    name: str
+    version: str  # the version that was installed
+    # Package policies of the package, read before the call: Kibana deletes them
+    # with it (probed on 9.5.4), so this is what the uninstall removed.
+    deleted_package_policies: tuple[FleetPackagePolicy, ...]

@@ -97,3 +97,57 @@ def test_summarize_splits_details_and_maps_refs():
     assert s.missing_ref_count == 1
     assert s.missing_references == ("index-pattern/gone",)  # dict -> "type/id" string
     assert s.excluded_count == 2
+
+
+# --- get_saved_object's attribute cap (D48) ---
+
+from kibana_mcp.core.saved_objects import ATTRIBUTE_CHARS_SHOWN, cap_attributes  # noqa: E402
+
+
+def test_cap_attributes_keeps_short_values_and_sizes_long_ones():
+    limit = ATTRIBUTE_CHARS_SHOWN
+    shown, omitted = cap_attributes({
+        "title": "t", "panelsJSON": "x" * (limit + 1), "edge": "y" * limit,
+        "nested": {"k": "v" * limit}, "count": 3,
+    })
+    assert shown == {"title": "t", "edge": "y" * limit, "count": 3}
+    # A string's size is its length; another value's, its compact JSON text.
+    assert omitted == {"panelsJSON": limit + 1, "nested": limit + 8}
+
+
+def test_cap_attributes_limit_is_the_one_the_description_states():
+    assert ATTRIBUTE_CHARS_SHOWN == 4_000
+
+
+# --- two handle kinds share the export dir (D50) ---
+
+
+def test_exception_list_handles_have_their_own_kind(tmp_path):
+    from kibana_mcp.core.saved_objects import EXCEPTION_LIST
+
+    handle = write_export(tmp_path, b"x", EXCEPTION_LIST)
+    assert re.fullmatch(r"el-[0-9a-f]{12}", handle)
+    assert read_export(tmp_path, handle, EXCEPTION_LIST) == b"x"
+    # each import reads only its own kind, and names the tools of the other
+    with pytest.raises(ValueError, match="pass it to import_exception_list or overwrite"):
+        read_export(tmp_path, handle)
+    so = write_export(tmp_path, b"y")
+    with pytest.raises(ValueError, match="pass it to import_saved_objects or overwrite"):
+        read_export(tmp_path, so, EXCEPTION_LIST)
+
+
+def test_missing_exception_list_handle_names_the_export_tool(tmp_path):
+    from kibana_mcp.core.saved_objects import EXCEPTION_LIST
+
+    with pytest.raises(KibanaNotFound, match="call export_exception_list again"):
+        read_export(tmp_path, "el-000000000000", EXCEPTION_LIST)
+
+
+def test_prune_is_per_kind(tmp_path):
+    from kibana_mcp.core.saved_objects import EXCEPTION_LIST
+
+    for _ in range(_MAX_RETAINED + 3):
+        write_export(tmp_path, b"x", EXCEPTION_LIST)
+    write_export(tmp_path, b"y")
+    assert len(list(tmp_path.glob("el-*.ndjson"))) == _MAX_RETAINED
+    assert len(list(tmp_path.glob("so-*.ndjson"))) == 1

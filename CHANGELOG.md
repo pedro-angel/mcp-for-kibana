@@ -10,6 +10,272 @@ version section.
 
 ## [Unreleased]
 
+### Added
+
+- **Dashboards: edit a dashboard's settings** (one `write` tool, 184 tools in
+  all; it takes `space`). `update_dashboard` changes a dashboard's title,
+  description, time range (or clears it, so the dashboard opens with the time
+  picker's current time), auto-refresh interval in seconds (0 turns it off)
+  and tags (`tags_to_add`/`tags_to_remove`, tag ids from
+  `find_saved_objects(types=["tag"])`), and leaves its panels exactly as they
+  are. Only what is passed changes; when nothing would, nothing is written
+  (`unchanged`). The result returns the settings now, what changed, their
+  previous values, and `undo`: the whole `update_dashboard` call that puts
+  them back, dashboard id and space included, to pass as given (auto-refresh
+  reads as none on a dashboard without a stored time range, where Kibana's
+  dashboard app does not apply it, and a stored sub-second interval as a
+  fraction of a second; a paused refresh comes back paused at the interval
+  just set). A previous value Kibana stored that the tool itself refuses — a
+  time its dashboard app cannot read, a negative or out-of-range refresh, a
+  blank title — is left out of `undo` and named in
+  `undo_omitted`. Renaming back onto a title `create_dashboard` maps to
+  another dashboard, or re-adding a removed tag id that names no tag, is
+  refused like any such call. Auto-refresh is at most 2147483.647 seconds,
+  the longest the dashboard app's timer can wait. It refuses, before writing: a dashboard holding panels the API cannot write back (as
+  `update_panel` does), a time Kibana's dashboard app cannot read (Kibana's
+  API would store `"yesterday"`), auto-refresh on a dashboard without a
+  stored time range or with `clear_time_range` (Kibana would store it and
+  never apply it), a tag id that
+  names no tag in that space (Kibana would store it), more than 100 tags, and
+  a rename onto a title `create_dashboard` already maps to another
+  dashboard. It joins the default selection (`dashboards-analyst`, now 27
+  tools). Decision D52.
+- **Fleet: agent tags, diagnostics, and integration install and uninstall**
+  (two `read`, three `write` and one `destructive` tool, 183 tools in all).
+  `list_agent_tags` lists the tags set on agents, and `list_agents`/`get_agent`
+  now show each agent's `tags`. `update_agent_tags` adds and removes tags on
+  the exact agent ids given (up to 100, never a query): it refuses an id that
+  names no agent before changing anything (Kibana would skip it silently) and
+  returns each agent's tags before and after, plus any agent Kibana did not
+  update. `request_agent_diagnostics` asks one agent for a diagnostics bundle
+  (optionally with a CPU profile) and returns its status; an offline agent
+  runs it at check-in. `list_agent_diagnostics` shows each bundle's status
+  (`READY` once uploaded), never its content: the bundle is downloaded in
+  Kibana's UI. `install_package` installs an integration that is not
+  installed, at its latest version or the one given; an installed one is left
+  as it is (`already_installed`), and a version change is refused, because an
+  upgrade cannot be undone on a Basic license. `uninstall_package`
+  (`destructive`) removes an integration and the package policies Kibana
+  deletes with it: it refuses a package that has package policies unless
+  `force=True`, naming them, and refuses one with a package policy on a managed
+  or the default Fleet Server agent policy whatever `force` says, as well as
+  `fleet_server` with a package policy on any agent policy and `elastic_agent`
+  while an agent policy has monitoring on (Fleet itself runs on both; Kibana
+  removed `elastic_agent` under a monitoring policy without a check), and
+  Kibana's `force` is sent only to delete package policies. Every
+  `fleet_server` package policy counts, one on no agent policy too. With
+  Fleet space awareness on (a fresh 9.5.4 stack has it on unasked), every
+  uninstall is refused, whatever `force` says: Kibana's uninstall deletes the package
+  policies of every space, while Kibana's spaces listing leaves out, without
+  an error, each space the API key cannot read (a key limited to the default
+  space saw only it, and its uninstall deleted another space's package
+  policy), and nothing this server calls proves that a key reads every
+  space. The error says to uninstall in Kibana's Integrations UI as a user
+  with Fleet and Integrations in all spaces. Unknown
+  agents, packages and versions are errors that name the tool to look them up
+  with. Decision D51.
+- **Security detections: edit, copy, export and import exception lists**
+  (three `write`, one `read` and one `destructive` tool, 177 tools in all;
+  every one takes `space`). `update_exception_list` changes a list's name,
+  description or tags and returns the previous ones; it writes nothing if the
+  list changed after its read and says to call again.
+  `duplicate_exception_list` copies a list and its items into a new list in
+  the same space (Kibana refuses endpoint lists; the error names export and
+  import instead). `export_exception_list` keeps the list and its items in a
+  file on the server and returns an `el-` handle and a summary, never the
+  content; `import_exception_list` creates a new list from it, in any space,
+  with new item ids (unlike Kibana's own "as new list" mode, which reuses the
+  source's item ids), and refuses a `list_id` that already exists (Kibana
+  would add the items to that list); `overwrite_exception_list` restores the
+  list in place and returns the ids of the items it deleted (those added
+  after the export). Both imports take the export's namespace, so an agnostic
+  export makes or restores a list shared across every space (their
+  descriptions say so), and an expired or unknown `el-` handle is refused
+  with the fix (export again), also on a server that masks error details.
+  `get_exception_list` and `find_exception_items` take an optional
+  `namespace_type` so agnostic lists can be read; their not-found names
+  `find_exception_lists` and the namespace a list made with the other
+  `namespace_type` is found in (and, for `find_exception_items`, that it
+  takes the list's `list_id` field, not its `id`), so a `KIBANA_MCP_TOOLS` list that leaves
+  `find_exception_lists` out gets the dependency warning. Import errors come back
+  per object as ids and status only. Kibana neither edits nor imports a
+  list's `os_types`. Decision D50.
+- **Platform admin: copy and share saved objects between spaces** (two
+  `write` and two `destructive` tools, 172 tools in all; none takes `space`,
+  each takes `source_space`). `copy_saved_objects_to_spaces` copies objects
+  (and, by default, what they use) into other spaces as new objects with new
+  ids and returns each copy's `destination_id`; `overwrite_saved_objects_in_spaces`
+  replaces the objects earlier copies made there instead.
+  `share_saved_objects_to_spaces` makes the same object show in more spaces
+  (`*` for every space) and returns the spaces it added;
+  `unshare_saved_objects_from_spaces` removes spaces and, because Kibana
+  deletes an object left in no space, refuses removing the last one unless
+  `force=true`. Every space written into is checked first (Kibana writes into
+  a space that does not exist without an error); the share and unshare read
+  each object's spaces first and refuse a missing object, a type Kibana keeps
+  in one space (dashboards, visualizations and others: copy them instead) and
+  a removal that removes nothing; copy failures come back per object with
+  Kibana's error and a fix. A target space Kibana refuses as a whole (a key
+  that cannot write there) fails its objects with `space_error` and the fix,
+  and the copies made in the other spaces are still returned; on a 403 the fix
+  asks for a new API key (sent as `Authorization: ApiKey <key>` or set in `KIBANA_API_KEY`, the latter ignored in HTTP mode by default) (a key keeps the privileges its owner had
+  when it was made, so changing a role does not help). The guidance never
+  suggests `source_space` where the deployment refuses it (a space-pinned
+  Kibana or public URL) and names the URL that fixes the source instead.
+  Decision D49.
+- **Data management: runtime fields, the default data view, and saved-objects
+  reads** (three `read`, two `write` and one `destructive` tool, 168 tools in
+  all; every one takes `space`). `upsert_runtime_field` creates or replaces a
+  single-value runtime field (`keyword`, `long`, `double`, `date`, `ip`,
+  `boolean`, `geo_point`, with an optional Painless `script`) and returns the
+  definition it replaced as `previous`; it refuses a name the view maps and a
+  composite field before any write, keeps a replaced field's custom label and
+  description (Kibana's PUT drops them), and its description warns that
+  Kibana stores a script without compiling it, so a broken one fails the
+  view's searches until it is fixed or deleted. `delete_runtime_field`
+  returns the deleted definition, refuses a mapped field and a composite's
+  subfield naming what to delete instead, and its miss lists the view's
+  runtime fields. `get_default_data_view` reads the space's default data view and
+  says when its stored id names no view (Kibana keeps a deleted one's);
+  `set_default_data_view` sets it (always replacing: without `force` Kibana
+  keeps the old one and still answers 200) or clears it with `view_id=null`,
+  refuses an id that names no view, and returns `previous_id` with
+  `previous_exists` (a deleted view's id cannot be passed back; `view_id=null`
+  undoes the change then, as Kibana treats such an id as no default).
+  `find_saved_objects` finds objects of given types by words of their title
+  or name (no other attribute) and/or by reference (`has_reference`: e.g. the dashboards that use a visualization)
+  and returns one page of summaries with a `note` when the page is empty
+  (Kibana also answers empty for unknown and hidden types);
+  `get_saved_object` returns one object of an analytics content type
+  (dashboard, lens, visualization, search, index-pattern, map, tag, …) with
+  attributes over 4,000 characters listed by size instead
+  (`omitted_attributes`) and its distinct references; it refuses every other
+  type before calling Kibana, because Kibana strips only registered encrypted
+  attributes and Fleet's proxy and output objects keep certificate keys,
+  proxy headers, `config_yaml` and service tokens in plain ones; the refusal
+  names only what works for the type (`list_outputs` for Fleet outputs,
+  `list_connectors`/`list_alert_rules` for connectors and rules, no tool for
+  Fleet proxies, the Fleet policy, Fleet Server host and Synthetics tools
+  for their types, each with the toolbox to enable), never an export Kibana
+  refuses or a find that answers a hidden type empty. The `read-only-explorer` and `dashboards-analyst` profiles and
+  built-in lists grow to 14 and 26 tools. Decision D48.
+- **Observability: create, replace and delete APM agent configurations**
+  (one `write` and one `destructive` tool, 162 tools in all).
+  `upsert_apm_agent_config` creates or replaces the central configuration of a
+  service and environment (omit either for all): `settings` replaces the
+  stored map, values go out as strings (`0.5` → `"0.5"`, `false` →
+  `"false"`), and the result adds `created` and `previous_settings` (the map
+  it read and replaced, which a second call puts back; Kibana's PUT takes no
+  etag, so a change another client stores between that read and the write is
+  replaced unreported). It overwrites only a configuration it read in the same
+  call, takes an optional `agent_name` on a create, keeps a stored one on a
+  replacement (refusing a different one, which the result could not give
+  back), refuses an empty map and `""` as a name, refuses to create a
+  configuration named `ALL_OPTION_VALUE` (but replaces one another client
+  stored under that literal name, rather than pointing at the all-* one; the
+  refusal says to omit every name holding it), and names the settings
+  sent when Kibana rejects a value. `delete_apm_agent_config` deletes one
+  configuration, matched exactly (a literal `ALL_OPTION_VALUE` included), and
+  returns its settings and `agent_name`, which the upsert takes back to
+  recreate it. No tool takes `space`. Creating
+  APM annotations is not offered: Kibana requires a Gold license for it (403
+  on Basic). Decision D47.
+- **APM agent configurations show their `agent_name`** in
+  `list_apm_agent_configs` and `get_apm_agent_config` (`null` when none was
+  stored). Decision D47.
+- **`get_apm_agent_config` names the fix on a miss**: "no APM agent
+  configuration for service '<name>', all environments — service_name and
+  environment must match a configuration exactly (an omitted one means all);
+  call list_apm_agent_configs to see them", instead of Kibana's "Not Found".
+  Decision D47.
+- **Observability: create, edit, run and delete Synthetics objects** (seven
+  `write` and three `destructive` tools, 160 tools in all). Monitors:
+  `create_synthetic_monitor` (http, tcp, icmp or browser, on private
+  locations given by id or label; `schedule` such as `10m` or `30s`),
+  `update_synthetic_monitor` (only the fields passed change; `enabled=False`
+  pauses it; `tags` and `private_locations` replace the list),
+  `test_synthetic_monitor` (runs it once now, a paused monitor too, so its
+  requests reach the target; returns the `test_run_id`; the result is written
+  to the `synthetics-*` data streams, and no tool reads it; marked
+  `openWorldHint=true`; each run adds a `LIGHTWEIGHT_SYNTHETICS_TEST_NOW_RUN`
+  package policy to the location's agent policy, which Kibana removes itself
+  about 20 minutes later) and `delete_synthetic_monitor`. A schedule's number
+  goes out without leading zeros (`05m` is sent as `5m`; Kibana refuses
+  `"05"`). Global parameters: `create_synthetic_param`,
+  `update_synthetic_param` and `delete_synthetic_param`; no result ever
+  carries a value, so a value the update replaces cannot be recovered by any
+  tool (keep it if you may set it back), and a key already in use is
+  refused. Private locations: `create_synthetic_private_location`
+  (on a Fleet agent policy no other location uses),
+  `update_synthetic_private_location` (the label) and
+  `delete_synthetic_private_location` (refused while monitors use it). Each
+  type's target field, the schedule and the locations are checked before
+  Kibana is called, and a wrong id names the list tool that shows it. No tool
+  takes `space`. Decision D46.
+- **`get_synthetic_monitor` names the fix on a wrong id**: "synthetic monitor
+  '<id>' not found — monitor_id is the id that create_synthetic_monitor or
+  list_synthetic_monitors returns, not the monitor's name; call
+  list_synthetic_monitors to find it", instead of Kibana's "Monitor id <id>
+  not found!". Decision D46.
+- **Alerting: mute, snooze and re-key a rule** (seven `write` tools, 150 tools
+  in all). `mute_alert_rule` / `unmute_alert_rule` silence a whole rule with no
+  end time, `mute_alert` / `unmute_alert` one of its alerts,
+  `snooze_alert_rule` / `unsnooze_alert_rule` a time window (any ISO-8601
+  `start`, default now; `duration` such as `30m`, `2h`, `1d`; optional
+  `recurring`), and `update_alert_rule_api_key` regenerates the rule's key
+  from the server's credentials. None changes the rule's definition or
+  whether it runs. `get_alert_rule` now also returns `muted` and
+  `muted_alert_ids`. Kibana never lists a rule's snoozes and keeps at most 5
+  (expired ones count), so keep the `schedule_id` the snooze returns.
+  `mute_alert` refuses a rule muted as a whole, where Kibana would accept the
+  mute and record nothing. Kibana's rule-wide mute and unmute clear every
+  per-alert mute, so both return the cleared alert ids in `cleared_alert_ids`;
+  pass each to `mute_alert` to restore it. Only the call that clears them
+  reports them: a repeat, or the unmute after the mute, returns an empty list.
+  Decision D45.
+- **`disable_alert_rule` takes `untrack`** (default off). `untrack=True` also
+  marks the rule's active alerts untracked; without it the request and the
+  result are unchanged. Decision D45.
+
+- **The Claude live-model tier can export the server's spans** (default off).
+  With `KIBANA_MCP_OTEL_ENABLED` set in the shell that runs `make test-e2e`,
+  the harness copies every `KIBANA_MCP_OTEL_*` and `OTEL_*` variable into the
+  server's private MCP config. One span per tool call then goes to the OTLP
+  endpoint you name, Honeycomb included through `OTEL_EXPORTER_OTLP_HEADERS`.
+  While it is on, the model's environment drops `OTEL_*` and `HONEYCOMB_*`.
+  Unset, nothing changes. Setup in
+  [docs/e2e-setup.md](docs/e2e-setup.md#exporting-the-servers-spans-from-the-claude-tier-default-off);
+  decision D44.
+
+### Fixed
+
+- **OpenTelemetry export no longer loses the last spans of a stdio session.**
+  The server now exports 500 ms after a span ends instead of the SDK's 5 s
+  (`OTEL_BSP_SCHEDULE_DELAY` still wins), and flushes its queue on SIGTERM as
+  well as on a normal exit. Claude Code stops a stdio server within about
+  half a second (SIGINT, SIGTERM, SIGKILL), and a 20-run `make test-e2e`
+  block had sent 72 spans for 80 tool calls, the missing ones its runs' final
+  calls. A second block sent 78 of 78. The SIGTERM flush waits at most 2 s,
+  so an unreachable collector cannot hold the exit up, and a second SIGTERM
+  ends the process at once. Only affects `KIBANA_MCP_OTEL_ENABLED=1`;
+  decision D44.
+- **`make build` (and the DoD gate's `image_smoke`) works inside a
+  TLS-intercepting sandbox.** The image's `uv sync` failed there with
+  "invalid peer certificate: UnknownIssuer". `scripts/checks/image-build.sh`,
+  now the one build recipe, passes the proxy CA as a BuildKit secret and
+  builds on the host network only when that CA exists
+  (`KIBANA_MCP_PROXY_CA`, default `/root/.ccr/ca-bundle.crt`, as
+  `scripts/stack.sh` decides); the Dockerfile's sync step reads it from
+  `/run/secrets` and no image layer keeps it. Elsewhere the build is
+  unchanged.
+
+### Security
+
+- Locked dependencies moved past advisories `pip-audit` now reports:
+  aiohttp 3.14.5, certifi 2026.10.23, fastmcp 4.1.3, filelock 4.2.4 and
+  virtualenv 21.14.13 (with yarl, packaging and openapi-pydantic as resolved).
+  `make check`'s audit step fails without them.
+
 ## [0.4.0] - 2026-10-17
 
 ### Added

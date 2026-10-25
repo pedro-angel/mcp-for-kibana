@@ -129,7 +129,7 @@ dod: ## Run the Definition-of-Done gate (GO/NO-GO over dod.config)
 
 .PHONY: build
 build: ## Build the Docker image and smoke-test it (SMOKE_PORT overrides 18300)
-	docker build -f docker/Dockerfile -t mcp-for-kibana:dev .
+	scripts/checks/image-build.sh mcp-for-kibana:dev
 	scripts/checks/image-smoke.sh mcp-for-kibana:dev
 
 .PHONY: package

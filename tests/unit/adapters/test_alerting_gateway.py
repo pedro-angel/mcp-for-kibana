@@ -2,12 +2,14 @@
 using SimpleNamespace client stubs. Raw shapes from the probe (A0b/A1/A3)."""
 
 from dataclasses import asdict
+from datetime import UTC, datetime, timedelta, timezone
 from types import SimpleNamespace
 
 import pytest
+from kibana.exceptions import BadRequestError, NotFoundError, SpaceNotFoundError
 
 from kibana_mcp.adapters.kibana.gateway import KibanaPyGateway
-from kibana_mcp.core.errors import KibanaRejected
+from kibana_mcp.core.errors import KibanaNotFound, KibanaRejected, KibanaSpaceNotFound
 from tests.unit.adapters.test_kibana_gateway import FakeResponse, make_fake_client
 
 _RULE_BODY = {
@@ -259,7 +261,7 @@ def test_get_alert_rule_returns_named_keys_only():
     out = asdict(_get_gw(body).get_alert_rule("r1"))
     assert set(out) == {
         "id", "name", "rule_type_id", "consumer", "enabled", "schedule_interval", "status",
-        "tags", "params", "actions",
+        "tags", "params", "actions", "muted", "muted_alert_ids",
     }
     assert "s3cr3t" not in repr(out) and "api_key_owner" not in out
 
@@ -384,3 +386,234 @@ def test_update_connector_requires_secrets_for_a_type_that_can_hold_them():
     assert sent == {}  # refused before the PUT that would have reset them
     gw.update_connector("c1", "renamed", None, {})  # explicit {}: the caller's choice
     assert sent["secrets"] == {}
+
+
+# --- rule lifecycle: mute, snooze, API key, untrack (B1; shapes probed on 9.5.4) ---
+# Every call below answers 204 with no body on success, except the snooze, which
+# answers 200 {"schedule": {"id", "custom": {...}}}. A missing rule is a 404
+# "Saved object [alert/<id>] not found" on every route.
+
+
+def _missing_rule(**_kw):
+    raise NotFoundError(
+        "Saved object [alert/nope] not found", meta=SimpleNamespace(status=404), body=None
+    )
+
+
+def _recording_rule_gw(calls, **fns):
+    def rec(name):
+        def fn(**kw):
+            calls.append((name, kw))
+            return FakeResponse(None)
+        return fn
+    names = ("mute_all", "unmute_all", "mute_alert", "unmute_alert", "update_api_key",
+             "disable", "unsnooze")
+    rule = SimpleNamespace(**{n: rec(n) for n in names}, **fns)
+    return _gw(alerting=SimpleNamespace(rule=rule))
+
+
+def test_rule_wide_mute_and_api_key_calls_send_only_the_rule_id():
+    calls = []
+    gw = _recording_rule_gw(calls, get=lambda id: FakeResponse(_RULE_BODY))
+    gw.mute_alert_rule("r1")
+    gw.unmute_alert_rule("r1")
+    gw.update_alert_rule_api_key("r1")
+    assert calls == [("mute_all", {"id": "r1"}), ("unmute_all", {"id": "r1"}),
+                     ("update_api_key", {"id": "r1"})]
+
+
+@pytest.mark.parametrize("method", ["mute_alert_rule", "unmute_alert_rule"])
+def test_rule_wide_mute_and_unmute_return_the_per_alert_mutes_they_clear(method):
+    # Kibana resets muted_alert_ids on both calls (probed) and no public route
+    # lists a rule's alert ids: they are read before the call and returned.
+    order = []
+    body = {**_RULE_BODY, "muted_alert_ids": ["host-a", "host-b"]}
+
+    def get(id):
+        order.append(("get", {"id": id}))
+        return FakeResponse(body)
+    gw = _recording_rule_gw(order, get=get)
+    assert getattr(gw, method)("r1") == ("host-a", "host-b")
+    assert order[0] == ("get", {"id": "r1"}) and len(order) == 2  # read, then the mute
+    gw = _recording_rule_gw([], get=lambda id: FakeResponse(_RULE_BODY))
+    assert getattr(gw, method)("r1") == ()  # no muted_alert_ids key: nothing cleared
+
+
+def test_mute_alert_sends_rule_and_alert_ids_and_keeps_kibana_existence_check():
+    calls = []
+    gw = _recording_rule_gw(calls, get=lambda id: FakeResponse(_RULE_BODY))
+    gw.mute_alert("r1", "JetBeats")
+    gw.unmute_alert("r1", "JetBeats")
+    # validate_alerts_existence is not sent: Kibana's default (true) refuses a
+    # typo'd alert id instead of muting an id the rule never raises.
+    assert calls == [("mute_alert", {"rule_id": "r1", "alert_id": "JetBeats"}),
+                     ("unmute_alert", {"rule_id": "r1", "alert_id": "JetBeats"})]
+
+
+def test_disable_sends_no_untrack_by_default_and_true_only_when_asked():
+    calls = []
+    gw = _recording_rule_gw(calls)
+    gw.disable_alert_rule("r1")
+    gw.disable_alert_rule("r1", untrack=True)
+    assert calls == [("disable", {"id": "r1"}), ("disable", {"id": "r1", "untrack": True})]
+
+
+def test_unknown_alert_id_names_where_alert_ids_come_from():
+    def mute_alert(**_kw):
+        raise NotFoundError(
+            'Alert instance with id "NoSuch" does not exist for rule with id "r1"',
+            meta=SimpleNamespace(status=404), body=None,
+        )
+    rule = SimpleNamespace(mute_alert=mute_alert, get=lambda id: FakeResponse(_RULE_BODY))
+    gw = _gw(alerting=SimpleNamespace(rule=rule))
+    with pytest.raises(KibanaNotFound, match=(
+        r"^alert 'NoSuch' not found on alert rule 'r1' — alert_id is the id of an alert "
+        r"the rule has raised .*'query matched'.*not the rule's name"
+    )):
+        gw.mute_alert("r1", "NoSuch")
+
+
+def test_mute_alert_on_a_rule_muted_as_a_whole_is_refused_before_the_mute():
+    calls = []
+    muted = {**_RULE_BODY, "mute_all": True}
+    gw = _recording_rule_gw(calls, get=lambda id: FakeResponse(muted))
+    with pytest.raises(KibanaRejected, match=(
+        r"^alert rule 'r1' is muted as a whole \(mute_alert_rule\).*call unmute_alert_rule "
+        r"first \(it clears every per-alert mute\), then mute_alert"
+    )):
+        gw.mute_alert("r1", "JetBeats")
+    assert calls == []  # Kibana would answer 204 and record nothing
+
+
+def test_mute_alert_on_a_missing_rule_names_list_alert_rules():
+    rule = SimpleNamespace(mute_alert=_missing_rule, get=_missing_rule)
+    gw = _gw(alerting=SimpleNamespace(rule=rule))
+    with pytest.raises(KibanaNotFound, match=r"^alert rule 'nope' not found — .*list_alert_rules"):
+        gw.mute_alert("nope", "JetBeats")
+
+
+@pytest.mark.parametrize("blank", ["", "  "])
+def test_blank_alert_and_schedule_ids_are_refused_before_kibana(blank):
+    calls = []
+    gw = _recording_rule_gw(calls)
+    with pytest.raises(KibanaRejected, match=r"^alert_id is empty"):
+        gw.mute_alert("r1", blank)
+    with pytest.raises(KibanaRejected, match=r"^alert_id is empty"):
+        gw.unmute_alert("r1", blank)
+    with pytest.raises(KibanaRejected, match=r"^schedule_id is empty — .*snooze_alert_rule"):
+        gw.unsnooze_alert_rule("r1", blank)
+    assert calls == []
+
+
+_START = datetime(2026, 10, 25, 1, 30, tzinfo=timezone(timedelta(hours=2)))
+
+
+def _snooze_gw(sent, response=None):
+    def snooze(**kw):
+        sent.update(kw)
+        custom = dict(kw["schedule"]["custom"])
+        custom.setdefault("timezone", "UTC")
+        return FakeResponse(response or {"schedule": {"id": "s-1", "custom": custom}})
+    return _gw(alerting=SimpleNamespace(rule=SimpleNamespace(snooze=snooze)))
+
+
+def test_snooze_sends_kibanas_strict_utc_start_and_returns_the_schedule_id():
+    sent = {}
+    s = _snooze_gw(sent).snooze_alert_rule("r1", "2h", _START, None)
+    # Kibana accepts only YYYY-MM-DDTHH:mm:ss.sssZ (probed: "...:00Z" and
+    # "+02:00" offsets are 400s), so the instant is sent in UTC with milliseconds.
+    assert sent == {"id": "r1", "schedule": {"custom": {
+        "duration": "2h", "start": "2026-10-24T23:30:00.000Z"}}}
+    assert asdict(s) == {
+        "rule_id": "r1", "schedule_id": "s-1", "duration": "2h",
+        "start": "2026-10-24T23:30:00.000Z", "timezone": "UTC", "recurring": None,
+    }
+
+
+def test_snooze_recurring_end_is_sent_in_the_same_strict_format():
+    sent = {}
+    end = datetime(2026, 12, 1, tzinfo=UTC)
+    s = _snooze_gw(sent).snooze_alert_rule(
+        "r1", "1h", _START, {"every": "1w", "onWeekDay": ["MO"], "end": end}
+    )
+    assert sent["schedule"]["custom"]["recurring"] == {
+        "every": "1w", "onWeekDay": ["MO"], "end": "2026-12-01T00:00:00.000Z"}
+    assert s.recurring == {"every": "1w", "onWeekDay": ["MO"], "end": "2026-12-01T00:00:00.000Z"}
+
+
+def test_snooze_past_kibanas_five_schedule_limit_names_unsnooze():
+    def snooze(**_kw):
+        raise BadRequestError(
+            "Rule cannot have more than 5 snooze schedules",
+            meta=SimpleNamespace(status=400), body=None,
+        )
+    gw = _gw(alerting=SimpleNamespace(rule=SimpleNamespace(snooze=snooze)))
+    with pytest.raises(KibanaRejected, match=(
+        r"^alert rule 'r1' already has 5 snooze schedules, Kibana's limit \(expired ones "
+        r"count\) — remove one with unsnooze_alert_rule"
+    )):
+        gw.snooze_alert_rule("r1", "1h", _START, None)
+
+
+def test_snooze_on_a_missing_rule_names_list_alert_rules():
+    gw = _gw(alerting=SimpleNamespace(rule=SimpleNamespace(snooze=_missing_rule)))
+    with pytest.raises(KibanaNotFound, match=r"^alert rule 'nope' not found — .*list_alert_rules"):
+        gw.snooze_alert_rule("nope", "1h", _START, None)
+
+
+def test_unsnooze_sends_the_rule_and_schedule_ids():
+    calls = []
+    _recording_rule_gw(calls).unsnooze_alert_rule("r1", "s-1")
+    assert calls == [("unsnooze", {"rule_id": "r1", "schedule_id": "s-1"})]
+
+
+@pytest.mark.parametrize("error", [
+    # a rule with other snoozes: 404; a rule with none at all: 400 (both probed)
+    NotFoundError("Rule has no snooze schedule with id s-9.",
+                  meta=SimpleNamespace(status=404), body=None),
+    BadRequestError("Rule has no snooze schedules.", meta=SimpleNamespace(status=400), body=None),
+])
+def test_unknown_schedule_id_names_snooze_alert_rule(error):
+    def unsnooze(**_kw):
+        raise error
+    gw = _gw(alerting=SimpleNamespace(rule=SimpleNamespace(unsnooze=unsnooze)))
+    with pytest.raises(KibanaNotFound, match=(
+        r"^snooze schedule 's-9' not found on alert rule 'r1' — schedule_id is the "
+        r"schedule_id that snooze_alert_rule returned"
+    )):
+        gw.unsnooze_alert_rule("r1", "s-9")
+
+
+def test_unsnooze_on_a_missing_rule_names_list_alert_rules():
+    gw = _gw(alerting=SimpleNamespace(rule=SimpleNamespace(unsnooze=_missing_rule)))
+    with pytest.raises(KibanaNotFound, match=r"^alert rule 'nope' not found — .*list_alert_rules"):
+        gw.unsnooze_alert_rule("nope", "s-1")
+
+
+def test_get_alert_rule_reports_mute_state():
+    body = {**_GET_RULE_BODY, "mute_all": True, "muted_alert_ids": ["JetBeats", "ES-Air"]}
+    r = _get_gw(body).get_alert_rule("r1")
+    assert r.muted is True and r.muted_alert_ids == ("JetBeats", "ES-Air")
+    r = _get_gw(_RULE_BODY).get_alert_rule("r1")  # keys absent: not muted
+    assert r.muted is False and r.muted_alert_ids == ()
+
+
+def test_a_rule_gone_between_read_and_mute_still_gets_the_rule_guidance():
+    rule = SimpleNamespace(get=lambda id: FakeResponse(_RULE_BODY), mute_alert=_missing_rule)
+    gw = _gw(alerting=SimpleNamespace(rule=rule))
+    with pytest.raises(KibanaNotFound, match=r"^alert rule 'r1' not found — .*list_alert_rules"):
+        gw.mute_alert("r1", "JetBeats")
+
+
+@pytest.mark.parametrize("call", [
+    lambda gw: gw.mute_alert("r1", "JetBeats"),
+    lambda gw: gw.unsnooze_alert_rule("r1", "s-1"),
+])
+def test_a_missing_space_on_the_alert_and_snooze_routes_is_reported_as_the_space(call):
+    def no_space(**_kw):
+        raise SpaceNotFoundError("sales")
+    rule = SimpleNamespace(
+        get=lambda id: FakeResponse(_RULE_BODY), mute_alert=no_space, unsnooze=no_space
+    )
+    with pytest.raises(KibanaSpaceNotFound):
+        call(_gw(alerting=SimpleNamespace(rule=rule)))

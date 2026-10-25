@@ -1,15 +1,15 @@
 """The data-management toolbox: data views + short URLs + saved-objects
-export/import.
+export/import and reads.
 
 Owns the `data_views` namespace (the two read tools were extracted from the
 dashboards toolbox so the namespace is owned once) plus data-view create/update/delete,
-short-URL create/resolve/delete, and saved-objects export/import (#37) — the
-latter handle-based so a whole-space NDJSON export never crosses the model
-context.
+runtime fields and the default data view (D48), short-URL create/resolve/delete,
+saved-objects export/import (#37) — handle-based so a whole-space NDJSON export
+never crosses the model context — and the saved-objects find/get reads (D48).
 """
 
 from dataclasses import asdict
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from fastmcp import FastMCP
 from fastmcp.exceptions import ToolError
@@ -17,20 +17,55 @@ from mcp.types import ToolAnnotations
 from pydantic import Field
 
 from kibana_mcp.core.errors import KibanaRejected
-from kibana_mcp.core.saved_objects import read_export, summarize_export, to_ndjson, write_export
+from kibana_mcp.core.models import DefaultDataView, RuntimeField
+from kibana_mcp.core.saved_objects import (
+    READABLE_TYPES,
+    cap_attributes,
+    read_export,
+    summarize_export,
+    to_ndjson,
+    unreadable_type_message,
+    write_export,
+)
 from kibana_mcp.toolboxes.base import SPACE_ID_PATTERN, ToolboxDeps, with_space, gateway_errors
 
 _READ = ToolAnnotations(readOnlyHint=True, openWorldHint=False)
 _WRITE = ToolAnnotations(
     readOnlyHint=False, destructiveHint=False, idempotentHint=False, openWorldHint=False
 )
+_UPSERT = ToolAnnotations(
+    readOnlyHint=False, destructiveHint=False, idempotentHint=True, openWorldHint=False
+)
 _DESTRUCTIVE = ToolAnnotations(
     readOnlyHint=False, destructiveHint=True, idempotentHint=True, openWorldHint=False
 )
 
+# The single-value runtime-field types Kibana's runtime-field routes accept
+# (probed on 9.5.4: its 400 lists these plus `composite`, which takes subfields
+# and is not managed here, D48).
+RuntimeFieldType = Literal["keyword", "long", "double", "date", "ip", "boolean", "geo_point"]
+
+# Elasticsearch's default index.max_result_window: Kibana's find 400s past it
+# ("Result window is too large", probed), so page * per_page is checked first.
+_FIND_WINDOW = 10_000
+
 # Kibana does NOT validate short-URL locator params (kibana-py warns ill-formed
 # params can break Kibana), so the tool constrains to verified locators + shape.
 _ALLOWED_LOCATORS = {"LEGACY_SHORT_URL_LOCATOR"}
+
+
+def _runtime_field(field: RuntimeField) -> dict[str, Any]:
+    out: dict[str, Any] = {"name": field.name, "type": field.type, "script": field.script}
+    if field.fields is not None:
+        out["fields"] = dict(field.fields)
+    return out
+
+
+def _default_view(view: DefaultDataView) -> dict[str, Any]:
+    return {
+        "id": view.id, "name": view.name, "index_pattern": view.index_pattern,
+        "exists": view.exists,
+    }
 
 
 class DataManagementToolbox:
@@ -75,6 +110,126 @@ class DataManagementToolbox:
             `space` targets a Kibana space by id (default: the default space)."""
             with gateway_errors(), deps.gateway_factory(space) as gw:
                 return with_space(asdict(gw.resolve_short_url(slug)), space)
+
+        @mcp.tool(tags={self.name, "read"}, annotations=_READ)
+        def get_default_data_view(
+            space: Annotated[str, Field(pattern=SPACE_ID_PATTERN)] | None = None,
+        ) -> dict[str, Any]:
+            """Get the space's default data view — the one Discover and other Kibana
+            apps open with. Returns its id, name and index_pattern, and `exists`:
+            id is null when no default is set, and exists is false when the stored
+            id names no data view in the space (Kibana keeps the id of a deleted
+            view); set another with set_default_data_view.
+
+            `space` targets a Kibana space by id (default: the default space)."""
+            with gateway_errors(), deps.gateway_factory(space) as gw:
+                return with_space(_default_view(gw.get_default_data_view()), space)
+
+        @mcp.tool(tags={self.name, "read"}, annotations=_READ)
+        def find_saved_objects(
+            types: Annotated[list[Annotated[str, Field(min_length=1)]], Field(min_length=1)],
+            search: Annotated[str, Field(min_length=1)] | None = None,
+            has_reference: dict[str, str] | None = None,
+            page: Annotated[int, Field(ge=1)] = 1,
+            per_page: Annotated[int, Field(ge=1, le=100)] = 20,
+            space: Annotated[str, Field(pattern=SPACE_ID_PATTERN)] | None = None,
+        ) -> dict[str, Any]:
+            """Find saved objects of the given `types` — e.g. ["dashboard"],
+            ["lens", "visualization"], ["index-pattern"] (data views), ["search"],
+            ["tag"], ["map"] — optionally matching `search` (words of the title
+            or name, no other attribute; `flight*` matches a prefix) and/or
+            `has_reference` ({"type": …,
+            "id": …}: only objects that reference that object, e.g. the
+            dashboards that use a visualization or a data view). Returns one page
+            (`page`, `per_page` up to 100) of summaries — type, id, title, name,
+            updated_at, namespaces, managed — and the `total`; read one in full
+            with get_saved_object. Kibana answers an empty page for a type name it
+            does not know or does not serve here (action, alert, …), so an empty
+            result is not proof that nothing exists; `note` says so. Uses Kibana's
+            saved-objects find API, which Kibana marks deprecated.
+
+            `space` targets a Kibana space by id (default: the default space)."""
+            if any(not t.strip() or t.strip() == "*" for t in types):
+                raise ToolError(
+                    "`types` needs type names, e.g. ['dashboard'] — not blank and not '*' "
+                    "(Kibana's find answers nothing for '*'; export_saved_objects takes "
+                    "types=['*'] for a whole space)"
+                )
+            if search is not None and not search.strip():
+                raise ToolError("`search` is blank — pass words to match, or omit it")
+            if has_reference is not None and (
+                set(has_reference) != {"type", "id"}
+                or not all(v.strip() for v in has_reference.values())
+            ):
+                raise ToolError(
+                    "`has_reference` must be exactly {\"type\": …, \"id\": …} of the "
+                    "referenced object, e.g. {\"type\": \"lens\", \"id\": \"<id>\"}"
+                )
+            if page * per_page > _FIND_WINDOW:
+                raise ToolError(
+                    f"page {page} of {per_page} reaches past the first {_FIND_WINDOW:,} "
+                    "results, which Kibana does not serve — narrow the search with `search` "
+                    "or `has_reference`"
+                )
+            with gateway_errors(), deps.gateway_factory(space) as gw:
+                found = gw.find_saved_objects(types, search, has_reference, page, per_page)
+            result: dict[str, Any] = {
+                "total": found.total, "page": found.page, "per_page": found.per_page,
+                "saved_objects": [asdict(o) for o in found.saved_objects],
+            }
+            if found.total == 0:
+                result["note"] = (
+                    "nothing matched — Kibana also answers an empty page for a type name it "
+                    "does not know or does not serve through this API (action, alert, …), "
+                    "so check the type names"
+                )
+            elif not found.saved_objects:
+                result["note"] = (
+                    f"page {found.page} is past the last page ({found.total} results, "
+                    f"{found.per_page} per page)"
+                )
+            return with_space(result, space)
+
+        @mcp.tool(tags={self.name, "read"}, annotations=_READ)
+        def get_saved_object(
+            type: Annotated[str, Field(min_length=1)],
+            id: Annotated[str, Field(min_length=1)],
+            space: Annotated[str, Field(pattern=SPACE_ID_PATTERN)] | None = None,
+        ) -> dict[str, Any]:
+            """Get one saved object by `type` and `id` (from find_saved_objects):
+            its attributes, the distinct objects it references ({"type", "id"}),
+            its namespaces, timestamps and `managed` flag. Only analytics
+            content is read — canvas-element, canvas-workpad,
+            canvas-workpad-template, dashboard, event-annotation-group,
+            graph-workspace, index-pattern (data views), lens, links, map, query,
+            search, tag, visualization — because other types can keep
+            credentials in plain attributes (Fleet outputs and proxies do); any
+            other type is refused: read it with its own tools. An attribute
+            longer than 4,000 characters (a dashboard's panelsJSON, a data
+            view's field list) is left out and listed in `omitted_attributes` with
+            its size: read it with the type's own tool (get_dashboard,
+            get_visualization, describe_data_view) or move the object with
+            export_saved_objects. Uses Kibana's saved-objects get API, which
+            Kibana marks deprecated.
+
+            `space` targets a Kibana space by id (default: the default space)."""
+            if not type.strip() or not id.strip():
+                raise ToolError("`type` and `id` must not be blank — pass the ones "
+                                "find_saved_objects returns")
+            if type not in READABLE_TYPES:
+                raise ToolError(unreadable_type_message(type))
+            with gateway_errors(), deps.gateway_factory(space) as gw:
+                obj = gw.get_saved_object(type, id)
+            shown, omitted = cap_attributes(obj.attributes)
+            result: dict[str, Any] = {
+                "type": obj.type, "id": obj.id, "namespaces": list(obj.namespaces),
+                "created_at": obj.created_at, "updated_at": obj.updated_at,
+                "managed": obj.managed, "attributes": shown,
+                "references": [dict(r) for r in obj.references],
+            }
+            if omitted:
+                result["omitted_attributes"] = omitted
+            return with_space(result, space)
 
         @mcp.tool(tags={self.name, "read"}, annotations=_READ)
         def export_saved_objects(
@@ -203,6 +358,68 @@ class DataManagementToolbox:
                 "time_field": view.time_field, "field_count": len(view.fields),
             }, space)
 
+        @mcp.tool(tags={self.name, "write"}, annotations=_UPSERT)
+        def upsert_runtime_field(
+            view_id: Annotated[str, Field(min_length=1)],
+            name: Annotated[str, Field(min_length=1)],
+            type: RuntimeFieldType,
+            script: Annotated[str, Field(min_length=1)] | None = None,
+            space: Annotated[str, Field(pattern=SPACE_ID_PATTERN)] | None = None,
+        ) -> dict[str, Any]:
+            """Create or replace a runtime field on a data view, by view id (from
+            list_data_views): a field computed at search time by a Painless
+            `script` that calls emit(...) with a value of `type` (e.g.
+            "emit(doc['timestamp'].value.getHour())" for a long). Without a script
+            the field reads the _source value of the same name. Kibana does NOT
+            compile the script: one that does not compile, or emits another type,
+            makes every search that Kibana runs on the data view fail (Discover,
+            and visualizations that use the view) until you fix it with another
+            call or remove it with delete_runtime_field. A name the view already
+            has as a mapped field is refused (describe_data_view lists its
+            fields); composite runtime fields are not managed here. A replacement
+            keeps the field's custom label and description. Returns the stored
+            `field` (name, type, script), `created`, and `previous` — the
+            definition replaced (null on a create): pass its type and script
+            back to undo.
+
+            `space` targets a Kibana space by id (default: the default space)."""
+            if script is not None and not script.strip():
+                raise ToolError("`script` is blank — pass Painless source, or omit it")
+            if not name.strip():
+                raise ToolError("`name` is blank — pass the runtime field's name")
+            with gateway_errors(), deps.gateway_factory(space) as gw:
+                out = gw.upsert_runtime_field(
+                    view_id, RuntimeField(name=name, type=type, script=script)
+                )
+            return with_space({
+                "view_id": out.view_id, "field": _runtime_field(out.field),
+                "created": out.previous is None,
+                "previous": _runtime_field(out.previous) if out.previous else None,
+            }, space)
+
+        @mcp.tool(tags={self.name, "write"}, annotations=_UPSERT)
+        def set_default_data_view(
+            view_id: Annotated[str, Field(min_length=1)] | None,
+            space: Annotated[str, Field(pattern=SPACE_ID_PATTERN)] | None = None,
+        ) -> dict[str, Any]:
+            """Make a data view the space's default — the one Discover and other
+            Kibana apps open with — by id (from list_data_views), or pass
+            view_id=null to clear the default. The view must exist in the space
+            (Kibana itself would store any id). Replaces the current default;
+            returns the new one (id, name, index_pattern, exists), `previous_id`,
+            the default before the call (null when none was set), and
+            `previous_exists`: pass previous_id back to undo when it is true; when
+            it is false the old id named no data view (Kibana keeps a deleted
+            view's id, and treats it as no default), so view_id=null undoes it.
+
+            `space` targets a Kibana space by id (default: the default space)."""
+            with gateway_errors(), deps.gateway_factory(space) as gw:
+                change = gw.set_default_data_view(view_id)
+            return with_space(
+                {**_default_view(change.current), "previous_id": change.previous_id,
+                 "previous_exists": change.previous_exists}, space
+            )
+
         @mcp.tool(tags={self.name, "write"}, annotations=_WRITE)
         def create_short_url(
             locator_id: str,
@@ -253,6 +470,29 @@ class DataManagementToolbox:
             with gateway_errors(), deps.gateway_factory(space) as gw:
                 gw.delete_data_view(view_id)
             return with_space({"id": view_id, "deleted": True}, space)
+
+        @mcp.tool(tags={self.name, "destructive"}, annotations=_DESTRUCTIVE)
+        def delete_runtime_field(
+            view_id: Annotated[str, Field(min_length=1)],
+            name: Annotated[str, Field(min_length=1)],
+            space: Annotated[str, Field(pattern=SPACE_ID_PATTERN)] | None = None,
+        ) -> dict[str, Any]:
+            """Permanently delete a runtime field from a data view, by view id
+            (from list_data_views) and field name. Only runtime fields can be
+            deleted, not mapped ones; a composite field's subfield goes only with
+            its parent's name. Searches and visualizations that use the field
+            lose it. Returns the deleted definition (name, type, script, and a
+            composite's `fields`), from which upsert_runtime_field can recreate a
+            single-value field.
+
+            `space` targets a Kibana space by id (default: the default space)."""
+            if not name.strip():
+                raise ToolError("`name` is blank — pass the runtime field's name")
+            with gateway_errors(), deps.gateway_factory(space) as gw:
+                deleted = gw.delete_runtime_field(view_id, name)
+            return with_space(
+                {"view_id": view_id, "deleted": True, "field": _runtime_field(deleted)}, space
+            )
 
         @mcp.tool(tags={self.name, "destructive"}, annotations=_DESTRUCTIVE)
         def delete_short_url(
