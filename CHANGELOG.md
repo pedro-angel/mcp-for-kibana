@@ -12,6 +12,28 @@ version section.
 
 ### Added
 
+- **Observability: create, edit, run and delete Synthetics objects** (seven
+  `write` and three `destructive` tools, 160 tools in all). Monitors:
+  `create_synthetic_monitor` (http, tcp, icmp or browser, on private
+  locations given by id or label; `schedule` such as `10m` or `30s`),
+  `update_synthetic_monitor` (only the fields passed change; `enabled=False`
+  pauses it), `test_synthetic_monitor` (runs it once now and returns the
+  `test_run_id`; the result is written to the `synthetics-*` data streams, and
+  no tool reads it) and `delete_synthetic_monitor`. Global parameters:
+  `create_synthetic_param`, `update_synthetic_param` and
+  `delete_synthetic_param`; no result ever carries a value, and a key already
+  in use is refused. Private locations: `create_synthetic_private_location`
+  (on a Fleet agent policy no other location uses),
+  `update_synthetic_private_location` (the label) and
+  `delete_synthetic_private_location` (refused while monitors use it). Each
+  type's target field, the schedule and the locations are checked before
+  Kibana is called, and a wrong id names the list tool that shows it. No tool
+  takes `space`. Decision D46.
+- **`get_synthetic_monitor` names the fix on a wrong id**: "synthetic monitor
+  '<id>' not found — monitor_id is the id that create_synthetic_monitor or
+  list_synthetic_monitors returns, not the monitor's name; call
+  list_synthetic_monitors to find it", instead of Kibana's "Monitor id <id>
+  not found!". Decision D46.
 - **Alerting: mute, snooze and re-key a rule** (seven `write` tools, 150 tools
   in all). `mute_alert_rule` / `unmute_alert_rule` silence a whole rule with no
   end time, `mute_alert` / `unmute_alert` one of its alerts,

@@ -20,8 +20,8 @@ grouped into composable **toolboxes** enabled per deployment; **profiles**
 (`profiles/`) package toolbox + tier choices per persona. The flagship job:
 a user describes a chart, the server translates a declarative spec into real
 Kibana Lens visualizations and dashboards. Around it: data management,
-alerting, cases, security detections, fleet, streams, observability reads,
-and platform admin/health.
+alerting, cases, security detections, fleet, streams, observability
+(Synthetics monitoring, APM configuration reads), and platform admin/health.
 
 ## Who it serves
 

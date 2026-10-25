@@ -9,7 +9,7 @@ via [`KIBANA_MCP_TOOLS`](configuration.md#tool-selection): **dashboards**,
 **[observability](#observability-toolbox)**,
 **[security-detections](#security-detections-toolbox)**,
 **[platform-admin](#platform-admin-toolbox)**,
-**[streams](#streams-toolbox)**, and **[fleet](#fleet-toolbox)** — 150 tools in
+**[streams](#streams-toolbox)**, and **[fleet](#fleet-toolbox)** — 160 tools in
 all. This reference details every toolbox in full. A drift-guard test
 (`tests/unit/test_docs_tool_reference.py`) asserts that every registered tool
 name appears on this page, so it cannot silently fall behind the code.
@@ -532,7 +532,8 @@ parameter: `platform-admin` and `platform-health` manage instance-global
 objects, `streams` wraps cluster-global ES data streams, `fleet`'s space
 awareness is an opt-in per-deployment migration, and `observability` mixes
 space-scoped synthetics/uptime objects with cluster-global APM
-configuration (deferred as a follow-up).
+configuration (deferred as a follow-up; the Synthetics write tools follow the
+toolbox and take no `space` either, D10).
 
 ## data-management toolbox
 
@@ -824,11 +825,16 @@ Returns:
 
 ## observability toolbox
 
-Ten read-only tools (`src/kibana_mcp/toolboxes/observability/toolbox.py`), all
-`read` tier (`readOnlyHint=true`), tagged `{"observability", "read"}`. Enable
-with `KIBANA_MCP_TOOLBOXES=observability` (or alongside others). Read access to
-the Kibana observability surface an operator can reach on a **Basic** license:
-Synthetics monitoring, Uptime settings, and APM **configuration**.
+Twenty tools (`src/kibana_mcp/toolboxes/observability/toolbox.py`): 10 `read`,
+7 `write`, 3 `destructive`, tagged `{"observability", <tier>}`. Enable with
+`KIBANA_MCP_TOOLBOXES=observability` (or alongside others). Access to the Kibana
+observability surface an operator can reach on a **Basic** license: Synthetics
+monitoring (read, and the write tier: monitors, global parameters and private
+locations — create, edit, run once, delete), Uptime settings, and APM
+**configuration** (read). No tool takes `space` (see
+[Space targeting](#space-targeting)). Hints: reads `readOnlyHint=true`; the
+three updates `idempotentHint=true`; the deletes `destructiveHint=true`; every
+tool `openWorldHint=false`.
 
 !!! note "v1 scope — what this is *not*"
     This toolbox intentionally does **not** expose APM **service/transaction/
@@ -851,6 +857,55 @@ Synthetics monitoring, Uptime settings, and APM **configuration**.
 | `list_apm_environments` | read | List APM environments for agent config. `ALL_OPTION_VALUE` is a sentinel meaning "all environments". |
 | `list_apm_sourcemaps` | read | List uploaded RUM source-map artifacts (identifier, created). |
 | `search_apm_annotations` | read | Search APM annotations (e.g. deployment markers) for a service in an ISO-8601 `[start, end]` window. |
+| `create_synthetic_monitor` | write | Create an http/tcp/icmp/browser monitor on private locations (ids or labels); returns it as `get_synthetic_monitor` does. |
+| `update_synthetic_monitor` | write | Edit a monitor in place: only the fields passed change (`enabled=False` pauses it); the type cannot change. |
+| `test_synthetic_monitor` | write | Run a monitor once now; returns its `test_run_id` (no tool reads the result). |
+| `create_synthetic_param` | write | Create a global parameter monitors reference as `${key}`; the value is never returned. |
+| `update_synthetic_param` | write | Rename, rotate or re-describe a parameter in place; no value is ever returned. |
+| `create_synthetic_private_location` | write | Create a private location on a Fleet agent policy no other location uses. |
+| `update_synthetic_private_location` | write | Rename a private location (the label is all Kibana lets change). |
+| `delete_synthetic_monitor` | destructive | Permanently delete a monitor. |
+| `delete_synthetic_param` | destructive | Permanently delete a parameter; its value is lost and monitors lose `${key}`. |
+| `delete_synthetic_private_location` | destructive | Permanently delete a private location no monitor uses; its agent policy stays. |
+
+Synthetics write tier, as probed on Kibana 9.5.4 (decision
+[D46](spec/decisions.md)):
+
+- **Monitors.** Each type takes its own target: `url` (http), `host` (tcp, with
+  its port; icmp), `inline_script` (browser, a Playwright journey). The tools
+  refuse a missing target and another type's field — Kibana stores a `url` on a
+  tcp monitor without complaint. `private_locations` entries are ids or labels
+  from `list_synthetic_private_locations`, checked before the write; this server
+  offers no Elastic-managed locations (a self-managed stack has none).
+  `schedule` takes the read shape (`10m`, `30s`): the number must be one of 1,
+  2, 3, 5, 10, 15, 20, 30, 60, 120, 240, with unit `m` or `s` (Kibana checks the
+  number against its minute list whatever the unit). Names are unique (Kibana's
+  400 passes through). `update_synthetic_monitor` sends only the fields given —
+  Kibana's PUT keeps the rest — and reads the monitor first only to check a
+  target field against its type. Created monitors start enabled
+  (`enabled=False` to create one paused).
+- **Runs.** `test_synthetic_monitor` returns `{"monitor_id", "test_run_id"}`. The
+  check executes on the Elastic Agents enrolled in the location's agent policy;
+  with none running, Kibana still accepts the request and nothing runs. The
+  result is written to the `synthetics-*` data streams under that
+  `test_run_id` (shown in Kibana's Synthetics app); no tool reads it.
+- **Parameters.** The value is a secret: no result carries it (Kibana's update
+  response echoes the *previous* value; the tools drop it), and a rejection's
+  text is scrubbed of it. A key already in use is refused — Kibana stores a
+  second parameter with the same key, which would make `${key}` ambiguous.
+  `update_synthetic_param` and both create tools refuse an empty change or value.
+- **Private locations.** One per Fleet agent policy, labels unique (both
+  checked before the write); a missing policy is Kibana's 400 plus where policy
+  ids come from (`list_agent_policies`, `create_agent_policy` in the
+  [fleet toolbox](#fleet-toolbox)). Deleting one that monitors use is refused by
+  Kibana; the error names `update_synthetic_monitor` and
+  `delete_synthetic_monitor`.
+- **Misses.** A wrong id names where ids come from (D17), e.g. "synthetic
+  monitor 'x' not found — monitor_id is the id that create_synthetic_monitor or
+  list_synthetic_monitors returns, not the monitor's name; call
+  list_synthetic_monitors to find it". Kibana answers a monitor or parameter
+  delete of an unknown id with `200 {"deleted": false}` and a private-location
+  one with a 400; all three read as not-found here.
 
 Returns:
 
@@ -874,6 +929,24 @@ Returns:
 
 // search_apm_annotations -> list
 [{"id": "a1", "timestamp": "2026-07-12T00:00:00.000Z", "text": "v2 deploy", "type": "deployment"}]
+
+// create_synthetic_monitor / update_synthetic_monitor  (the get_synthetic_monitor shape)
+{"id": "2820...fc76", "name": "api health", "type": "http", "enabled": true,
+ "tags": ["api"], "locations": ["dc1"], "schedule": "30s",
+ "target": "https://example.com/health"}
+
+// test_synthetic_monitor
+{"monitor_id": "2820...fc76", "test_run_id": "2962b617-4d24-4d2b-8923-1a497e6d4898"}
+
+// create_synthetic_param / update_synthetic_param  (never a value)
+{"id": "7c2e...88f7", "key": "api_token", "description": "RUM token", "tags": ["shared"]}
+
+// create_synthetic_private_location / update_synthetic_private_location
+{"id": "bbce...8def", "label": "dc1", "agent_policy_id": "9d19...d417",
+ "is_invalid": false, "tags": []}
+
+// delete_synthetic_monitor / delete_synthetic_param / delete_synthetic_private_location
+{"id": "2820...fc76", "deleted": true}
 ```
 
 ## security-detections toolbox

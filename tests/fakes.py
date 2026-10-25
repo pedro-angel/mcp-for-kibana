@@ -97,6 +97,12 @@ class FakeGateway:
                 id="loc-1", label="dc1", agent_policy_id="ap-1", is_invalid=False, tags=()
             )
         ]
+        # Synthetics write tier (D46): every write is recorded; ids per kind.
+        self.monitor_writes: list[tuple] = []
+        self.param_writes: list[tuple] = []
+        self.location_writes: list[tuple] = []
+        self._synthetic_ids = {k: itertools.count(2) for k in ("mon", "p", "loc")}
+        self._test_runs = itertools.count(1)
         self.uptime_settings = UptimeSettings(
             heartbeat_indices="heartbeat-*", cert_expiration_threshold=30, cert_age_threshold=730,
             default_connectors=(), default_email=EmailDefaults(to=(), cc=(), bcc=()),
@@ -687,6 +693,125 @@ class FakeGateway:
 
     def list_synthetic_private_locations(self):
         return list(self.synthetic_private_locations)
+
+    # --- Synthetics write tier (D46) ---
+
+    def _location_label(self, ref):
+        for loc in self.synthetic_private_locations:
+            if ref in (loc.id, loc.label):
+                return loc.label
+        raise KibanaRejected("Kibana rejected the payload", detail=f"Private Location(s) '{ref}' not found")
+
+    def create_synthetic_monitor(self, *, type, name, private_locations, url, host,
+                                 inline_script, schedule, enabled, tags):
+        self.monitor_writes.append(("create", {
+            "type": type, "name": name, "private_locations": private_locations, "url": url,
+            "host": host, "inline_script": inline_script, "schedule": schedule,
+            "enabled": enabled, "tags": tags,
+        }))
+        monitor = SyntheticMonitor(
+            id=f"mon-{next(self._synthetic_ids['mon'])}", name=name, type=type, enabled=enabled,
+            tags=tuple(tags or ()),
+            locations=tuple(self._location_label(r) for r in private_locations),
+            schedule=schedule or ("10m" if type == "browser" else "3m"),
+            target=url or host,
+        )
+        self.synthetic_monitors.append(monitor)
+        return monitor
+
+    def update_synthetic_monitor(self, monitor_id, *, name=None, url=None, host=None,
+                                 inline_script=None, schedule=None, enabled=None, tags=None,
+                                 private_locations=None):
+        current = self.get_synthetic_monitor(monitor_id)
+        given = {k: v for k, v in {
+            "name": name, "url": url, "host": host, "inline_script": inline_script,
+            "schedule": schedule, "enabled": enabled, "tags": tags,
+            "private_locations": private_locations,
+        }.items() if v is not None}
+        self.monitor_writes.append(("update", monitor_id, given))
+        changes = {k: v for k, v in given.items() if k in ("name", "schedule", "enabled")}
+        if tags is not None:
+            changes["tags"] = tuple(tags)
+        if private_locations is not None:
+            changes["locations"] = tuple(self._location_label(r) for r in private_locations)
+        if url or host:
+            changes["target"] = url or host
+        updated = replace(current, **changes)
+        self.synthetic_monitors = [updated if m.id == monitor_id else m
+                                   for m in self.synthetic_monitors]
+        return updated
+
+    def test_synthetic_monitor(self, monitor_id):
+        self.get_synthetic_monitor(monitor_id)
+        return f"run-{next(self._test_runs)}"
+
+    def delete_synthetic_monitor(self, monitor_id):
+        self.get_synthetic_monitor(monitor_id)
+        self.monitor_writes.append(("delete", monitor_id))
+        self.synthetic_monitors = [m for m in self.synthetic_monitors if m.id != monitor_id]
+
+    def _param(self, param_id):
+        for p in self.synthetic_params:
+            if p.id == param_id:
+                return p
+        raise KibanaNotFound(f"synthetic param '{param_id}' not found")
+
+    def create_synthetic_param(self, key, value, description, tags):
+        self.param_writes.append(("create", key))  # the value is never recorded
+        param = SyntheticParam(id=f"p-{next(self._synthetic_ids['p'])}", key=key,
+                               description=description or "", tags=tuple(tags or ()))
+        self.synthetic_params.append(param)
+        return param
+
+    def update_synthetic_param(self, param_id, *, key=None, value=None, description=None,
+                               tags=None):
+        current = self._param(param_id)
+        given = {k: v for k, v in {"key": key, "value": value, "description": description,
+                                   "tags": tags}.items() if v is not None}
+        self.param_writes.append(("update", param_id, given))
+        changes = {k: v for k, v in given.items() if k in ("key", "description")}
+        if tags is not None:
+            changes["tags"] = tuple(tags)
+        updated = replace(current, **changes)
+        self.synthetic_params = [updated if p.id == param_id else p for p in self.synthetic_params]
+        return updated
+
+    def delete_synthetic_param(self, param_id):
+        self._param(param_id)
+        self.param_writes.append(("delete", param_id))
+        self.synthetic_params = [p for p in self.synthetic_params if p.id != param_id]
+
+    def _location(self, location_id):
+        for loc in self.synthetic_private_locations:
+            if loc.id == location_id:
+                return loc
+        raise KibanaNotFound(f"private location '{location_id}' not found")
+
+    def create_synthetic_private_location(self, label, agent_policy_id, tags):
+        self.location_writes.append(("create", label, agent_policy_id))
+        loc = SyntheticPrivateLocation(
+            id=f"loc-{next(self._synthetic_ids['loc'])}", label=label,
+            agent_policy_id=agent_policy_id, is_invalid=False, tags=tuple(tags or ()),
+        )
+        self.synthetic_private_locations.append(loc)
+        return loc
+
+    def update_synthetic_private_location(self, location_id, label):
+        updated = replace(self._location(location_id), label=label)
+        self.location_writes.append(("update", location_id, label))
+        self.synthetic_private_locations = [
+            updated if loc.id == location_id else loc for loc in self.synthetic_private_locations]
+        return updated
+
+    def delete_synthetic_private_location(self, location_id):
+        loc = self._location(location_id)
+        if any(loc.label in m.locations for m in self.synthetic_monitors):
+            raise KibanaRejected("Kibana refused to delete the private location",
+                                 detail=f"Private location with id {location_id} cannot be "
+                                        "deleted because it is used by 1 monitor(s).")
+        self.location_writes.append(("delete", location_id))
+        self.synthetic_private_locations = [
+            x for x in self.synthetic_private_locations if x.id != location_id]
 
     def get_uptime_settings(self):
         return self.uptime_settings

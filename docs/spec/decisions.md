@@ -1,6 +1,6 @@
 # Decisions ledger
 
-Status: Draft v1.15 (2026-10-24) — regeneration corpus. Consumes
+Status: Draft v1.16 (2026-10-25) — regeneration corpus. Consumes
 [brief.md](brief.md); read alongside [design.md](design.md).
 
 Each entry is a decision a rewrite must not silently re-litigate: what was
@@ -144,7 +144,7 @@ this ledger stands without them.
   may get the input elsewhere, e.g. an id the user pastes). Dependencies are
   followed transitively; tools hidden by the tier are not checked; toolbox
   selections are not checked. **Dependency map**: one owner, data —
-  `DEPENDENCIES` in `src/kibana_mcp/tool_lists.py`, 41 edges from 37 tools.
+  `DEPENDENCIES` in `src/kibana_mcp/tool_lists.py`, 51 edges from 46 tools.
   An edge A → B means A takes an input only B shows the model and A's own
   description or error guidance sends the model there: an index or field name
   (`update_panel`/`delete_panel` → `get_dashboard`; every VizSpec tool →
@@ -154,9 +154,12 @@ this ledger stands without them.
   handle (`import_saved_objects`/`overwrite_saved_objects` →
   `export_saved_objects`), or an existing object's id that the not-found
   guidance says to look up ("call search_dashboards to find it": dashboards,
-  visualizations, data views, alert rules, connectors), plus ids and values
-  descriptions name (`get_space` → `list_spaces`, `get_synthetic_monitor` →
-  `list_synthetic_monitors`, `upgrade_agent` → `list_agent_versions`,
+  visualizations, data views, alert rules, connectors, Synthetics monitors,
+  parameters and private locations), plus ids and values descriptions name
+  (`get_space` → `list_spaces`, `get_synthetic_monitor` →
+  `list_synthetic_monitors`, `create_synthetic_monitor` →
+  `list_synthetic_private_locations`, `create_synthetic_private_location` →
+  `list_agent_policies`, `upgrade_agent` → `list_agent_versions`,
   package-policy writes → `get_package`). Not seeded, with reasons: the
   space-not-found guidance (`space` is optional everywhere), refusal
   redirects (`update_panel` naming `update_visualization`), follow-ups
@@ -423,6 +426,75 @@ this ledger stands without them.
   and D43 record; the alerts index is not a Kibana API); exposing
   `validate_alerts_existence` (no task needs pre-muting an alert, and the
   default catches typos). Contract: [alerting](toolboxes/alerting.md).
+- **D46 (2026-10-25, probes on 9.5.4, Basic)** — The Synthetics write tier
+  ships in the `observability` toolbox as seven `write` tools —
+  `create_synthetic_monitor`, `update_synthetic_monitor`,
+  `test_synthetic_monitor`, `create_synthetic_param`, `update_synthetic_param`,
+  `create_synthetic_private_location`, `update_synthetic_private_location` —
+  and three `destructive` ones: `delete_synthetic_monitor`,
+  `delete_synthetic_param`, `delete_synthetic_private_location`. The plan's
+  `create/update/delete_private_location` gained the toolbox's `synthetic_`
+  prefix to match `list_synthetic_private_locations`. **Tiers, by the repo
+  rule (irreversible or data-losing → destructive):** each delete is
+  irreversible — a recreated object gets a new id, and a parameter's value
+  cannot be read back on any route, so deleting one loses it — so all three
+  are `destructive`; every create and edit has an inverse (edit back, delete),
+  so they are `write`. The run was weighed for destructive and kept on
+  `write`: it changes no object, adds one result document, and makes the
+  requests the monitor already makes on its schedule. Monitors start enabled
+  (Kibana's default; `enabled=False` pauses one) — unlike alert rules, which
+  start disabled because their actions notify people, a monitor only checks
+  the target the caller named. **No `space`** on any of them: D10's uniformity
+  rule keeps the toolbox's mixed-axis exclusion, so the new tools follow the
+  reads (default space only). **Observed:** a private location needs a Fleet
+  agent policy that no other location uses (400 "Private location with
+  agentPolicyId … already exists"), labels are unique (400 "… with label …
+  already exists"), a missing policy is a 400 "Agent policy with id … not
+  found in space default"; only the label is editable; a location used by
+  monitors is a 400 "… cannot be deleted because it is used by 1 monitor(s)",
+  an unknown one a 400 "… does not exist." Monitors take a location by id or
+  by label; with none, "At least one location is required"; no
+  Elastic-managed location exists on a self-managed stack ("No Elastic
+  managed location available to use"), so only `private_locations` is
+  offered. Kibana validates the target per type ("Invalid field \"url\", must be
+  a non-empty string") but its message drops that detail, and it stores
+  another type's field (a `url` on a tcp monitor answered 200 and was
+  stored), so the tools check both before the write. The schedule number is
+  checked against Kibana's minute list (1, 2, 3, 5, 10, 15, 20, 30, 60, 120,
+  240) whatever the unit — `15s` and `240s` pass, `45s`, `90s` and `7m` fail —
+  and the 400 drops the list, so the tool checks it and names the list. Names
+  are unique (400 "Monitor name must be unique"). The monitor PUT is partial:
+  a tags-only or enabled-only update kept everything else, so the update sends
+  only the given fields and reads the monitor first only to learn its type
+  for the target check; the type cannot change (400). A monitor or parameter
+  DELETE of an unknown id answers 200 with `deleted: false`, so the adapter
+  turns that into D17's not-found. **Parameters:** Kibana stores a second
+  parameter with an existing key and accepts any key text, so a key in use
+  is refused (`${key}` would be ambiguous); the create response carries no
+  value, but the update response echoes the *previous* value, so the shape
+  has no value field and a payload rejection is scrubbed of the value; an
+  empty value is a 400, an update with no field a 400 "Request body cannot be
+  empty" (refused here first). **The run executes:** with a location on the
+  demo agent's policy, `POST /api/synthetics/monitor/test/{id}` answered
+  `{"testRunId": …}` and the agent's heartbeat ran the check; with the Fleet
+  output pointed at `http://elasticsearch:9200` for the probe (the stack's
+  default output is `localhost:9200`, unreachable from the agent container),
+  a document with that `test_run_id` and `monitor.status: up` reached
+  `synthetics-http-default`. So `test_synthetic_monitor` ships; the contract
+  tier asserts only the accepted run, since re-proving execution would rewire
+  the shared demo policy. No public route reads a run's result, so the tool
+  returns the id and says where the result lands. `get_synthetic_monitor`
+  takes the same D17 not-found text, since `update_synthetic_monitor` reads
+  through it (Kibana's own is "Monitor id <id> not found!"). Kibana also added a
+  `LIGHTWEIGHT_SYNTHETICS_TEST_NOW_RUN` package policy to the agent policy,
+  which once outlived the location (removed by hand). Rejected alternatives:
+  `space` on the write tools only (D10); exposing every monitor field or
+  kibana-py's `fields` passthrough (no task needs them; each is an additive
+  argument later); checking agent enrollment before a run (it costs a
+  location and an agent-policy read per location, and an assigned agent is
+  not a running one, so a pass would still promise nothing — the description
+  states the condition instead). Contract:
+  [observability](toolboxes/observability.md).
 
 ## Reliability and models (measured)
 

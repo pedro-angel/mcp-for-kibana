@@ -6,10 +6,10 @@ SyntheticMonitor converter is exercised against a real shape, not docstring pros
 from types import SimpleNamespace
 
 import pytest
-from kibana.exceptions import NotFoundError
+from kibana.exceptions import BadRequestError, NotFoundError
 
 from kibana_mcp.adapters.kibana.gateway import KibanaPyGateway
-from kibana_mcp.core.errors import KibanaNotFound
+from kibana_mcp.core.errors import KibanaNotFound, KibanaRejected
 from tests.unit.adapters.test_kibana_gateway import FakeResponse, make_fake_client
 
 # Real GET /api/synthetics/monitors/{id} body captured from a seeded monitor.
@@ -232,3 +232,225 @@ def test_search_apm_annotations_maps_timestamp_field():
     assert a.timestamp == "2026-07-12T00:00:00Z"  # @timestamp -> timestamp
     assert a.text == "v2"
     assert a.type == "deployment"
+
+
+# --- Synthetics write tier (D46): bodies captured live on 9.5.4 -------------
+
+
+class _Recorder:
+    """A synthetics namespace that records each call and answers from a map."""
+
+    def __init__(self, **answers):
+        self.calls = []
+        self._answers = answers
+
+    def __getattr__(self, name):
+        def call(**kw):
+            self.calls.append((name, kw))
+            answer = self._answers[name]
+            if isinstance(answer, BaseException):
+                raise answer
+            return FakeResponse(answer(kw) if callable(answer) else answer)
+        return call
+
+
+def _bad(message):
+    return BadRequestError(message, meta=SimpleNamespace(status=400), body=None)
+
+
+def _nf(message):
+    return NotFoundError(message, meta=SimpleNamespace(status=404), body=None)
+
+
+def _syn_gw(rec):
+    return KibanaPyGateway(make_fake_client(synthetics=rec))
+
+
+def test_create_synthetic_monitor_sends_kibanas_schedule_and_maps_the_response():
+    rec = _Recorder(create_monitor={**_MONITOR, "schedule": {"number": "30", "unit": "s"}})
+    m = _syn_gw(rec).create_synthetic_monitor(
+        type="http", name="obs-probe-monitor", private_locations=["loc-1"],
+        url="https://example.com", host=None, inline_script=None, schedule="30s",
+        enabled=True, tags=["probe"],
+    )
+    assert rec.calls == [("create_monitor", {
+        "type": "http", "name": "obs-probe-monitor", "private_locations": ["loc-1"],
+        "url": "https://example.com", "schedule": {"number": "30", "unit": "s"},
+        "enabled": True, "tags": ["probe"],
+    })]
+    assert m.id == _MONITOR["config_id"] and m.schedule == "30s"
+
+
+def test_create_synthetic_monitor_omits_what_was_not_given():
+    rec = _Recorder(create_monitor=_MONITOR)
+    _syn_gw(rec).create_synthetic_monitor(
+        type="tcp", name="db", private_locations=["dc1"], url=None, host="db:5432",
+        inline_script=None, schedule=None, enabled=False, tags=None,
+    )
+    assert rec.calls[0][1] == {
+        "type": "tcp", "name": "db", "private_locations": ["dc1"], "host": "db:5432",
+        "enabled": False,
+    }
+
+
+def test_update_synthetic_monitor_sends_only_the_changes():
+    rec = _Recorder(update_monitor={**_MONITOR, "enabled": False})
+    m = _syn_gw(rec).update_synthetic_monitor("m-1", enabled=False, schedule="15m")
+    assert rec.calls == [("update_monitor", {
+        "id": "m-1", "enabled": False, "schedule": {"number": "15", "unit": "m"},
+    })]
+    assert m.enabled is False
+
+
+def test_test_synthetic_monitor_returns_the_run_id():
+    rec = _Recorder(test_monitor={"testRunId": "2962b617-4d24-4d2b-8923-1a497e6d4898"})
+    assert _syn_gw(rec).test_synthetic_monitor("m-1") == "2962b617-4d24-4d2b-8923-1a497e6d4898"
+    assert rec.calls == [("test_monitor", {"monitor_id": "m-1"})]
+
+
+def test_delete_synthetic_monitor_answers_200_on_a_miss():
+    # Live: a second DELETE is a 200 [{"deleted": false, "error": "Monitor id ... not found!"}].
+    ok = _Recorder(delete_monitor=[{"id": "m-1", "deleted": True}])
+    _syn_gw(ok).delete_synthetic_monitor("m-1")
+    miss = _Recorder(delete_monitor=[
+        {"id": "m-1", "deleted": False, "error": "Monitor id m-1 not found!"}])
+    with pytest.raises(KibanaNotFound, match=(
+        r"^synthetic monitor 'm-1' not found — monitor_id is the id that create_synthetic_monitor "
+        r"or list_synthetic_monitors returns, not the monitor's name; call "
+        r"list_synthetic_monitors to find it$"
+    )):
+        _syn_gw(miss).delete_synthetic_monitor("m-1")
+
+
+_MON_CALLS = [
+    lambda gw, i: gw.get_synthetic_monitor(i),
+    lambda gw, i: gw.update_synthetic_monitor(i, enabled=True),
+    lambda gw, i: gw.test_synthetic_monitor(i),
+    lambda gw, i: gw.delete_synthetic_monitor(i),
+]
+
+
+@pytest.mark.parametrize("call", _MON_CALLS)
+def test_unknown_monitor_id_says_it_is_not_the_name(call):
+    rec = _Recorder(**{n: _nf("Monitor id nope not found!") for n in (
+        "get_monitor", "update_monitor", "test_monitor", "delete_monitor")})
+    with pytest.raises(KibanaNotFound, match=r"^synthetic monitor 'nope' not found — monitor_id"):
+        call(_syn_gw(rec), "nope")
+
+
+@pytest.mark.parametrize("call", _MON_CALLS)
+def test_empty_monitor_id_is_refused_before_kibana(call):
+    rec = _Recorder()
+    with pytest.raises(KibanaRejected, match=r"^monitor_id is empty — pass the id that "
+                                             r"create_synthetic_monitor or list_synthetic_monitors"):
+        call(_syn_gw(rec), " ")
+    assert rec.calls == []
+
+
+# The create response observed live: no value. The update response echoes the
+# PREVIOUS value (Kibana 9.5.4, also kibana-py's note for 9.4.3) — never mapped.
+_PARAM_CREATED = {"id": "7c2e", "description": "d", "key": "probe_key",
+                  "namespaces": ["default"], "tags": ["probe"]}
+_PARAM_UPDATED = {**_PARAM_CREATED, "value": "the-old-secret"}
+
+
+def test_create_synthetic_param_maps_without_a_value():
+    rec = _Recorder(create_param=_PARAM_CREATED)
+    p = _syn_gw(rec).create_synthetic_param("probe_key", "s3cret", "d", ["probe"])
+    assert rec.calls == [("create_param", {
+        "key": "probe_key", "value": "s3cret", "description": "d", "tags": ["probe"]})]
+    assert (p.id, p.key, p.description, p.tags) == ("7c2e", "probe_key", "d", ("probe",))
+    assert not hasattr(p, "value")
+
+
+def test_update_synthetic_param_drops_the_echoed_value():
+    rec = _Recorder(update_param=_PARAM_UPDATED)
+    p = _syn_gw(rec).update_synthetic_param("7c2e", value="new-secret")
+    assert rec.calls == [("update_param", {"id": "7c2e", "value": "new-secret"})]
+    assert "the-old-secret" not in repr(p) and "new-secret" not in repr(p)
+
+
+@pytest.mark.parametrize("call", [
+    lambda gw: gw.create_synthetic_param("k", "s3cret-xyz", None, None),
+    lambda gw: gw.update_synthetic_param("7c2e", value="s3cret-xyz"),
+])
+def test_a_rejection_never_echoes_the_value(call):
+    boom = _bad("[request body.value]: 's3cret-xyz' is not allowed")
+    rec = _Recorder(create_param=boom, update_param=boom)
+    with pytest.raises(KibanaRejected) as exc:
+        call(_syn_gw(rec))
+    assert "s3cret-xyz" not in exc.value.message + exc.value.detail
+    assert "[redacted]" in exc.value.detail
+
+
+def test_delete_synthetic_param_answers_200_on_a_miss():
+    # Live: a missing id is a 200 [{"id": ..., "deleted": false}] with no error text.
+    _syn_gw(_Recorder(delete_param=[{"id": "p1", "deleted": True}])).delete_synthetic_param("p1")
+    with pytest.raises(KibanaNotFound, match=(
+        r"^synthetic param 'p1' not found — param_id is the id that create_synthetic_param or "
+        r"list_synthetic_params returns, not the param's key; call list_synthetic_params"
+    )):
+        _syn_gw(_Recorder(delete_param=[{"id": "p1", "deleted": False}])).delete_synthetic_param("p1")
+
+
+def test_unknown_param_id_on_update_names_the_list_tool():
+    rec = _Recorder(update_param=_nf("Param not found"))
+    with pytest.raises(KibanaNotFound, match=r"^synthetic param 'nope' not found — param_id"):
+        _syn_gw(rec).update_synthetic_param("nope", description="x")
+
+
+_LOC = {"label": "probe-loc", "id": "bbce", "agentPolicyId": "9d19", "isServiceManaged": False,
+        "isInvalid": False, "tags": ["probe"], "spaces": ["default"]}
+
+
+def test_create_synthetic_private_location_maps_the_response():
+    rec = _Recorder(create_private_location=_LOC)
+    loc = _syn_gw(rec).create_synthetic_private_location("probe-loc", "9d19", ["probe"])
+    assert rec.calls == [("create_private_location", {
+        "label": "probe-loc", "agent_policy_id": "9d19", "tags": ["probe"]})]
+    assert (loc.id, loc.label, loc.agent_policy_id) == ("bbce", "probe-loc", "9d19")
+
+
+def test_create_synthetic_private_location_rejection_names_list_agent_policies():
+    rec = _Recorder(create_private_location=_bad(
+        "Agent policy with id nope not found in space default, please use an agent policy "
+        "available in current space."))
+    with pytest.raises(KibanaRejected) as exc:
+        _syn_gw(rec).create_synthetic_private_location("x", "nope", None)
+    assert "Agent policy with id nope not found" in exc.value.detail
+    assert exc.value.detail.endswith(
+        "— agent_policy_id is the id of a Fleet agent policy that no other private location "
+        "uses: list_agent_policies shows them, create_agent_policy creates one (fleet toolbox)")
+
+
+def test_update_synthetic_private_location_sends_the_label():
+    rec = _Recorder(update_private_location={**_LOC, "label": "renamed"})
+    loc = _syn_gw(rec).update_synthetic_private_location("bbce", "renamed")
+    assert rec.calls == [("update_private_location", {"id": "bbce", "label": "renamed"})]
+    assert loc.label == "renamed"
+
+
+def test_delete_synthetic_private_location_maps_kibanas_400s():
+    gone = _bad("Private location with id bbce does not exist.")
+    with pytest.raises(KibanaNotFound, match=(
+        r"^private location 'bbce' not found — location_id is the id that "
+        r"create_synthetic_private_location or list_synthetic_private_locations returns, not the "
+        r"location's label"
+    )):
+        _syn_gw(_Recorder(delete_private_location=gone)).delete_synthetic_private_location("bbce")
+    used = _bad("Private location with id bbce cannot be deleted because it is used by 1 "
+                "monitor(s).")
+    with pytest.raises(KibanaRejected) as exc:
+        _syn_gw(_Recorder(delete_private_location=used)).delete_synthetic_private_location("bbce")
+    assert "is used by 1 monitor(s)" in exc.value.detail
+    assert exc.value.detail.endswith(
+        "— move those monitors to another private location with update_synthetic_monitor "
+        "(private_locations) or delete them with delete_synthetic_monitor first; "
+        "list_synthetic_monitors shows each monitor's locations")
+    _syn_gw(_Recorder(delete_private_location={})).delete_synthetic_private_location("bbce")
+
+
+def test_unknown_location_id_on_update_names_the_list_tool():
+    rec = _Recorder(update_private_location=_nf("Private location with id nope does not exist."))
+    with pytest.raises(KibanaNotFound, match=r"^private location 'nope' not found — location_id"):
+        _syn_gw(rec).update_synthetic_private_location("nope", "x")

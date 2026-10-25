@@ -21,7 +21,7 @@ flowchart LR
     subgraph server["mcp-for-kibana"]
         direction TB
         Transport["Transport<br/>stdio | streamable-HTTP"]
-        Toolboxes["10 toolboxes / 150 tools<br/>tier-gated read / write / destructive"]
+        Toolboxes["10 toolboxes / 160 tools<br/>tier-gated read / write / destructive"]
         Core["Hexagonal core<br/>VizSpec → Lens"]
         Gateway["kibana-py gateway"]
         Transport --> Toolboxes --> Core
@@ -48,7 +48,7 @@ layering is not just a diagram — it's machine-enforced by
 flowchart TD
     Client["MCP client (LLM host)"] -->|MCP protocol| Server
     AuthAdapter["adapters/mcp — per-request ApiKey auth"] --> Server
-    Server["server.py — composition root"] --> Toolboxes["toolboxes/ — 10 toolboxes, 150 tools, tiered<br/>(dashboards shown)"]
+    Server["server.py — composition root"] --> Toolboxes["toolboxes/ — 10 toolboxes, 160 tools, tiered<br/>(dashboards shown)"]
     Toolboxes --> Ports["ports/gateway.py — KibanaGateway protocol"]
     Toolboxes --> Core["core/ — VizSpec, validate, translate, compose (pure, no framework imports)"]
     Ports -. implemented by .-> KibanaAdapter["adapters/kibana — KibanaPyGateway (only module importing kibana-py)"]
@@ -93,7 +93,7 @@ class Toolbox(Protocol):
 `toolboxes/__init__.py` holds the registry (`TOOLBOXES: dict[str,
 Toolbox]`) — ten toolboxes today (`dashboards`, `data-management`,
 `alerting`, `cases`, `platform-health`, `observability`,
-`security-detections`, `platform-admin`, `streams`, `fleet` — 150 tools in
+`security-detections`, `platform-admin`, `streams`, `fleet` — 160 tools in
 all). Deployment
 config (`KIBANA_MCP_TOOLBOXES`, see
 [Configuration](configuration.md#toolbox-selection)) picks which entries to

@@ -109,17 +109,31 @@ async def test_platform_health_toolbox_boots_read_only():
     assert names == PLATFORM_HEALTH_TOOLS  # all read-tier, visible at default write tier
 
 
-OBSERVABILITY_TOOLS = {
+OBSERVABILITY_READ = {
     "list_synthetic_monitors", "get_synthetic_monitor", "list_synthetic_params",
     "list_synthetic_private_locations", "get_uptime_settings",
     "list_apm_agent_configs", "get_apm_agent_config", "list_apm_environments",
     "list_apm_sourcemaps", "search_apm_annotations",
 }
+OBSERVABILITY_WRITE = {
+    "create_synthetic_monitor", "update_synthetic_monitor", "test_synthetic_monitor",
+    "create_synthetic_param", "update_synthetic_param",
+    "create_synthetic_private_location", "update_synthetic_private_location",
+}
+OBSERVABILITY_DESTRUCTIVE = {
+    "delete_synthetic_monitor", "delete_synthetic_param", "delete_synthetic_private_location",
+}
+OBSERVABILITY_TOOLS = OBSERVABILITY_READ | OBSERVABILITY_WRITE | OBSERVABILITY_DESTRUCTIVE
 
 
-async def test_observability_toolbox_boots_read_only():
-    names = await visible_tools(Settings(toolboxes=["observability"]))
-    assert names == OBSERVABILITY_TOOLS  # all read-tier, visible at default write tier
+async def test_observability_toolbox_boots_all_tiers():
+    names = await visible_tools(Settings(toolboxes=["observability"], tier=Tier.DESTRUCTIVE))
+    assert names == OBSERVABILITY_TOOLS
+    assert len(names) == 20
+    read_only = await visible_tools(Settings(toolboxes=["observability"], tier=Tier.READ))
+    assert read_only == OBSERVABILITY_READ
+    write = await visible_tools(Settings(toolboxes=["observability"]))
+    assert write == OBSERVABILITY_READ | OBSERVABILITY_WRITE  # the default tier
 
 
 SECURITY_DETECTIONS_READ = {

@@ -79,8 +79,17 @@ DEPENDENCIES: Mapping[str, tuple[str, ...]] = MappingProxyType({
     "update_alert_rule_api_key": ("list_alert_rules",),
     "get_connector": ("list_connectors",),
     "update_connector": ("get_connector",),
-    # observability, platform-admin, fleet
+    # observability (the Synthetics write tier, D46), platform-admin, fleet
     "get_synthetic_monitor": ("list_synthetic_monitors",),
+    "create_synthetic_monitor": ("list_synthetic_private_locations",),
+    "update_synthetic_monitor": ("list_synthetic_monitors", "list_synthetic_private_locations"),
+    "test_synthetic_monitor": ("list_synthetic_monitors",),
+    "delete_synthetic_monitor": ("list_synthetic_monitors",),
+    "update_synthetic_param": ("list_synthetic_params",),
+    "delete_synthetic_param": ("list_synthetic_params",),
+    "create_synthetic_private_location": ("list_agent_policies",),
+    "update_synthetic_private_location": ("list_synthetic_private_locations",),
+    "delete_synthetic_private_location": ("list_synthetic_private_locations",),
     "get_space": ("list_spaces",),
     "create_package_policy": ("get_package",),
     "update_package_policy": ("get_package",),

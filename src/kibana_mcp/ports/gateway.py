@@ -232,6 +232,46 @@ class KibanaGateway(Protocol):
 
     def list_synthetic_private_locations(self) -> list[SyntheticPrivateLocation]: ...
 
+    # Synthetics write tier (D46). `private_locations` entries are ids or labels;
+    # `schedule` is "<n>m" / "<n>s" (the read shape); None leaves a field out.
+    def create_synthetic_monitor(
+        self, *, type: str, name: str, private_locations: list[str], url: str | None,
+        host: str | None, inline_script: str | None, schedule: str | None, enabled: bool,
+        tags: list[str] | None,
+    ) -> SyntheticMonitor: ...
+
+    def update_synthetic_monitor(
+        self, monitor_id: str, *, name: str | None = None, url: str | None = None,
+        host: str | None = None, inline_script: str | None = None, schedule: str | None = None,
+        enabled: bool | None = None, tags: list[str] | None = None,
+        private_locations: list[str] | None = None,
+    ) -> SyntheticMonitor: ...
+
+    def test_synthetic_monitor(self, monitor_id: str) -> str: ...
+
+    def delete_synthetic_monitor(self, monitor_id: str) -> None: ...
+
+    def create_synthetic_param(
+        self, key: str, value: str, description: str | None, tags: list[str] | None
+    ) -> SyntheticParam: ...
+
+    def update_synthetic_param(
+        self, param_id: str, *, key: str | None = None, value: str | None = None,
+        description: str | None = None, tags: list[str] | None = None,
+    ) -> SyntheticParam: ...
+
+    def delete_synthetic_param(self, param_id: str) -> None: ...
+
+    def create_synthetic_private_location(
+        self, label: str, agent_policy_id: str, tags: list[str] | None
+    ) -> SyntheticPrivateLocation: ...
+
+    def update_synthetic_private_location(
+        self, location_id: str, label: str
+    ) -> SyntheticPrivateLocation: ...
+
+    def delete_synthetic_private_location(self, location_id: str) -> None: ...
+
     def get_uptime_settings(self) -> UptimeSettings: ...
 
     def list_apm_agent_configs(self) -> list[ApmAgentConfig]: ...

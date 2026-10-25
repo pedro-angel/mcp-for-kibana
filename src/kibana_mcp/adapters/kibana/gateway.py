@@ -161,6 +161,15 @@ _ID_SOURCES = {
     "visualization": (
         "visualization_id", "create_visualization or search_visualizations", "title"
     ),
+    "synthetic monitor": (
+        "monitor_id", "create_synthetic_monitor or list_synthetic_monitors", "name"
+    ),
+    "synthetic param": ("param_id", "create_synthetic_param or list_synthetic_params", "key"),
+    "private location": (
+        "location_id",
+        "create_synthetic_private_location or list_synthetic_private_locations",
+        "label",
+    ),
 }
 
 # How many date fields a time-field rejection lists before eliding the rest.
@@ -186,7 +195,7 @@ def _known_id(kind: str, value: str) -> Iterator[None]:
     """Reject an empty id before kibana-py does (its bare ValueError is
     unmapped), and turn a 404 on the id into guidance naming where ids come
     from. A missing *space* still surfaces as the space (fail-closed)."""
-    param, sources, label = _ID_SOURCES[kind]
+    param, sources, _label = _ID_SOURCES[kind]
     if not value.strip():
         raise KibanaRejected(f"{param} is empty — pass the id that {sources} returns")
     try:
@@ -194,11 +203,18 @@ def _known_id(kind: str, value: str) -> Iterator[None]:
     except SpaceNotFoundError:
         raise
     except NotFoundError as e:
-        lookup = sources.split(" or ")[1]
-        raise KibanaNotFound(
-            f"{kind} '{value}' not found — {param} is the id that {sources} returns, "
-            f"not the {kind.split()[-1]}'s {label}; call {lookup} to find it"
-        ) from e
+        raise _unknown_id(kind, value) from e
+
+
+def _unknown_id(kind: str, value: str) -> KibanaNotFound:
+    """D17's not-found text for `kind`: also raised where Kibana reports a miss
+    without a 404 (a Synthetics delete answers 200 with `deleted: false`)."""
+    param, sources, label = _ID_SOURCES[kind]
+    lookup = sources.split(" or ")[1]
+    return KibanaNotFound(
+        f"{kind} '{value}' not found — {param} is the id that {sources} returns, "
+        f"not the {kind.split()[-1]}'s {label}; call {lookup} to find it"
+    )
 
 
 def _scoped(gw: "KibanaPyGateway", e: KibanaNotFound) -> KibanaNotFound:
@@ -524,6 +540,59 @@ def _to_private_location(body: dict[str, Any]) -> SyntheticPrivateLocation:
         is_invalid=bool(body.get("isInvalid", False)),
         tags=tuple(body.get("tags") or []),
     )
+
+
+def _given(**kwargs: Any) -> dict[str, Any]:
+    """The keyword arguments that were given: None means "leave it out"."""
+    return {k: v for k, v in kwargs.items() if v is not None}
+
+
+def _monitor_schedule(schedule: str) -> dict[str, str]:
+    # "10m" / "30s" (the read shape, validated by the tool) -> Kibana's
+    # {"number": "10", "unit": "m"}; Kibana stores the number as a string.
+    return {"number": schedule[:-1], "unit": schedule[-1]}
+
+
+def _deleted(body: Any, kind: str, value: str) -> None:
+    """A Synthetics monitor/param DELETE answers 200 with a per-id result list,
+    also for an id that matches nothing: `deleted: false` (a monitor adds
+    "Monitor id <id> not found!", a param no text; probed on 9.5.4)."""
+    results = [r for r in (body if isinstance(body, list) else []) if isinstance(r, dict)]
+    if any(r.get("deleted") is True for r in results):
+        return
+    error = next((str(r["error"]) for r in results if r.get("error")), "")
+    if error and "not found" not in error.lower():
+        raise KibanaRejected(f"Kibana did not delete the {kind}", detail=error)
+    raise _unknown_id(kind, value)
+
+
+@contextlib.contextmanager
+def _secret_withheld(secret: str | None) -> Iterator[None]:
+    """A Synthetics param's value is a secret: a payload rejection never carries
+    it back to the model, whatever Kibana's text quotes."""
+    try:
+        yield
+    except (BadRequestError, ConflictError) as e:
+        d = _translated(e, None)
+        if not isinstance(d, KibanaRejected):
+            raise
+        if secret:
+            d = KibanaRejected(
+                d.message.replace(secret, "[redacted]"),
+                detail=d.detail.replace(secret, "[redacted]"),
+            )
+        raise d from e
+
+
+_AGENT_POLICY_HINT = (
+    "agent_policy_id is the id of a Fleet agent policy that no other private location uses: "
+    "list_agent_policies shows them, create_agent_policy creates one (fleet toolbox)"
+)
+_LOCATION_IN_USE_HINT = (
+    "move those monitors to another private location with update_synthetic_monitor "
+    "(private_locations) or delete them with delete_synthetic_monitor first; "
+    "list_synthetic_monitors shows each monitor's locations"
+)
 
 
 def _to_uptime_settings(body: dict[str, Any]) -> UptimeSettings:
@@ -1876,7 +1945,11 @@ class KibanaPyGateway:
 
     @_translate_errors
     def get_synthetic_monitor(self, monitor_id: str) -> SyntheticMonitor:
-        return _to_synthetic_monitor(self._client.synthetics.get_monitor(id=monitor_id).body)
+        # D17 guidance, shared with the write tier (update_synthetic_monitor
+        # reads the monitor first to learn its type).
+        with _known_id("synthetic monitor", monitor_id):
+            body = self._client.synthetics.get_monitor(id=monitor_id).body
+        return _to_synthetic_monitor(body)
 
     @_translate_errors
     def list_synthetic_params(self) -> list[SyntheticParam]:
@@ -1890,6 +1963,126 @@ class KibanaPyGateway:
             _to_private_location(loc)
             for loc in self._client.synthetics.get_private_locations().body
         ]
+
+    # --- observability: the Synthetics write tier (D46) ---
+
+    @_translate_errors
+    def create_synthetic_monitor(
+        self, *, type: str, name: str, private_locations: list[str], url: str | None,
+        host: str | None, inline_script: str | None, schedule: str | None, enabled: bool,
+        tags: list[str] | None,
+    ) -> SyntheticMonitor:
+        # Only private locations: a self-managed stack has no Elastic-managed
+        # ones ("No Elastic managed location available to use", 9.5.4).
+        body = self._client.synthetics.create_monitor(**_given(
+            type=type, name=name, private_locations=private_locations, url=url, host=host,
+            inline_script=inline_script,
+            schedule=_monitor_schedule(schedule) if schedule is not None else None,
+            enabled=enabled, tags=tags,
+        )).body
+        return _to_synthetic_monitor(body)
+
+    @_translate_errors
+    def update_synthetic_monitor(
+        self, monitor_id: str, *, name: str | None = None, url: str | None = None,
+        host: str | None = None, inline_script: str | None = None, schedule: str | None = None,
+        enabled: bool | None = None, tags: list[str] | None = None,
+        private_locations: list[str] | None = None,
+    ) -> SyntheticMonitor:
+        # The PUT is partial: omitted fields keep their values (probed on 9.5.4),
+        # so only the given ones are sent and nothing is read back first.
+        with _known_id("synthetic monitor", monitor_id):
+            body = self._client.synthetics.update_monitor(**_given(
+                id=monitor_id, name=name, url=url, host=host, inline_script=inline_script,
+                schedule=_monitor_schedule(schedule) if schedule is not None else None,
+                enabled=enabled, tags=tags, private_locations=private_locations,
+            )).body
+        return _to_synthetic_monitor(body)
+
+    @_translate_errors
+    def test_synthetic_monitor(self, monitor_id: str) -> str:
+        with _known_id("synthetic monitor", monitor_id):
+            body = self._client.synthetics.test_monitor(monitor_id=monitor_id).body
+        return str(body.get("testRunId", ""))
+
+    @_translate_errors
+    def delete_synthetic_monitor(self, monitor_id: str) -> None:
+        with _known_id("synthetic monitor", monitor_id):
+            body = self._client.synthetics.delete_monitor(id=monitor_id).body
+        _deleted(body, "synthetic monitor", monitor_id)
+
+    @_translate_errors
+    def create_synthetic_param(
+        self, key: str, value: str, description: str | None, tags: list[str] | None
+    ) -> SyntheticParam:
+        with _secret_withheld(value):
+            body = self._client.synthetics.create_param(**_given(
+                key=key, value=value, description=description, tags=tags
+            )).body
+        return _to_synthetic_param(body)
+
+    @_translate_errors
+    def update_synthetic_param(
+        self, param_id: str, *, key: str | None = None, value: str | None = None,
+        description: str | None = None, tags: list[str] | None = None,
+    ) -> SyntheticParam:
+        # Kibana's response echoes the PREVIOUS value (probed on 9.5.4); the
+        # SyntheticParam shape has no value field, so neither value surfaces.
+        with _known_id("synthetic param", param_id), _secret_withheld(value):
+            body = self._client.synthetics.update_param(**_given(
+                id=param_id, key=key, value=value, description=description, tags=tags
+            )).body
+        return _to_synthetic_param(body)
+
+    @_translate_errors
+    def delete_synthetic_param(self, param_id: str) -> None:
+        with _known_id("synthetic param", param_id):
+            body = self._client.synthetics.delete_param(id=param_id).body
+        _deleted(body, "synthetic param", param_id)
+
+    @_translate_errors
+    def create_synthetic_private_location(
+        self, label: str, agent_policy_id: str, tags: list[str] | None
+    ) -> SyntheticPrivateLocation:
+        try:
+            body = self._client.synthetics.create_private_location(**_given(
+                label=label, agent_policy_id=agent_policy_id, tags=tags
+            )).body
+        except BadRequestError as e:
+            # A missing policy, or one another location uses (probed on 9.5.4).
+            raise KibanaRejected(
+                "Kibana rejected the payload", detail=f"{e.message} — {_AGENT_POLICY_HINT}"
+            ) from e
+        return _to_private_location(body)
+
+    @_translate_errors
+    def update_synthetic_private_location(
+        self, location_id: str, label: str
+    ) -> SyntheticPrivateLocation:
+        # The label is the only editable attribute (kibana-py, Kibana's schema).
+        with _known_id("private location", location_id):
+            body = self._client.synthetics.update_private_location(
+                id=location_id, label=label
+            ).body
+        return _to_private_location(body)
+
+    @_translate_errors
+    def delete_synthetic_private_location(self, location_id: str) -> None:
+        # The agent policy behind it stays (it belongs to Fleet).
+        with _known_id("private location", location_id):
+            try:
+                self._client.synthetics.delete_private_location(id=location_id)
+            except BadRequestError as e:
+                # 9.5.4 answers a missing id with a 400 "... does not exist." and
+                # a location monitors still use with a 400 "... used by N monitor(s).".
+                if "does not exist" in str(e.message):
+                    raise _unknown_id("private location", location_id) from e
+                if "used by" in str(e.message):
+                    raise KibanaRejected(
+                        "Kibana refused to delete the private location",
+                        detail=f"{e.message} — {_LOCATION_IN_USE_HINT}",
+                    ) from e
+                raise
 
     @_translate_errors
     def get_uptime_settings(self) -> UptimeSettings:

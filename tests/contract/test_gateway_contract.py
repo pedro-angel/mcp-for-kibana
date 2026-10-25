@@ -30,6 +30,7 @@ from kibana_mcp.toolboxes.alerting.toolbox import AlertingToolbox
 from kibana_mcp.toolboxes.base import ToolboxDeps
 from kibana_mcp.toolboxes.dashboards.toolbox import DashboardsToolbox
 from kibana_mcp.toolboxes.data_management.toolbox import DataManagementToolbox
+from kibana_mcp.toolboxes.observability.toolbox import ObservabilityToolbox
 from kibana_mcp.toolboxes.platform_admin.toolbox import PlatformAdminToolbox
 from kibana_mcp.toolboxes.security_detections.toolbox import SecurityDetectionsToolbox
 
@@ -2290,3 +2291,177 @@ async def test_lifecycle_tools_scoped_live(gateway):
         assert str(miss.value).endswith(f" (in space '{space_id}')")
         assert str(miss.value).count("(in space") == 1
         assert f"alert rule '{rid}' not found" in str(root.value)
+
+
+
+# --- observability: the Synthetics write tier (D46) --------------------------
+# Every object is a throwaway this test creates (prefix contract-syn-) and
+# removes in `finally`, so the reads above keep seeing an empty Synthetics
+# surface. A private location needs a Fleet agent policy no other location uses:
+# each test makes its own and deletes it last (that removes the Synthetics
+# package policies Kibana adds to it). No agent is enrolled in it, so a test run
+# is accepted but does not execute here; D46 records the probe that saw one
+# execute.
+
+
+def _obs_tool_server():
+    server = FastMCP("contract-observability")
+    ObservabilityToolbox().register(
+        server,
+        ToolboxDeps(
+            gateway_factory=lambda space=None: KibanaPyGateway.connect(
+                os.environ["KIBANA_URL"], os.environ["KIBANA_TEST_API_KEY"], space
+            ),
+            public_kibana_url="http://kb:5601",
+        ),
+    )
+    return server
+
+
+def _synthetics_cleanup(gateway, policy_id):
+    with _raw_kibana() as raw:
+        for m in raw.synthetics.get_monitors(per_page=100).body["monitors"]:
+            if m["name"].startswith("contract-syn-"):
+                raw.synthetics.delete_monitor(id=m["config_id"])
+        for p in raw.synthetics.get_params().body:
+            if p["key"].startswith("contract_syn_"):
+                raw.synthetics.delete_param(id=p["id"])
+        for loc in raw.synthetics.get_private_locations().body:
+            if loc["label"].startswith("contract-syn-"):
+                raw.synthetics.delete_private_location(id=loc["id"])
+    if policy_id is not None:
+        gateway.delete_agent_policy(policy_id, force=True)
+
+
+async def test_synthetic_params_lifecycle_live(gateway):
+    # The value goes in and never comes out (Kibana's update echoes the OLD
+    # value); a key in use is refused (Kibana itself stores the duplicate); a
+    # miss on update or delete names list_synthetic_params.
+    key = f"contract_syn_{uuid.uuid4().hex[:8]}"
+    secret, rotated = f"s3cret-{uuid.uuid4().hex}", f"rotated-{uuid.uuid4().hex}"
+    try:
+        async with Client(_obs_tool_server()) as client:
+            created = await client.call_tool("create_synthetic_param", {
+                "key": key, "value": secret, "description": "contract", "tags": ["contract"],
+            })
+            with pytest.raises(ToolError) as dup:
+                await client.call_tool("create_synthetic_param", {"key": key, "value": "x-1"})
+            pid = created.data["id"]
+            updated = await client.call_tool("update_synthetic_param", {
+                "param_id": pid, "value": rotated, "description": "rotated",
+            })
+            listed = (await client.call_tool("list_synthetic_params", {})).data
+            with pytest.raises(ToolError) as miss:
+                await client.call_tool(
+                    "update_synthetic_param", {"param_id": "no-such-param", "tags": []})
+            deleted = (await client.call_tool("delete_synthetic_param", {"param_id": pid})).data
+            with pytest.raises(ToolError) as gone:
+                await client.call_tool("delete_synthetic_param", {"param_id": pid})
+        assert created.data == {"id": pid, "key": key, "description": "contract",
+                                "tags": ["contract"]}
+        assert updated.data == {"id": pid, "key": key, "description": "rotated",
+                                "tags": ["contract"]}
+        for shown in (created.content, updated.content, listed):
+            assert secret not in str(shown) and rotated not in str(shown)
+        assert f"a parameter with key '{key}' already exists (id '{pid}')" in str(dup.value)
+        assert "synthetic param 'no-such-param' not found" in str(miss.value)
+        assert "call list_synthetic_params" in str(miss.value)
+        assert deleted == {"id": pid, "deleted": True}
+        assert f"synthetic param '{pid}' not found" in str(gone.value)
+        assert [p for p in gateway.list_synthetic_params() if p.key == key] == []
+    finally:
+        _synthetics_cleanup(gateway, None)
+
+
+async def test_synthetic_locations_and_monitors_lifecycle_live(gateway):
+    # A private location on a throwaway agent policy, a monitor placed on it by
+    # label, an in-place partial edit, a run request, the refusal to delete a
+    # location still in use, and each delete with its miss.
+    tag = uuid.uuid4().hex[:8]
+    label, name = f"contract-syn-loc-{tag}", f"contract-syn-mon-{tag}"
+    policy_id = None
+    try:
+        policy_id = gateway.create_agent_policy(
+            name=f"contract-syn-policy-{tag}", namespace="default", monitoring_enabled=[]).id
+        async with Client(_obs_tool_server()) as client:
+            loc = (await client.call_tool("create_synthetic_private_location", {
+                "label": label, "agent_policy_id": policy_id, "tags": ["contract"],
+            })).data
+            with pytest.raises(ToolError) as taken_policy:
+                await client.call_tool("create_synthetic_private_location", {
+                    "label": f"{label}-2", "agent_policy_id": policy_id})
+            with pytest.raises(ToolError) as no_policy:
+                await client.call_tool("create_synthetic_private_location", {
+                    "label": f"{label}-3", "agent_policy_id": "no-such-agent-policy"})
+            renamed = (await client.call_tool("update_synthetic_private_location", {
+                "location_id": loc["id"], "label": f"{label}-renamed",
+            })).data
+            created = (await client.call_tool("create_synthetic_monitor", {
+                "type": "http", "name": name, "url": "http://kibana:5601/api/status",
+                "private_locations": [f"{label}-renamed"], "schedule": "30s",
+                "enabled": False, "tags": ["contract"],
+            })).data
+            with pytest.raises(ToolError) as bad_schedule:
+                await client.call_tool("create_synthetic_monitor", {
+                    "type": "http", "name": f"{name}-2", "url": "http://x",
+                    "private_locations": [loc["id"]], "schedule": "45s"})
+            with pytest.raises(ToolError) as dup_name:
+                await client.call_tool("create_synthetic_monitor", {
+                    "type": "http", "name": name, "url": "http://x",
+                    "private_locations": [loc["id"]]})
+            edited = (await client.call_tool("update_synthetic_monitor", {
+                "monitor_id": created["id"], "schedule": "10m", "tags": ["contract", "edited"],
+            })).data
+            got = (await client.call_tool(
+                "get_synthetic_monitor", {"monitor_id": created["id"]})).data
+            with pytest.raises(ToolError) as wrong_target:
+                await client.call_tool("update_synthetic_monitor", {
+                    "monitor_id": created["id"], "host": "kibana:5601"})
+            with pytest.raises(ToolError) as no_monitor_read:
+                await client.call_tool("update_synthetic_monitor", {
+                    "monitor_id": "no-such-monitor", "url": "http://x"})
+            run = (await client.call_tool(
+                "test_synthetic_monitor", {"monitor_id": created["id"]})).data
+            with pytest.raises(ToolError) as no_monitor:
+                await client.call_tool("test_synthetic_monitor", {"monitor_id": "no-such-monitor"})
+            with pytest.raises(ToolError) as in_use:
+                await client.call_tool(
+                    "delete_synthetic_private_location", {"location_id": loc["id"]})
+            deleted = (await client.call_tool(
+                "delete_synthetic_monitor", {"monitor_id": created["id"]})).data
+            with pytest.raises(ToolError) as monitor_gone:
+                await client.call_tool("delete_synthetic_monitor", {"monitor_id": created["id"]})
+            loc_deleted = (await client.call_tool(
+                "delete_synthetic_private_location", {"location_id": loc["id"]})).data
+            with pytest.raises(ToolError) as loc_gone:
+                await client.call_tool(
+                    "delete_synthetic_private_location", {"location_id": loc["id"]})
+        assert loc == {"id": loc["id"], "label": label, "agent_policy_id": policy_id,
+                       "is_invalid": False, "tags": ["contract"]}
+        assert f"agent policy '{policy_id}' already backs private location" in str(
+            taken_policy.value)
+        assert "Agent policy with id no-such-agent-policy not found" in str(no_policy.value)
+        assert "list_agent_policies shows them" in str(no_policy.value)
+        assert renamed == {**loc, "label": f"{label}-renamed"}
+        assert created["name"] == name and created["type"] == "http"
+        assert created["enabled"] is False and created["schedule"] == "30s"
+        assert created["locations"] == [f"{label}-renamed"]
+        assert created["target"] == "http://kibana:5601/api/status"
+        assert "1, 2, 3, 5, 10, 15, 20, 30, 60, 120 or 240" in str(bad_schedule.value)
+        assert "must be unique" in str(dup_name.value)
+        # Kibana's PUT is partial: the edit kept everything it did not name.
+        assert edited == got == {**created, "schedule": "10m", "tags": ["contract", "edited"]}
+        assert "is an http monitor: it takes `url`, not `host`" in str(wrong_target.value)
+        assert run["monitor_id"] == created["id"] and uuid.UUID(run["test_run_id"])
+        assert "synthetic monitor 'no-such-monitor' not found" in str(no_monitor.value)
+        assert "call list_synthetic_monitors" in str(no_monitor_read.value)
+        assert "is used by 1 monitor(s)" in str(in_use.value)
+        assert "move those monitors to another private location" in str(in_use.value)
+        assert deleted == {"id": created["id"], "deleted": True}
+        assert f"synthetic monitor '{created['id']}' not found" in str(monitor_gone.value)
+        assert loc_deleted == {"id": loc["id"], "deleted": True}
+        assert f"private location '{loc['id']}' not found" in str(loc_gone.value)
+        assert gateway.list_synthetic_private_locations() == []
+        assert gateway.list_synthetic_monitors() == []
+    finally:
+        _synthetics_cleanup(gateway, policy_id)
