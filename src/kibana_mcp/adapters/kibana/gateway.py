@@ -113,11 +113,13 @@ from kibana_mcp.core.models import (
 from kibana_mcp.core.saved_objects import READABLE_TYPES, unreadable_type_message
 from kibana_mcp.core.space_sharing import (
     ALL_SPACES,
+    SPACE_ERROR,
     copy_fix,
     missing_spaces_message,
     objects_not_found_message,
     self_target_message,
     sharing_refusal,
+    space_failure_fix,
     unshare_refusal,
 )
 from kibana_mcp.core.visualizations.translate import describe_lens_config, lens_chart_type
@@ -953,14 +955,35 @@ def _to_space_copy_result(
         )
         for r in raw.get("successResults") or ()
     )
-    failed = tuple(_to_copy_failure(e, overwrite) for e in raw.get("errors") or ())
+    entries = [e for e in raw.get("errors") or () if isinstance(e, dict)]
+    failed = tuple(_to_copy_failure(e, overwrite) for e in entries if _is_object_error(e))
     seen = {(c.type, c.id) for c in copied} | {(f.type, f.id) for f in failed}
+    rest = [o for o in objects if (o["type"], o["id"]) not in seen]
+    whole = [e for e in entries if not _is_object_error(e)]
+    if whole:
+        # Kibana refused the import into this space as a whole (its copy route
+        # answers that space with a Boom payload {statusCode, error, message},
+        # no object): nothing else was written here, so the rest failed too —
+        # never "unchanged". The other target spaces keep their own results.
+        e = whole[0]
+        fix = space_failure_fix(
+            space, e.get("statusCode"), str(e.get("error") or ""), str(e.get("message") or ""))
+        failed += tuple(
+            CopyFailure(type=o["type"], id=o["id"], title=None, error=SPACE_ERROR, fix=fix,
+                        missing_references=(), destinations=())
+            for o in rest
+        )
+        rest = []
     return SpaceCopyResult(
-        space=space, success=bool(raw.get("success")), copied=copied, failed=failed,
-        unchanged=tuple(
-            _ref_pair(o) for o in objects if (o["type"], o["id"]) not in seen
-        ),
+        space=space, success=bool(raw.get("success")) and not whole, copied=copied,
+        failed=failed, unchanged=tuple(_ref_pair(o) for o in rest),
     )
+
+
+def _is_object_error(entry: dict[str, Any]) -> bool:
+    """A per-object import failure ({type, id, error: {type, …}}), as opposed to
+    the bare error Kibana answers when a whole target space failed."""
+    return isinstance(entry.get("error"), dict) and "type" in entry and "id" in entry
 
 
 def _to_object_spaces(raw: dict[str, Any]) -> ObjectSpaces:
@@ -1337,16 +1360,24 @@ class _SourceSpaceSpaces(SpacesClient):
 class KibanaPyGateway:
     def __init__(
         self, client: kibana.Kibana | SpaceScopedKibana, space: str | None = None,
-        pinned_space: str | None = None,
+        pinned_space: str | None = None, public_url_pinned: bool = False,
     ) -> None:
         self._client = client
         self._space = space
         # The space a '/s/<id>' KIBANA_URL pins (connect sets it): the source
         # space of the copy and share calls when no `space` scopes the gateway.
         self._pinned_space = pinned_space
+        # True when this deployment refuses source_space (either URL pinned, D8):
+        # the copy and share guidance then never offers it.
+        self._source_fixed = pinned_space is not None or public_url_pinned
 
     @classmethod
-    def connect(cls, url: str, api_key: str, space: str | None = None) -> "KibanaPyGateway":
+    def connect(
+        cls, url: str, api_key: str, space: str | None = None, *,
+        public_url_pinned: bool = False,
+    ) -> "KibanaPyGateway":
+        """`public_url_pinned`: the factory refuses `space` because the public
+        URL is space-pinned (only it can see that URL)."""
         if space is not None and is_space_pinned(url):
             # connect owns this URL, so it enforces its own precondition; the
             # factory adds only the public-URL half it alone can see.
@@ -1376,7 +1407,8 @@ class KibanaPyGateway:
                 if translated is e:
                     raise  # pass-through unchanged, no self-referential cause
                 raise translated from e
-        return cls(client, space, pinned_space=pinned_space(url))
+        return cls(
+            client, space, pinned_space=pinned_space(url), public_url_pinned=public_url_pinned)
 
     # Returns the port type, not the concrete one: `with KibanaPyGateway...` is
     # the only way callers obtain a gateway, so narrowing here would leak the
@@ -3142,7 +3174,7 @@ class KibanaPyGateway:
     ) -> list[SpaceCopyResult]:
         source = self._space or self._pinned_space or "default"
         if source in spaces:
-            raise KibanaRejected(self_target_message(source))
+            raise KibanaRejected(self_target_message(source, self._source_fixed))
         self._require_spaces(spaces)
         # create_new_copies (Kibana's default) mints new ids and never touches an
         # existing object; overwrite replaces the object an earlier copy made
@@ -3162,7 +3194,7 @@ class KibanaPyGateway:
                 f"{o.get('type')}/{o.get('id')}"
                 for o in (attributes or {}).get("objects") or ()
             ] or [f"{o['type']}/{o['id']}" for o in objects]
-            raise KibanaNotFound(objects_not_found_message(misses)) from e
+            raise KibanaNotFound(objects_not_found_message(misses, self._source_fixed)) from e
         return [
             _to_space_copy_result(space, body.get(space) or {}, objects, overwrite)
             for space in spaces
@@ -3174,7 +3206,7 @@ class KibanaPyGateway:
     ) -> list[SharingChange]:
         self._require_spaces(spaces)
         before = self._object_spaces(objects)
-        refusal = sharing_refusal(before)
+        refusal = sharing_refusal(before, self._source_fixed)
         if refusal:
             raise KibanaRejected(refusal)
         body = self._source_spaces().update_objects_spaces(
@@ -3188,7 +3220,8 @@ class KibanaPyGateway:
         # No existence check: removing a space adds nothing, and an object can
         # sit in a space id that names no space (written there before D5).
         before = self._object_spaces(objects)
-        refusal = sharing_refusal(before) or unshare_refusal(before, spaces, force)
+        refusal = (sharing_refusal(before, self._source_fixed)
+                   or unshare_refusal(before, spaces, force))
         if refusal:
             raise KibanaRejected(refusal)
         body = self._source_spaces().update_objects_spaces(

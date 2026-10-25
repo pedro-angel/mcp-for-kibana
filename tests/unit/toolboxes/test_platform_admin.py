@@ -322,8 +322,10 @@ async def test_a_missing_source_space_is_worded_for_source_space(gateway):
 
     for factory, needle in ((missing, "source_space 'team-z' not found — check the ids with "
                                       "list_spaces, or omit source_space"),
-                            (pinned, "space-pinned ('/s/<id>' base path), so the objects "
-                                     "are read from that space: omit source_space"),
+                            (pinned, "space-pinned ('/s/<id>' base path) — omit source_space; "
+                                     "the objects are then read from the space KIBANA_URL "
+                                     "pins, or from the default space when only the public "
+                                     "URL is pinned"),
                             (unreachable, "cannot reach Kibana")):
         server = FastMCP("test")
         PlatformAdminToolbox().register(server, ToolboxDeps(

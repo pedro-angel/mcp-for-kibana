@@ -106,9 +106,14 @@ def _source_gateway(deps: ToolboxDeps, source_space: str | None) -> Iterator[Kib
         except KibanaRejected as e:
             if source_space is None:
                 raise
+            # Either URL can be the pinned one (connect refuses a pinned
+            # KIBANA_URL, the factory a pinned public URL), and the source
+            # differs: say both rather than guess from the wording.
             raise KibanaRejected(
-                "this deployment's Kibana URL is already space-pinned ('/s/<id>' base "
-                "path), so the objects are read from that space: omit source_space"
+                "source_space cannot be used on this deployment: its Kibana URL or public "
+                "Kibana URL is space-pinned ('/s/<id>' base path) — omit source_space; the "
+                "objects are then read from the space KIBANA_URL pins, or from the default "
+                "space when only the public URL is pinned"
             ) from e
         with gw:
             yield gw

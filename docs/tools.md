@@ -1382,9 +1382,12 @@ Returns:
   space and `destination_id` its id in the target. `failed[].error` is Kibana's:
   `missing_references` (a reference not copied with it), `unsupported_type` (Kibana
   does not export the type), `ambiguous_conflict` (overwrite only: more than one
-  object in the target came from this one, listed in `destinations`); nothing was
-  written for a failed object. `unchanged` lists requested objects Kibana neither
-  copied nor failed: already in that space by sharing.
+  object in the target came from this one, listed in `destinations`), or
+  `space_error` (Kibana refused the whole copy into that space, e.g. the key cannot
+  write saved objects there; `fix` carries Kibana's status and message, and the other
+  target spaces keep their results); nothing was written for a failed object.
+  `unchanged` lists requested objects Kibana neither copied nor failed: already in
+  that space by sharing.
 - `share_saved_objects_to_spaces` / `unshare_saved_objects_from_spaces` —
   `{"objects": [{"type", "id", "spaces", "added", "removed", "deleted",
   "spaces_with_matching_origins", "error"}]}` plus `source_space` when passed, in

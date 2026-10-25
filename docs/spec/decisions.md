@@ -826,6 +826,22 @@ this ledger stands without them.
   share (the read lists them, but sharing what was not named would widen the
   call); a type allowlist like D48's (the copy returns titles and ids only,
   never attributes). Contract: [platform-admin](toolboxes/platform-admin.md).
+  **Amended (2026-10-25, B5 review):** when the import into one target space
+  fails as a whole (Kibana's copy route catches the throw and answers that
+  space with a bare Boom error `{statusCode, error, message}`, no object —
+  e.g. a key that cannot write saved objects there), every requested object
+  not otherwise reported in that space is a `failed` entry with `error:
+  "space_error"` and a `fix` naming Kibana's status and message, never
+  `unchanged`, and the other target spaces keep their results (their
+  `destination_id`s are the undo). Probed on 9.5.4 with a user whose role
+  grants `all` in one target and `read` in the other: 200, the first space
+  copied, the second `{success: false, successCount: 0, errors: [{statusCode:
+  403, error: "Forbidden", message: "Unable to bulk_create index-pattern"}]}`;
+  unit-pinned with that body (the live tiers run with a superuser key). The guidance never offers `source_space` on a
+  deployment that refuses it (a pinned `KIBANA_URL` or public URL: the
+  factory tells the adapter), and the refusal of `source_space` names both
+  sources — the space `KIBANA_URL` pins, or the default space when only the
+  public URL is pinned.
 
 ## Reliability and models (measured)
 

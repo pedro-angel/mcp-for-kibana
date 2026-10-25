@@ -22,6 +22,10 @@ from kibana_mcp.core.models import ObjectSpaces
 # Kibana's "every space, current and future" marker in an object's spaces.
 ALL_SPACES = "*"
 
+# The `error` of every requested object in a target space Kibana refused as a
+# whole (no per-object error there: one bare error for the space).
+SPACE_ERROR = "space_error"
+
 
 def _ref(type: str, id: str) -> str:
     return f"{type}/{id}"
@@ -38,18 +42,50 @@ def missing_spaces_message(missing: Sequence[str]) -> str:
     )
 
 
-def self_target_message(space: str) -> str:
+def self_target_message(space: str, source_fixed: bool = False) -> str:
+    """`source_fixed`: this deployment refuses source_space (a space-pinned
+    Kibana or public URL), so the text must not offer it."""
+    if source_fixed:
+        return (
+            f"the objects are already in space '{space}', the source space (this "
+            "deployment's Kibana URL fixes it) — name other target spaces"
+        )
     return (
         f"the objects are already in space '{space}', the source space — name other "
         "target spaces, or pass source_space to copy from another space"
     )
 
 
-def objects_not_found_message(refs: Iterable[str]) -> str:
-    return (
+def objects_not_found_message(refs: Iterable[str], source_fixed: bool = False) -> str:
+    head = (
         f"saved object(s) not found in the source space: {', '.join(refs)} — `type` and "
-        "`id` are what find_saved_objects returns for the source space; pass "
-        "source_space when the objects are in another space"
+        "`id` are what find_saved_objects returns for the source space"
+    )
+    if source_fixed:
+        return (
+            f"{head}; this deployment's Kibana URL fixes the source space, so objects in "
+            "another space cannot be named here"
+        )
+    return f"{head}; pass source_space when the objects are in another space"
+
+
+def space_failure_fix(space: str, status: object, error: str, message: str) -> str:
+    """What to do when Kibana refused the import into one target space as a
+    whole (its copy route answers that space with a bare error, no object):
+    nothing was written there, the other targets are reported as usual."""
+    what = " ".join(str(x) for x in (status, error) if x not in (None, ""))
+    said = f"{what}: {message}" if message else what
+    if str(status) == "403":
+        cause = (
+            "the API key cannot write saved objects there: use a key whose role grants "
+            "the saved objects' features in that space (create_or_update_role), or "
+            "leave it out of target_spaces"
+        )
+    else:
+        cause = "fix what Kibana names, then copy into that space again"
+    return (
+        f"Kibana refused the whole copy into space '{space}' ({said or 'no detail'}), so "
+        f"nothing was written there: {cause}"
     )
 
 
@@ -83,12 +119,12 @@ def copy_fix(error: str, overwrite: bool) -> str:
     return f"Kibana did not copy it ({error}), so nothing was written for it"
 
 
-def sharing_refusal(states: Sequence[ObjectSpaces]) -> str | None:
+def sharing_refusal(states: Sequence[ObjectSpaces], source_fixed: bool = False) -> str | None:
     """Refuse objects the source space does not hold and types that cannot be
     shared, before any write; None when every object can be shared."""
     missing = [_ref(s.type, s.id) for s in states if s.missing]
     if missing:
-        return objects_not_found_message(missing)
+        return objects_not_found_message(missing, source_fixed)
     single = [s for s in states if not s.spaces]
     if single:
         types = ", ".join(sorted({f"'{s.type}'" for s in single}))

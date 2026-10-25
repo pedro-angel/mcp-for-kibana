@@ -296,12 +296,14 @@ def _env_key_fallback(settings: Settings) -> str | None:
 
 
 def build_gateway_factory(settings: Settings) -> GatewayFactory:
+    # ONLY the explicitly-set public URL (see below); connect takes it so the
+    # copy and share guidance never offers source_space where it is refused.
+    public_pinned = (
+        settings.public_kibana_url is not None and is_space_pinned(settings.public_kibana_url)
+    )
+
     def gateway_factory(space: str | None = None) -> KibanaGateway:
-        if (
-            space is not None
-            and settings.public_kibana_url is not None
-            and is_space_pinned(settings.public_kibana_url)
-        ):
+        if space is not None and public_pinned:
             # ONLY the explicitly-set public URL — effective_public_url falls
             # back to kibana_url, which connect guards itself; using the
             # fallback here would shadow connect's message.
@@ -310,7 +312,8 @@ def build_gateway_factory(settings: Settings) -> GatewayFactory:
                 "('/s/<id>' base path); the `space` parameter cannot be used here"
             )
         api_key = resolve_api_key(_env_key_fallback(settings))
-        return KibanaPyGateway.connect(settings.kibana_url, api_key, space)
+        return KibanaPyGateway.connect(
+            settings.kibana_url, api_key, space, public_url_pinned=public_pinned)
     return gateway_factory
 
 

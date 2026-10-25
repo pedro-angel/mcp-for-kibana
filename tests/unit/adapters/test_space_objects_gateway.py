@@ -139,6 +139,41 @@ def test_copy_failures_carry_kibanas_error_and_the_fix():
     assert b.unchanged == (_DASH,)
 
 
+def test_a_whole_target_space_failure_fails_its_objects_and_keeps_the_other_copies():
+    # Captured live: a user with `all` in team-a and `read` in team-b. Kibana's
+    # copy route catches the failed import into team-b and answers it with the
+    # bare error (Boom payload, no object); the team-a copy was written, and
+    # its destination id must survive.
+    body = {
+        "team-a": {"success": True, "successCount": 1, "successResults": [
+            {"type": "index-pattern", "id": "dv1", "destinationId": "new-1"}]},
+        "team-b": {"success": False, "successCount": 0, "errors": [
+            {"statusCode": 403, "error": "Forbidden",
+             "message": "Unable to bulk_create index-pattern"}]},
+    }
+    a, b = _gw(_Spaces(copy=body)).copy_saved_objects_to_spaces(
+        [_DV], ["team-a", "team-b"], True, False)
+    assert a.copied[0].destination_id == "new-1" and a.failed == ()
+    assert b.success is False and b.copied == () and b.unchanged == ()
+    (failure,) = b.failed
+    assert (failure.type, failure.id, failure.error) == ("index-pattern", "dv1", "space_error")
+    assert "403 Forbidden: Unable to bulk_create index-pattern" in failure.fix
+    assert "cannot write saved objects there" in failure.fix
+    assert "leave it out of target_spaces" in failure.fix
+
+
+def test_a_space_failure_beside_object_errors_fails_only_the_rest():
+    body = {"team-a": {"success": False, "successCount": 0, "errors": [
+        {"type": "dashboard", "id": "dash-1", "error": {"type": "missing_references"}},
+        {"statusCode": 500, "error": "Internal Server Error", "message": "boom"}]}}
+    [result] = _gw(_Spaces(copy=body)).copy_saved_objects_to_spaces(
+        [_DASH, _DV], ["team-a"], False, False)
+    assert [(f.id, f.error) for f in result.failed] == [
+        ("dash-1", "missing_references"), ("dv1", "space_error")]
+    assert "then copy into that space again" in result.failed[1].fix
+    assert result.unchanged == ()
+
+
 def test_copy_refuses_a_target_space_that_does_not_exist_before_copying():
     spaces = _Spaces(copy=_COPIED)
     with pytest.raises(KibanaSpaceNotFound) as exc:
@@ -156,7 +191,33 @@ def test_copy_refuses_the_source_space_as_a_target(space, pinned, target):
     with pytest.raises(KibanaRejected) as exc:
         _gw(spaces, space, pinned).copy_saved_objects_to_spaces([_DV], [target], True, False)
     assert f"already in space '{target}', the source space" in exc.value.message
+    # source_space is refused on a pinned deployment, so it is never offered there
+    assert ("source_space" in exc.value.message) is (pinned is None)
     assert "copy" not in _names(spaces)
+
+
+def test_a_public_url_pin_also_keeps_source_space_out_of_the_guidance():
+    spaces = _Spaces(copy=_COPIED)
+    gw = KibanaPyGateway(make_fake_client(spaces=spaces), public_url_pinned=True)
+    with pytest.raises(KibanaRejected) as exc:
+        gw.copy_saved_objects_to_spaces([_DV], ["default"], True, False)
+    assert "source_space" not in exc.value.message
+
+
+@pytest.mark.parametrize("pinned", [None, "team-b"])
+def test_object_not_found_offers_source_space_only_where_it_works(pinned):
+    err = NotFoundError("Saved objects not found", meta=SimpleNamespace(status=404), body={
+        "attributes": {"objects": [{"id": "nope", "type": "index-pattern"}]}})
+    with pytest.raises(KibanaNotFound) as exc:
+        _gw(_Spaces(copy_error=err), pinned=pinned).copy_saved_objects_to_spaces(
+            [{"type": "index-pattern", "id": "nope"}], ["team-a"], True, False)
+    assert ("pass source_space" in exc.value.message) is (pinned is None)
+    missing = _Spaces(refs=_refs({"type": "index-pattern", "id": "nope", "isMissing": True}))
+    with pytest.raises(KibanaRejected) as exc:
+        _gw(missing, pinned=pinned).share_saved_objects(
+            [{"type": "index-pattern", "id": "nope"}], ["team-a"])
+    assert ("pass source_space" in exc.value.message) is (pinned is None)
+    assert "find_saved_objects" in exc.value.message
 
 
 def test_a_pinned_source_may_copy_into_the_default_space():

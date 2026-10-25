@@ -390,6 +390,24 @@ def test_factory_neither_pinned_builds_scoped_gateway(monkeypatch):
     assert gw._space == "sales"
 
 
+@pytest.mark.parametrize(("kibana_url", "public_url", "fixed"), [
+    ("http://kb:5601", None, False),
+    ("http://kb:5601/s/team-a", None, True),
+    ("http://kb:5601", "https://pub.example.com/s/team-a", True),
+    ("http://kb:5601", "https://pub.example.com", False),
+])
+def test_factory_tells_the_gateway_when_source_space_is_refused(
+    monkeypatch, kibana_url, public_url, fixed
+):
+    # Unscoped gateways only: the copy and share guidance offers source_space
+    # exactly where the factory would accept it.
+    import kibana_mcp.adapters.kibana.gateway as gateway_mod
+    monkeypatch.setattr(gateway_mod.kibana, "Kibana", lambda url, api_key: object())
+    gw = build_gateway_factory(
+        _settings(kibana_url=kibana_url, public_kibana_url=public_url))()
+    assert gw._source_fixed is fixed
+
+
 def test_with_space_echo_helper():
     assert with_space({"id": "x"}, None) == {"id": "x"}
     src = {"id": "x"}

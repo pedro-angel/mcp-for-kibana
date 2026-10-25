@@ -7,7 +7,10 @@ from kibana_mcp.core.space_sharing import (
     copy_fix,
     duplicates,
     missing_spaces_message,
+    objects_not_found_message,
+    self_target_message,
     sharing_refusal,
+    space_failure_fix,
     unshare_refusal,
 )
 
@@ -34,6 +37,29 @@ def test_missing_spaces_message_names_every_space_and_the_fix():
 ])
 def test_copy_fix_per_error(error, overwrite, needle):
     assert needle in copy_fix(error, overwrite)
+
+
+@pytest.mark.parametrize(("status", "error", "message", "needle"), [
+    (403, "Forbidden", "Unable to bulk_create index-pattern", "cannot write saved objects there"),
+    (500, "Internal Server Error", "", "then copy into that space again"),
+    (None, "", "", "(no detail)"),
+])
+def test_space_failure_fix_names_the_space_kibanas_error_and_the_fix(
+    status, error, message, needle
+):
+    fix = space_failure_fix("team-b", status, error, message)
+    assert fix.startswith("Kibana refused the whole copy into space 'team-b'")
+    assert "nothing was written there" in fix and needle in fix
+
+
+def test_guidance_offers_source_space_only_where_it_is_accepted():
+    assert "pass source_space" in self_target_message("default")
+    assert "source_space" not in self_target_message("team-a", source_fixed=True)
+    assert "pass source_space" in objects_not_found_message(["index-pattern/x"])
+    fixed = objects_not_found_message(["index-pattern/x"], source_fixed=True)
+    assert "source_space" not in fixed and "find_saved_objects" in fixed
+    missing = [_state([], id="nope", missing=True)]
+    assert "source_space" not in (sharing_refusal(missing, source_fixed=True) or "")
 
 
 def test_sharing_refusal_missing_first_then_one_space_types():

@@ -1,6 +1,6 @@
 # platform-admin — behavior contract
 
-Status: Draft v1.3 (2026-10-25) — regeneration corpus, reconciled to shipped code
+Status: Draft v1.4 (2026-10-25) — regeneration corpus, reconciled to shipped code
 Surface reference: docs/tools.md#platform-admin-toolbox · Enforcement: named per section below
 
 ## Purpose & persona
@@ -37,7 +37,9 @@ at call time. Full per-tool arguments and return shapes:
   *into*, so a space echo in results here would be circular. This is the deliberate negative case of
   the space-targeting contract, not an oversight. The four saved-objects tools name their spaces
   as arguments of the operation instead — `source_space` (where the objects are read; default the
-  default space, or the space a `/s/<id>` `KIBANA_URL` pins, where `source_space` is refused),
+  default space, or the space a `/s/<id>` `KIBANA_URL` pins, where `source_space` is refused; it is
+  refused too when only the public URL is pinned, and the source is then the default space — so
+  no guidance offers it on either deployment),
   `target_spaces` (copy, overwrite) and `spaces` (share, unshare) — validated by the same id
   grammar (`*` allowed in `spaces`), and echo `source_space` only when it was passed (D7's rule).
 - **Copy makes new objects; overwrite replaces earlier copies; share adds; unshare removes (D49).**
@@ -61,7 +63,9 @@ at call time. Full per-tool arguments and return shapes:
 - **Per-object results, never a silent partial.** The copy tools return one result per target
   space with `copied` (source `id`, `destination_id`, `overwritten`), `failed` (Kibana's error type
   and a `fix`; nothing written for it) and `unchanged` (requested, neither copied nor failed:
-  already in that space by sharing); the sharing tools return each object's `spaces` after the
+  already in that space by sharing); a target space Kibana refused as a whole (one bare error, no
+  object) fails every requested object not otherwise reported there with `space_error`, while the
+  other targets keep their results; the sharing tools return each object's `spaces` after the
   call with `added`/`removed`/`deleted`, and Kibana's per-object `error` when one object failed
   while the others were updated.
 - **The source space is refused as a copy target.** Copying into it would duplicate the objects
@@ -150,9 +154,10 @@ at call time. Full per-tool arguments and return shapes:
   last-space refusal and forced delete.
 - **Unit (adapter and core)** — `tests/unit/adapters/test_space_objects_gateway.py`: live-captured
   bodies for the copy map (success, `overwrite`, `missing_references`, `ambiguous_conflict`,
-  `unsupported_type`, the empty `unchanged` case, the 404 of a missing object), the shareable
-  references read and the update; the existence check before any write; the source-space
-  refusal with a pinned base path; the routing of the spaces routes under `/s/<source>` (kibana-py
+  `unsupported_type`, the empty `unchanged` case, the 404 of a missing object), a whole-space
+  failure beside a copied space (a 403 for a target the key may only read), the
+  shareable references read and the update; the existence check before any write; the
+  source-space refusal with a pinned base path, and no `source_space` in the guidance there; the routing of the spaces routes under `/s/<source>` (kibana-py
   serves `spaces` unscoped on a space-scoped client). `tests/unit/test_space_sharing_core.py`:
   the refusals and fix texts.
 - **Unit negative control** — `tests/unit/toolboxes/test_space_threading.py` registers

@@ -27,7 +27,11 @@ version section.
   each object's spaces first and refuse a missing object, a type Kibana keeps
   in one space (dashboards, visualizations and others: copy them instead) and
   a removal that removes nothing; copy failures come back per object with
-  Kibana's error and a fix. Decision D49.
+  Kibana's error and a fix. A target space Kibana refuses as a whole (a key
+  that cannot write there) fails its objects with `space_error` and the fix,
+  and the copies made in the other spaces are still returned. The guidance
+  never suggests `source_space` where the deployment refuses it (a
+  space-pinned Kibana or public URL). Decision D49.
 - **Data management: runtime fields, the default data view, and saved-objects
   reads** (three `read`, two `write` and one `destructive` tool, 168 tools in
   all; every one takes `space`). `upsert_runtime_field` creates or replaces a
