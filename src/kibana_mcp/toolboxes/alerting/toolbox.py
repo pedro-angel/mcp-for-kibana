@@ -324,7 +324,8 @@ class AlertingToolbox:
             drops the rule's per-alert mutes (mute_alert) when it mutes the whole
             rule; the result lists them in `cleared_alert_ids` — keep them: no
             tool lists a rule's alert ids, so after unmute_alert_rule they are
-            restored only by mute_alert on each. get_alert_rule shows `muted`.
+            restored only by mute_alert on each, and a repeat of this call
+            returns an empty list. get_alert_rule shows `muted`.
 
             `space` targets a Kibana space by id (default: the default space)."""
             with gateway_errors(), deps.gateway_factory(space) as gw:

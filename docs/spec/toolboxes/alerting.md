@@ -1,6 +1,6 @@
 # alerting — behavior contract
 
-Status: Draft v1.6 (2026-10-24) — regeneration corpus, reconciled to shipped code
+Status: Draft v1.7 (2026-10-25) — regeneration corpus, reconciled to shipped code
 Surface reference: docs/tools.md#alerting-toolbox · Enforcement: named per section below
 
 ## Purpose & persona
@@ -20,8 +20,8 @@ snooze, API key) and the ability to test-fire a connector can enable just
 ## Surface
 
 22 tools: 6 `read`, 13 `write`, 3 `destructive` — one Kibana object per
-tool, no batch or bulk form (the two `update_*` tools read the object before
-writing it). `read`: `list_alert_rules`, `get_alert_rule`,
+tool, no batch or bulk form (the two `update_*` tools, `mute_alert_rule`,
+`unmute_alert_rule` and `mute_alert` read the object before writing it). `read`: `list_alert_rules`, `get_alert_rule`,
 `get_alerting_health`, `list_connectors`, `list_rule_types`, `get_connector`.
 `write`: `create_alert_rule`, `update_alert_rule`, `enable_alert_rule`,
 `disable_alert_rule`, `create_connector`, `update_connector`, and the rule
@@ -111,16 +111,22 @@ docs/tools.md#alerting-toolbox.
   (`system-connector-.cases`, ...) 404 on GET, so they surface as not-found
   (Kibana's own PUT answers "System action ... can not be updated", probed).
 - **The rule lifecycle tools quiet a rule without touching its
-  definition, and every one is reversible** (D45, probed on 9.5.4). Each is
-  one POST or DELETE answering 204 (the snooze answers 200 with its
-  schedule); none changes params, actions, tags or `enabled`.
+  definition, and every one is reversible** (D45, probed on 9.5.4). Each
+  writes with one POST or DELETE answering 204 (the snooze answers 200 with
+  its schedule), and `mute_alert_rule`, `unmute_alert_rule` and `mute_alert`
+  read the rule with one GET first (below); none changes params, actions,
+  tags or `enabled`.
   `mute_alert_rule`/`unmute_alert_rule` set the rule-wide mute — the rule
   runs and tracks alerts, no action fires, no end time — and Kibana clears
   the per-alert mutes on both calls, the unmute even on a rule that is not
   muted as a whole. No public route lists a rule's alert ids, so both tools
   read `muted_alert_ids` first and return them as `cleared_alert_ids`;
   `mute_alert` on each restores them, which is what keeps the pair
-  reversible. `mute_alert`/`unmute_alert` mute one
+  reversible — for a caller that keeps the ids from the call that cleared
+  them. A repeat (a retry after a lost response included) and the inverse
+  both return `[]`, the list being empty by then, and the read and the
+  write are not atomic: a `mute_alert` that lands between them is cleared
+  and not reported. `mute_alert`/`unmute_alert` mute one
   alert by the id the rule raised it under (the group's value for a grouped
   rule; `query matched` for an ungrouped `.es-query` rule, observed); Kibana's
   `validate_alerts_existence` default stays on, so an id the rule has not

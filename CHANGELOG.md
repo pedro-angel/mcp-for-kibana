@@ -25,7 +25,9 @@ version section.
   `mute_alert` refuses a rule muted as a whole, where Kibana would accept the
   mute and record nothing. Kibana's rule-wide mute and unmute clear every
   per-alert mute, so both return the cleared alert ids in `cleared_alert_ids`;
-  pass each to `mute_alert` to restore it. Decision D45.
+  pass each to `mute_alert` to restore it. Only the call that clears them
+  reports them: a repeat, or the unmute after the mute, returns an empty list.
+  Decision D45.
 - **`disable_alert_rule` takes `untrack`** (default off). `untrack=True` also
   marks the rule's active alerts untracked; without it the request and the
   result are unchanged. Decision D45.

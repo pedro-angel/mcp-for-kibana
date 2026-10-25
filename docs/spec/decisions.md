@@ -366,7 +366,10 @@ this ledger stands without them.
   and unmute wipe the per-alert mutes, and no public route lists a rule's
   alert ids, so as first built those two lost state. Both now read the rule
   first and return the wiped ids as `cleared_alert_ids`, which `mute_alert`
-  takes back. That keeps them on `write`. Moving them to destructive was
+  takes back. That keeps them on `write`, with two limits stated in the
+  spec: only the call that clears the mutes reports them (a repeat or the
+  inverse returns `[]`), and the read and the write are not atomic, so a
+  per-alert mute landing between them is lost unreported. Moving them to destructive was
   rejected: an unmute is the inverse of a mute and belongs at the same tier.
   Refusing an unmute on a rule that is not muted was rejected too: Kibana's
   call is also the one way to clear every per-alert mute at once.) `untrack` was weighed for destructive and kept on `write`:
