@@ -789,6 +789,26 @@ def test_set_default_data_view_forces_and_returns_the_previous_id():
     assert change.current == DefaultDataView(
         "dv1", "flights", "kibana_sample_data_flights", True
     )
+    # old-1 names no view (Kibana keeps a deleted default's id): passing it back
+    # would be refused, so the result says so.
+    assert change.previous_exists is False
+
+
+def test_set_default_data_view_previous_exists_when_the_old_default_is_a_view():
+    stub, gw = _rt(default="dv0")
+    views = {"dv0": {**stub.view, "id": "dv0"}, "dv1": stub.view}
+
+    def get(view_id):
+        if view_id not in views:
+            raise _not_found(f"Saved object [index-pattern/{view_id}] not found")
+        return FakeResponse({"data_view": views[view_id]})
+
+    stub.get = get
+    assert gw.set_default_data_view("dv1").previous_exists is True
+    # A repeat of the current default reads no other view and reports it.
+    assert gw.set_default_data_view("dv1").previous_exists is True
+    assert gw.set_default_data_view(None).previous_exists is True
+    assert gw.set_default_data_view("dv1").previous_exists is False  # none was set
 
 
 def test_set_default_data_view_none_clears_and_unset_previous_is_none():
@@ -834,9 +854,12 @@ def test_find_saved_objects_sends_title_and_name_fields_and_maps_summaries():
     page = _gw(saved_objects=SimpleNamespace(find=find)).find_saved_objects(
         ["dashboard", "index-pattern"], "flights", {"type": "search", "id": "571aaf70"}, 2, 5
     )
+    # search_fields: without it Kibana matches every attribute (probed: a word
+    # only in a dashboard's description found it), not the title and name a hit shows.
     assert captured == {
         "type": ["dashboard", "index-pattern"], "fields": ["title", "name"], "page": 2,
-        "per_page": 5, "search": "flights", "has_reference": {"type": "search", "id": "571aaf70"},
+        "per_page": 5, "search": "flights", "search_fields": ["title", "name"],
+        "has_reference": {"type": "search", "id": "571aaf70"},
     }
     assert (page.total, page.page, page.per_page) == (6, 2, 5)
     dash, view, config = page.saved_objects
@@ -874,19 +897,32 @@ def test_get_saved_object_keeps_distinct_references_in_order():
     )
 
 
-def test_get_saved_object_miss_names_find_saved_objects_and_hidden_types():
+def test_get_saved_object_miss_names_find_saved_objects():
     def get(**kw):
-        raise _not_found("Saved object [action/x] not found")
+        raise _not_found("Saved object [dashboard/x] not found")
 
     gw = KibanaPyGateway(make_fake_client(saved_objects=SimpleNamespace(get=get)), space="sales")
     with pytest.raises(KibanaNotFound) as exc:
-        gw.get_saved_object("action", "x")
+        gw.get_saved_object("dashboard", "x")
     assert exc.value.message == (
-        "saved object 'action/x' not found — check the type and id with "
-        "find_saved_objects(types=['action']); a type Kibana hides from the saved-objects API "
-        "(action, alert, …) also answers not found: read those with their own tools "
-        "(in space 'sales')"
+        "saved object 'dashboard/x' not found — check the type and id with "
+        "find_saved_objects(types=['dashboard']) (in space 'sales')"
     )
+
+
+@pytest.mark.parametrize("type_", ["fleet-proxy", "ingest-outputs", "action", "config", "*"])
+def test_get_saved_object_refuses_a_type_outside_the_allowlist_before_kibana(type_):
+    # 9.5.4 serves fleet-proxy (certificate_key, proxy_headers) and ingest-outputs
+    # (config_yaml, service_token) with those attributes in plain text: Kibana
+    # strips only attributes registered as encrypted, so they are never fetched.
+    def get(**kw):
+        raise AssertionError("must not reach Kibana")
+
+    gw = _gw(saved_objects=SimpleNamespace(get=get))
+    with pytest.raises(KibanaRejected) as exc:
+        gw.get_saved_object(type_, "x")
+    assert f"does not read '{type_}' objects" in exc.value.message
+    assert "find_saved_objects lists any type" in exc.value.message
 
 
 def test_get_saved_object_blank_type_or_id_is_rejected_before_kibana():

@@ -1,6 +1,6 @@
 # data-management — behavior contract
 
-Status: Draft v1.3 (2026-10-25) — regeneration corpus, reconciled to shipped code
+Status: Draft v1.4 (2026-10-25) — regeneration corpus, reconciled to shipped code
 Surface reference: docs/tools.md#data-management-toolbox · Enforcement: named per section below
 
 ## Purpose & persona
@@ -10,8 +10,9 @@ or dashboard reads, with their runtime fields and the space's default data
 view) and short URLs (shareable Kibana app links) — plus a saved-objects
 export/import/overwrite trio that moves whole sets of saved objects between
 spaces or takes a portable snapshot, without ever routing their bytes
-through the model, and a find/get pair that reads saved objects of any
-type Kibana serves. It is bundled with `dashboards` in both live
+through the model, and a find/get pair: the find lists saved objects of
+any type Kibana serves by title and name, the get reads one object of an
+analytics content type in full. It is bundled with `dashboards` in both live
 profiles: `read-only-explorer` (`read` tier — browse data views and saved
 objects, resolve links, take an export) and `dashboards-analyst` (`write`
 tier — also create and edit data views and their runtime fields, set the
@@ -141,27 +142,40 @@ and docs/tools.md#saved-objects-exportimport-data-management.
   replaced definition as `previous`. `type` is the seven single-value types
   (`composite` is not offered). `delete_runtime_field` reads the view too,
   because Kibana's 404 does not tell a missing name from a mapped field or a
-  subfield; its miss lists the view's runtime fields, and it returns the
-  deleted definition (a composite's `fields` included).
+  subfield; a mapped field and a composite's subfield are refused naming
+  what to delete instead, any other miss lists the view's runtime fields,
+  and it returns the deleted definition (a composite's `fields` included).
 - **The default data view is checked and always replaced (D48).** Kibana
   stores any id as a space's default and, without `force`, answers 200 and
   keeps a default that is set (probed), so `set_default_data_view` reads
   the view first (D17 guidance on a miss), always sends `force: true`, and
-  returns `previous_id`; `view_id=null` clears the default. Kibana makes
+  returns `previous_id` and `previous_exists` (whether that id names a
+  view: a dangling one cannot be passed back, and `view_id=null` undoes it,
+  since Kibana treats an id that names no view as no default);
+  `view_id=null` clears the default. Kibana makes
   the first data view created in a space with no default its default, and
   keeps the id of a deleted default, so `get_default_data_view` returns
   `exists: false` for an id that names no view.
 - **Saved-objects reads stay small and say what an empty page means
   (D48).** `find_saved_objects` asks Kibana for each hit's `title` and
-  `name` only, returns one page (`per_page` ≤ 100, `page * per_page` ≤
+  `name` only, matches `search` against those two only (`search_fields`;
+  without it Kibana matches every attribute), returns one page (`per_page`
+  ≤ 100, `page * per_page` ≤
   10,000, Kibana's result window) and adds a `note` when nothing matched —
   Kibana answers an empty page for unknown and hidden types alike — or the
-  page is past the end; `types` refuses `*`. `get_saved_object` leaves out
+  page is past the end; `types` refuses `*`. `get_saved_object` reads only
+  a fixed allowlist of analytics content types
+  (`core/saved_objects.py` `READABLE_TYPES`: dashboards, Lens and legacy
+  visualizations, saved searches, data views, maps, tags, saved queries,
+  Canvas, Graph, links and annotation groups) and refuses any other type
+  before calling Kibana: Kibana strips only attributes registered as
+  encrypted, and Fleet's `fleet-proxy` and `ingest-outputs` keep
+  certificate keys, proxy headers, `config_yaml` and service tokens in
+  plain attributes (the fleet contract's field-allowlist rule). It leaves out
   any attribute longer than 4,000 characters (`omitted_attributes` gives
   each one's size), returns the distinct references, and its miss names
-  `find_saved_objects` and the hidden types. Both use Kibana's deprecated
-  saved-objects routes (no public replacement finds across types or by
-  reference); Kibana strips encrypted attributes from them.
+  `find_saved_objects`. Both use Kibana's deprecated saved-objects routes
+  (no public replacement finds across types or by reference).
 - **No derived identity, no confirm gate beyond tier.** Every other
   write/destructive tool opens one scoped gateway and performs exactly one
   Kibana operation, except `create_data_view`'s cleanup delete after a
@@ -230,6 +244,11 @@ and docs/tools.md#saved-objects-exportimport-data-management.
   an empty result must say that unknown and hidden types also answer empty.
 - `get_saved_object` must never return an attribute longer than 4,000
   characters; it lists such attributes by size.
+- `get_saved_object` must never fetch an object whose type is outside
+  `READABLE_TYPES`; `find_saved_objects` must never match `search` against
+  an attribute other than `title` and `name`.
+- `set_default_data_view` must say whether the default it replaced names a
+  data view (`previous_exists`).
 
 ## Deliberate exclusions & caveats
 
@@ -307,14 +326,17 @@ and docs/tools.md#saved-objects-exportimport-data-management.
   tiers and hints, the upsert's create/replace with `previous`, its type
   enum without `composite`, blank-argument guards before the factory, the
   description's compile warning; the delete's definition and misses; the
-  default's get/set/clear round trip and a dangling id; find's filters,
-  notes, guards and schema bounds; get's attribute cap, references and
-  miss. `tests/unit/adapters/test_data_management_gateway.py`: POST for a
+  default's get/set/clear round trip, a dangling id and `previous_exists`
+  over it; the delete's mapped-field and subfield refusals; find's filters,
+  notes, guards, schema bounds and title-or-name search; get's attribute
+  cap, references, miss, the type allowlist before the factory and the
+  description listing every allowed type. `tests/unit/adapters/test_data_management_gateway.py`: POST for a
   create and PUT for a replacement, the label and description re-sent, the
   refusals before any write, the create race, the delete's read-first
   guidance and scoped suffix, `force: true` and the unknown-id refusal,
-  find's `fields`/filters and summary mapping, get's distinct references and
-  miss. `tests/unit/test_saved_objects_core.py`: the attribute cap.
+  find's `fields`/`search_fields`/filters and summary mapping, get's
+  distinct references, miss and the type refusal before Kibana, and
+  `previous_exists`. `tests/unit/test_saved_objects_core.py`: the attribute cap.
 - **Unit — `tests/unit/toolboxes/test_space_threading.py`.** All 17 tools
   inside the shared 86-tool cross-toolbox matrix: threading (the factory
   sees exactly the caller's space), schema (space present, optional,
@@ -339,9 +361,12 @@ and docs/tools.md#saved-objects-exportimport-data-management.
   refusals, composite delete, the miss), and, through the MCP surface,
   `test_default_data_view_set_get_and_clear_scoped_live` (in a throwaway
   space: Kibana's automatic first default, replace, refused id, dangling,
-  clear) and `test_find_and_get_saved_objects_live` (the flights sample by
-  reference and by word, a hidden type, the cap, distinct references, an
-  encrypted attribute stripped, the result window, another space).
+  clear, with `previous_exists` over the dangling id) and
+  `test_find_and_get_saved_objects_live` (the flights sample by reference,
+  none for a reference to no object, by word but not by a word only in its
+  description, a hidden type, the cap, distinct references, the stack's
+  Fleet output and other unlisted types refused, the result window, another
+  space).
 - **e2e-replay — `tests/e2e_replay/transcripts/`.** `space-dashboard.json`
   (and its gemma variant) pin `create_data_view`'s space echo through a real
   MCP client and server; `flights-dashboard.json` pins the data-view

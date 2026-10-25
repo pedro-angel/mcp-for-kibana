@@ -37,7 +37,7 @@ docs/tools.md#alerting-toolbox.
 
 ## Behavioral guarantees
 
-- **Space targeting follows the shared 80-tool contract**
+- **Space targeting follows the shared 86-tool contract**
   (docs/tools.md#space-targeting): optional `space` on every tool; omitted
   means the default space, byte-identical to before the parameter existed;
   a nonexistent `space` fails closed before any other work; every

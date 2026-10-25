@@ -635,7 +635,13 @@ this ledger stands without them.
   between, answered "call upsert_runtime_field again"; a replacement uses the
   PUT, so a change stored in between is replaced and `previous` is what the
   call read. The default-data-view set returns `previous_id`, and a second
-  call restores it (`view_id=null` restores none), so it is `write`; the
+  call restores it (`view_id=null` restores none), so it is `write`; a
+  previous id that names no view (a deleted default's, kept by Kibana)
+  cannot be passed back, since the set refuses such ids, so the result adds
+  `previous_exists` and `view_id=null` is the undo then: Kibana treats an
+  id that names no view as no default (its data-views service
+  `getDefaultDataViewId` removes it and takes the first view, read in the
+  9.5.4 source), so only the dangling string is lost (review fix); the
   runtime-field delete is `destructive` like every delete here, returning
   the deleted definition as a recovery path. **Observed, and what each
   shaped:** Kibana's runtime-field routes store any script without compiling
@@ -688,9 +694,23 @@ this ledger stands without them.
   disabled"), so no sort is offered; `fields=title&fields=name` keeps each
   hit's attributes small (the flights dashboard's are about 35 KB). The get
   answers 404 "Saved object [action/x] not found" for hidden types as for
-  missing ids, so the miss names `find_saved_objects` and the hidden types;
-  it strips encrypted attributes (a Synthetics parameter's `value` is
-  absent, probed), and a dashboard's `panelsJSON` (33,809 characters on the
+  missing ids, so the miss names `find_saved_objects`; it strips encrypted
+  attributes (a Synthetics parameter's `value` is absent, probed) but only
+  those a plugin registers with encryptedSavedObjects, and some types it
+  serves keep credentials in plain attributes: `fleet-proxy` (`hidden:
+  false`, not registered) returned a probe proxy's `certificate_key` and
+  `proxy_headers` live, and `ingest-outputs` maps `config_yaml`,
+  `otel_exporter_config_yaml` and a top-level `service_token` outside its
+  encrypted set (`ssl`, `password`, `kibana_api_key`) — so the get reads a
+  fixed allowlist of analytics content types (`READABLE_TYPES`) and refuses
+  every other type, hidden ones included, before calling Kibana (review
+  fix: the fleet contract's field-allowlist rule, applied per type here;
+  a denylist would miss the next plugin's type). Without `search_fields`
+  the find matches `search` against every attribute (`JetBeats`, only in
+  the flights dashboard's description, found it), so it sends
+  `search_fields=[title, name]`, the attributes a hit shows (review fix:
+  the description said title words; it also closes a word oracle on
+  attributes the tools never return). A dashboard's `panelsJSON` (33,809 characters on the
   flights sample) would fill the context, so attributes over 4,000
   characters are listed by size in `omitted_attributes` and references are
   returned as the distinct `{type, id}` pairs (27 references, 4 objects).
@@ -703,7 +723,9 @@ this ledger stands without them.
   Kibana only); `composite` in the upsert (subfield labels and their
   carry-over, for no task yet); a `sort_field` argument (text fields 400);
   returning whole attributes from `get_saved_object` (size), or only an
-  allow-list of attributes (it would differ per type and drift). Contract:
+  allow-list of attributes (it would differ per type and drift; the type
+  allowlist above is coarser and fixed); a denylist of credential-bearing
+  types (it fails open on a type added later). Contract:
   [data-management](toolboxes/data-management.md).
 
 ## Reliability and models (measured)
@@ -834,7 +856,7 @@ this ledger stands without them.
   tier hides; and an operator who wants fewer tools lists them with
   `KIBANA_MCP_TOOLS` (D34). Evidence: the count is checked against a live
   listing by `tests/unit/test_profiles.py` (the `dashboards-analyst` profile,
-  which is the default selection at `write`, lists 21).
+  which is the default selection at `write`, listed 21 then; 26 since D48, which records that growth).
 - **D42 (2026-10-17, owner: Q16)** — The local Definition-of-Done gate
   requires the Claude live-model run: `e2e_green = required` in `dod.config`
   (the gate a cloud session or the owner's laptop runs), and the criterion runs

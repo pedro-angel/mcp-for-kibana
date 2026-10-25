@@ -105,6 +105,7 @@ from kibana_mcp.core.models import (
     VisualizationDetail,
     VisualizationSummary,
 )
+from kibana_mcp.core.saved_objects import READABLE_TYPES, unreadable_type_message
 from kibana_mcp.core.visualizations.translate import describe_lens_config, lens_chart_type
 from kibana_mcp.ports.gateway import KibanaGateway
 
@@ -407,8 +408,7 @@ def _to_saved_object_detail(body: dict[str, Any]) -> SavedObjectDetail:
 def _saved_object_miss(type: str, id: str) -> KibanaNotFound:
     return KibanaNotFound(
         f"saved object '{type}/{id}' not found — check the type and id with "
-        f"find_saved_objects(types=['{type}']); a type Kibana hides from the saved-objects "
-        "API (action, alert, …) also answers not found: read those with their own tools"
+        f"find_saved_objects(types=['{type}'])"
     )
 
 
@@ -1592,8 +1592,17 @@ class KibanaPyGateway:
             )
         # force=True: without it Kibana answers 200 {"acknowledged": true} and
         # keeps a default that is already set (probed on 9.5.4).
+        # Whether the old default names a view: Kibana keeps a deleted view's id,
+        # which this tool will not store again, and treats it as no default (it
+        # removes it and opens the first data view, data_views.js
+        # getDefaultDataViewId on 9.5.4) — so view_id=None is that undo.
+        previous_exists = previous is not None and (
+            previous == view_id or self._default_view(previous).exists
+        )
         self._client.data_views.set_default(data_view_id=view_id, force=True)
-        return DefaultDataViewChange(current=current, previous_id=previous)
+        return DefaultDataViewChange(
+            current=current, previous_id=previous, previous_exists=previous_exists
+        )
 
     @_translate_errors
     def create_short_url(self, locator_id: str, params: dict[str, Any]) -> ShortUrl:
@@ -2833,7 +2842,13 @@ class KibanaPyGateway:
             "type": list(types), "fields": ["title", "name"], "page": page, "per_page": per_page,
         }
         if search is not None:
+            # Without search_fields Kibana matches the words against every
+            # attribute (probed: "JetBeats", only in the flights dashboard's
+            # description, found it), so it would also answer for words in
+            # attributes this tool never returns; title and name are the ones
+            # a hit carries.
             kwargs["search"] = search
+            kwargs["search_fields"] = ["title", "name"]
         if has_reference is not None:
             kwargs["has_reference"] = dict(has_reference)
         body = self._client.saved_objects.find(**kwargs).body
@@ -2850,6 +2865,8 @@ class KibanaPyGateway:
             raise KibanaRejected(
                 "type and id must not be blank — pass the ones find_saved_objects returns"
             )
+        if type not in READABLE_TYPES:
+            raise KibanaRejected(unreadable_type_message(type))
         try:
             body = self._client.saved_objects.get(type=type, id=id).body
         except SpaceNotFoundError:

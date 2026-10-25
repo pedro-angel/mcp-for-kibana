@@ -478,6 +478,21 @@ async def test_delete_runtime_field_returns_the_definition_and_misses_are_errors
     }
 
 
+async def test_delete_runtime_field_refuses_a_mapped_field_and_a_composite_subfield(mcp, gateway):
+    from kibana_mcp.core.models import RuntimeField
+
+    gateway.runtime_fields["dv1"] = {
+        "comp": RuntimeField(name="comp", type="composite", script="emit(1)", fields={"a": "keyword"})
+    }
+    mapped = next(iter(gateway.data_views["dv1"].fields))
+    async with Client(mcp) as client:
+        with pytest.raises(ToolError, match=r"subfield of the composite runtime field 'comp'"):
+            await client.call_tool("delete_runtime_field", {"view_id": "dv1", "name": "comp.a"})
+        with pytest.raises(ToolError, match=r"only runtime fields can be deleted"):
+            await client.call_tool("delete_runtime_field", {"view_id": "dv1", "name": mapped})
+    assert set(gateway.runtime_fields["dv1"]) == {"comp"}
+
+
 async def test_delete_runtime_field_returns_a_composites_fields(mcp, gateway):
     from kibana_mcp.core.models import RuntimeField
 
@@ -500,13 +515,32 @@ async def test_get_and_set_default_data_view_round_trip(mcp, gateway):
     assert unset.data == {"id": None, "name": None, "index_pattern": None, "exists": False}
     assert changed.data == {
         "id": "dv1", "name": "flights", "index_pattern": "kibana_sample_data_flights",
-        "exists": True, "previous_id": None,
+        "exists": True, "previous_id": None, "previous_exists": False,
     }
-    assert now.data == {k: v for k, v in changed.data.items() if k != "previous_id"}
+    assert now.data == {
+        k: v for k, v in changed.data.items() if k not in ("previous_id", "previous_exists")
+    }
     assert cleared.data == {
         "id": None, "name": None, "index_pattern": None, "exists": False, "previous_id": "dv1",
+        "previous_exists": True,
     }
     assert gateway.default_data_view_id is None
+
+
+async def test_set_default_data_view_over_a_dangling_default_says_null_undoes_it(mcp, gateway):
+    # Kibana keeps a deleted default's id; the tool will not store it again, so
+    # previous_exists=false tells the caller to undo with view_id=null instead.
+    gateway.default_data_view_id = "deleted-1"
+    async with Client(mcp) as client:
+        changed = await client.call_tool("set_default_data_view", {"view_id": "dv1"})
+        with pytest.raises(ToolError, match=r"data view 'deleted-1' not found"):
+            await client.call_tool("set_default_data_view", {"view_id": "deleted-1"})
+        undone = await client.call_tool("set_default_data_view", {"view_id": None})
+        tools = {t.name: t for t in await client.list_tools()}
+    assert changed.data["previous_id"] == "deleted-1"
+    assert changed.data["previous_exists"] is False
+    assert undone.data["id"] is None and undone.data["previous_exists"] is True
+    assert "view_id=null undoes it" in tools["set_default_data_view"].description
 
 
 async def test_get_default_data_view_reports_a_dangling_id(mcp, gateway):
@@ -597,6 +631,50 @@ async def test_get_saved_object_description_states_the_cap(mcp):
     async with Client(mcp) as client:
         tools = {t.name: t for t in await client.list_tools()}
     assert f"{ATTRIBUTE_CHARS_SHOWN:,} characters" in tools["get_saved_object"].description
+
+
+@pytest.mark.parametrize("type_", ["fleet-proxy", "ingest-outputs", "synthetics-param"])
+async def test_get_saved_object_refuses_a_type_outside_the_allowlist_before_the_gateway(
+    gateway, type_
+):
+    server, calls = _recording(gateway)
+    async with Client(server) as client:
+        with pytest.raises(ToolError) as exc:
+            await client.call_tool("get_saved_object", {"type": type_, "id": "x", "space": "x"})
+    assert f"does not read '{type_}' objects" in str(exc.value)
+    assert "can keep credentials in plain attributes" in str(exc.value)
+    assert calls == []
+
+
+async def test_get_saved_object_description_lists_every_readable_type(mcp):
+    import re
+
+    from kibana_mcp.core.saved_objects import READABLE_TYPES
+
+    async with Client(mcp) as client:
+        tools = {t.name: t for t in await client.list_tools()}
+    text = " ".join(tools["get_saved_object"].description.split())
+    listed = re.search(r"Only analytics content is read — (.*?) — because", text)
+    assert listed is not None
+    names = [n.split(" (")[0] for n in listed.group(1).split(", ")]
+    assert names == list(READABLE_TYPES)
+
+
+async def test_find_saved_objects_search_matches_the_title_or_name_only(mcp, gateway):
+    from dataclasses import replace
+
+    gateway.saved_objects[1] = replace(gateway.saved_objects[1], attributes={
+        **gateway.saved_objects[1].attributes, "description": "JetBeats flights"})
+    async with Client(mcp) as client:
+        by_description = await client.call_tool("find_saved_objects", {
+            "types": ["dashboard"], "search": "JetBeats"})
+        by_name = await client.call_tool("find_saved_objects", {
+            "types": ["index-pattern"], "search": "flights"})
+        tools = {t.name: t for t in await client.list_tools()}
+    assert by_description.data["total"] == 0
+    assert by_name.data["total"] == 1
+    description = " ".join(tools["find_saved_objects"].description.split())
+    assert "words of the title or name, no other attribute" in description
 
 
 async def test_get_saved_object_miss_and_blank_args(gateway):

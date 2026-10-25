@@ -1,6 +1,6 @@
 # fleet — behavior contract
 
-Status: Draft v1.0 (2026-08-19) — regeneration corpus, reconciled to shipped code
+Status: Draft v1.1 (2026-10-25) — regeneration corpus, reconciled to shipped code
 Surface reference: docs/tools.md#fleet-toolbox · Enforcement: named per section below
 
 ## Purpose & persona
@@ -41,7 +41,11 @@ per-deployment migration state, informational only, not the same axis.
 stripping.** Enrollment-key/uninstall-token reads and every output
 read/write return exactly the field sets in Invariants below, regardless of
 what Kibana's own response body carries; uninstall-token values are never
-fetched at all, not fetched-then-dropped.
+fetched at all, not fetched-then-dropped. The raw saved-objects route is not
+a way around it: data-management's `get_saved_object` reads only analytics
+content types and refuses Fleet's (`ingest-outputs`, `fleet-proxy`, …),
+whose plain attributes carry `config_yaml`, service tokens, certificate
+keys and proxy headers (D48).
 
 **Updates are one read-modify-write gateway operation per tool.**
 `update_agent_policy`, `update_package_policy`, and `update_output` each

@@ -551,7 +551,7 @@ export/import/overwrite tools are also part of this toolbox — see
 | `get_default_data_view` | read | Get the space's default data view (the one Discover opens with): id, name, index pattern, and whether the stored id still names a data view. |
 | `resolve_short_url` | read | Resolve a Kibana short-URL slug to its locator and target app path. |
 | `find_saved_objects` | read | Find saved objects of given `types`, optionally by `search` words and/or `has_reference` (the objects that reference one object); one page of summaries plus the total. |
-| `get_saved_object` | read | Get one saved object by `type` and `id`: attributes (long ones listed by size instead), the distinct objects it references, namespaces and timestamps. |
+| `get_saved_object` | read | Get one saved object of an analytics type (dashboard, lens, visualization, search, index-pattern, map, tag, …) by `type` and `id`: attributes (long ones listed by size instead), the distinct objects it references, namespaces and timestamps. Other types are refused. |
 | `create_data_view` | write | Create a Kibana data view over an index pattern (e.g. `logs-*`). The time field must be a date field of the pattern; a refused call creates nothing. |
 | `update_data_view` | write | Edit a data view in place by id: `name`, `index_pattern` and/or `time_field`. Only the fields passed change; the time field must be a date field of the view. |
 | `upsert_runtime_field` | write (upsert) | Create or replace a single-value runtime field on a data view (`type`, optional Painless `script`); returns the definition it replaced as `previous`. |
@@ -687,7 +687,12 @@ Notes on `get_default_data_view` and `set_default_data_view`:
   so the tool always sends `force: true`. Kibana stores any id as the
   default (`bogus-id` answered 200), so the tool reads the view first and a
   wrong id is the data-view guidance; `view_id=null` clears the default.
-  `previous_id` is the default before the call, so a second call undoes it.
+  `previous_id` is the default before the call, and `previous_exists` says
+  whether it named a data view: when true, a second call with it undoes the
+  change; when false (a deleted view's id, which the tool will not store
+  again), `view_id=null` does — Kibana treats an id that names no view as no
+  default (it removes it and opens the first data view,
+  `getDefaultDataViewId` in its data-views service on 9.5.4).
 
 Notes on `find_saved_objects` and `get_saved_object`:
 
@@ -704,8 +709,11 @@ Notes on `find_saved_objects` and `get_saved_object`:
   `export_saved_objects(types=["*"])` for a whole space). A page past the
   last one carries a note too.
 - **Search and references.** `search` is Elasticsearch's
-  `simple_query_string` over the type's default search field (the title):
-  words match (`flight`), `flight*` matches a prefix. `has_reference`
+  `simple_query_string` over the `title` and `name` attributes only (the tool
+  sends `search_fields`): words match (`flight`), `flight*` matches a prefix.
+  Without `search_fields` Kibana matches every attribute (probed: `JetBeats`,
+  a word only in the flights dashboard's description, found it), so a hit
+  could rest on an attribute the summary does not show. `has_reference`
   (`{"type": "index-pattern", "id": "<id>"}`) keeps the objects that
   reference that object — for example the dashboards and visualizations
   that use a data view, or the dashboards that place a library
@@ -718,12 +726,22 @@ Notes on `find_saved_objects` and `get_saved_object`:
 - **Long attributes stay out of `get_saved_object`.** An attribute longer
   than 4,000 characters (its JSON text for a non-string value) is left out
   of `attributes` and listed in `omitted_attributes` with its size — the
-  flights sample dashboard's `panelsJSON` is 33,809. Encrypted
-  attributes never come back (Kibana strips them: a Synthetics parameter's
-  `value` is absent, probed). References are the distinct `{type, id}`
-  pairs, in first-seen order (the flights dashboard holds 27 references to
-  4 objects). A miss names `find_saved_objects` and says that hidden types
-  answer not found too.
+  flights sample dashboard's `panelsJSON` is 33,809. References are the
+  distinct `{type, id}` pairs, in first-seen order (the flights dashboard
+  holds 27 references to 4 objects). A miss names `find_saved_objects`.
+- **`get_saved_object` reads analytics content only.** It serves
+  `canvas-element`, `canvas-workpad`, `canvas-workpad-template`,
+  `dashboard`, `event-annotation-group`, `graph-workspace`,
+  `index-pattern`, `lens`, `links`, `map`, `query`, `search`, `tag` and
+  `visualization`, and refuses any other type before calling Kibana, naming
+  `find_saved_objects`, the type's own tools and `export_saved_objects`.
+  Kibana strips only the attributes a plugin registers as encrypted, and
+  some types it serves keep credentials in plain ones: on 9.5.4
+  `fleet-proxy` stores `certificate_key` and `proxy_headers`, and
+  `ingest-outputs` stores `config_yaml` and, for a remote Elasticsearch
+  output, a `service_token` — read outputs with the fleet toolbox, whose
+  output tools return a fixed field set. Hidden types (`action`, `alert`)
+  are refused the same way.
 
 Returns:
 
@@ -743,7 +761,7 @@ Returns:
  "field": {"name": "comp", "type": "composite", "script": "emit(['a': 'x'])",
            "fields": {"a": "keyword"}}}
 
-// get_default_data_view  (set_default_data_view adds "previous_id")
+// get_default_data_view  (set_default_data_view adds "previous_id" and "previous_exists")
 {"id": "d3d7af60-...", "name": "Kibana Sample Data Flights",
  "index_pattern": "kibana_sample_data_flights", "exists": true}
 

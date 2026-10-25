@@ -140,6 +140,30 @@ def summarize_export(
     )
 
 
+# get_saved_object (D48) returns attributes only for these types: user-authored
+# analytics content. Kibana strips only the attributes a plugin registers as
+# encrypted, and some types it serves keep credentials in plain fields (9.5.4:
+# `fleet-proxy` stores `certificate_key` and `proxy_headers`, `ingest-outputs`
+# `config_yaml` and a `service_token`), so a fixed type allowlist, like Fleet's
+# field allowlist, keeps them out instead of a denylist that new types outgrow.
+READABLE_TYPES: tuple[str, ...] = (
+    "canvas-element", "canvas-workpad", "canvas-workpad-template", "dashboard",
+    "event-annotation-group", "graph-workspace", "index-pattern", "lens", "links", "map",
+    "query", "search", "tag", "visualization",
+)
+
+
+def unreadable_type_message(type: str) -> str:
+    """The refusal for a get_saved_object `type` outside READABLE_TYPES."""
+    return (
+        f"get_saved_object does not read '{type}' objects: it returns attributes only for "
+        f"{', '.join(READABLE_TYPES)}, because other types can keep credentials in plain "
+        "attributes (Fleet outputs and proxies do) — find_saved_objects lists any type by "
+        "title and name, the type's own tools read it (e.g. list_outputs), and "
+        "export_saved_objects moves it without its content reaching the model"
+    )
+
+
 # get_saved_object (D48): an attribute longer than this, as JSON text, is left
 # out of the result and only its size reported — a dashboard's panelsJSON (the
 # flights sample's is 33,809 characters) or a data view's field list would

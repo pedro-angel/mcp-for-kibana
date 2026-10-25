@@ -132,16 +132,19 @@ class KibanaGateway(Protocol):
         ...
 
     def delete_runtime_field(self, view_id: str, name: str) -> RuntimeField:
-        """Delete one runtime field and return its definition. A name that is
-        not a runtime field of the view is KibanaNotFound naming the view's
-        runtime fields."""
+        """Delete one runtime field and return its definition; must delete
+        nothing otherwise. A field the view has that is not a runtime field (a
+        mapped field) and a composite field's subfield are KibanaRejected naming
+        what to delete instead; any other name is KibanaNotFound naming the
+        view's runtime fields."""
         ...
 
     def get_default_data_view(self) -> DefaultDataView: ...
 
     def set_default_data_view(self, view_id: str | None) -> DefaultDataViewChange:
         """Replace the space's default data view (None clears it). Must refuse an
-        id that names no data view in the space (Kibana stores any id)."""
+        id that names no data view in the space (Kibana stores any id), and
+        report whether the replaced default named one (`previous_exists`)."""
         ...
 
     def create_short_url(self, locator_id: str, params: dict[str, Any]) -> ShortUrl: ...
@@ -441,9 +444,16 @@ class KibanaGateway(Protocol):
         has_reference: dict[str, str] | None,
         page: int,
         per_page: int,
-    ) -> SavedObjectPage: ...
+    ) -> SavedObjectPage:
+        """One page of summaries (title and name only). `search` matches the
+        title and name attributes only, never the attributes a hit leaves out."""
+        ...
 
-    def get_saved_object(self, type: str, id: str) -> SavedObjectDetail: ...
+    def get_saved_object(self, type: str, id: str) -> SavedObjectDetail:
+        """One saved object with its attributes. Must refuse a type outside
+        core.saved_objects.READABLE_TYPES (KibanaRejected) before calling
+        Kibana: other types can keep credentials in plain attributes."""
+        ...
 
     def list_spaces(self) -> list[Space]: ...
 

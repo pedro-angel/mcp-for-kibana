@@ -2786,6 +2786,13 @@ async def test_default_data_view_set_get_and_clear_scoped_live(gateway, tmp_path
             kept = (await client.call_tool("get_default_data_view", {"space": space_id})).data
             await client.call_tool("delete_data_view", {"view_id": second["id"], "space": space_id})
             dangling = (await client.call_tool("get_default_data_view", {"space": space_id})).data
+            # Over a dangling default the old id cannot be passed back (it names
+            # no view), so previous_exists says to undo with null instead.
+            over_dangling = (await client.call_tool("set_default_data_view", {
+                "view_id": first["id"], "space": space_id})).data
+            with pytest.raises(ToolError) as no_restore:
+                await client.call_tool("set_default_data_view", {
+                    "view_id": second["id"], "space": space_id})
             cleared = (await client.call_tool("set_default_data_view", {
                 "view_id": None, "space": space_id})).data
             with _raw_kibana(space_id) as raw:
@@ -2794,70 +2801,90 @@ async def test_default_data_view_set_get_and_clear_scoped_live(gateway, tmp_path
                      "space": space_id}
     assert auto == {"id": first["id"], "name": "ct default a", "index_pattern": FLIGHTS,
                     "exists": True, "space": space_id}
-    assert set_a == {**auto, "previous_id": first["id"]}  # a repeat changes nothing
+    # a repeat changes nothing
+    assert set_a == {**auto, "previous_id": first["id"], "previous_exists": True}
     assert set_b["id"] == second["id"] and set_b["previous_id"] == first["id"]
+    assert set_b["previous_exists"] is True
     assert "call list_data_views to find it" in str(bogus.value)
     assert str(bogus.value).endswith(f" (in space '{space_id}')")
     assert kept["id"] == second["id"] and kept["exists"] is True
     assert dangling == {"id": second["id"], "name": None, "index_pattern": None,
                         "exists": False, "space": space_id}
-    assert cleared["id"] is None and cleared["previous_id"] == second["id"]
+    assert over_dangling["previous_id"] == second["id"]
+    assert over_dangling["previous_exists"] is False
+    assert "call list_data_views to find it" in str(no_restore.value)
+    assert cleared["id"] is None and cleared["previous_id"] == first["id"]
+    assert cleared["previous_exists"] is True
     assert stored == {"data_view_id": ""}
 
 
 async def test_find_and_get_saved_objects_live(gateway, tmp_path):
     # The seeded flights sample: its dashboard references the flights data view,
-    # carries a panelsJSON over the cap, and is invisible from another space;
-    # a hidden type answers an empty page or not-found; an encrypted attribute
-    # (a Synthetics parameter's value) never comes back.
+    # carries a panelsJSON over the cap, and is invisible from another space; a
+    # reference to no object and a word only in its description find nothing; a
+    # hidden type answers an empty page; get reads analytics content only, so
+    # Fleet's output (plain config_yaml / service_token attributes on 9.5.4) and
+    # proxy types are refused before Kibana is called.
     flights_id = _flights_view_id(gateway)
     with _raw_kibana() as raw:
-        param = raw.synthetics.create_param(key=f"ct-so-{uuid.uuid4().hex[:6]}", value="s3cret-ct").body
-    try:
+        outputs = raw.saved_objects.find(type="ingest-outputs", fields=["name"]).body
+    async with Client(_dm_tool_server(tmp_path)) as client:
+        by_ref = (await client.call_tool("find_saved_objects", {
+            "types": ["dashboard"], "has_reference": {"type": "index-pattern", "id": flights_id},
+        })).data
+        no_ref = (await client.call_tool("find_saved_objects", {
+            "types": ["dashboard"],
+            "has_reference": {"type": "index-pattern", "id": f"no-such-{uuid.uuid4().hex}"},
+        })).data
+        by_word = (await client.call_tool("find_saved_objects", {
+            "types": ["dashboard", "index-pattern"], "search": "flight*", "per_page": 100,
+        })).data
+        # In the flights dashboard's description only, not its title.
+        by_description = (await client.call_tool("find_saved_objects", {
+            "types": ["dashboard"], "search": "JetBeats",
+        })).data
+        hidden = (await client.call_tool("find_saved_objects", {"types": ["action"]})).data
+        (dash,) = [o for o in by_ref["saved_objects"]
+                   if o["title"] == "[Flights] Global Flight Dashboard"]
+        got = (await client.call_tool("get_saved_object", {
+            "type": "dashboard", "id": dash["id"]})).data
+        view = (await client.call_tool("get_saved_object", {
+            "type": "index-pattern", "id": flights_id})).data
+        refused = {}
+        for type_, id_ in [("ingest-outputs", o["id"]) for o in outputs["saved_objects"]] + [
+            ("fleet-proxy", "x"), ("synthetics-param", "x"), ("action", "x"),
+        ]:
+            with pytest.raises(ToolError) as exc:
+                await client.call_tool("get_saved_object", {"type": type_, "id": id_})
+            refused[type_] = str(exc.value)
+        with pytest.raises(ToolError, match=r"past the first 10,000 results"):
+            await client.call_tool("find_saved_objects", {
+                "types": ["dashboard"], "page": 101, "per_page": 100})
+    with _temp_space(gateway, "mcp-for-kibana-ct-so") as space_id:
         async with Client(_dm_tool_server(tmp_path)) as client:
-            by_ref = (await client.call_tool("find_saved_objects", {
-                "types": ["dashboard"], "has_reference": {"type": "index-pattern", "id": flights_id},
-            })).data
-            by_word = (await client.call_tool("find_saved_objects", {
-                "types": ["dashboard", "index-pattern"], "search": "flight*", "per_page": 100,
-            })).data
-            hidden = (await client.call_tool("find_saved_objects", {"types": ["action"]})).data
-            (dash,) = [o for o in by_ref["saved_objects"]
-                       if o["title"] == "[Flights] Global Flight Dashboard"]
-            got = (await client.call_tool("get_saved_object", {
-                "type": "dashboard", "id": dash["id"]})).data
-            view = (await client.call_tool("get_saved_object", {
-                "type": "index-pattern", "id": flights_id})).data
-            secret = (await client.call_tool("get_saved_object", {
-                "type": "synthetics-param", "id": param["id"]})).data
-            with pytest.raises(ToolError) as hidden_get:
-                await client.call_tool("get_saved_object", {"type": "action", "id": "x"})
-            with pytest.raises(ToolError, match=r"past the first 10,000 results"):
-                await client.call_tool("find_saved_objects", {
-                    "types": ["dashboard"], "page": 101, "per_page": 100})
-        with _temp_space(gateway, "mcp-for-kibana-ct-so") as space_id:
-            async with Client(_dm_tool_server(tmp_path)) as client:
-                elsewhere = (await client.call_tool("find_saved_objects", {
-                    "types": ["dashboard"], "space": space_id})).data
-                with pytest.raises(ToolError) as scoped_miss:
-                    await client.call_tool("get_saved_object", {
-                        "type": "dashboard", "id": dash["id"], "space": space_id})
-    finally:
-        with _raw_kibana() as raw:
-            raw.synthetics.delete_param(id=param["id"])
+            elsewhere = (await client.call_tool("find_saved_objects", {
+                "types": ["dashboard"], "space": space_id})).data
+            with pytest.raises(ToolError) as scoped_miss:
+                await client.call_tool("get_saved_object", {
+                    "type": "dashboard", "id": dash["id"], "space": space_id})
     assert by_ref["total"] >= 1 and dash["namespaces"] == ["default"]
+    assert no_ref["total"] == 0 and no_ref["saved_objects"] == []
     assert set(dash) == {"type", "id", "title", "name", "updated_at", "namespaces", "managed"}
     found = {(o["type"], o["id"]) for o in by_word["saved_objects"]}
     assert ("dashboard", dash["id"]) in found and ("index-pattern", flights_id) in found
+    assert by_description["total"] == 0
     assert hidden["total"] == 0 and "check the type names" in hidden["note"]
     assert got["attributes"]["title"] == "[Flights] Global Flight Dashboard"
+    assert "JetBeats" in got["attributes"]["description"]
     assert got["omitted_attributes"]["panelsJSON"] > 4000
     assert "panelsJSON" not in got["attributes"]
     assert {"type": "index-pattern", "id": flights_id} in got["references"]
     assert len(got["references"]) == len({(r["type"], r["id"]) for r in got["references"]})
     assert view["attributes"]["title"] == FLIGHTS
-    assert secret["attributes"]["key"] == param["key"] and "value" not in secret["attributes"]
-    assert "s3cret-ct" not in str(secret)
-    assert "a type Kibana hides from the saved-objects API" in str(hidden_get.value)
+    assert outputs["total"] >= 1  # the stack's default Fleet output exists, and is refused
+    assert set(refused) == {"ingest-outputs", "fleet-proxy", "synthetics-param", "action"}
+    for type_, message in refused.items():
+        assert f"does not read '{type_}' objects" in message
+        assert "config_yaml" not in message and "service_token" not in message
     assert elsewhere["total"] == 0 and "space" in elsewhere
     assert str(scoped_miss.value).endswith(f" (in space '{space_id}')")

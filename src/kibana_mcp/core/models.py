@@ -60,6 +60,9 @@ class DefaultDataView:
 class DefaultDataViewChange:
     current: DefaultDataView
     previous_id: str | None  # the default before the call; None when none was set
+    # False when previous_id is None or names no data view in the space (a
+    # deleted view's id, which set_default_data_view will not store again).
+    previous_exists: bool
 
 
 @dataclass(frozen=True, slots=True)

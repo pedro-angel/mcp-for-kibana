@@ -19,10 +19,12 @@ from pydantic import Field
 from kibana_mcp.core.errors import KibanaRejected
 from kibana_mcp.core.models import DefaultDataView, RuntimeField
 from kibana_mcp.core.saved_objects import (
+    READABLE_TYPES,
     cap_attributes,
     read_export,
     summarize_export,
     to_ndjson,
+    unreadable_type_message,
     write_export,
 )
 from kibana_mcp.toolboxes.base import SPACE_ID_PATTERN, ToolboxDeps, with_space, gateway_errors
@@ -134,8 +136,9 @@ class DataManagementToolbox:
         ) -> dict[str, Any]:
             """Find saved objects of the given `types` — e.g. ["dashboard"],
             ["lens", "visualization"], ["index-pattern"] (data views), ["search"],
-            ["tag"], ["map"] — optionally matching `search` (words of the title;
-            `flight*` matches a prefix) and/or `has_reference` ({"type": …,
+            ["tag"], ["map"] — optionally matching `search` (words of the title
+            or name, no other attribute; `flight*` matches a prefix) and/or
+            `has_reference` ({"type": …,
             "id": …}: only objects that reference that object, e.g. the
             dashboards that use a visualization or a data view). Returns one page
             (`page`, `per_page` up to 100) of summaries — type, id, title, name,
@@ -195,20 +198,26 @@ class DataManagementToolbox:
         ) -> dict[str, Any]:
             """Get one saved object by `type` and `id` (from find_saved_objects):
             its attributes, the distinct objects it references ({"type", "id"}),
-            its namespaces, timestamps and `managed` flag. An attribute longer than
-            4,000 characters (a dashboard's panelsJSON, a data
+            its namespaces, timestamps and `managed` flag. Only analytics
+            content is read — canvas-element, canvas-workpad,
+            canvas-workpad-template, dashboard, event-annotation-group,
+            graph-workspace, index-pattern (data views), lens, links, map, query,
+            search, tag, visualization — because other types can keep
+            credentials in plain attributes (Fleet outputs and proxies do); any
+            other type is refused: read it with its own tools. An attribute
+            longer than 4,000 characters (a dashboard's panelsJSON, a data
             view's field list) is left out and listed in `omitted_attributes` with
             its size: read it with the type's own tool (get_dashboard,
             get_visualization, describe_data_view) or move the object with
-            export_saved_objects. Encrypted attributes are never returned (Kibana
-            strips them). A type Kibana hides from this API (action, alert, …)
-            answers not found. Uses Kibana's saved-objects get API, which Kibana
-            marks deprecated.
+            export_saved_objects. Uses Kibana's saved-objects get API, which
+            Kibana marks deprecated.
 
             `space` targets a Kibana space by id (default: the default space)."""
             if not type.strip() or not id.strip():
                 raise ToolError("`type` and `id` must not be blank — pass the ones "
                                 "find_saved_objects returns")
+            if type not in READABLE_TYPES:
+                raise ToolError(unreadable_type_message(type))
             with gateway_errors(), deps.gateway_factory(space) as gw:
                 obj = gw.get_saved_object(type, id)
             shown, omitted = cap_attributes(obj.attributes)
@@ -397,15 +406,18 @@ class DataManagementToolbox:
             Kibana apps open with — by id (from list_data_views), or pass
             view_id=null to clear the default. The view must exist in the space
             (Kibana itself would store any id). Replaces the current default;
-            returns the new one (id, name, index_pattern, exists) and
-            `previous_id`, the default before the call (null when none was set):
-            pass it back to undo.
+            returns the new one (id, name, index_pattern, exists), `previous_id`,
+            the default before the call (null when none was set), and
+            `previous_exists`: pass previous_id back to undo when it is true; when
+            it is false the old id named no data view (Kibana keeps a deleted
+            view's id, and treats it as no default), so view_id=null undoes it.
 
             `space` targets a Kibana space by id (default: the default space)."""
             with gateway_errors(), deps.gateway_factory(space) as gw:
                 change = gw.set_default_data_view(view_id)
             return with_space(
-                {**_default_view(change.current), "previous_id": change.previous_id}, space
+                {**_default_view(change.current), "previous_id": change.previous_id,
+                 "previous_exists": change.previous_exists}, space
             )
 
         @mcp.tool(tags={self.name, "write"}, annotations=_WRITE)

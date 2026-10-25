@@ -22,19 +22,26 @@ version section.
   description (Kibana's PUT drops them), and its description warns that
   Kibana stores a script without compiling it, so a broken one fails the
   view's searches until it is fixed or deleted. `delete_runtime_field`
-  returns the deleted definition, and its miss lists the view's runtime
-  fields. `get_default_data_view` reads the space's default data view and
+  returns the deleted definition, refuses a mapped field and a composite's
+  subfield naming what to delete instead, and its miss lists the view's
+  runtime fields. `get_default_data_view` reads the space's default data view and
   says when its stored id names no view (Kibana keeps a deleted one's);
   `set_default_data_view` sets it (always replacing: without `force` Kibana
   keeps the old one and still answers 200) or clears it with `view_id=null`,
-  refuses an id that names no view, and returns `previous_id`.
-  `find_saved_objects` finds objects of given types by title words and/or by
-  reference (`has_reference`: e.g. the dashboards that use a visualization)
+  refuses an id that names no view, and returns `previous_id` with
+  `previous_exists` (a deleted view's id cannot be passed back; `view_id=null`
+  undoes the change then, as Kibana treats such an id as no default).
+  `find_saved_objects` finds objects of given types by words of their title
+  or name (no other attribute) and/or by reference (`has_reference`: e.g. the dashboards that use a visualization)
   and returns one page of summaries with a `note` when the page is empty
   (Kibana also answers empty for unknown and hidden types);
-  `get_saved_object` returns one object with attributes over 4,000
-  characters listed by size instead (`omitted_attributes`) and its distinct
-  references. The `read-only-explorer` and `dashboards-analyst` profiles and
+  `get_saved_object` returns one object of an analytics content type
+  (dashboard, lens, visualization, search, index-pattern, map, tag, …) with
+  attributes over 4,000 characters listed by size instead
+  (`omitted_attributes`) and its distinct references; it refuses every other
+  type before calling Kibana, because Kibana strips only registered encrypted
+  attributes and Fleet's proxy and output objects keep certificate keys,
+  proxy headers, `config_yaml` and service tokens in plain ones. The `read-only-explorer` and `dashboards-analyst` profiles and
   built-in lists grow to 14 and 26 tools. Decision D48.
 - **Observability: create, replace and delete APM agent configurations**
   (one `write` and one `destructive` tool, 162 tools in all).

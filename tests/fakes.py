@@ -19,6 +19,7 @@ from kibana_mcp.core.models import (
     TaskManagerHealth, Timeline, UpgradeReadiness, UptimeSettings, ValueList, ValueListItem,
     VisualizationDetail, VisualizationSummary,
 )
+from kibana_mcp.core.saved_objects import READABLE_TYPES, unreadable_type_message
 from kibana_mcp.core.visualizations.translate import describe_lens_config, lens_chart_type
 
 # Mirrors kibana_mcp.adapters.kibana.gateway._UPDATABLE_KEYS. Copied rather than
@@ -391,9 +392,25 @@ class FakeGateway:
         return RuntimeFieldUpsert(view_id=view_id, field=field, previous=previous)
 
     def delete_runtime_field(self, view_id, name):
-        self._view(view_id)
+        # Mirrors the adapter's contract: a composite's subfield and a mapped
+        # field are refused (KibanaRejected), any other miss is KibanaNotFound.
+        view = self._view(view_id)
         stored = self.runtime_fields.get(view_id, {})
         if name not in stored:
+            parent, _, sub = name.partition(".")
+            composite = stored.get(parent)
+            if composite is not None and composite.type == "composite" and sub in (
+                composite.fields or {}
+            ):
+                raise KibanaRejected(
+                    f"'{name}' is a subfield of the composite runtime field '{parent}' of data "
+                    f"view '{view_id}' — delete '{parent}' to remove it with its subfields"
+                )
+            if name in view.fields:
+                raise KibanaRejected(
+                    f"'{name}' is a field of data view '{view_id}' but not a runtime field — "
+                    "only runtime fields can be deleted"
+                )
             raise KibanaNotFound(f"data view '{view_id}' has no runtime field '{name}'")
         return stored.pop(name)
 
@@ -414,7 +431,10 @@ class FakeGateway:
         if view_id is not None:
             self._view(view_id)
         previous, self.default_data_view_id = self.default_data_view_id, view_id
-        return DefaultDataViewChange(current=self._default(view_id), previous_id=previous)
+        return DefaultDataViewChange(
+            current=self._default(view_id), previous_id=previous,
+            previous_exists=previous is not None and previous in self.data_views,
+        )
 
     def find_saved_objects(self, types, search, has_reference, page, per_page):
         self.saved_object_finds.append({
@@ -424,8 +444,12 @@ class FakeGateway:
         hits = [
             o for o in self.saved_objects
             if o.type in types
-            and (search is None or search.lower().rstrip("*") in
-                 str(o.attributes.get("title", "")).lower())
+            # The adapter sends search_fields=[title, name]: other attributes
+            # never match.
+            and (search is None or any(
+                search.lower().rstrip("*") in str(o.attributes.get(k) or "").lower()
+                for k in ("title", "name")
+            ))
             and (has_reference is None or has_reference in o.references)
         ]
         start = (page - 1) * per_page
@@ -442,6 +466,8 @@ class FakeGateway:
         )
 
     def get_saved_object(self, type, id):
+        if type not in READABLE_TYPES:
+            raise KibanaRejected(unreadable_type_message(type))
         for o in self.saved_objects:
             if (o.type, o.id) == (type, id):
                 return o
