@@ -154,4 +154,7 @@ mode enables host/origin protection on loopback binds.
   guidance strings, schema-rejection pins), `tests/e2e/` (live models:
   Claude via `claude -p`, and a local model in LM Studio),
   `tests/ephemeral/` (destructive paths on throwaway stacks).
-- The whole: `make dod` → `VERDICT: GO` (see [brief.md](brief.md)).
+- The whole: `make dod` → `VERDICT: GO` (see [brief.md](brief.md)), on the
+  newest supported Kibana version: the gate checks the running stack's version
+  against the pin before the seeded-stack criteria and names it on their GO
+  lines (D30, D53).

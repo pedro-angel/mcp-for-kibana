@@ -247,6 +247,22 @@ version section.
   [docs/e2e-setup.md](docs/e2e-setup.md#exporting-the-servers-spans-from-the-claude-tier-default-off);
   decision D44.
 
+### Changed
+
+- **The DoD gate certifies only the newest supported Kibana version** (D53).
+  Before `contract_green`, `e2e_replay_green`, `wheel_replay_green` and
+  `e2e_green` it reads the running Kibana's version from `/api/status` with
+  the seed key and requires the `ES_LOCAL_VERSION` pin in
+  `elastic-start-local/.env.example` (9.5.4; in CI, the contract matrix's
+  version). A stack on any other line — a study's 9.5.5, or 9.4.7 left over
+  from `ES_LOCAL_VERSION=9.4.7 make test-contract` — is NO-GO on each of them,
+  naming `scripts/stack.sh down && scripts/stack.sh up && scripts/stack.sh
+  seed`; before, any seeded stack read GO. Each of their GO lines now names the
+  version (`GO    contract_green  (Kibana 9.5.4)`). `test_stack_pin.py` also
+  checks `scripts/cloud-setup.sh`'s fallback version, and the study notes
+  (`WRAP_UP.md`, `LOCAL_STUDY.md`) say the 9.5.5 study stack is outside the
+  supported set.
+
 ### Fixed
 
 - **OpenTelemetry export no longer loses the last spans of a stdio session.**

@@ -6,7 +6,8 @@
 # Criteria marked `required` must pass; `n/a` are skipped (declare, don't delete, so
 # the omission is a visible decision). Full logs land in /tmp/dod-<repo>/<criterion>.log
 # (per-repo so sibling gates don't clobber each other's diagnostics).
-# contract/e2e need local infrastructure: scripts/stack.sh up && seed, plus a signed-in
+# contract/e2e need local infrastructure: scripts/stack.sh up && seed (at the pinned
+# Kibana version: the gate refuses another line, D53), plus a signed-in
 # `claude` CLI for e2e_green (D42, docs/e2e-setup.md). CI runs the fast criteria on every
 # PR (checks.yml) and the live tiers minus e2e_green through this same gate over per-tier
 # configs in .github/dod/ (integration.yml); this gate over dod.config remains the full
@@ -75,9 +76,10 @@ run() {
 # Suite criteria (unit/contract/e2e) invoke pytest directly, so exit 0 is not
 # enough: a fully-skipped or empty suite also exits 0 and would read a false GO.
 # Assert passed>=1 AND skipped=0 from the pytest summary so a green-but-empty or
-# all-skipped run reads NO-GO. contract/e2e only reach here past the .env.seed
-# guard, so a skip there means a claimed stack never exercised the suite. (No
-# kibana-py analog — its suites hide behind `make test` and check exit code only.)
+# all-skipped run reads NO-GO. contract/e2e only reach here past the seeded-stack
+# guard (seeded_stack below), so a skip there means a claimed stack never
+# exercised the suite. (No kibana-py analog — its suites hide behind `make test`
+# and check exit code only.)
 suite_note=  # optional detail on a suite's GO line; set only around one run_suite
 run_suite() {
   name="$1"; shift
@@ -96,6 +98,34 @@ run_suite() {
     nogo=1
   fi
 }
+
+# Seeded-stack precondition (D53), shared by contract_green, e2e_replay_green,
+# wheel_replay_green and e2e_green: .env.seed exists AND the Kibana it points at
+# runs the version this gate certifies — the elastic-start-local/.env.example pin
+# (the newest supported version, D30) locally, the matrix's ES_LOCAL_VERSION in
+# CI. tests/_stack_version.py reads /api/status with the seed key (about 1 s,
+# once per gate run); a mismatch, an unreachable stack or a missing seed is NO-GO
+# on every seeded-stack criterion with one line naming the fix, and each GO line
+# names the version it certified.
+stack_state=        # '' unchecked | ok | bad
+stack_version=
+stack_reason=
+seeded_stack() {
+  if [ -z "$stack_state" ]; then
+    if [ ! -f elastic-start-local/.env.seed ]; then
+      stack_state=bad
+      stack_reason="no elastic-start-local/.env.seed — run: scripts/stack.sh up && scripts/stack.sh seed"
+    elif stack_version=$(uv run python -m tests._stack_version 2>"$logdir/stack_version.log"); then
+      stack_state=ok
+    else
+      stack_state=bad
+      stack_reason=${stack_version:-"the stack-version check crashed; log: $logdir/stack_version.log"}
+      stack_version=
+    fi
+  fi
+  [ "$stack_state" = ok ]
+}
+stack_nogo() { echo "  NO-GO $1  ($stack_reason)"; nogo=1; }
 
 echo "Definition-of-Done gate ($cfg)"
 
@@ -123,11 +153,12 @@ if req image_smoke; then
 fi
 
 if req contract_green; then
-  if [ -f elastic-start-local/.env.seed ]; then
+  if seeded_stack; then
+    suite_note="Kibana $stack_version"
     run_suite contract_green uv run pytest -m contract -q
+    suite_note=
   else
-    echo "  NO-GO contract_green  (no elastic-start-local/.env.seed — run: scripts/stack.sh up && scripts/stack.sh seed)"
-    nogo=1
+    stack_nogo contract_green
   fi
 fi
 
@@ -136,11 +167,12 @@ if req e2e_replay_green; then
   # a recorded real-model turn is replayed through a real MCP client over real
   # stdio against the real server and real Kibana. Deterministic, so unlike
   # e2e_green it runs in CI. Needs a seeded stack, same precondition as contract.
-  if [ -f elastic-start-local/.env.seed ]; then
+  if seeded_stack; then
+    suite_note="Kibana $stack_version"
     run_suite e2e_replay_green uv run pytest -m e2e_replay -q
+    suite_note=
   else
-    echo "  NO-GO e2e_replay_green  (no elastic-start-local/.env.seed — run: scripts/stack.sh up && scripts/stack.sh seed)"
-    nogo=1
+    stack_nogo e2e_replay_green
   fi
 fi
 
@@ -149,11 +181,12 @@ if req wheel_replay_green; then
   # into a fresh venv: the artifact a PyPI user installs, its dependencies
   # resolved the way that user's install resolves them. Every other live tier
   # runs the checkout. Same seeded-stack precondition as e2e_replay_green.
-  if [ -f elastic-start-local/.env.seed ]; then
+  if seeded_stack; then
+    suite_note="Kibana $stack_version"
     run_suite wheel_replay_green scripts/checks/wheel-replay.sh
+    suite_note=
   else
-    echo "  NO-GO wheel_replay_green  (no elastic-start-local/.env.seed — run: scripts/stack.sh up && scripts/stack.sh seed)"
-    nogo=1
+    stack_nogo wheel_replay_green
   fi
 fi
 
@@ -175,9 +208,8 @@ if req e2e_green; then
   elif ! claude auth status 2>/dev/null | grep -qE '"loggedIn"[[:space:]]*:[[:space:]]*true'; then
     echo "  NO-GO e2e_green  (the \`claude\` CLI is not signed in — run: claude auth login, then check with: claude auth status; docs/e2e-setup.md)"
     nogo=1
-  elif [ ! -f elastic-start-local/.env.seed ]; then
-    echo "  NO-GO e2e_green  (no elastic-start-local/.env.seed — run: scripts/stack.sh up && scripts/stack.sh seed)"
-    nogo=1
+  elif ! seeded_stack; then
+    stack_nogo e2e_green
   else
     # Env loading lives in tests/_stack_env.py (fixture-time). A fresh records
     # dir per gate run, so its runs.jsonl holds only this run's records.
@@ -188,6 +220,7 @@ if req e2e_green; then
     # defaults (tests/_claude_cli.py), never restated here.
     suite_note=$(uv run python -c 'from tests import _claude_cli as c; print(f"model {c.claude_model()}, {c.runs_per_task()} runs per task")' 2>/dev/null) \
       || suite_note="model and runs per task unresolved"
+    suite_note="Kibana $stack_version, $suite_note"
     run_suite e2e_green env CLAUDE_E2E_OUT="$logdir/e2e_green-runs" \
       uv run pytest -m e2e_claude -q
     suite_note=

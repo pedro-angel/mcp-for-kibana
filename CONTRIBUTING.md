@@ -104,6 +104,10 @@ make stack-destroy
 ES_LOCAL_VERSION=9.4.7 make test-contract
 ```
 
+`make dod` certifies only the pinned version: on a stack left on another line
+its seeded-stack criteria are NO-GO until you re-provision with
+`scripts/stack.sh down && scripts/stack.sh up && scripts/stack.sh seed` (D53).
+
 ## Code Quality & Gates
 
 ```bash

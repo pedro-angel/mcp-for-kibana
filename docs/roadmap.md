@@ -38,6 +38,10 @@ scripts/stack.sh up && scripts/stack.sh seed
 KIBANA_MCP_DOD_CYCLE_STACK=1 make dod
 ```
 
+The stack must run the pinned Kibana version, the newest supported one: the
+gate refuses another line on every seeded-stack criterion and names the
+re-provision command (D53).
+
 Day to day: `make check` for the fast gates, `make dod` before any completion or
 release claim, `make help` for the rest.
 

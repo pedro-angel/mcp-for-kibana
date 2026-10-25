@@ -1,6 +1,6 @@
 # Decisions ledger
 
-Status: Draft v1.16 (2026-10-25) — regeneration corpus. Consumes
+Status: Draft v1.17 (2026-10-25) — regeneration corpus. Consumes
 [brief.md](brief.md); read alongside [design.md](design.md).
 
 Each entry is a decision a rewrite must not silently re-litigate: what was
@@ -1409,6 +1409,35 @@ this ledger stands without them.
   server too. It brings a per-run HTTP relay into the gate's path, and the
   e2e tier needs only the server's spans. Telemetry is never a DoD criterion.
   Docs: [e2e-setup](../e2e-setup.md#exporting-the-servers-spans-from-the-claude-tier-default-off).
+
+- **D53 (2026-10-25, owner: the DoD runs on the newest supported version)** —
+  The DoD gate checks the running stack's Kibana version before the
+  seeded-stack criteria (`contract_green`, `e2e_replay_green`,
+  `wheel_replay_green`, `e2e_green`), inside them rather than as a criterion of
+  its own, so no config can declare it away. `tests/_stack_version.py` reads
+  `version.number` from `/api/status` with the credentials the suites use
+  (shell env, else `elastic-start-local/.env.seed`) and requires the
+  `ES_LOCAL_VERSION` pin in `elastic-start-local/.env.example` — the newest
+  version kibana-py supports (D30, `tests/unit/test_stack_pin.py`) — or, in CI
+  (`GITHUB_ACTIONS=true`), the matrix's `ES_LOCAL_VERSION`, which must be in
+  `kibana.SUPPORTED_VERSIONS`. A shell `ES_LOCAL_VERSION` does not move the
+  local target. A missing seed, an unreachable Kibana or another version is
+  NO-GO on each of those criteria with one line naming the fix (`scripts/stack.sh
+  down && scripts/stack.sh up && scripts/stack.sh seed`, prefixed by `unset
+  ES_LOCAL_VERSION` when the shell exports one); each GO line names the version
+  it certified (`GO    contract_green  (Kibana 9.5.4)`). One HTTP call, about
+  1 s per gate run. `test_stack_pin.py` also covers `scripts/cloud-setup.sh`'s
+  pre-pull fallback version. Why: the gate checked only that `.env.seed`
+  existed, so a stack left on a study's 9.5.5 (outside the supported set; 516
+  committed files under `scripts/experiment/runs/` record `"kibana_version":
+  "9.5.5"`) or on
+  9.4.7 after `ES_LOCAL_VERSION=9.4.7 make test-contract` read `VERDICT: GO`
+  without saying which Kibana it certified. Evidence (2026-10-25, dev stack on
+  9.5.4): with a fake `/api/status` reporting 9.5.5 the gate printed `NO-GO
+  e2e_replay_green (the seeded stack runs Kibana 9.5.5, but the gate certifies
+  9.5.4 ...)`; with the pin doctored to 9.4.7, and in CI mode with a 9.4.7
+  matrix version, the same NO-GO; on the real tree `GO e2e_replay_green
+  (Kibana 9.5.4)`. Extends D30.
 
 ## Scope and licensing (probed on Basic)
 

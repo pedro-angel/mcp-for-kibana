@@ -40,6 +40,16 @@ a change touches tool names, descriptions or schemas. `make test-e2e-local`
 runs the LM Studio tests for small local models — a tool-use model loaded and
 named in `LMSTUDIO_MODEL` ([docs/e2e-setup.md](docs/e2e-setup.md)).
 
+The DoD certifies the newest Kibana version the server supports (D30, D53).
+Before the seeded-stack criteria (`contract_green`, `e2e_replay_green`,
+`wheel_replay_green`, `e2e_green`) the gate reads the running Kibana's version
+from `/api/status` with the seed key and requires the `ES_LOCAL_VERSION` pin in
+`elastic-start-local/.env.example` (in CI: the matrix's version). A stack left on
+another line — a study's 9.5.5, or 9.4.7 after `ES_LOCAL_VERSION=9.4.7 make
+test-contract` — is NO-GO on each of them, naming
+`scripts/stack.sh down && scripts/stack.sh up && scripts/stack.sh seed`; every
+GO line names the version it certified.
+
 ## House rules
 
 - **The DoD gate certifies completion, not you.** No completion or release

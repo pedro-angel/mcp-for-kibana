@@ -1,0 +1,275 @@
+"""The DoD gate's stack-version check (tests/_stack_version.py, D53).
+
+The seeded-stack criteria certify whatever Kibana the seed points at, so the
+gate first reads that Kibana's version and refuses a stack that is not the line
+it certifies: the `.env.example` pin locally (the newest supported version,
+D30), the matrix's `ES_LOCAL_VERSION` in CI. Every refusal names the fix.
+"""
+
+import json
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from pathlib import Path
+
+import pytest
+
+from tests import _stack_version as sv
+
+_SUPPORTED = ("9.5.4", "9.4.7")
+_FIX = "scripts/stack.sh down && scripts/stack.sh up && scripts/stack.sh seed"
+
+
+def _write_stack(root: Path, pin: str = "9.5.4", seed: str | None = None) -> Path:
+    stack = root / "elastic-start-local"
+    stack.mkdir(parents=True)
+    (stack / ".env.example").write_text(f"ES_LOCAL_PASSWORD=x\nES_LOCAL_VERSION={pin}\n")
+    if seed is not None:
+        (stack / ".env.seed").write_text(seed)
+    return root
+
+
+# --- the pin -----------------------------------------------------------------
+
+
+def test_pinned_version_reads_the_env_example_pin(tmp_path):
+    assert sv.pinned_version(_write_stack(tmp_path, pin="9.5.4")) == "9.5.4"
+
+
+def test_pinned_version_without_a_pin_names_the_file(tmp_path):
+    stack = tmp_path / "elastic-start-local"
+    stack.mkdir()
+    (stack / ".env.example").write_text("ES_LOCAL_PASSWORD=x\n")
+    with pytest.raises(sv.StackVersionError, match=r"ES_LOCAL_VERSION.*\.env\.example"):
+        sv.pinned_version(tmp_path)
+
+
+def test_the_real_pin_is_a_supported_version():
+    root = Path(__file__).resolve().parents[2]
+    assert sv.pinned_version(root) in sv.supported_versions()
+
+
+# --- the expected version ----------------------------------------------------
+
+
+def test_locally_the_gate_certifies_the_pin():
+    version, source = sv.expected_version({}, "9.5.4", _SUPPORTED)
+    assert version == "9.5.4"
+    assert ".env.example" in source and "D30" in source
+
+
+def test_locally_an_es_local_version_override_does_not_move_the_target():
+    # D30: the local gate runs on the newest supported version, whatever the
+    # shell exported for an earlier `ES_LOCAL_VERSION=9.4.7 make test-contract`.
+    version, _ = sv.expected_version({"ES_LOCAL_VERSION": "9.4.7"}, "9.5.4", _SUPPORTED)
+    assert version == "9.5.4"
+
+
+def test_in_ci_the_gate_certifies_the_matrix_version():
+    env = {"GITHUB_ACTIONS": "true", "ES_LOCAL_VERSION": "9.4.7"}
+    version, source = sv.expected_version(env, "9.5.4", _SUPPORTED)
+    assert version == "9.4.7"
+    assert "matrix" in source
+
+
+def test_in_ci_without_a_matrix_version_the_pin_stands():
+    version, _ = sv.expected_version({"GITHUB_ACTIONS": "true"}, "9.5.4", _SUPPORTED)
+    assert version == "9.5.4"
+
+
+def test_in_ci_an_unsupported_matrix_version_is_refused_with_the_fix():
+    env = {"GITHUB_ACTIONS": "true", "ES_LOCAL_VERSION": "9.5.5"}
+    with pytest.raises(sv.StackVersionError) as exc:
+        sv.expected_version(env, "9.5.4", _SUPPORTED)
+    message = str(exc.value)
+    assert "9.5.5" in message and "SUPPORTED_VERSIONS" in message
+
+
+def test_a_pin_outside_the_supported_set_is_refused_with_the_fix():
+    with pytest.raises(sv.StackVersionError) as exc:
+        sv.expected_version({}, "9.5.5", _SUPPORTED)
+    assert "elastic-start-local/.env.example" in str(exc.value)
+    assert "9.5.4" in str(exc.value)
+
+
+# --- the comparison ----------------------------------------------------------
+
+
+def test_matching_versions_pass():
+    assert sv.mismatch("9.5.4", "9.5.4", "the pin", {}) is None
+
+
+def test_an_off_pin_stack_names_both_versions_and_the_reprovision_command():
+    message = sv.mismatch("9.5.5", "9.5.4", "the pin", {})
+    assert message is not None
+    assert "9.5.5" in message and "9.5.4" in message
+    assert _FIX in message
+
+
+def test_a_local_override_in_the_shell_is_named_in_the_fix():
+    message = sv.mismatch("9.4.7", "9.5.4", "the pin", {"ES_LOCAL_VERSION": "9.4.7"})
+    assert message is not None
+    assert "unset ES_LOCAL_VERSION" in message and _FIX in message
+
+
+def test_a_local_override_equal_to_the_target_is_not_named():
+    message = sv.mismatch("9.5.5", "9.5.4", "the pin", {"ES_LOCAL_VERSION": "9.5.4"})
+    assert message is not None and "unset" not in message and _FIX in message
+
+
+def test_shell_credentials_are_named_in_the_fix():
+    # Re-provisioning the dev stack never clears a NO-GO caused by a shell
+    # KIBANA_URL pointing at another stack, so the fix names the variables.
+    env = {"KIBANA_URL": "http://localhost:25601", "KIBANA_TEST_API_KEY": "k"}
+    message = sv.mismatch("9.5.5", "9.5.4", "the pin", env)
+    assert message is not None
+    assert "unset KIBANA_URL KIBANA_TEST_API_KEY" in message and _FIX in message
+
+
+def test_in_ci_the_fix_does_not_tell_the_runner_to_unset_the_matrix_version():
+    env = {"GITHUB_ACTIONS": "true", "ES_LOCAL_VERSION": "9.4.7"}
+    message = sv.mismatch("9.5.4", "9.4.7", "the matrix", env)
+    assert message is not None and "unset" not in message and _FIX in message
+
+
+# --- the live read (a fake /api/status) ---------------------------------------
+
+
+class _Status(BaseHTTPRequestHandler):
+    version: str | None = "9.5.4"
+    seen_auth: list[str] = []
+
+    def do_GET(self):  # noqa: N802 — http.server's name
+        type(self).seen_auth.append(self.headers.get("Authorization", ""))
+        if self.path != "/api/status":
+            self.send_response(404)
+            self.end_headers()
+            return
+        version = type(self).version
+        status = {"status": {"overall": {"level": "available"}}}
+        body = json.dumps(status if version is None else {"version": {"number": version}}).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, *args):  # keep pytest output quiet
+        pass
+
+
+@pytest.fixture
+def kibana():
+    _Status.seen_auth = []
+    server = HTTPServer(("127.0.0.1", 0), _Status)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    yield f"http://127.0.0.1:{server.server_address[1]}"
+    server.shutdown()
+    server.server_close()
+
+
+def test_running_version_reads_api_status_with_the_seed_key(kibana):
+    _Status.version = "9.5.4"
+    assert sv.running_version(kibana, "c2VlZA==") == "9.5.4"
+    assert _Status.seen_auth == ["ApiKey c2VlZA=="]
+
+
+def test_an_unreachable_kibana_names_the_start_command():
+    with pytest.raises(sv.StackVersionError) as exc:
+        sv.running_version("http://127.0.0.1:9", "k")
+    assert "scripts/stack.sh up && scripts/stack.sh seed" in str(exc.value)
+
+
+def test_an_unauthenticated_status_names_the_key_and_the_seed_command(kibana):
+    _Status.version = None  # Kibana omits `version` for a caller it does not authenticate
+    with pytest.raises(sv.StackVersionError) as exc:
+        sv.running_version(kibana, "s3cr3t-key")
+    assert "key is invalid or revoked" in str(exc.value)
+    assert "scripts/stack.sh seed" in str(exc.value) and "s3cr3t-key" not in str(exc.value)
+
+
+def test_an_unreachable_shell_url_names_the_shell_variable():
+    with pytest.raises(sv.StackVersionError) as exc:
+        sv.running_version("http://127.0.0.1:9", "k", ("KIBANA_URL",))
+    assert "unset KIBANA_URL" in str(exc.value)
+
+
+def test_check_passes_on_the_pinned_stack_and_returns_the_version(tmp_path, kibana):
+    _Status.version = "9.5.4"
+    root = _write_stack(tmp_path, seed=f"KIBANA_URL={kibana}\nKIBANA_TEST_API_KEY=k\n")
+    assert sv.check(root, {}, _SUPPORTED) == "9.5.4"
+
+
+def test_check_refuses_an_off_pin_stack(tmp_path, kibana):
+    _Status.version = "9.5.5"
+    root = _write_stack(tmp_path, seed=f"KIBANA_URL={kibana}\nKIBANA_TEST_API_KEY=k\n")
+    with pytest.raises(sv.StackVersionError) as exc:
+        sv.check(root, {}, _SUPPORTED)
+    assert "9.5.5" in str(exc.value) and _FIX in str(exc.value)
+
+
+def test_check_uses_the_shell_credentials_the_suites_use(tmp_path, kibana):
+    # Shell env wins for the suites (tests/_stack_env.py), so the check reads
+    # the Kibana the suites will actually hit.
+    _Status.version = "9.5.4"
+    root = _write_stack(tmp_path, seed="KIBANA_URL=http://127.0.0.1:9\nKIBANA_TEST_API_KEY=seed\n")
+    env = {"KIBANA_URL": kibana, "KIBANA_TEST_API_KEY": "shell"}
+    assert sv.check(root, env, _SUPPORTED) == "9.5.4"
+    assert _Status.seen_auth == ["ApiKey shell"]
+
+
+def test_check_without_a_seed_names_the_seed_command(tmp_path):
+    root = _write_stack(tmp_path)
+    with pytest.raises(sv.StackVersionError, match=r"scripts/stack.sh seed"):
+        sv.check(root, {}, _SUPPORTED)
+
+
+def test_check_with_an_empty_seed_key_names_the_seed_command(tmp_path):
+    root = _write_stack(tmp_path, seed="KIBANA_URL=http://127.0.0.1:9\nKIBANA_TEST_API_KEY=\n")
+    with pytest.raises(sv.StackVersionError, match=r"KIBANA_TEST_API_KEY.*scripts/stack.sh seed"):
+        sv.check(root, {}, _SUPPORTED)
+
+
+def test_main_prints_the_version_and_exits_zero(tmp_path, kibana, capsys):
+    _Status.version = "9.5.4"
+    root = _write_stack(tmp_path, seed=f"KIBANA_URL={kibana}\nKIBANA_TEST_API_KEY=k\n")
+    assert sv.main(root=root, environ={}, supported=_SUPPORTED) == 0
+    assert capsys.readouterr().out.strip() == "9.5.4"
+
+
+def test_main_prints_one_line_naming_the_fix_and_exits_one(tmp_path, kibana, capsys):
+    _Status.version = "9.4.7"
+    root = _write_stack(tmp_path, seed=f"KIBANA_URL={kibana}\nKIBANA_TEST_API_KEY=k\n")
+    assert sv.main(root=root, environ={}, supported=_SUPPORTED) == 1
+    out = capsys.readouterr().out.strip()
+    assert "\n" not in out and _FIX in out
+
+
+# --- the gate's wiring -------------------------------------------------------
+
+_GATE = Path(__file__).resolve().parents[2] / "scripts" / "checks" / "definition-of-done.sh"
+_SEEDED_CRITERIA = ("contract_green", "e2e_replay_green", "wheel_replay_green", "e2e_green")
+
+
+def test_every_seeded_stack_criterion_goes_through_the_version_check():
+    gate = _GATE.read_text()
+    for criterion in _SEEDED_CRITERIA:
+        block = gate.split(f"if req {criterion}; then", 1)[1].split("\nfi\n", 1)[0]
+        assert "seeded_stack" in block and f"stack_nogo {criterion}" in block, (
+            f"{criterion} must run behind seeded_stack (the stack-version check, D53) "
+            "and report its refusal with stack_nogo"
+        )
+        assert "Kibana $stack_version" in block, (
+            f"{criterion}'s GO line must name the Kibana version it certified (D53)"
+        )
+
+
+def test_no_criterion_checks_the_seed_file_on_its_own():
+    # A bare `-f .env.seed` test is the old precondition this check replaced:
+    # only seeded_stack may look at the seed, so no criterion skips the version.
+    gate = _GATE.read_text()
+    assert "seeded_stack() {" in gate and "stack_nogo() {" in gate, (
+        "the gate lost its seeded-stack precondition (seeded_stack/stack_nogo, D53)"
+    )
+    outside = gate.split("seeded_stack() {", 1)[0] + gate.split("stack_nogo() {", 1)[1]
+    assert "-f elastic-start-local/.env.seed" not in outside

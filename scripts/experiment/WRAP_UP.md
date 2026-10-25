@@ -54,8 +54,14 @@ Running
   can add a second one (8 runs in study 1 had wrong metrics until re-derived).
 - Keep secrets out of the model's environment entirely: the Kibana key reached
   the model in 2 of 90 shell-arm runs, and Bash inherited the Honeycomb key.
-- Start the dev stack with `ES_LOCAL_VERSION=9.5.5 scripts/stack.sh up && seed`;
-  plain `make stack-start` pins 9.5.4 and fails on a 9.5.5 volume.
+- The studies ran on Kibana 9.5.5, which kibana-py does not support (its
+  `SUPPORTED_VERSIONS` are 9.5.4 and 9.4.7): their run records are study
+  evidence, not evidence for a supported version. A study stack is started
+  with `ES_LOCAL_VERSION=9.5.5 scripts/stack.sh up && scripts/stack.sh seed`,
+  and the pinned 9.5.4 cannot open its volume. Before `make dod`, re-provision
+  at the pin: `scripts/stack.sh down && scripts/stack.sh up && scripts/stack.sh
+  seed` — the DoD gate refuses any other version on the seeded-stack criteria
+  (D53).
 
 Telemetry and Honeycomb
 - Organic telemetry works: Claude Code's own traces, events and metrics (beta
