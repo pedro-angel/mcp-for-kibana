@@ -187,8 +187,14 @@ async def test_security_detections_destructive_tier_shows_everything():
 PLATFORM_ADMIN_READ = {
     "list_spaces", "get_space", "list_roles", "get_role", "get_upgrade_status",
 }
-PLATFORM_ADMIN_WRITE = {"create_space", "update_space", "create_or_update_role"}
-PLATFORM_ADMIN_DESTRUCTIVE = {"delete_space", "delete_role"}
+PLATFORM_ADMIN_WRITE = {
+    "create_space", "update_space", "create_or_update_role",
+    "copy_saved_objects_to_spaces", "share_saved_objects_to_spaces",
+}
+PLATFORM_ADMIN_DESTRUCTIVE = {
+    "delete_space", "delete_role",
+    "overwrite_saved_objects_in_spaces", "unshare_saved_objects_from_spaces",
+}
 
 
 async def test_platform_admin_tier_boundary_acceptance():

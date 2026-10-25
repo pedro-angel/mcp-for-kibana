@@ -50,7 +50,9 @@ from kibana_mcp.core.models import (
     SavedObjectImportResult,
     SavedObjectPage,
     ShortUrl,
+    SharingChange,
     Space,
+    SpaceCopyResult,
     Stream,
     StreamIngest,
     StreamSummary,
@@ -484,6 +486,37 @@ class KibanaGateway(Protocol):
     def delete_space(self, space_id: str, force: bool) -> None: ...
 
     def delete_role(self, name: str) -> None: ...
+
+    # Saved objects between spaces (D49). The source space is the gateway's own
+    # (the factory's `space`, else the default or the space KIBANA_URL pins).
+
+    def copy_saved_objects_to_spaces(
+        self, objects: list[dict[str, str]], spaces: list[str], include_references: bool,
+        overwrite: bool,
+    ) -> list[SpaceCopyResult]:
+        """One result per target space, in the order given. Must refuse a target
+        space that does not exist (Kibana writes into it, D5) and the source
+        space itself, before the copy. `overwrite=False` makes new copies
+        (new ids, nothing existing changes); `overwrite=True` replaces the
+        objects earlier copies made in the target spaces (destructive)."""
+        ...
+
+    def share_saved_objects(
+        self, objects: list[dict[str, str]], spaces: list[str]
+    ) -> list[SharingChange]:
+        """Add the objects to `spaces` ('*' = every space). Must refuse, before
+        the write, a space that does not exist, an object the source space does
+        not hold and a type that cannot be shared."""
+        ...
+
+    def unshare_saved_objects(
+        self, objects: list[dict[str, str]], spaces: list[str], force: bool
+    ) -> list[SharingChange]:
+        """Remove the objects from `spaces`. Must refuse, before the write, the
+        cases core.space_sharing refuses: a missing or unshareable object, a
+        removal that removes nothing, and (unless `force`) one that leaves an
+        object in no space, which Kibana answers by deleting it."""
+        ...
 
     def list_streams(self) -> list[StreamSummary]: ...
 

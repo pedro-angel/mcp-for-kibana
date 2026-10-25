@@ -3,23 +3,28 @@
 import itertools
 from dataclasses import replace
 
-from kibana_mcp.core.errors import KibanaNotFound, KibanaRejected
+from kibana_mcp.core.errors import KibanaNotFound, KibanaRejected, KibanaSpaceNotFound
 from kibana_mcp.core.models import (
     AlertingHealth, AlertRule, AlertRuleDetail, RuleType, ApiDeprecation, ApmAgentConfig, ApmAnnotation, ApmEnvironment,
-    ApmSourcemap, Case, Connector, ConnectorDetail, DashboardDetail, DashboardSummary, DataViewDetail,
+    ApmSourcemap, Case, Connector, ConnectorDetail, CopiedObject, CopyFailure, DashboardDetail, DashboardSummary, DataViewDetail,
     DataViewSummary, DefaultDataView, DefaultDataViewChange, DetectionAlert, DetectionRule, EmailDefaults, ExceptionItem, ExceptionList,
     FleetAgent, FleetAgentPolicy, FleetAgentStatus, FleetEnrollmentKey, FleetOutput, FleetOutputHealth,
     FleetPackage, FleetPackageCategory, FleetPackagePolicy, FleetPermissions, FleetServerHost,
     FleetSettings, FleetUninstallToken,
-    ImportedObject, KibanaStats, KibanaStatus, PanelSummary, PrepackagedRulesStatus, Role,
+    ImportedObject, KibanaStats, KibanaStatus, ObjectSpaces, PanelSummary, PrepackagedRulesStatus, Role,
     RoleIndexPrivilege, RoleKibanaPrivilege, RuleSnooze, RuntimeField, RuntimeFieldUpsert,
-    SavedObjectDetail, SavedObjectImportResult, SavedObjectPage, SavedObjectSummary, ShortUrl, Space,
+    SavedObjectDetail, SavedObjectImportResult, SavedObjectPage, SavedObjectSummary, SharingChange,
+    ShortUrl, Space, SpaceCopyResult,
     Stream,
     StreamIngest, StreamSummary, StreamWriteResult, SyntheticMonitor, SyntheticParam, SyntheticPrivateLocation,
     TaskManagerHealth, Timeline, UpgradeReadiness, UptimeSettings, ValueList, ValueListItem,
     VisualizationDetail, VisualizationSummary,
 )
 from kibana_mcp.core.saved_objects import READABLE_TYPES, unreadable_type_message
+from kibana_mcp.core.space_sharing import (
+    ALL_SPACES, copy_fix, missing_spaces_message, objects_not_found_message, self_target_message,
+    sharing_refusal, unshare_refusal,
+)
 from kibana_mcp.core.visualizations.translate import describe_lens_config, lens_chart_type
 
 # Mirrors kibana_mcp.adapters.kibana.gateway._UPDATABLE_KEYS. Copied rather than
@@ -209,6 +214,17 @@ class FakeGateway:
                 ),
             )
         ]
+        # Saved objects between spaces (D49): the space the gateway was opened
+        # on (tests set it), each object's spaces ([] = a type kept in one
+        # space), the types Kibana cannot copy, and the calls as passed.
+        self.current_space = "default"
+        self.object_spaces: dict[tuple[str, str], list[str]] = {
+            ("index-pattern", "dv1"): ["default"],
+            ("dashboard", "dash-1"): [],
+        }
+        self.uncopyable_types = {"ingest-outputs"}
+        self.space_copies: list[dict] = []
+        self.sharing_updates: list[dict] = []
         self.upgrade_readiness = UpgradeReadiness(
             ready_for_upgrade=True, details="All deprecation warnings have been resolved.",
             es_deprecation_count=0,
@@ -1127,6 +1143,89 @@ class FakeGateway:
 
     def get_upgrade_status(self):
         return self.upgrade_readiness
+
+    def _require_spaces(self, spaces):
+        known = {sp.id for sp in self.spaces}
+        missing = [x for x in dict.fromkeys(spaces) if x != ALL_SPACES and x not in known]
+        if missing:
+            raise KibanaSpaceNotFound(missing_spaces_message(missing))
+
+    def _held(self, objects):
+        misses = [f"{o['type']}/{o['id']}" for o in objects
+                  if (o["type"], o["id"]) not in self.object_spaces]
+        if misses:
+            raise KibanaNotFound(objects_not_found_message(misses))
+
+    def copy_saved_objects_to_spaces(self, objects, spaces, include_references, overwrite):
+        if self.current_space in spaces:
+            raise KibanaRejected(self_target_message(self.current_space))
+        self._require_spaces(spaces)
+        self._held(objects)
+        self.space_copies.append({"objects": objects, "spaces": spaces,
+                                  "include_references": include_references,
+                                  "overwrite": overwrite})
+        results = []
+        for space in spaces:
+            copied, failed = [], []
+            for o in objects:
+                if o["type"] in self.uncopyable_types:
+                    failed.append(CopyFailure(
+                        type=o["type"], id=o["id"], title=None, error="unsupported_type",
+                        fix=copy_fix("unsupported_type", overwrite),
+                        missing_references=(), destinations=()))
+                else:
+                    copied.append(CopiedObject(
+                        type=o["type"], id=o["id"], title=None,
+                        destination_id=f"{space}-{o['id']}", overwritten=overwrite))
+            results.append(SpaceCopyResult(
+                space=space, success=not failed, copied=tuple(copied), failed=tuple(failed),
+                unchanged=()))
+        return results
+
+    def _object_states(self, objects):
+        return [
+            ObjectSpaces(
+                type=o["type"], id=o["id"],
+                spaces=tuple(self.object_spaces.get((o["type"], o["id"]), ())),
+                missing=(o["type"], o["id"]) not in self.object_spaces,
+                spaces_with_matching_origins=(),
+            )
+            for o in objects
+        ]
+
+    def _apply_sharing(self, before, add, remove):
+        changes = []
+        for state in before:
+            after = [x for x in state.spaces if x not in remove]
+            after += [x for x in add if x not in after]
+            if after:
+                self.object_spaces[(state.type, state.id)] = after
+            else:
+                del self.object_spaces[(state.type, state.id)]
+                self.deleted.append((state.type, state.id))
+            changes.append(SharingChange(
+                type=state.type, id=state.id, spaces=tuple(after),
+                added=tuple(x for x in after if x not in state.spaces),
+                removed=tuple(x for x in state.spaces if x not in after),
+                deleted=not after, spaces_with_matching_origins=(), error=None))
+        return changes
+
+    def share_saved_objects(self, objects, spaces):
+        self._require_spaces(spaces)
+        before = self._object_states(objects)
+        refusal = sharing_refusal(before)
+        if refusal:
+            raise KibanaRejected(refusal)
+        self.sharing_updates.append({"objects": objects, "add": spaces, "remove": []})
+        return self._apply_sharing(before, spaces, [])
+
+    def unshare_saved_objects(self, objects, spaces, force):
+        before = self._object_states(objects)
+        refusal = sharing_refusal(before) or unshare_refusal(before, spaces, force)
+        if refusal:
+            raise KibanaRejected(refusal)
+        self.sharing_updates.append({"objects": objects, "add": [], "remove": spaces})
+        return self._apply_sharing(before, [], spaces)
 
     def create_detection_rule(
         self, name, description, query, index, severity, risk_score,

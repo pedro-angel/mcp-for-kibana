@@ -144,7 +144,7 @@ this ledger stands without them.
   may get the input elsewhere, e.g. an id the user pastes). Dependencies are
   followed transitively; tools hidden by the tier are not checked; toolbox
   selections are not checked. **Dependency map**: one owner, data —
-  `DEPENDENCIES` in `src/kibana_mcp/tool_lists.py`, 57 edges from 52 tools.
+  `DEPENDENCIES` in `src/kibana_mcp/tool_lists.py`, 65 edges from 56 tools.
   An edge A → B means A takes an input only B shows the model and A's own
   description or error guidance sends the model there: an index or field name
   (`update_panel`/`delete_panel` → `get_dashboard`; every VizSpec tool →
@@ -158,7 +158,8 @@ this ledger stands without them.
   visualizations, data views, alert rules, connectors, Synthetics monitors,
   parameters and private locations, APM agent configurations; and, D48, the
   runtime-field and default-data-view writes → `list_data_views`,
-  `get_saved_object` → `find_saved_objects`), plus ids and values descriptions name
+  `get_saved_object` → `find_saved_objects`; D49, the four tools that move saved
+  objects between spaces → `find_saved_objects` and `list_spaces`), plus ids and values descriptions name
   (`get_space` → `list_spaces`, `get_synthetic_monitor` →
   `list_synthetic_monitors`, `create_synthetic_monitor` →
   `list_synthetic_private_locations`, `create_synthetic_private_location` →
@@ -204,7 +205,10 @@ this ledger stands without them.
   migration makes meaning deployment-dependent), `streams` (cluster-global
   objects; cosmetic space implies false containment), and
   `platform-admin`/`platform-health` (their objects and namespaces are
-  global by nature; a space parameter would validate and then lie).
+  global by nature; a space parameter would validate and then lie). (D49:
+  the platform-admin tools that move saved objects between spaces name the
+  spaces as arguments of the operation — `source_space`, `target_spaces`,
+  `spaces` — so the toolbox still takes no routing `space`.)
 - **D11 (2026-08-18)** — Semantic caveats are contract text: preconfigured
   connectors are instance-global; `namespace_type="agnostic"` exception
   lists are shared across spaces; value-list backing indices are per-space,
@@ -744,6 +748,84 @@ this ledger stands without them.
   allowlist above is coarser and fixed); a denylist of credential-bearing
   types (it fails open on a type added later). Contract:
   [data-management](toolboxes/data-management.md).
+- **D49 (2026-10-25, probes on 9.5.4, Basic)** — The platform-admin toolbox
+  gains saved objects between spaces: `copy_saved_objects_to_spaces` and
+  `share_saved_objects_to_spaces` (`write`; the share `idempotentHint=true`),
+  `overwrite_saved_objects_in_spaces` and `unshare_saved_objects_from_spaces`
+  (`destructive`), over kibana-py's `spaces.copy_saved_objects`,
+  `get_shareable_references` and `update_objects_spaces`, all Basic and all
+  working live. **Names:** the plan's `copy_saved_objects_to_space` and
+  `overwrite_saved_objects_in_space` became plural (`…_to_spaces`,
+  `…_in_spaces`): Kibana copies into a list of spaces in one call, and the
+  pair now reads like the share/unshare pair. **Tiers, by the repo rule
+  (irreversible or data-losing → destructive):** the copy always sends
+  `createNewCopies` (Kibana's default, probed: new ids for the object and
+  each reference), so nothing existing changes and deleting the listed
+  `destination_id`s undoes it — `write`, not idempotent (a repeat makes more
+  copies); the share only adds spaces and a repeat answers the same spaces
+  (probed), and the unshare of the `added` ones undoes it — `write`; the
+  overwrite sends `overwrite` without `createNewCopies` (Kibana 400s the two
+  together: "cannot use [overwrite] with [createNewCopies]") and replaced
+  an edited copy's content with the source's (probed: a data view renamed
+  in the target came back), so the edit is lost — `destructive`; the unshare
+  removes access, which breaks objects in that space that use it, and Kibana
+  **deletes** an object left in no space (spaces `[]`, its `.kibana_analytics`
+  document gone, probed) — `destructive`, and removing an object's last
+  space is refused unless `force=True` (the plan's rule). **Spaces as
+  arguments, not routing (D10 kept):** the toolbox still takes no `space`;
+  the four tools take `source_space` (where the objects are read, validated
+  at gateway construction like `space`, D5), `target_spaces` and `spaces`,
+  and echo `source_space` only when passed (D7's rule). A `/s/<id>`
+  `KIBANA_URL` is the source when `source_space` is omitted and refuses it
+  (D8), so the adapter learns the pinned id at connect to know the source.
+  **Observed, and what each shaped:** the copy and share routes accept a
+  space id that names no space and write into it without an error — a copy
+  into `b5-nope` answered success, and the data view appeared once a space
+  with that id was created; a share answered `spaces: ["b5-ghost", …]` — so
+  every space written into is checked against the space list first (`*`
+  excepted, D5); the unshare writes nothing new and is not checked, so it can
+  clean such an id. kibana-py serves `spaces` unscoped on a space-scoped
+  client and never prefixes these paths, so a share from a throwaway space
+  read its own data view as `isMissing` (probed through kibana-py); the
+  adapter sends them under `/s/<source>` itself (a `SpacesClient` subclass,
+  unit-pinned by path, contract-pinned live). The copy answers 200 with
+  per-object failures — `missing_references` (the flights dashboard copied
+  without its references, nothing written), `unsupported_type` (Fleet's
+  `ingest-outputs`), `ambiguous_conflict` with `destinations` (overwrite
+  into a space holding two copies of one source), `conflict` (only without
+  either mode, which no tool sends) — so each failure carries Kibana's type
+  and a `fix`, and 404 "Saved objects not found" with the misses for a
+  missing object or an unknown or hidden type, worded with
+  `find_saved_objects`; overwriting an object already shared to the target
+  answers success with `successCount: 0` and nothing else, reported as
+  `unchanged`. Copying into the source space duplicates the objects there
+  and overwriting into it changes nothing (probed), so the source space is
+  refused as a target. Kibana 400s a repeated object and a repeated space
+  on the copy ("duplicate objects are not allowed", "duplicate space ids are
+  not allowed") and answers 409 for the repeat on the share, so repeats are
+  refused first for all four. `_get_shareable_references` answers `spaces:
+  []` for a type kept in one space (dashboard, visualization, search, map,
+  tag, config on 9.5.4) and `isMissing: true` for an object the source does
+  not hold; `_update_objects_spaces` answers per-object errors inside a 200
+  ("dashboard doesn't support multiple namespaces", 404 for a missing one),
+  so the share and unshare read first and refuse a missing object, a
+  one-space type, a removal that removes nothing, and an unforced last-space
+  removal before any write, and a per-object error after the write is
+  returned on that object (the others were updated). Sharing into a space
+  that holds a copy made from the object leaves both there (probed), so the
+  result passes on `spaces_with_matching_origins`. `include_references`
+  defaults `true` (Kibana's default is false, under which a dashboard copied
+  alone fails). The share's and unshare's read and write are not atomic
+  (D45/D47 precedent): a change made between them is not seen, so the
+  last-space check reads the state before the write. Dependency map: each
+  tool → `find_saved_objects` (the objects' type and id) and `list_spaces`
+  (the space ids), 8 edges. Rejected: the resolve route
+  (`_resolve_copy_saved_objects_errors`: per-object destination choice and
+  ignoring missing references — no task yet, roadmap); `compatibilityMode`
+  and disabling legacy URL aliases (no task); following related objects on a
+  share (the read lists them, but sharing what was not named would widen the
+  call); a type allowlist like D48's (the copy returns titles and ids only,
+  never attributes). Contract: [platform-admin](toolboxes/platform-admin.md).
 
 ## Reliability and models (measured)
 

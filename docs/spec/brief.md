@@ -22,7 +22,8 @@ a user describes a chart, the server translates a declarative spec into real
 Kibana Lens visualizations and dashboards. Around it: data management
 (data views and their runtime fields, saved objects),
 alerting, cases, security detections, fleet, streams, observability
-(Synthetics monitoring, APM agent configuration), and platform admin/health.
+(Synthetics monitoring, APM agent configuration), platform admin (spaces,
+roles, saved objects between spaces) and platform health.
 
 ## Who it serves
 

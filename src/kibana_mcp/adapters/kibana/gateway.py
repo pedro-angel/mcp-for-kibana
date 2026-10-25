@@ -12,7 +12,7 @@ from types import TracebackType
 from typing import Any
 
 import kibana
-from kibana import SpaceScopedKibana
+from kibana import SpacesClient, SpaceScopedKibana
 from kibana.exceptions import (
     ApiError,
     AuthenticationException,
@@ -47,6 +47,8 @@ from kibana_mcp.core.models import (
     Case,
     Connector,
     ConnectorDetail,
+    CopiedObject,
+    CopyFailure,
     DashboardDetail,
     DashboardSummary,
     DataViewDetail,
@@ -74,6 +76,7 @@ from kibana_mcp.core.models import (
     ImportedObject,
     KibanaStats,
     KibanaStatus,
+    ObjectSpaces,
     PanelSummary,
     PrepackagedRulesStatus,
     Role,
@@ -87,8 +90,10 @@ from kibana_mcp.core.models import (
     SavedObjectPage,
     SavedObjectSummary,
     ServiceHealth,
+    SharingChange,
     ShortUrl,
     Space,
+    SpaceCopyResult,
     Stream,
     StreamIngest,
     StreamSummary,
@@ -106,6 +111,15 @@ from kibana_mcp.core.models import (
     VisualizationSummary,
 )
 from kibana_mcp.core.saved_objects import READABLE_TYPES, unreadable_type_message
+from kibana_mcp.core.space_sharing import (
+    ALL_SPACES,
+    copy_fix,
+    missing_spaces_message,
+    objects_not_found_message,
+    self_target_message,
+    sharing_refusal,
+    unshare_refusal,
+)
 from kibana_mcp.core.visualizations.translate import describe_lens_config, lens_chart_type
 from kibana_mcp.ports.gateway import KibanaGateway
 
@@ -118,8 +132,15 @@ def is_space_pinned(url: str) -> bool:
     '/s/<space-id-grammar>'. Purely syntactic: a reverse-proxy base path
     ending in s/<id-shaped-segment> false-positives, and a proxy that
     rewrites to /s/<id> is invisible — both documented limitations."""
+    return pinned_space(url) is not None
+
+
+def pinned_space(url: str) -> str | None:
+    """The space id a '/s/<id>' base path pins, else None (same limits as
+    is_space_pinned)."""
     path = urllib.parse.urlsplit(url).path.rstrip("/")
-    return _PINNED_PATH_RE.search(path) is not None
+    match = _PINNED_PATH_RE.search(path)
+    return match.group(0).rsplit("/", 1)[1] if match else None
 
 
 _SPACE_GUIDANCE = (
@@ -897,6 +918,82 @@ def _to_space(body: dict[str, Any]) -> Space:
     )
 
 
+def _ref_pair(raw: dict[str, Any]) -> dict[str, str]:
+    return {"type": str(raw.get("type", "")), "id": str(raw.get("id", ""))}
+
+
+def _to_copy_failure(raw: dict[str, Any], overwrite: bool) -> CopyFailure:
+    error = raw.get("error") or {}
+    kind = str(error.get("type") or "unknown")
+    return CopyFailure(
+        type=str(raw.get("type", "")), id=str(raw.get("id", "")),
+        title=(raw.get("meta") or {}).get("title"), error=kind,
+        fix=copy_fix(kind, overwrite),
+        missing_references=tuple(_ref_pair(r) for r in error.get("references") or ()),
+        destinations=tuple(
+            {"id": str(d.get("id", "")), "title": str(d.get("title", ""))}
+            for d in error.get("destinations") or ()
+        ),
+    )
+
+
+def _to_space_copy_result(
+    space: str, raw: dict[str, Any], objects: list[dict[str, str]], overwrite: bool
+) -> SpaceCopyResult:
+    """One target space's entry of the `_copy_saved_objects` map. A requested
+    object in neither list is already in the space (overwriting an object
+    shared to it answers successCount 0 and nothing else, probed)."""
+    copied = tuple(
+        CopiedObject(
+            type=str(r.get("type", "")), id=str(r.get("id", "")),
+            title=(r.get("meta") or {}).get("title"),
+            # Kibana omits destinationId when the copy keeps the source id.
+            destination_id=str(r.get("destinationId") or r.get("id", "")),
+            overwritten=bool(r.get("overwrite")),
+        )
+        for r in raw.get("successResults") or ()
+    )
+    failed = tuple(_to_copy_failure(e, overwrite) for e in raw.get("errors") or ())
+    seen = {(c.type, c.id) for c in copied} | {(f.type, f.id) for f in failed}
+    return SpaceCopyResult(
+        space=space, success=bool(raw.get("success")), copied=copied, failed=failed,
+        unchanged=tuple(
+            _ref_pair(o) for o in objects if (o["type"], o["id"]) not in seen
+        ),
+    )
+
+
+def _to_object_spaces(raw: dict[str, Any]) -> ObjectSpaces:
+    return ObjectSpaces(
+        type=str(raw.get("type", "")), id=str(raw.get("id", "")),
+        spaces=tuple(raw.get("spaces") or ()), missing=bool(raw.get("isMissing")),
+        spaces_with_matching_origins=tuple(raw.get("spacesWithMatchingOrigins") or ()),
+    )
+
+
+def _to_sharing_changes(
+    before: list[ObjectSpaces], body: dict[str, Any]
+) -> list[SharingChange]:
+    """Each object's spaces after `_update_objects_spaces`, against what the
+    read before it saw. A per-object error (200 with `error`, spaces []) left
+    that object as it was; the others were still updated."""
+    after = {(o.get("type"), o.get("id")): o for o in body.get("objects") or ()}
+    changes = []
+    for state in before:
+        raw = after.get((state.type, state.id)) or {}
+        error = raw.get("error")
+        spaces = state.spaces if error else tuple(raw.get("spaces") or ())
+        changes.append(SharingChange(
+            type=state.type, id=state.id, spaces=spaces,
+            added=tuple(s for s in spaces if s not in state.spaces),
+            removed=tuple(s for s in state.spaces if s not in spaces),
+            deleted=not error and not spaces,
+            spaces_with_matching_origins=state.spaces_with_matching_origins,
+            error=str(error.get("message") or error) if error else None,
+        ))
+    return changes
+
+
 def _to_role(body: dict[str, Any]) -> Role:
     es = body.get("elasticsearch")
     es = es if isinstance(es, dict) else {}
@@ -1219,12 +1316,34 @@ def _rmw_body(
     return body
 
 
+class _SourceSpaceSpaces(SpacesClient):
+    """kibana-py's SpacesClient with every path under `/s/<space>`. Kibana's
+    copy and share routes act on the space of the request ("copies from the
+    current space"), but kibana-py serves `spaces` unscoped on a space-scoped
+    client and never prefixes these paths: a share from a throwaway space read
+    `isMissing` for a data view created in it (probed on 9.5.4, D49)."""
+
+    def __init__(self, client: kibana.Kibana, space: str) -> None:
+        super().__init__(client, default_space_id=space, validate_spaces=False)
+
+    def perform_request(
+        self, method: str, path: str, *, params: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None, body: dict[str, Any] | None = None,
+    ) -> Any:
+        return super().perform_request(
+            method, self._build_space_path(path), params=params, headers=headers, body=body)
+
+
 class KibanaPyGateway:
     def __init__(
-        self, client: kibana.Kibana | SpaceScopedKibana, space: str | None = None
+        self, client: kibana.Kibana | SpaceScopedKibana, space: str | None = None,
+        pinned_space: str | None = None,
     ) -> None:
         self._client = client
         self._space = space
+        # The space a '/s/<id>' KIBANA_URL pins (connect sets it): the source
+        # space of the copy and share calls when no `space` scopes the gateway.
+        self._pinned_space = pinned_space
 
     @classmethod
     def connect(cls, url: str, api_key: str, space: str | None = None) -> "KibanaPyGateway":
@@ -1257,7 +1376,7 @@ class KibanaPyGateway:
                 if translated is e:
                     raise  # pass-through unchanged, no self-referential cause
                 raise translated from e
-        return cls(client, space)
+        return cls(client, space, pinned_space=pinned_space(url))
 
     # Returns the port type, not the concrete one: `with KibanaPyGateway...` is
     # the only way callers obtain a gateway, so narrowing here would leak the
@@ -2983,6 +3102,98 @@ class KibanaPyGateway:
         if (r.get("metadata") or {}).get("_reserved"):
             raise KibanaRejected(f"role '{name}' is reserved and cannot be deleted")
         self._client.security.delete_role(name=name)
+
+    # --- platform-admin: saved objects between spaces (D49) ---
+
+    def _require_spaces(self, spaces: list[str]) -> None:
+        """D5 for every space written into: Kibana's copy and share routes
+        write into a space id that names no space without an error (probed)."""
+        wanted = [s for s in dict.fromkeys(spaces) if s != ALL_SPACES]
+        if not wanted:
+            return
+        known = {str(s.get("id")) for s in self._client.spaces.get_all().body}
+        missing = [s for s in wanted if s not in known]
+        if missing:
+            raise KibanaSpaceNotFound(missing_spaces_message(missing))
+
+    def _source_spaces(self) -> SpacesClient:
+        """The spaces routes on the source space. Unscoped, the base path is
+        the source: the default space, or the space KIBANA_URL pins."""
+        if isinstance(self._client, SpaceScopedKibana) and self._space is not None:
+            # SpaceScopedKibana keeps its root client in `_client` (no public
+            # accessor); the contract tier pins the routing this relies on.
+            return _SourceSpaceSpaces(self._client._client, self._space)
+        return self._client.spaces
+
+    def _object_spaces(self, objects: list[dict[str, str]]) -> list[ObjectSpaces]:
+        # `_get_shareable_references` may also list related objects: keep the
+        # requested ones, in request order.
+        body = self._source_spaces().get_shareable_references(objects=objects).body
+        found = {(o.get("type"), o.get("id")): o for o in body.get("objects") or ()}
+        return [
+            _to_object_spaces(found.get((o["type"], o["id"])) or {**o, "isMissing": True})
+            for o in objects
+        ]
+
+    @_translate_errors
+    def copy_saved_objects_to_spaces(
+        self, objects: list[dict[str, str]], spaces: list[str], include_references: bool,
+        overwrite: bool,
+    ) -> list[SpaceCopyResult]:
+        source = self._space or self._pinned_space or "default"
+        if source in spaces:
+            raise KibanaRejected(self_target_message(source))
+        self._require_spaces(spaces)
+        # create_new_copies (Kibana's default) mints new ids and never touches an
+        # existing object; overwrite replaces the object an earlier copy made
+        # (matched by origin). Kibana 400s the two together.
+        mode: dict[str, Any] = (
+            {"create_new_copies": False, "overwrite": True} if overwrite
+            else {"create_new_copies": True}
+        )
+        try:
+            body = self._source_spaces().copy_saved_objects(
+                spaces=spaces, objects=objects, include_references=include_references, **mode,
+            ).body
+        except NotFoundError as e:
+            # 404 "Saved objects not found" + attributes.objects: the misses.
+            attributes = (e.body or {}).get("attributes") if isinstance(e.body, dict) else None
+            misses = [
+                f"{o.get('type')}/{o.get('id')}"
+                for o in (attributes or {}).get("objects") or ()
+            ] or [f"{o['type']}/{o['id']}" for o in objects]
+            raise KibanaNotFound(objects_not_found_message(misses)) from e
+        return [
+            _to_space_copy_result(space, body.get(space) or {}, objects, overwrite)
+            for space in spaces
+        ]
+
+    @_translate_errors
+    def share_saved_objects(
+        self, objects: list[dict[str, str]], spaces: list[str]
+    ) -> list[SharingChange]:
+        self._require_spaces(spaces)
+        before = self._object_spaces(objects)
+        refusal = sharing_refusal(before)
+        if refusal:
+            raise KibanaRejected(refusal)
+        body = self._source_spaces().update_objects_spaces(
+            objects=objects, spaces_to_add=spaces, spaces_to_remove=[]).body
+        return _to_sharing_changes(before, body)
+
+    @_translate_errors
+    def unshare_saved_objects(
+        self, objects: list[dict[str, str]], spaces: list[str], force: bool
+    ) -> list[SharingChange]:
+        # No existence check: removing a space adds nothing, and an object can
+        # sit in a space id that names no space (written there before D5).
+        before = self._object_spaces(objects)
+        refusal = sharing_refusal(before) or unshare_refusal(before, spaces, force)
+        if refusal:
+            raise KibanaRejected(refusal)
+        body = self._source_spaces().update_objects_spaces(
+            objects=objects, spaces_to_add=[], spaces_to_remove=spaces).body
+        return _to_sharing_changes(before, body)
 
     # --- streams: stream reads (read-first; Tech-Preview API) ---
 

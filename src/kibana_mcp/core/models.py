@@ -530,6 +530,63 @@ class Role:
     kibana_privileges: tuple[RoleKibanaPrivilege, ...]
 
 
+# --- platform-admin: saved objects between spaces (D49) ---
+
+
+@dataclass(frozen=True, slots=True)
+class CopiedObject:
+    type: str
+    id: str  # its id in the source space
+    title: str | None
+    destination_id: str  # its id in the target space (a new id for a new copy)
+    overwritten: bool  # True when it replaced an object already in the target space
+
+
+@dataclass(frozen=True, slots=True)
+class CopyFailure:
+    type: str
+    id: str
+    title: str | None
+    error: str  # Kibana's error type: missing_references, unsupported_type, ambiguous_conflict, …
+    fix: str  # what to do about it (core.space_sharing.copy_fix)
+    missing_references: tuple[dict[str, str], ...]  # {"type", "id"} not copied with it
+    destinations: tuple[dict[str, str], ...]  # ambiguous_conflict: {"id", "title"} candidates
+
+
+@dataclass(frozen=True, slots=True)
+class SpaceCopyResult:
+    space: str
+    success: bool
+    copied: tuple[CopiedObject, ...]
+    failed: tuple[CopyFailure, ...]
+    # Requested objects Kibana neither copied nor failed: already in the space
+    # (shared to it), left as they are.
+    unchanged: tuple[dict[str, str], ...]
+
+
+@dataclass(frozen=True, slots=True)
+class ObjectSpaces:
+    """Which spaces one saved object is shared to, as the source space sees it."""
+
+    type: str
+    id: str
+    spaces: tuple[str, ...]  # empty for a type that lives in one space only
+    missing: bool  # no such object in the source space
+    spaces_with_matching_origins: tuple[str, ...]  # spaces holding a copy made from it
+
+
+@dataclass(frozen=True, slots=True)
+class SharingChange:
+    type: str
+    id: str
+    spaces: tuple[str, ...]  # after the call
+    added: tuple[str, ...]
+    removed: tuple[str, ...]
+    deleted: bool  # removed from its last space, so Kibana deleted it
+    spaces_with_matching_origins: tuple[str, ...]
+    error: str | None  # Kibana's per-object error; the other objects were still updated
+
+
 @dataclass(frozen=True, slots=True)
 class ApiDeprecation:
     # Nested inside UpgradeReadiness only. message[]/correctiveActions are dropped

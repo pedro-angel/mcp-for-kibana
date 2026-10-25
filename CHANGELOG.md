@@ -12,6 +12,22 @@ version section.
 
 ### Added
 
+- **Platform admin: copy and share saved objects between spaces** (two
+  `write` and two `destructive` tools, 172 tools in all; none takes `space`,
+  each takes `source_space`). `copy_saved_objects_to_spaces` copies objects
+  (and, by default, what they use) into other spaces as new objects with new
+  ids and returns each copy's `destination_id`; `overwrite_saved_objects_in_spaces`
+  replaces the objects earlier copies made there instead.
+  `share_saved_objects_to_spaces` makes the same object show in more spaces
+  (`*` for every space) and returns the spaces it added;
+  `unshare_saved_objects_from_spaces` removes spaces and, because Kibana
+  deletes an object left in no space, refuses removing the last one unless
+  `force=true`. Every space written into is checked first (Kibana writes into
+  a space that does not exist without an error); the share and unshare read
+  each object's spaces first and refuse a missing object, a type Kibana keeps
+  in one space (dashboards, visualizations and others: copy them instead) and
+  a removal that removes nothing; copy failures come back per object with
+  Kibana's error and a fix. Decision D49.
 - **Data management: runtime fields, the default data view, and saved-objects
   reads** (three `read`, two `write` and one `destructive` tool, 168 tools in
   all; every one takes `space`). `upsert_runtime_field` creates or replaces a

@@ -154,7 +154,7 @@ gate.
    recommended for MCP usage"*. (How many tools that means depends on your
    config: the default `KIBANA_MCP_TOOLBOXES` of `dashboards,data-management`
    with `KIBANA_MCP_TIER=write` advertises 26 — verified by listing them over
-   stdio — not the 168 the full ten-toolbox set would.) If you
+   stdio — not the 172 the full ten-toolbox set would.) If you
    load with a small context, a reasoning-heavy model can burn its whole budget
    thinking and get truncated before it emits a tool call; the test then fails
    on `assert tool_calls` (MEASURED with `nvidia/nemotron-3-nano-omni` at 8000).

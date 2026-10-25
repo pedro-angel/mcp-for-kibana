@@ -9,7 +9,7 @@ via [`KIBANA_MCP_TOOLS`](configuration.md#tool-selection): **dashboards**,
 **[observability](#observability-toolbox)**,
 **[security-detections](#security-detections-toolbox)**,
 **[platform-admin](#platform-admin-toolbox)**,
-**[streams](#streams-toolbox)**, and **[fleet](#fleet-toolbox)** — 168 tools in
+**[streams](#streams-toolbox)**, and **[fleet](#fleet-toolbox)** — 172 tools in
 all. This reference details every toolbox in full. A drift-guard test
 (`tests/unit/test_docs_tool_reference.py`) asserts that every registered tool
 name appears on this page, so it cannot silently fall behind the code.
@@ -531,7 +531,9 @@ sets `space`:
 
 Only the remaining toolboxes have no space axis and take no `space`
 parameter: `platform-admin` and `platform-health` manage instance-global
-objects, `streams` wraps cluster-global ES data streams, `fleet`'s space
+objects (the four platform-admin tools that move saved objects between spaces
+name theirs as arguments of the operation — `source_space`, `target_spaces`,
+`spaces` — never as the routing `space`, D49), `streams` wraps cluster-global ES data streams, `fleet`'s space
 awareness is an opt-in per-deployment migration, and `observability` mixes
 space-scoped synthetics/uptime objects with cluster-global APM
 configuration (deferred as a follow-up; the Synthetics write tools and the
@@ -1284,12 +1286,13 @@ Notes:
 
 ## platform-admin toolbox
 
-Ten tools across three tiers (`src/kibana_mcp/toolboxes/platform_admin/toolbox.py`),
+Fourteen tools across three tiers (`src/kibana_mcp/toolboxes/platform_admin/toolbox.py`),
 tagged `{"platform-admin", <tier>}`. Enable with `KIBANA_MCP_TOOLBOXES=platform-admin`.
 Manage core Kibana administration objects — **Spaces**, security **Roles**, and
-read **Upgrade Assistant** readiness — all GA and available on a **Basic** license.
-Five `read` tools are visible at every tier; the three `write` tools appear at the
-default `write` tier; the two `destructive` deletes require `KIBANA_MCP_TIER=destructive`.
+read **Upgrade Assistant** readiness — and move **saved objects between spaces**
+(copy, share), all GA and available on a **Basic** license.
+Five `read` tools are visible at every tier; the five `write` tools appear at the
+default `write` tier; the four `destructive` tools require `KIBANA_MCP_TIER=destructive`.
 
 !!! warning "Destructive tier wipes data"
     `delete_space` permanently removes **every saved object in the space**
@@ -1299,12 +1302,18 @@ default `write` tier; the two `destructive` deletes require `KIBANA_MCP_TIER=des
     is a **full replace** — `create_only` defaults `true` so a bare call on an
     existing role is rejected rather than silently dropping its other grants; pass
     `create_only=false` to deliberately overwrite.
+    `overwrite_saved_objects_in_spaces` replaces the copies earlier copies made
+    in the target spaces, and what changed in them is lost.
+    `unshare_saved_objects_from_spaces` removes objects from spaces — Kibana
+    **deletes** an object removed from every space it is in, so that is refused
+    unless `force=true`.
 
 !!! note "Out of scope"
     **Logstash pipeline** management needs a **Platinum** license (403 on Basic,
     confirmed live), so it is out of scope like the rest of this list;
-    **session invalidation**, space object copy/move, feature-level role grants,
-    and avatar-image editing are out of scope too. Reading roles surfaces
+    **session invalidation**, resolving copy conflicts one by one
+    (`_resolve_copy_saved_objects_errors`), feature-level role grants, and
+    avatar-image editing are out of scope too. Reading roles surfaces
     RBAC *configuration* (privilege grants), never secrets, and every write is
     bounded by the API key's own privileges.
 
@@ -1320,6 +1329,10 @@ default `write` tier; the two `destructive` deletes require `KIBANA_MCP_TIER=des
 | `create_or_update_role` | write | Create or **full-replace** a role: ES cluster + index privileges, a Kibana base grant across spaces. `create_only` defaults `true` (rejects an existing role); pass `false` to overwrite. |
 | `delete_space` | destructive | Delete a space — **wipes every saved object in it**; requires `force=true`; refuses `default` + reserved spaces. |
 | `delete_role` | destructive | Delete a role by name; refuses reserved system roles. |
+| `copy_saved_objects_to_spaces` | write | Copy saved objects (`objects`: `{type, id}` from `find_saved_objects`) from `source_space` (default: the default space) into each of `target_spaces` as **new** objects with new ids; `include_references` (default `true`) copies what they use too. Nothing existing changes; a repeat makes more copies. |
+| `share_saved_objects_to_spaces` | write | Share saved objects to more `spaces` (`*` = every space): the **same** object then shows in each. Adds only; idempotent. Refuses types Kibana keeps in one space (dashboards, visualizations, saved searches, maps, tags) — data views can be shared. |
+| `overwrite_saved_objects_in_spaces` | destructive | Copy saved objects into `target_spaces`, **replacing** the objects earlier copies made there (what changed in them is lost). |
+| `unshare_saved_objects_from_spaces` | destructive | Remove saved objects from `spaces`. Kibana **deletes** an object removed from its last space: refused unless `force=true`. |
 
 Notes:
 
@@ -1338,6 +1351,47 @@ Notes:
 - **`delete_space` is always force-gated.** A reliable per-space object count isn't
   available (the count API requires an explicit type list and is deprecated on 9.4),
   so rather than a fail-open count the whole-space wipe always demands `force=true`.
+- **Copy versus share (D49).** A copy makes separate objects (new ids) in the target
+  space; a share makes the same object show in more spaces, so an edit shows in all
+  of them. Kibana shares only some types (on 9.5.4: data views, not dashboards,
+  visualizations, saved searches, maps, tags or advanced settings); the share and
+  unshare tools read each object's spaces first and refuse a one-space type, an
+  object the source space does not hold, a removal that removes nothing, and (unless
+  `force=true`) a removal that leaves an object in no space — before any change.
+- **Every space written into must exist.** Kibana's copy and share routes accept a
+  space id that names no space and write into it without an error (the objects then
+  appear in a space created later with that id, probed), so the tools check
+  `target_spaces`/`spaces` against `list_spaces` first; `*` needs no check. A
+  removal is not checked (it writes nothing, and can clean such a space id).
+- **`source_space` is where the objects are read.** Omitted, it is the default space
+  (or the space a `/s/<id>` `KIBANA_URL` pins, where `source_space` is refused). The
+  source space is refused as a copy target; the result echoes `source_space` only
+  when it was passed (D7).
+- **Not atomic.** The share and unshare read each object's spaces, then write; a
+  change another client makes between them is not seen (the last-space check reads
+  the state before the write).
+
+Returns:
+
+- `copy_saved_objects_to_spaces` / `overwrite_saved_objects_in_spaces` —
+  `{"include_references": bool, "results": [{"space", "success", "copied": [{"type",
+  "id", "title", "destination_id", "overwritten"}], "failed": [{"type", "id", "title",
+  "error", "fix", "missing_references": [{"type", "id"}], "destinations": [{"id",
+  "title"}]}], "unchanged": [{"type", "id"}]}]}` plus `source_space` when passed — one
+  result per target space, in the order given. `id` is the object's id in the source
+  space and `destination_id` its id in the target. `failed[].error` is Kibana's:
+  `missing_references` (a reference not copied with it), `unsupported_type` (Kibana
+  does not export the type), `ambiguous_conflict` (overwrite only: more than one
+  object in the target came from this one, listed in `destinations`); nothing was
+  written for a failed object. `unchanged` lists requested objects Kibana neither
+  copied nor failed: already in that space by sharing.
+- `share_saved_objects_to_spaces` / `unshare_saved_objects_from_spaces` —
+  `{"objects": [{"type", "id", "spaces", "added", "removed", "deleted",
+  "spaces_with_matching_origins", "error"}]}` plus `source_space` when passed, in
+  request order. `spaces` is after the call; `deleted` is true when an unshare removed
+  the last one; `spaces_with_matching_origins` lists spaces holding a copy made from
+  the object, which a share leaves beside it; `error` is Kibana's per-object error
+  (that object unchanged, the others still updated).
 
 ## streams toolbox
 

@@ -102,6 +102,12 @@ DEPENDENCIES: Mapping[str, tuple[str, ...]] = MappingProxyType({
     "upsert_apm_agent_config": ("get_apm_agent_config",),
     "delete_apm_agent_config": ("list_apm_agent_configs",),
     "get_space": ("list_spaces",),
+    # (saved objects between spaces, D49: the objects come from a find on the
+    # source space, the target space ids from list_spaces)
+    "copy_saved_objects_to_spaces": ("find_saved_objects", "list_spaces"),
+    "share_saved_objects_to_spaces": ("find_saved_objects", "list_spaces"),
+    "overwrite_saved_objects_in_spaces": ("find_saved_objects", "list_spaces"),
+    "unshare_saved_objects_from_spaces": ("find_saved_objects", "list_spaces"),
     "create_package_policy": ("get_package",),
     "update_package_policy": ("get_package",),
     "upgrade_agent": ("list_agent_versions",),

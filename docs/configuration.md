@@ -38,14 +38,14 @@ edit one, edit both.
 it" (`read` ⊂ `write` ⊂ `destructive`):
 
 Every tool in every toolbox is tagged with its tier (across all 10 toolboxes:
-71 read, 62 write, 35 destructive):
+71 read, 64 write, 37 destructive):
 
-- `read` — read-only tools (71 of 168), e.g. `list_data_views`,
+- `read` — read-only tools (71 of 172), e.g. `list_data_views`,
   `describe_data_view`, `search_dashboards`, `get_dashboard`.
-- `write` (**default**) — read tools plus creates/updates (62), e.g.
+- `write` (**default**) — read tools plus creates/updates (64), e.g.
   `create_dashboard`, `create_visualization`, `add_panel`, `update_panel`.
   Destructive tools do not exist as far as the model can tell.
-- `destructive` — everything (35 more), including `delete_dashboard`,
+- `destructive` — everything (37 more), including `delete_dashboard`,
   `delete_panel`, and the other irreversible actions.
 
 At server assembly, tools above the configured tier are not merely

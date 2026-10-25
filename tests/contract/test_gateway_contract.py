@@ -2906,3 +2906,182 @@ async def test_find_and_get_saved_objects_live(gateway, tmp_path):
     assert "no tool reads" in refused["fleet-proxy"]
     assert elsewhere["total"] == 0 and "space" in elsewhere
     assert str(scoped_miss.value).endswith(f" (in space '{space_id}')")
+
+
+# --- saved objects between spaces (D49) -------------------------------------
+
+
+def _flights_dashboard_id(gateway):
+    page = gateway.find_saved_objects(["dashboard"], "Global", None, 1, 100)
+    (dash,) = [o for o in page.saved_objects if o.title == "[Flights] Global Flight Dashboard"]
+    return dash.id
+
+
+async def test_copy_and_overwrite_saved_objects_between_spaces_live(gateway):
+    # The flights dashboard copied with what it uses into a throwaway space as
+    # new objects; without its references it fails and nothing is written; a
+    # space that does not exist, the source space itself, a missing object and
+    # a type Kibana cannot copy are refused or reported with the fix. Then a
+    # throwaway data view is overwritten in place in that space: the copy's
+    # edit is replaced, and a repeat answers `overwritten`.
+    dash_id = _flights_dashboard_id(gateway)
+    with _raw_kibana() as raw:
+        output_id = raw.saved_objects.find(
+            type="ingest-outputs", fields=["name"]).body["saved_objects"][0]["id"]
+    ghost = f"mcp-for-kibana-ct-ghost-{uuid.uuid4().hex[:8]}"
+    view_id = f"mcp-for-kibana-ct-copy-{uuid.uuid4().hex[:8]}"
+    with _raw_kibana() as raw:
+        raw.data_views.create(data_view={"title": FLIGHTS, "name": "ct copy source", "id": view_id})
+    try:
+        with _temp_space(gateway, "mcp-for-kibana-ct-copy") as target:
+            async with Client(_platform_admin_tool_server()) as client:
+                copied = (await client.call_tool("copy_saved_objects_to_spaces", {
+                    "objects": [{"type": "dashboard", "id": dash_id}],
+                    "target_spaces": [target]})).data
+                bare = (await client.call_tool("copy_saved_objects_to_spaces", {
+                    "objects": [{"type": "dashboard", "id": dash_id}],
+                    "target_spaces": [target], "include_references": False})).data
+                refusals = {}
+                for name, args in {
+                    "ghost": {"objects": [{"type": "index-pattern", "id": view_id}],
+                              "target_spaces": [target, ghost]},
+                    "self": {"objects": [{"type": "index-pattern", "id": view_id}],
+                             "target_spaces": ["default"]},
+                    "missing": {"objects": [{"type": "index-pattern", "id": f"no-{ghost}"}],
+                                "target_spaces": [target]},
+                }.items():
+                    with pytest.raises(ToolError) as exc:
+                        await client.call_tool("copy_saved_objects_to_spaces", args)
+                    refusals[name] = str(exc.value)
+                uncopyable = (await client.call_tool("copy_saved_objects_to_spaces", {
+                    "objects": [{"type": "ingest-outputs", "id": output_id}],
+                    "target_spaces": [target]})).data
+                first = (await client.call_tool("overwrite_saved_objects_in_spaces", {
+                    "objects": [{"type": "index-pattern", "id": view_id}],
+                    "target_spaces": [target]})).data
+                (made,) = first["results"][0]["copied"]
+                with _raw_kibana(target) as raw:
+                    raw.data_views.update(
+                        view_id=made["destination_id"], data_view={"name": "edited in target"})
+                again = (await client.call_tool("overwrite_saved_objects_in_spaces", {
+                    "objects": [{"type": "index-pattern", "id": view_id}],
+                    "target_spaces": [target]})).data
+                with _raw_kibana(target) as raw:
+                    restored = raw.data_views.get(view_id=made["destination_id"]).body
+                    in_target = raw.saved_objects.find(
+                        type=["dashboard"], fields=["title"]).body
+            # Nothing reached the space that did not exist: one created with its
+            # id now holds no copy (Kibana would have written there, probed).
+            gateway.create_space(ghost, ghost, None, None, None, None, None)
+            try:
+                with _raw_kibana(ghost) as raw:
+                    leaked = raw.saved_objects.find(type=["index-pattern"]).body
+            finally:
+                gateway.delete_space(ghost, force=True)
+    finally:
+        with _raw_kibana() as raw, contextlib.suppress(kibana.NotFoundError):
+            raw.data_views.delete(view_id=view_id)
+    (result,) = copied["results"]
+    assert copied["include_references"] is True and "source_space" not in copied
+    assert result["space"] == target and result["success"] is True and result["failed"] == []
+    kinds = {c["type"] for c in result["copied"]}
+    assert {"dashboard", "index-pattern"} <= kinds
+    dash_copy = next(c for c in result["copied"] if c["type"] == "dashboard")
+    assert dash_copy["id"] == dash_id and dash_copy["destination_id"] != dash_id
+    assert dash_copy["title"] == "[Flights] Global Flight Dashboard"
+    assert dash_copy["overwritten"] is False
+    (bare_result,) = bare["results"]
+    assert bare_result["success"] is False and bare_result["copied"] == []
+    (missing_refs,) = bare_result["failed"]
+    assert missing_refs["error"] == "missing_references" and missing_refs["missing_references"]
+    assert "include_references=true" in missing_refs["fix"]
+    # one copy of the dashboard in the target: the failed copy wrote nothing
+    assert [o["id"] for o in in_target["saved_objects"]] == [dash_copy["destination_id"]]
+    assert f"space '{ghost}' not found" in refusals["ghost"] and "list_spaces" in refusals["ghost"]
+    assert "already in space 'default', the source space" in refusals["self"]
+    assert "find_saved_objects" in refusals["missing"] and f"no-{ghost}" in refusals["missing"]
+    assert leaked["total"] == 0
+    (failed,) = uncopyable["results"][0]["failed"]
+    assert failed["error"] == "unsupported_type" and "cannot copy this type" in failed["fix"]
+    assert made["overwritten"] is False and made["destination_id"] != view_id
+    (replaced,) = again["results"][0]["copied"]
+    assert replaced["overwritten"] is True
+    assert replaced["destination_id"] == made["destination_id"]
+    assert restored["data_view"]["name"] == "ct copy source"
+
+
+async def test_share_and_unshare_saved_objects_live(gateway):
+    # A throwaway data view in a throwaway source space: shared to the default
+    # space and a second throwaway space (the same id in each, a repeat adds
+    # nothing), an overwrite onto a space it is shared to leaves it unchanged,
+    # one-space types and missing spaces are refused before any change, a
+    # removal that removes nothing is refused, removing its last spaces is
+    # refused without force and deletes it with force.
+    dash_id = _flights_dashboard_id(gateway)
+    view_id = f"mcp-for-kibana-ct-share-{uuid.uuid4().hex[:8]}"
+    ghost = f"mcp-for-kibana-ct-ghost-{uuid.uuid4().hex[:8]}"
+    view = [{"type": "index-pattern", "id": view_id}]
+    with _temp_space(gateway, "mcp-for-kibana-ct-share-src") as source, \
+            _temp_space(gateway, "mcp-for-kibana-ct-share-dst") as other:
+        with _raw_kibana(source) as raw:
+            raw.data_views.create(data_view={"title": FLIGHTS, "name": "ct share", "id": view_id})
+        try:
+            async with Client(_platform_admin_tool_server()) as client:
+                shared = (await client.call_tool("share_saved_objects_to_spaces", {
+                    "objects": view, "spaces": ["default", other],
+                    "source_space": source})).data
+                repeat = (await client.call_tool("share_saved_objects_to_spaces", {
+                    "objects": view, "spaces": [other], "source_space": source})).data
+                with _raw_kibana(other) as raw:
+                    seen_there = raw.data_views.get(view_id=view_id).body["data_view"]
+                onto_shared = (await client.call_tool("overwrite_saved_objects_in_spaces", {
+                    "objects": view, "target_spaces": [other], "source_space": source})).data
+                refusals = {}
+                for name, (tool, args) in {
+                    "one_space": ("share_saved_objects_to_spaces", {
+                        "objects": [{"type": "dashboard", "id": dash_id}],
+                        "spaces": [other]}),
+                    "ghost": ("share_saved_objects_to_spaces", {
+                        "objects": view, "spaces": [ghost], "source_space": source}),
+                    "elsewhere": ("share_saved_objects_to_spaces", {
+                        "objects": [{"type": "index-pattern", "id": f"no-{view_id}"}],
+                        "spaces": [other], "source_space": source}),
+                    "nothing": ("unshare_saved_objects_from_spaces", {
+                        "objects": view, "spaces": [ghost], "source_space": source}),
+                }.items():
+                    with pytest.raises(ToolError) as exc:
+                        await client.call_tool(tool, args)
+                    refusals[name] = str(exc.value)
+                removed = (await client.call_tool("unshare_saved_objects_from_spaces", {
+                    "objects": view, "spaces": [source], "source_space": other})).data
+                with pytest.raises(ToolError) as last:
+                    await client.call_tool("unshare_saved_objects_from_spaces", {
+                        "objects": view, "spaces": ["default", other]})
+                with _raw_kibana() as raw:
+                    kept = raw.saved_objects.get(type="index-pattern", id=view_id).body
+                deleted = (await client.call_tool("unshare_saved_objects_from_spaces", {
+                    "objects": view, "spaces": ["default", other], "force": True})).data
+                with _raw_kibana(other) as raw, pytest.raises(kibana.NotFoundError):
+                    raw.saved_objects.get(type="index-pattern", id=view_id)
+        finally:
+            with _raw_kibana() as raw, contextlib.suppress(kibana.NotFoundError):
+                raw.data_views.delete(view_id=view_id)
+    (change,) = shared["objects"]
+    assert shared["source_space"] == source
+    assert set(change["spaces"]) == {source, "default", other}
+    assert set(change["added"]) == {"default", other} and change["removed"] == []
+    assert change["deleted"] is False and change["error"] is None
+    assert repeat["objects"][0]["added"] == []
+    assert seen_there["id"] == view_id  # the same object, not a copy
+    (onto,) = onto_shared["results"]
+    assert onto["copied"] == [] and onto["failed"] == [] and onto["unchanged"] == view
+    assert "keeps 'dashboard' objects in one space" in refusals["one_space"]
+    assert "copy_saved_objects_to_spaces" in refusals["one_space"]
+    assert f"space '{ghost}' not found" in refusals["ghost"]
+    assert "find_saved_objects" in refusals["elsewhere"]
+    assert "nothing to remove" in refusals["nothing"]
+    assert removed["objects"][0]["removed"] == [source]
+    assert set(removed["objects"][0]["spaces"]) == {"default", other}
+    assert "Kibana deletes an object left in no space" in str(last.value)
+    assert set(kept["namespaces"]) == {"default", other}
+    assert deleted["objects"][0]["deleted"] is True and deleted["objects"][0]["spaces"] == []
