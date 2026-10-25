@@ -55,7 +55,7 @@ Status: `[ ]` todo · `[~]` in progress · `[x]` committed + pushed (add sha).
 | # | Status | Findings | What | Size |
 |---|---|---|---|---|
 | H0 | [x] | (session infra) | `scripts/cloud-session-start.sh` also removes a stale `/run/docker/containerd/containerd.pid` (same stale-PID class it already handles for `/var/run/docker.pid`; dockerd failed to start on resume 2026-10-25 with "process with PID 218 is still running") | S |
-| H1 | [ ] | environment-2 | Fail-closed **stack-version check** before the seeded-stack criteria: Kibana version from `/api/status` (seed key) must equal the `ES_LOCAL_VERSION` pin (local) or the matrix version (CI); NO-GO names `scripts/stack.sh down && scripts/stack.sh up && scripts/stack.sh seed`; version printed on every seeded-stack GO line. Fix `WRAP_UP.md`'s "start the stack at 9.5.5" and say in docs that run records at 9.5.5 are outside the supported set | S |
+| H1 | [~] | environment-2 | Fail-closed **stack-version check** before the seeded-stack criteria: Kibana version from `/api/status` (seed key) must equal the `ES_LOCAL_VERSION` pin (local) or the matrix version (CI); NO-GO names `scripts/stack.sh down && scripts/stack.sh up && scripts/stack.sh seed`; version printed on every seeded-stack GO line. Fix `WRAP_UP.md`'s "start the stack at 9.5.5" and say in docs that run records at 9.5.5 are outside the supported set | S |
 | H2 | [ ] | integrity-1 | `changelog_entry` diff-based: changed paths since `git merge-base HEAD origin/main` (fallback: latest `v*` tag) outside an exemption list require an added line under `## [Unreleased]`; fail closed without `origin/main` naming `git fetch origin main`; same check as a `checks.yml` step on PRs. Fix the `dod.config` comment to match | S |
 | H3 | [ ] | integrity-2 | Verdict bound to a tree: content tree id (temporary index, `git add -A && git write-tree`) at start and end, HEAD and dirty flag in the header and VERDICT line, NO-GO if the tree changed mid-run, `$logdir/verdict.json` (sha, tree id, config sha256, criteria, Kibana version, Claude model, timestamps), `$logdir` cleared at start. AGENTS.md: how to check a GO claim (`git rev-parse HEAD^{tree}` == recorded tree id) | S |
 | H4 | [ ] | integrity-3 | Unset `PYTEST_ADDOPTS`/`PYTEST_PLUGINS`/`PYTEST_DEBUG` with `MAKEFLAGS`; parse collected/deselected and print `N passed / M collected`; NO-GO when shell `KIBANA_URL`/`KIBANA_TEST_API_KEY` differ from `.env.seed`. Also document what `KIBANA_MCP_DOD_CYCLE_STACK` does (stops the stack between halves, does not start or restart it) in AGENTS.md and the gate header — the verifier session tripped on it | S |
@@ -98,6 +98,40 @@ minor findings fixed too, a final report-only review): copy it to
 `Workflow({scriptPath: ".claude/workflows/dod-hardening-batch.js", args: {batch: "H<n>"}})`.
 One writer at a time on the branch. Re-run `make check` yourself before marking
 a batch `[x]`.
+
+## Child sessions (cloud env `mcp-for-kibana-authorized`)
+
+Owner-authorized (2026-10-24, restated 2026-10-25): each batch runs in a child
+session there, without permission prompts. `environment_id` =
+`env_01Q9Nd8PNwPhKgVNBAd468jM` (`create_session`, `source_url` = repo,
+`source_revision` = `outcome_branch` = `claude/ops-admin-tools`;
+`permission_mode` omitted so it inherits `auto` — never `plan`).
+
+- **One writer at a time**: the child owns its batch end to end (runs the batch
+  workflow or the same implement → review → fix loop, commits, pushes); the
+  parent does not push while a child is open. Never two batches in parallel.
+- **Parent stays small**: it launches, checks, reads verdict lines and commit
+  messages — not diffs — runs `make check` on the fetched head and marks the
+  batch `[x]` here and on the whiteboard.
+- A child that finishes cleanly does not report back: check it with
+  `get_session` (`status_bucket`) and `list_events` (kinds `assistant`,
+  `result`), then `git fetch origin claude/ops-admin-tools`.
+- A child that hits an owner decision stops and reports "blocked"; the parent
+  puts the question on the whiteboard and waits.
+- **Independent final check (H11)**: a fresh child on a clean clone of the
+  final head runs `scripts/stack.sh up && scripts/stack.sh seed`, then
+  `KIBANA_MCP_DOD_CYCLE_STACK=1 make dod` and `make test-e2e`, and reports the
+  verdict lines.
+
+## Resuming
+
+1. `git fetch origin claude/ops-admin-tools && git status -sb` — the branch
+   head and this table agree, or the table is fixed first.
+2. Check for an open child (`list_sessions`, title `DoD hardening H<n>`);
+   never start the next batch while one is working.
+3. Status and owner decisions live on the whiteboard: Claude Docs
+   "MCP-for-Kibana-live", tab "DoD hardening"
+   (https://claude.ai/artifact/7ibdLQpA5WSVuLwqx5cBSE). Read it before writing.
 
 ## Log
 
