@@ -259,6 +259,15 @@ version section.
   so an unreachable collector cannot hold the exit up, and a second SIGTERM
   ends the process at once. Only affects `KIBANA_MCP_OTEL_ENABLED=1`;
   decision D44.
+- **`make build` (and the DoD gate's `image_smoke`) works inside a
+  TLS-intercepting sandbox.** The image's `uv sync` failed there with
+  "invalid peer certificate: UnknownIssuer". `scripts/checks/image-build.sh`,
+  now the one build recipe, passes the proxy CA as a BuildKit secret and
+  builds on the host network only when that CA exists
+  (`KIBANA_MCP_PROXY_CA`, default `/root/.ccr/ca-bundle.crt`, as
+  `scripts/stack.sh` decides); the Dockerfile's sync step reads it from
+  `/run/secrets` and no image layer keeps it. Elsewhere the build is
+  unchanged.
 
 ### Security
 

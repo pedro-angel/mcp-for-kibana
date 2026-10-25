@@ -119,7 +119,7 @@ if req image_smoke; then
   # gate self-contained and the MAKEFLAGS clearing above meaningful). Needs docker
   # but no claimed stack (.env.seed), so it runs before the live-stack suites.
   # Not a pytest suite -> plain `run` (exit-code), not run_suite.
-  run image_smoke sh -c 'docker build -f docker/Dockerfile -t mcp-for-kibana:dev . && scripts/checks/image-smoke.sh mcp-for-kibana:dev'
+  run image_smoke sh -c 'scripts/checks/image-build.sh mcp-for-kibana:dev && scripts/checks/image-smoke.sh mcp-for-kibana:dev'
 fi
 
 if req contract_green; then

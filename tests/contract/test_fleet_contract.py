@@ -505,9 +505,7 @@ def test_uninstall_elastic_agent_refused_while_monitoring_live(gateway):
     # package policies, so force never reaches Kibana.
     from kibana import NotFoundError
 
-    if _space_awareness_on(gateway):
-        pytest.skip("Fleet space awareness is on: the uninstall is refused before this guard "
-                    "(test_uninstall_refused_for_a_space_the_key_cannot_list_live)")
+    aware = _space_awareness_on(gateway)
 
     def views():
         found = set()
@@ -527,6 +525,16 @@ def test_uninstall_elastic_agent_refused_while_monitoring_live(gateway):
             # outlasts the client's 10 s timeout (probed): install it first.
             gateway._client.options(request_timeout=120).fleet_epm.install_package(
                 pkg_name="elastic_agent")
+        if aware:
+            # Under Fleet space awareness the uninstall is refused before the
+            # monitoring guard (D51), force included, and nothing is sent; the
+            # monitoring guard itself runs where awareness is off.
+            with pytest.raises(KibanaRejected, match=(
+                    r"^refusing to uninstall integration package 'elastic_agent': Fleet space "
+                    r"awareness is on, .*regardless of force; nothing was changed")):
+                gateway.uninstall_package(name="elastic_agent", force=True)
+            assert _package_status(gateway, "elastic_agent") == "installed"
+            return
         pol = gateway.create_agent_policy(
             name=f"mcp-d51-mon-{uuid.uuid4().hex[:8]}", namespace="default",
             monitoring_enabled=["logs", "metrics"])
