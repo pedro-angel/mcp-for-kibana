@@ -116,15 +116,6 @@ def test_a_local_override_equal_to_the_target_is_not_named():
     assert message is not None and "unset" not in message and _FIX in message
 
 
-def test_shell_credentials_are_named_in_the_fix():
-    # Re-provisioning the dev stack never clears a NO-GO caused by a shell
-    # KIBANA_URL pointing at another stack, so the fix names the variables.
-    env = {"KIBANA_URL": "http://localhost:25601", "KIBANA_TEST_API_KEY": "k"}
-    message = sv.mismatch("9.5.5", "9.5.4", "the pin", env)
-    assert message is not None
-    assert "unset KIBANA_URL KIBANA_TEST_API_KEY" in message and _FIX in message
-
-
 def test_in_ci_the_fix_does_not_tell_the_runner_to_unset_the_matrix_version():
     env = {"GITHUB_ACTIONS": "true", "ES_LOCAL_VERSION": "9.4.7"}
     message = sv.mismatch("9.5.4", "9.4.7", "the matrix", env)
@@ -188,12 +179,6 @@ def test_an_unauthenticated_status_names_the_key_and_the_seed_command(kibana):
     assert "scripts/stack.sh seed" in str(exc.value) and "s3cr3t-key" not in str(exc.value)
 
 
-def test_an_unreachable_shell_url_names_the_shell_variable():
-    with pytest.raises(sv.StackVersionError) as exc:
-        sv.running_version("http://127.0.0.1:9", "k", ("KIBANA_URL",))
-    assert "unset KIBANA_URL" in str(exc.value)
-
-
 def test_check_passes_on_the_pinned_stack_and_returns_the_version(tmp_path, kibana):
     _Status.version = "9.5.4"
     root = _write_stack(tmp_path, seed=f"KIBANA_URL={kibana}\nKIBANA_TEST_API_KEY=k\n")
@@ -208,14 +193,56 @@ def test_check_refuses_an_off_pin_stack(tmp_path, kibana):
     assert "9.5.5" in str(exc.value) and _FIX in str(exc.value)
 
 
-def test_check_uses_the_shell_credentials_the_suites_use(tmp_path, kibana):
-    # Shell env wins for the suites (tests/_stack_env.py), so the check reads
-    # the Kibana the suites will actually hit.
+# --- shell credentials (D56) ---------------------------------------------------
+# Shell env wins over .env.seed for the suites (tests/_stack_env.py), so a shell
+# KIBANA_URL or KIBANA_TEST_API_KEY aimed the gate's mutating suites at another
+# Kibana with only a warning in a log. The gate certifies the seeded local
+# stack: a shell value that differs from the seed is refused before any call.
+
+_UNSET = "unset KIBANA_URL KIBANA_TEST_API_KEY"
+
+
+def test_check_refuses_a_shell_url_that_differs_from_the_seed(tmp_path, kibana):
     _Status.version = "9.5.4"
-    root = _write_stack(tmp_path, seed="KIBANA_URL=http://127.0.0.1:9\nKIBANA_TEST_API_KEY=seed\n")
-    env = {"KIBANA_URL": kibana, "KIBANA_TEST_API_KEY": "shell"}
+    root = _write_stack(tmp_path, seed=f"KIBANA_URL={kibana}\nKIBANA_TEST_API_KEY=seed\n")
+    env = {"KIBANA_URL": "http://other-kibana:5601", "KIBANA_TEST_API_KEY": "seed"}
+    with pytest.raises(sv.StackVersionError) as exc:
+        sv.check(root, env, _SUPPORTED)
+    message = str(exc.value)
+    assert "KIBANA_URL" in message and ".env.seed" in message and _UNSET in message
+    assert "seeded local stack" in message
+    assert _Status.seen_auth == [], "the refusal comes before any call to a Kibana"
+
+
+def test_check_refuses_a_shell_key_that_differs_and_never_prints_it(tmp_path, kibana):
+    root = _write_stack(tmp_path, seed=f"KIBANA_URL={kibana}\nKIBANA_TEST_API_KEY=seed-key\n")
+    env = {"KIBANA_TEST_API_KEY": "s3cr3t-shell-key"}
+    with pytest.raises(sv.StackVersionError) as exc:
+        sv.check(root, env, _SUPPORTED)
+    message = str(exc.value)
+    assert "KIBANA_TEST_API_KEY" in message and _UNSET in message
+    assert "s3cr3t-shell-key" not in message and "seed-key" not in message
+
+
+def test_check_refuses_an_empty_shell_value_that_shadows_the_seed(tmp_path, kibana):
+    root = _write_stack(tmp_path, seed=f"KIBANA_URL={kibana}\nKIBANA_TEST_API_KEY=k\n")
+    with pytest.raises(sv.StackVersionError, match=r"KIBANA_URL.*unset KIBANA_URL"):
+        sv.check(root, {"KIBANA_URL": ""}, _SUPPORTED)
+
+
+def test_check_accepts_shell_credentials_equal_to_the_seed(tmp_path, kibana):
+    _Status.version = "9.5.4"
+    root = _write_stack(tmp_path, seed=f"KIBANA_URL={kibana}\nKIBANA_TEST_API_KEY=k\n")
+    env = {"KIBANA_URL": kibana, "KIBANA_TEST_API_KEY": "k"}
     assert sv.check(root, env, _SUPPORTED) == "9.5.4"
-    assert _Status.seen_auth == ["ApiKey shell"]
+    assert _Status.seen_auth == ["ApiKey k"]
+
+
+def test_main_prints_the_shell_refusal_on_one_line(tmp_path, kibana, capsys):
+    root = _write_stack(tmp_path, seed=f"KIBANA_URL={kibana}\nKIBANA_TEST_API_KEY=k\n")
+    assert sv.main(root=root, environ={"KIBANA_URL": "http://x:1"}, supported=_SUPPORTED) == 1
+    out = capsys.readouterr().out.strip()
+    assert "\n" not in out and _UNSET in out
 
 
 def test_check_without_a_seed_names_the_seed_command(tmp_path):

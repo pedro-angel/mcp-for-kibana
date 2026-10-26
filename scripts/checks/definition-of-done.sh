@@ -22,10 +22,19 @@
 # One-shot GO on a machine with the dev stack up:
 #   scripts/stack.sh up && scripts/stack.sh seed
 #   KIBANA_MCP_DOD_CYCLE_STACK=1 make dod
-# The flag lets the gate stop the dev stack between the suites that need it and
+# The flag lets the gate STOP the dev stack between the suites that need it and
 # the ephemeral tiers that need it gone (see the block above streams_ephemeral).
-# Without it the run is honest but two-pass: fleet_ephemeral NO-GOs while the dev
-# stack is up.
+# It never starts or restarts the stack: start and seed it before the run, and
+# after the run it stays stopped (bring it back with scripts/stack.sh up &&
+# scripts/stack.sh seed). Without the flag the run is honest but two-pass:
+# fleet_ephemeral NO-GOs while the dev stack is up.
+#
+# The suites run as declared (D56): the gate clears the variables that change
+# what pytest selects, loads or enforces (PYTEST_ADDOPTS, PYTEST_PLUGINS,
+# PYTEST_DEBUG, PYTEST_DISABLE_PLUGIN_AUTOLOAD, COVERAGE_RCFILE) and names them,
+# every suite line shows `N passed / M collected`, and a shell KIBANA_URL or
+# KIBANA_TEST_API_KEY that differs from elastic-start-local/.env.seed is NO-GO
+# on the seeded-stack criteria.
 #
 # Portable POSIX sh; zero deps beyond the project's own tooling (uv).
 # Concept adapted from cmanaha/extended-superpowers (MIT).
@@ -36,7 +45,15 @@ set -u
 # gate to a false GO. This repo's criteria call `uv`/`pytest` directly, so this
 # is defense-in-depth (only the outer `make dod` wrapper leaks) — cleared so the
 # gate always runs in a clean environment, matching the sibling kibana-py gate.
-unset MAKEFLAGS MFLAGS
+# The pytest and coverage variables reshape the suites themselves (D56): a
+# leftover PYTEST_ADDOPTS='-k ... --no-cov' ran three unit tests with no
+# coverage floor and read GO, and COVERAGE_RCFILE swaps the floor's config. The
+# header names the ones that were set, so the clearing is visible.
+suite_env="PYTEST_ADDOPTS PYTEST_PLUGINS PYTEST_DEBUG PYTEST_DISABLE_PLUGIN_AUTOLOAD COVERAGE_RCFILE"
+cleared=
+for v in $suite_env; do printenv "$v" >/dev/null 2>&1 && cleared="$cleared $v"; done
+# shellcheck disable=SC2086  # word-splitting the list is the point
+unset MAKEFLAGS MFLAGS $suite_env
 
 cd "$(git rev-parse --show-toplevel)" || exit 2
 cfg="${1:-dod.config}"
@@ -154,7 +171,10 @@ run() {
 # Suite criteria (unit/contract/e2e) invoke pytest directly, so exit 0 is not
 # enough: a fully-skipped or empty suite also exits 0 and would read a false GO.
 # Assert passed>=1 AND skipped=0 from the pytest summary so a green-but-empty or
-# all-skipped run reads NO-GO. contract/e2e only reach here past the seeded-stack
+# all-skipped run reads NO-GO. Every line shows `N passed / M collected` (M sums
+# every outcome, deselected included; D56), so a suite shrunk by a `-k` or a
+# marker reads as such: the default addopts deselect the live tiers from
+# unit_green, so deselected tests are shown, not refused. contract/e2e only reach here past the seeded-stack
 # guard (seeded_stack below), so a skip there means a claimed stack never
 # exercised the suite. (No kibana-py analog — its suites hide behind `make test`
 # and check exit code only.)
@@ -165,14 +185,19 @@ run_suite() {
   if ! "$@" >"$out" 2>&1; then
     echo "  NO-GO $name  (log: $out)"; record "$name" NO-GO; nogo=1; return
   fi
-  summary=$(grep -E '[0-9]+ (passed|skipped|failed|error)|no tests ran' "$out" | tail -1)
+  summary=$(grep -E '[0-9]+ (passed|skipped|failed|errors?|deselected|xfailed|xpassed)|no tests ran' "$out" | tail -1)
   passed=$(printf '%s\n' "$summary" | grep -oE '[0-9]+ passed'  | grep -oE '^[0-9]+')
   skipped=$(printf '%s\n' "$summary" | grep -oE '[0-9]+ skipped' | grep -oE '^[0-9]+')
   : "${passed:=0}" "${skipped:=0}"
+  collected=0
+  for n in $(printf '%s\n' "$summary" | grep -oE '[0-9]+ (passed|failed|skipped|deselected|xfailed|xpassed|errors?)' | grep -oE '^[0-9]+'); do
+    collected=$((collected + n))
+  done
+  counts="$passed passed / $collected collected"
   if [ "$passed" -ge 1 ] && [ "$skipped" -eq 0 ]; then
-    echo "  GO    $name${suite_note:+  ($suite_note)}"; record "$name" GO
+    echo "  GO    $name  ($counts${suite_note:+; $suite_note})"; record "$name" GO
   else
-    echo "  NO-GO $name  (passed=$passed skipped=$skipped: empty or all-skipped suite reads NO-GO; log: $out)"
+    echo "  NO-GO $name  (passed=$passed skipped=$skipped, $collected collected: empty or all-skipped suite reads NO-GO; log: $out)"
     record "$name" NO-GO; nogo=1
   fi
 }
@@ -207,6 +232,7 @@ stack_nogo() { echo "  NO-GO $1  ($stack_reason)"; record "$1" NO-GO; nogo=1; }
 
 echo "Definition-of-Done gate ($cfg)"
 echo "  at HEAD $head, tree $tree ($state)"
+[ -n "$cleared" ] && echo "  note: cleared$cleared from the environment — the gate runs each suite as declared (D56)"
 
 if req unit_green;       then run_suite unit_green uv run pytest -q --cov=kibana_mcp --cov-report=term-missing; fi
 if req ruff_clean;       then run ruff_clean       uv run ruff check; fi

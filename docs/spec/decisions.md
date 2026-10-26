@@ -1416,7 +1416,8 @@ this ledger stands without them.
   `wheel_replay_green`, `e2e_green`), inside them rather than as a criterion of
   its own, so no config can declare it away. `tests/_stack_version.py` reads
   `version.number` from `/api/status` with the credentials the suites use
-  (shell env, else `elastic-start-local/.env.seed`) and requires the
+  (shell env, else `elastic-start-local/.env.seed`; since D56 a shell value
+  that differs from the seed is refused, so it reads the seed's) and requires the
   `ES_LOCAL_VERSION` pin in `elastic-start-local/.env.example` — the newest
   version kibana-py supports (D30, `tests/unit/test_stack_pin.py`) — or, in CI
   (`GITHUB_ACTIONS=true`), the matrix's `ES_LOCAL_VERSION`, which must be in
@@ -1521,6 +1522,47 @@ this ledger stands without them.
   tree_stable (the tree changed during the run: ... — commit or stash your
   edits ...)` (the H3 commit message has the lines); on the real tree GO with
   the tree id. `tests/unit/test_dod_verdict.py` runs the gate on fixtures.
+- **D56 (2026-10-26)** — The DoD suites run as declared, and their lines show
+  how much ran. (a) The gate clears `PYTEST_ADDOPTS`, `PYTEST_PLUGINS`,
+  `PYTEST_DEBUG`, `PYTEST_DISABLE_PLUGIN_AUTOLOAD` and `COVERAGE_RCFILE` with
+  `MAKEFLAGS`/`MFLAGS` before any criterion, and its header names the ones that
+  were set (`note: cleared PYTEST_ADDOPTS ...`). Cleared, not refused: the
+  gate's own command lines and `pyproject.toml` (committed, in the tree id)
+  declare what runs, so a stale export is not an error to fix first.
+  `COVERAGE_RCFILE` is on the list because it replaces the config pytest-cov
+  reads `fail_under = 90` from (measured: with an rc file that sets
+  `fail_under = 0`, `pytest --cov` over three tests no longer fails the floor).
+  (b) `run_suite` parses every outcome of the pytest summary and prints `N
+  passed / M collected` on the GO and NO-GO lines (M = passed + failed +
+  skipped + deselected + xfailed + xpassed + errors), before the Kibana
+  version on the seeded-stack lines (`GO    contract_green  (N passed / M
+  collected; Kibana 9.5.4)`). Deselected tests are shown, not refused: the
+  default addopts deselect the live tiers from `unit_green`, and each live tier
+  deselects the units. (c) `tests/_stack_version.py`, the seeded-stack
+  precondition (D53), refuses a shell `KIBANA_URL` or `KIBANA_TEST_API_KEY`
+  that differs from `elastic-start-local/.env.seed` (an empty one included)
+  before any HTTP call, naming the variables (never their values) and `unset
+  KIBANA_URL KIBANA_TEST_API_KEY`: the gate certifies the seeded local stack.
+  Outside the gate the suites keep shell-wins precedence with a warning
+  (`tests/_stack_env.py`), so `make test-contract` against another stack still
+  works; the refusal is the gate's. This supersedes D53's "credentials the
+  suites use (shell env, else .env.seed)" and its `unset KIBANA_URL ...`
+  prefix on a version mismatch, which the refusal makes unreachable. (d) The
+  gate header and AGENTS.md say that `KIBANA_MCP_DOD_CYCLE_STACK=1` only stops
+  the dev stack between the halves, never starts or restarts it, and leaves it
+  stopped (integrity-6 of the 2026-10-25 review, dropped as a gate gap, tripped
+  the review's verifier). Why: the gate cleared only `MAKEFLAGS`, counted only
+  `passed` and `skipped`, and the suites let shell credentials win with a
+  `warnings.warn` in a `-q` log, so a shell export could shrink every suite,
+  drop the coverage floor, or aim the mutating suites at another Kibana, and
+  still read `VERDICT: GO`. Evidence (2026-10-26, dev stack on 9.5.4): with
+  `PYTEST_ADDOPTS='-k test_stack_pin --no-cov'` the old gate printed `GO
+  unit_green` over `3 passed, 2261 deselected` and the new one runs the whole
+  suite and prints its counts; with `KIBANA_URL=http://127.0.0.1:15601` (the
+  seed says `localhost`) the old gate printed `GO e2e_replay_green (Kibana
+  9.5.4)` and the new one NO-GO naming the unset (the H4 commit message has
+  the lines). `tests/unit/test_dod_suite_env.py` runs the gate on fixtures;
+  `tests/unit/test_stack_version.py` covers the refusal.
 
 ## Scope and licensing (probed on Basic)
 

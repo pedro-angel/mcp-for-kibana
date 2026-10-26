@@ -288,6 +288,19 @@ version section.
   its sha256, every criterion's result, Kibana version, Claude model,
   timestamps). A "GO at `<sha>`" claim is checked with `git rev-parse
   <sha>^{tree}` against the recorded tree id (AGENTS.md).
+- **The DoD suites run as declared** (D56). The gate now clears
+  `PYTEST_ADDOPTS`, `PYTEST_PLUGINS`, `PYTEST_DEBUG`,
+  `PYTEST_DISABLE_PLUGIN_AUTOLOAD` and `COVERAGE_RCFILE` along with `MAKEFLAGS`
+  and names the ones it cleared in its header; before, a leftover
+  `PYTEST_ADDOPTS='-k test_stack_pin --no-cov'` ran 3 unit tests with no
+  coverage floor and read `GO unit_green`. Every suite line shows `N passed /
+  M collected` (deselected tests counted in M). A shell `KIBANA_URL` or
+  `KIBANA_TEST_API_KEY` that differs from `elastic-start-local/.env.seed` is
+  now NO-GO on the seeded-stack criteria naming `unset KIBANA_URL
+  KIBANA_TEST_API_KEY`; before, the suites certified (and mutated) whatever
+  Kibana the shell pointed at, with only a warning in a log. AGENTS.md and the
+  gate header now say that `KIBANA_MCP_DOD_CYCLE_STACK=1` only stops the dev
+  stack between the halves, never starts or restarts it, and leaves it stopped.
 
 ### Fixed
 

@@ -15,10 +15,12 @@ certifies:
   be in `kibana.SUPPORTED_VERSIONS`.
 
 On a match it prints the version (one line, for the criteria's GO lines) and
-exits 0; otherwise it prints one line naming the fix and exits 1. Credentials
-resolve as the suites resolve them (tests/_stack_env.py: shell env wins over
-.env.seed), so the check reads the Kibana the suites will hit. A loader-parsed
-helper, never a test module.
+exits 0; otherwise it prints one line naming the fix and exits 1. The gate
+certifies the seeded local stack (D56): the suites let shell env win over
+.env.seed (tests/_stack_env.py), so a shell KIBANA_URL or KIBANA_TEST_API_KEY
+that differs from the seed (an empty one included) is refused before any call,
+naming `unset KIBANA_URL KIBANA_TEST_API_KEY`. A loader-parsed helper, never a
+test module.
 """
 
 import os
@@ -85,37 +87,43 @@ def expected_version(
     return pin, f"the {_PIN_FILE} pin; D30: the newest supported version"
 
 
-def _shell_overrides(environ: Mapping[str, str]) -> tuple[str, ...]:
-    """Credentials the shell sets: they win over .env.seed (tests/_stack_env.py)."""
-    return tuple(key for key in ("KIBANA_URL", "KIBANA_TEST_API_KEY") if environ.get(key))
+_CREDS = ("KIBANA_URL", "KIBANA_TEST_API_KEY")
 
 
-def _unset_first(names: Iterable[str], fix: str) -> str:
-    names = tuple(names)
-    return f"unset {' '.join(names)} (your shell overrides {_SEED}), then {fix}" if names else fix
+def shell_divergence(environ: Mapping[str, str], seed: Mapping[str, str]) -> str | None:
+    """None when no credential in the shell differs from .env.seed, else the refusal.
+
+    The suites let shell env win (tests/_stack_env.py), so a differing value
+    would aim the gate's mutating suites at another Kibana. Values are never
+    printed: one of them is a key.
+    """
+    differ = [k for k in _CREDS if k in environ and environ[k] != seed.get(k, "")]
+    if not differ:
+        return None
+    return (
+        f"the shell sets {' and '.join(differ)} to a value that differs from {_SEED}, "
+        "and the suites would use it — the gate certifies the seeded local stack: "
+        f"unset {' '.join(_CREDS)}, then re-run make dod"
+    )
 
 
 def mismatch(actual: str, expected: str, source: str, environ: Mapping[str, str]) -> str | None:
     """None when the running stack is the certified line, else the refusal text."""
     if actual == expected:
         return None
-    unset = list(_shell_overrides(environ))
     override = environ.get("ES_LOCAL_VERSION", "").strip()
     if override and override != expected and not _in_ci(environ):
-        unset.append("ES_LOCAL_VERSION")
-    fix = _unset_first(unset, REPROVISION)
+        fix = f"unset ES_LOCAL_VERSION, then {REPROVISION}"
+    else:
+        fix = REPROVISION
     return (
         f"the seeded stack runs Kibana {actual}, but the gate certifies {expected} "
         f"({source}) — re-provision it: {fix}"
     )
 
 
-def running_version(url: str, api_key: str, shell: Iterable[str] = ()) -> str:
-    """The `version.number` Kibana's /api/status reports, read with this key.
-
-    `shell` names the credentials taken from the shell, so a refusal says to
-    unset them: re-provisioning the dev stack never fixes a shell override.
-    """
+def running_version(url: str, api_key: str) -> str:
+    """The `version.number` Kibana's /api/status reports, read with this key."""
     import kibana
 
     try:
@@ -123,7 +131,7 @@ def running_version(url: str, api_key: str, shell: Iterable[str] = ()) -> str:
     except Exception as e:  # any transport or auth failure is a NO-GO naming the fix
         raise StackVersionError(
             f"cannot read Kibana's version from {url}/api/status ({type(e).__name__}: {e}) "
-            f"— start and seed the stack: {_unset_first(shell, START)}"
+            f"— start and seed the stack: {START}"
         ) from e
     number = (body.get("version") or {}).get("number") if isinstance(body, dict) else None
     if not number:
@@ -132,7 +140,7 @@ def running_version(url: str, api_key: str, shell: Iterable[str] = ()) -> str:
         raise StackVersionError(
             f"{url}/api/status reported no version.number — the key is invalid or "
             f"revoked (Kibana hides the version from unauthenticated callers): "
-            f"{_unset_first(shell, 'scripts/stack.sh seed')}"
+            "scripts/stack.sh seed"
         )
     return str(number)
 
@@ -143,16 +151,14 @@ def check(root: Path, environ: Mapping[str, str], supported: Iterable[str]) -> s
     seed = _stack_env._parse(root / _SEED)
     if seed is None:
         raise StackVersionError(f"no {_SEED} — run: {START}")
-    creds = {}
-    for key in ("KIBANA_URL", "KIBANA_TEST_API_KEY"):
-        value = environ.get(key) or seed.get(key, "")
-        if not value:
+    for key in _CREDS:
+        if not seed.get(key):
             raise StackVersionError(f"{key} is empty or missing in {_SEED} — re-run: scripts/stack.sh seed")
-        creds[key] = value
+    refusal = shell_divergence(environ, seed)
+    if refusal:
+        raise StackVersionError(refusal)
     expected, source = expected_version(environ, pinned_version(root), supported)
-    actual = running_version(
-        creds["KIBANA_URL"].rstrip("/"), creds["KIBANA_TEST_API_KEY"], _shell_overrides(environ)
-    )
+    actual = running_version(seed["KIBANA_URL"].rstrip("/"), seed["KIBANA_TEST_API_KEY"])
     refusal = mismatch(actual, expected, source, environ)
     if refusal:
         raise StackVersionError(refusal)
