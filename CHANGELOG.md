@@ -275,7 +275,8 @@ version section.
 - **The DoD verdict is bound to a tree** (D55). The gate's header and its
   `VERDICT:` line now name HEAD, the content tree id of the working tree
   (uncommitted and untracked files included, computed in a temporary index so
-  the real one is untouched) and `clean` or `dirty`. A tree that changed while
+  the real one is untouched; racily clean edits and files marked
+  skip-worktree or assume-unchanged included) and `clean` or `dirty`. A tree that changed while
   the criteria ran — an edit saved mid-gate, a `hygiene_hooks` fixer rewriting
   a file — is NO-GO `tree_stable`, naming the fix; before, the gate printed one
   GO over criteria that had certified two trees. `/tmp/dod-<repo>/` is cleared

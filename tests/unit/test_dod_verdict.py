@@ -14,6 +14,7 @@ except `changelog_entry`, served by a stub script the tests control.
 
 import hashlib
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -165,6 +166,53 @@ def test_an_ignored_file_does_not_change_the_tree(repo):
     (repo / "ignored").mkdir()
     (repo / "ignored" / "x.txt").write_text("scratch\n")
     assert _gate(repo).returncode == 0
+    assert _verdict_json(repo)["dirty"] is False
+
+
+def test_a_racily_clean_edit_is_in_the_tree(repo):
+    # A same-size edit whose mtime equals the index file's own mtime is only
+    # caught by git's racy-clean check, which compares against the index
+    # file's mtime: a copy with a fresh mtime would hide it (review of H3).
+    _git(repo, "config", "core.trustctime", "false")
+    app, index = repo / "app.py", repo / ".git" / "index"
+    t0 = (1_700_000_000, 1_700_000_000)
+    os.utime(app, t0)
+    _git(repo, "update-index", "--refresh")  # entry records t0, not smudged
+    app.write_text("x = 2\n")  # same size as "x = 1\n"
+    os.utime(app, t0)
+    os.utime(index, t0)  # the index file is as old as the entry: racily clean
+    # GIT_OPTIONAL_LOCKS=0: a plain status would rewrite the index and smudge the entry.
+    env = {**os.environ, "GIT_OPTIONAL_LOCKS": "0"}
+    assert _git(repo, "status", "--porcelain", env=env) == "M app.py"
+    res = _gate(repo)
+    assert res.returncode == 0, res.stdout
+    v = _verdict_json(repo)
+    assert v["dirty"] is True, res.stdout
+    assert v["tree"] != _git(repo, "rev-parse", "HEAD^{tree}")
+
+
+@pytest.mark.parametrize("flag", ["--skip-worktree", "--assume-unchanged"])
+def test_an_edit_to_a_file_git_is_told_to_ignore_is_in_the_tree(repo, flag):
+    # `git add -A` never rehashes an entry with either bit, so the gate clears
+    # them in its temporary index (review of H3); the real index keeps them.
+    _git(repo, "update-index", flag, "app.py")
+    assert _gate(repo).returncode == 0
+    assert _verdict_json(repo)["dirty"] is False
+    (repo / "app.py").write_text("x = 'edited'\n")
+    res = _gate(repo)
+    assert res.returncode == 0, res.stdout
+    v = _verdict_json(repo)
+    assert v["dirty"] is True, res.stdout
+    tag = _git(repo, "ls-files", "-v", "app.py")[0]
+    assert tag == ("S" if flag == "--skip-worktree" else "h")
+
+
+def test_an_absent_skip_worktree_file_is_not_recorded_as_deleted(repo):
+    # Sparse checkout: a skip-worktree entry with no file on disk is not a change.
+    _git(repo, "update-index", "--skip-worktree", "app.py")
+    (repo / "app.py").unlink()
+    res = _gate(repo)
+    assert res.returncode == 0, res.stdout
     assert _verdict_json(repo)["dirty"] is False
 
 

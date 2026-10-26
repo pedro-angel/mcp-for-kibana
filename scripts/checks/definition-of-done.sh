@@ -78,10 +78,32 @@ record() { printf '%s\t%s\n' "$1" "$2" >>"$results"; }
 # — tracked edits and untracked, non-ignored files included — built in a
 # temporary copy of the index, so the real index is never touched. Equal to
 # `git rev-parse HEAD^{tree}` exactly when the tree is clean.
+# `cp -p` keeps the index file's mtime: a fresh one would hide racily clean
+# entries (a same-size edit in the second of the last index write) from git's
+# racy-clean check, and `git add -A` would skip them. The copy then drops the
+# assume-unchanged and skip-worktree bits of every entry whose file is present,
+# since `git add -A` never rehashes an entry carrying either; an absent
+# skip-worktree entry (sparse checkout) keeps its bit, so it is not recorded
+# as deleted.
 content_tree() {
   _idx=$(mktemp "${TMPDIR:-/tmp}/dod-index.XXXXXX") || return 1
   _real=$(git rev-parse --git-path index) || { rm -f "$_idx"; return 1; }
-  if [ -f "$_real" ]; then cp "$_real" "$_idx" || { rm -f "$_idx"; return 1; }; else rm -f "$_idx"; fi
+  if [ -f "$_real" ]; then cp -p "$_real" "$_idx" || { rm -f "$_idx"; return 1; }; else rm -f "$_idx"; fi
+  _all=$(GIT_INDEX_FILE="$_idx" git -c core.quotepath=off ls-files -v 2>/dev/null) || { rm -f "$_idx"; return 1; }
+  _flagged=$(printf '%s\n' "$_all" | while IFS= read -r _l; do
+    case "$_l" in
+      [hmrcksS]' '*) _p=${_l#??}
+        # A C-quoted path (quote, backslash or control character) goes through
+        # as is: update-index --stdin unquotes it.
+        case "$_p" in '"'*) printf '%s\n' "$_p" ;; *) if [ -e "$_p" ] || [ -L "$_p" ]; then printf '%s\n' "$_p"; fi ;; esac ;;
+    esac
+  done)
+  # One update-index call per bit: with --stdin only the last such option applies.
+  if [ -n "$_flagged" ]; then
+    printf '%s\n' "$_flagged" | GIT_INDEX_FILE="$_idx" git update-index --no-assume-unchanged --stdin >/dev/null 2>&1 \
+      && printf '%s\n' "$_flagged" | GIT_INDEX_FILE="$_idx" git update-index --no-skip-worktree --stdin >/dev/null 2>&1 \
+      || { rm -f "$_idx"; return 1; }
+  fi
   GIT_INDEX_FILE="$_idx" git add -A >/dev/null 2>&1 && GIT_INDEX_FILE="$_idx" git write-tree
   _rc=$?
   rm -f "$_idx"

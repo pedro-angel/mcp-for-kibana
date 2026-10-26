@@ -1477,7 +1477,12 @@ this ledger stands without them.
   end the gate computes the content tree id of the working tree: a copy of the
   index in a temporary file, `git add -A`, `git write-tree` (tracked edits and
   untracked, non-ignored files included; the real index is never touched;
-  under a second on this repo). The header line and the `VERDICT:` line name
+  under a second on this repo). The copy keeps the index file's mtime (`cp
+  -p`), so git's racy-clean check still rehashes a same-size edit made in the
+  second of the last index write, and it drops the assume-unchanged and
+  skip-worktree bits of every entry whose file is present, since `git add -A`
+  never rehashes an entry carrying either (an absent skip-worktree entry, as
+  in a sparse checkout, keeps its bit and is not recorded as deleted). The header line and the `VERDICT:` line name
   HEAD, that tree id and `clean` (tree id equals `HEAD^{tree}`) or `dirty`. If
   the id at end differs from the one at start the gate prints `NO-GO
   tree_stable` naming both ids and the fix (commit or stash, leave the tree

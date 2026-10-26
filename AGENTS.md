@@ -51,9 +51,10 @@ test-contract` — is NO-GO on each of them, naming
 GO line names the version it certified.
 
 A GO is bound to a tree (D55). The gate's header and VERDICT line name HEAD,
-the content tree id — uncommitted and untracked files included, built in a
-temporary index — and `clean` or `dirty`; a tree that changed during the run
-(an edit saved mid-gate, a `hygiene_hooks` fixer) is NO-GO `tree_stable`. The
+the content tree id — uncommitted and untracked files included (also files
+marked skip-worktree or assume-unchanged), built in a temporary index — and
+`clean` or `dirty`; a tree that changed during the run (an edit saved
+mid-gate, a `hygiene_hooks` fixer) is NO-GO `tree_stable`. The
 log dir `/tmp/dod-<repo>/` is cleared at start and ends with `verdict.json`
 (HEAD, tree id, dirty, config and its sha256, every criterion's result, Kibana
 version, Claude model, timestamps). To check a claim "GO at `<sha>`": `git
