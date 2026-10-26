@@ -1479,10 +1479,12 @@ this ledger stands without them.
   untracked, non-ignored files included; the real index is never touched;
   under a second on this repo). The copy keeps the index file's mtime (`cp
   -p`), so git's racy-clean check still rehashes a same-size edit made in the
-  second of the last index write, and it drops the assume-unchanged and
-  skip-worktree bits of every entry whose file is present, since `git add -A`
-  never rehashes an entry carrying either (an absent skip-worktree entry, as
-  in a sparse checkout, keeps its bit and is not recorded as deleted). The header line and the `VERDICT:` line name
+  second of the last index write, and it drops every assume-unchanged bit
+  and the skip-worktree bit of every entry whose file is present (C-quoted
+  names unquoted for that check), since `git add -A` never rehashes an entry
+  carrying either (an absent skip-worktree entry, as in a sparse checkout,
+  keeps its bit and is not recorded as deleted; an absent assume-unchanged
+  file is a deletion). The header line and the `VERDICT:` line name
   HEAD, that tree id and `clean` (tree id equals `HEAD^{tree}`) or `dirty`. If
   the id at end differs from the one at start the gate prints `NO-GO
   tree_stable` naming both ids and the fix (commit or stash, leave the tree

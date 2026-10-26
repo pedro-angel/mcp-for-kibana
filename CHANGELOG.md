@@ -276,7 +276,9 @@ version section.
   `VERDICT:` line now name HEAD, the content tree id of the working tree
   (uncommitted and untracked files included, computed in a temporary index so
   the real one is untouched; racily clean edits and files marked
-  skip-worktree or assume-unchanged included) and `clean` or `dirty`. A tree that changed while
+  skip-worktree or assume-unchanged included; an assume-unchanged file deleted
+  from disk counts as deleted, an absent skip-worktree entry of a sparse
+  checkout does not) and `clean` or `dirty`. A tree that changed while
   the criteria ran — an edit saved mid-gate, a `hygiene_hooks` fixer rewriting
   a file — is NO-GO `tree_stable`, naming the fix; before, the gate printed one
   GO over criteria that had certified two trees. `/tmp/dod-<repo>/` is cleared

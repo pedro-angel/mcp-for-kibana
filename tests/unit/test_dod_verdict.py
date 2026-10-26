@@ -216,6 +216,39 @@ def test_an_absent_skip_worktree_file_is_not_recorded_as_deleted(repo):
     assert _verdict_json(repo)["dirty"] is False
 
 
+def test_an_absent_skip_worktree_file_with_a_quoted_name_is_not_recorded_as_deleted(repo):
+    # git C-quotes a name holding a quote or backslash; the presence check
+    # must look for the real name, not the quoted one (review of H3).
+    name = 'a"b\\c.py'
+    (repo / name).write_text("y = 1\n")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "quoted name")
+    _git(repo, "update-index", "--skip-worktree", name)
+    (repo / name).unlink()
+    res = _gate(repo)
+    assert res.returncode == 0, res.stdout
+    v = _verdict_json(repo)
+    assert v["dirty"] is False, res.stdout
+    assert v["tree"] == _git(repo, "rev-parse", "HEAD^{tree}")
+
+
+@pytest.mark.parametrize("name", ["app.py", 'a"b\\c.py'])
+def test_an_absent_assume_unchanged_file_is_recorded_as_deleted(repo, name):
+    # Only skip-worktree has the sparse-checkout reason to keep its bit; an
+    # assume-unchanged file gone from disk is a deletion (review of H3).
+    if name != "app.py":
+        (repo / name).write_text("y = 1\n")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-q", "-m", "quoted name")
+    _git(repo, "update-index", "--assume-unchanged", name)
+    (repo / name).unlink()
+    res = _gate(repo)
+    assert res.returncode == 0, res.stdout
+    v = _verdict_json(repo)
+    assert v["dirty"] is True, res.stdout
+    assert v["tree"] != _git(repo, "rev-parse", "HEAD^{tree}")
+
+
 # --- the defect class: the tree changes during the run ------------------------
 
 

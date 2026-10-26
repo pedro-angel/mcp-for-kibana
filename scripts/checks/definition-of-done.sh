@@ -80,28 +80,44 @@ record() { printf '%s\t%s\n' "$1" "$2" >>"$results"; }
 # `git rev-parse HEAD^{tree}` exactly when the tree is clean.
 # `cp -p` keeps the index file's mtime: a fresh one would hide racily clean
 # entries (a same-size edit in the second of the last index write) from git's
-# racy-clean check, and `git add -A` would skip them. The copy then drops the
-# assume-unchanged and skip-worktree bits of every entry whose file is present,
-# since `git add -A` never rehashes an entry carrying either; an absent
-# skip-worktree entry (sparse checkout) keeps its bit, so it is not recorded
-# as deleted.
+# racy-clean check, and `git add -A` would skip them. The copy then drops
+# every assume-unchanged bit and the skip-worktree bit of every entry whose
+# file is present, since `git add -A` never rehashes an entry carrying either;
+# an absent skip-worktree entry (sparse checkout) keeps its bit, so it is not
+# recorded as deleted, while an absent assume-unchanged file is a deletion.
+# unquote_path: git's C-quoted form ("a\"b") back to the raw path, so the
+# presence check sees the real name. A trailing 'x' keeps a final newline.
+unquote_path() {
+  _q=${1#\"}; _q=${_q%\"}
+  _soh=$(printf '\001')   # a raw control character never appears in a quoted path
+  _q=$(printf '%s\n' "$_q" | sed -e "s/\\\\\\\\/$_soh/g" -e 's/\\"/"/g' -e 's/\\\([0-7]\)/\\0\1/g' -e "s/$_soh/\\\\\\\\/g")
+  _u=$(printf '%bx' "$_q") && printf '%s' "${_u%x}"
+}
 content_tree() {
   _idx=$(mktemp "${TMPDIR:-/tmp}/dod-index.XXXXXX") || return 1
   _real=$(git rev-parse --git-path index) || { rm -f "$_idx"; return 1; }
   if [ -f "$_real" ]; then cp -p "$_real" "$_idx" || { rm -f "$_idx"; return 1; }; else rm -f "$_idx"; fi
   _all=$(GIT_INDEX_FILE="$_idx" git -c core.quotepath=off ls-files -v 2>/dev/null) || { rm -f "$_idx"; return 1; }
-  _flagged=$(printf '%s\n' "$_all" | while IFS= read -r _l; do
+  # Lowercase tags carry assume-unchanged; S and s carry skip-worktree. Paths
+  # go to update-index in ls-files' form (C-quoted ones included): --stdin
+  # unquotes them.
+  _assumed=$(printf '%s\n' "$_all" | while IFS= read -r _l; do
+    case "$_l" in [hmrcks]' '*) printf '%s\n' "${_l#??}" ;; esac
+  done)
+  _skipped=$(printf '%s\n' "$_all" | while IFS= read -r _l; do
     case "$_l" in
-      [hmrcksS]' '*) _p=${_l#??}
-        # A C-quoted path (quote, backslash or control character) goes through
-        # as is: update-index --stdin unquotes it.
-        case "$_p" in '"'*) printf '%s\n' "$_p" ;; *) if [ -e "$_p" ] || [ -L "$_p" ]; then printf '%s\n' "$_p"; fi ;; esac ;;
+      [sS]' '*) _p=${_l#??}
+        case "$_p" in '"'*) _f=$(unquote_path "$_p") || continue ;; *) _f=$_p ;; esac
+        if [ -e "$_f" ] || [ -L "$_f" ]; then printf '%s\n' "$_p"; fi ;;
     esac
   done)
   # One update-index call per bit: with --stdin only the last such option applies.
-  if [ -n "$_flagged" ]; then
-    printf '%s\n' "$_flagged" | GIT_INDEX_FILE="$_idx" git update-index --no-assume-unchanged --stdin >/dev/null 2>&1 \
-      && printf '%s\n' "$_flagged" | GIT_INDEX_FILE="$_idx" git update-index --no-skip-worktree --stdin >/dev/null 2>&1 \
+  if [ -n "$_assumed" ]; then
+    printf '%s\n' "$_assumed" | GIT_INDEX_FILE="$_idx" git update-index --no-assume-unchanged --stdin >/dev/null 2>&1 \
+      || { rm -f "$_idx"; return 1; }
+  fi
+  if [ -n "$_skipped" ]; then
+    printf '%s\n' "$_skipped" | GIT_INDEX_FILE="$_idx" git update-index --no-skip-worktree --stdin >/dev/null 2>&1 \
       || { rm -f "$_idx"; return 1; }
   fi
   GIT_INDEX_FILE="$_idx" git add -A >/dev/null 2>&1 && GIT_INDEX_FILE="$_idx" git write-tree
