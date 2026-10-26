@@ -61,15 +61,14 @@ release claim, `make help` for the rest.
 As of this page:
 
 - fix: `update_output` clears a `remote_elasticsearch` output's
-  `service_token` — **open (found by H7's review fix, 2026-10-26)**. The
-  read-modify-write keeps only the fields kibana-py's
-  `fleet_outputs.update_output` takes, which has no `service_token`, so a
+  `service_token` — **DONE 2026-10-26** (D59; found by H7's review fix). A
+  PUT that carries `type` made Fleet reset the output's `service_token`, and
+  the read-modify-write sent the stored `type` back, so a
   rename of the canary output left Kibana holding `service_token: null`
-  (dev stack, 9.5.4); fleet.md says an omitted field is preserved. A fix sends
-  the stored token back on the PUT (raw request) or refuses outputs that hold
-  one; `test_update_output_preserves_the_canary_service_token`
-  (`tests/contract/test_secret_canaries.py`) is a strict xfail until then:
-  the fix turns it XPASS, and the mark comes off.
+  (dev stack, 9.5.4). The gateway now sends `type` only when it changes;
+  probed: a rename then keeps the token.
+  `test_update_output_preserves_the_canary_service_token`
+  (`tests/contract/test_secret_canaries.py`) holds it live.
 - feat: `update_alert_rule` returns the rule's detail — **open (left open by
   D40)**. Its result is still the summary, so a model confirms an edit with a
   second call to `get_alert_rule`; returning `get_alert_rule`'s shape instead

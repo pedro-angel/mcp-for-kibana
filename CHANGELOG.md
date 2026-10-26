@@ -345,8 +345,7 @@ version section.
   `tests/contract/test_secret_canaries.py` runs the read tools that reach
   them at the `read` tier, the Fleet tools that read credentials
   (`list_enrollment_keys`, `get_enrollment_key`) and `update_output` on the
-  canary output; a strict xfail pins that `update_output` drops the
-  output's `service_token` until that is fixed. The seed's canary loop takes
+  canary output, which must keep the output's `service_token`. The seed's canary loop takes
   `<canary>:<Kibana API path>` entries for APIs that take the `id` in the
   POST body and return the secret on GET; its FAIL text names the path.
 - **Privilege-dependent tools run under restricted keys** (D58), inside
@@ -365,6 +364,12 @@ version section.
 
 ### Fixed
 
+- **`update_output` keeps a remote Elasticsearch output's service token.**
+  A rename (or any edit that leaves `type` as it is) sent the output's type
+  back to Fleet, which then reset the output's `service_token` (a
+  `remote_elasticsearch` output's credential, which the update cannot send
+  back). The type is now sent only when it changes, and the tool's
+  description says a type change resets some fields (D59).
 - **A space the API key cannot see is no longer reported as missing.** Copy,
   overwrite and share into an existing space the key has no privilege in
   said "space not found … create the space with create_space first"; Kibana's

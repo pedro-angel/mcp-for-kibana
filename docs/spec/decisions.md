@@ -1734,8 +1734,10 @@ this ledger stands without them.
   full server, and the Fleet tools that read credentials Kibana hands out —
   `list_enrollment_keys` and `get_enrollment_key` (`api_key`) — plus
   `update_output` (write tier) on the canary output, whose read-modify-write
-  carries the raw `service_token` (a strict xfail pins that it drops it:
-  docs/roadmap.md); `list_uninstall_tokens` runs too but is not credential
+  carries the raw `service_token` and must keep it (it did not: a PUT that
+  carried the unchanged `type` left the canary's `service_token` null, so
+  the gateway now sends `type` only when it changes, and `update_output`'s
+  description says a type change resets some fields); `list_uninstall_tokens` runs too but is not credential
   coverage (Kibana's list returns metadata only; no tool fetches a token
   value); the fleet contract tests call the gateway, not a
   `Client`, so these ran past the scan before. How far the scan reaches is how far the tiers call tools
@@ -1755,7 +1757,15 @@ this ledger stands without them.
   call failed naming the canaries, `service_token`, `config_yaml` and the
   fix; with `get_saved_object`'s type allowlist removed, the
   `ingest-outputs` read failed the same way; all pass on the real tree (the
-  H7 commit message has the lines).
+  H7 commit message has the lines). `update_output` probes (same stack): a
+  PUT of the canary output with `name` only kept its `service_token`; with
+  `name`, `type` (unchanged) and `hosts` it read back `null`; the gateway's
+  read-modify-write body without `type` kept it; a change from
+  `remote_elasticsearch` to `elasticsearch` through the gateway was
+  accepted and read back `service_token` and `preset` `null`,
+  `config_yaml` kept. `test_update_output_preserves_the_canary_service_token`
+  failed on the old gateway naming the fix and passes now;
+  `test_update_output_changes_a_type_live` holds the type change.
 
 ## Scope and licensing (probed on Basic)
 

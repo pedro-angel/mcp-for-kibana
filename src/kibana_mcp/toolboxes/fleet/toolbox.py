@@ -435,7 +435,8 @@ class FleetToolbox:
             confirm: bool = False,
         ) -> dict[str, Any]:
             """Update a Fleet output (read-modify-write — omitted fields are
-            preserved). Setting is_default/is_default_monitoring=True PROMOTES
+            preserved; changing `type` makes Fleet reset some fields, such
+            as a remote output's service token and its preset). Setting is_default/is_default_monitoring=True PROMOTES
             this output (Fleet auto-un-defaults the prior one, which then
             becomes deletable). Editing a CURRENTLY-default output requires
             confirm=True (protects live agent traffic). Returns the updated

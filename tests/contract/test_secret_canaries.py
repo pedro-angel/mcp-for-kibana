@@ -148,8 +148,8 @@ def _reseed(kb, name):
 async def test_update_output_on_the_canary_returns_no_secret():
     """update_output reads the raw output (service_token, config_yaml) and
     writes it back: pointed at the canary output at the write tier, its result
-    carries no secret (the hook scans it). The write clears the canary's
-    service_token (pinned below), so the canary is put back afterwards."""
+    carries no secret (the hook scans it). The canary is put back afterwards
+    (the rename is a write; the next test pins that it keeps the token)."""
     body = _CANARIES["fleet-output"]
     with contextlib.closing(kibana.Kibana(
             os.environ["KIBANA_URL"], api_key=os.environ["KIBANA_TEST_API_KEY"])) as kb:
@@ -162,14 +162,10 @@ async def test_update_output_on_the_canary_returns_no_secret():
             _reseed(kb, "fleet-output")
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
-    "update_output's read-modify-write drops a remote_elasticsearch output's "
-    "service_token (docs/roadmap.md); remove this mark with the fix"))
 async def test_update_output_preserves_the_canary_service_token():
     """fleet.md: an omitted field is preserved. A rename of the canary output
-    must leave its service_token as seeded. Known broken (kibana-py's
-    update_output takes no service_token), so strict xfail: the fix turns
-    this test into an XPASS failure until the mark comes off."""
+    must leave its service_token as seeded (a PUT that carries `type` made
+    Fleet reset it to null; the gateway sends `type` only to change it)."""
     body = _CANARIES["fleet-output"]
     with contextlib.closing(kibana.Kibana(
             os.environ["KIBANA_URL"], api_key=os.environ["KIBANA_TEST_API_KEY"])) as kb:
@@ -181,7 +177,46 @@ async def test_update_output_preserves_the_canary_service_token():
                 "GET", f"{_API['fleet-output']}/{body['id']}").body["item"]
             assert item.get("service_token") == body["service_token"], (
                 "update_output dropped the output's service_token (Kibana now holds "
-                f"{item.get('service_token')!r}) — send the stored token back on the PUT "
-                "or refuse outputs that hold one (docs/spec/toolboxes/fleet.md)")
+                f"{item.get('service_token')!r}) — leave `type` out of the PUT unless it "
+                "changes (KibanaPyGateway.update_output; docs/spec/toolboxes/fleet.md)")
         finally:
             _reseed(kb, "fleet-output")
+
+
+async def test_update_output_changes_a_type_live():
+    """The gateway still sends `type` when it changes: Fleet takes a
+    remote_elasticsearch -> elasticsearch change through the read-modify-write
+    body and resets the remote output's service_token, as the tool's
+    description says. A throwaway output (dummy token, not a secret), deleted afterwards."""
+    oid = "mcp-for-kibana-type-change-probe"
+    path = f"{_API['fleet-output']}/{oid}"
+    with contextlib.closing(kibana.Kibana(
+            os.environ["KIBANA_URL"], api_key=os.environ["KIBANA_TEST_API_KEY"])) as kb:
+        with contextlib.suppress(kibana.NotFoundError):
+            kb.perform_request("DELETE", path, headers={"kbn-xsrf": "true"})
+        kb.perform_request("POST", _API["fleet-output"], headers={"kbn-xsrf": "true"}, body={
+            "id": oid, "name": "mcp-for-kibana type change probe",
+            "type": "remote_elasticsearch", "hosts": ["https://probe.invalid:9200"],
+            "service_token": "dummy-type-change-token"})
+        try:
+            assert kb.perform_request("GET", path).body["item"].get(
+                "service_token") == "dummy-type-change-token", (
+                "Fleet does not hand the probe output's service_token back in plain "
+                "text, so this test proves nothing — read where it stores it and "
+                "assert the reset there (D59)")
+            async with Client(_server("write")) as client:
+                got = await client.call_tool(
+                    "update_output", {"output_id": oid, "type": "elasticsearch"})
+            assert got.structured_content["type"] == "elasticsearch", (
+                "update_output did not change the output's type — send `type` on the "
+                "PUT when it differs from the stored one (KibanaPyGateway.update_output)")
+            item = kb.perform_request("GET", path).body["item"]
+            assert item["type"] == "elasticsearch", (
+                "update_output did not change the output's type — send `type` on the "
+                "PUT when it differs from the stored one (KibanaPyGateway.update_output)")
+            assert item.get("service_token") is None, (
+                "Fleet kept a remote output's service_token across a type change: "
+                "update_output's description and fleet.md say it resets — correct them (D59)")
+        finally:
+            with contextlib.suppress(kibana.NotFoundError):
+                kb.perform_request("DELETE", path, headers={"kbn-xsrf": "true"})

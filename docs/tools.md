@@ -1664,7 +1664,7 @@ agent-lifecycle commands) require `KIBANA_MCP_TIER=destructive`.
 | `create_package_policy` | write | Attach an integration to an agent policy. `package` identifies it (e.g. `{"name": "system", "version": "1.62.0"}` — see `get_package`); `inputs` optionally overrides its default input config. |
 | `update_package_policy` | write | Update a package (integration) policy's fields (read-modify-write). `agent_policy_id` re-parents it; `package` changes the integration/version; `inputs` overrides the input config. |
 | `create_output` | write | Create a Fleet output (where agent data is shipped). Non-secret fields only (no ssl/secrets/config_yaml). `is_default`/`is_default_monitoring` promote this output, auto-un-defaulting the prior one. |
-| `update_output` | write | Update a Fleet output (read-modify-write). Setting `is_default`/`is_default_monitoring=True` PROMOTES it (the prior default becomes deletable). Editing a currently-default output requires `confirm=True`. |
+| `update_output` | write | Update a Fleet output (read-modify-write). Changing `type` makes Fleet reset some fields (seen: a remote output's service token and `preset`). Setting `is_default`/`is_default_monitoring=True` PROMOTES it (the prior default becomes deletable). Editing a currently-default output requires `confirm=True`. |
 | `install_package` | write | Install an integration package that is not installed (latest version, or `version`), creating its Elasticsearch and Kibana assets (and, for a package with Kibana assets, the managed `logs-*`/`metrics-*` data views in every space if missing). Already installed at that version (or any, without `version`): `already_installed: true`, nothing sent. Never changes an installed version (an upgrade cannot be undone on Basic). Idempotent. |
 | `update_agent_tags` | write | Add and/or remove tags on the exact `agent_ids` given (1–100, never a query). Refuses an unknown id before changing anything. Returns `action_id`, each agent's `previous_tags` and `tags` (read back), and `not_applied_agent_ids`. Idempotent. |
 | `request_agent_diagnostics` | write | Ask one agent to collect and upload a diagnostics bundle (`include_cpu_metrics` adds a CPU profile). Changes nothing the agent collects or ships. Returns `action_id`, `agent_id`, `agent_status`; an offline agent runs it at check-in, within the 3-hour expiry. |
@@ -1688,7 +1688,10 @@ Notes:
   re-send only the fields Kibana's update API actually accepts (plus the caller's
   changes) — read-only fields (`revision`, `updated_at`, `status`, …) are dropped
   automatically rather than round-tripped, and omitted fields are preserved rather
-  than reset to their default.
+  than reset to their default. `update_output` sends `type` only when it changes:
+  a request carrying `type` made Fleet null a remote output's service token,
+  and a type change resets fields too (probed: the service token and `preset`;
+  D59).
 - **Reserved/default guards.** `delete_agent_policy` and `reassign_agent`/
   `bulk_reassign` refuse a managed or default-Fleet-Server policy; `delete_output`
   and editing a currently-default output are similarly guarded — promote a

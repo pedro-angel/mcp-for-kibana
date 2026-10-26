@@ -3896,6 +3896,12 @@ class KibanaPyGateway:
             raise KibanaRejected(
                 f"output '{output_id}' is a default output; pass confirm=True to update it")
         body = _rmw_body(self._client.fleet_outputs.update_output, raw, changes)
+        # A rename of a remote_elasticsearch output whose PUT carried its
+        # unchanged `type` left service_token null; the body holds only
+        # kibana-py's named parameters, so the token is not in it. Without
+        # `type` the token stayed (9.5.4, D59), so send `type` only to change it.
+        if body.get("type") == raw.get("type"):
+            body.pop("type", None)
         body["output_id"] = output_id  # re-set the path kwarg explicitly
         resp = self._client.fleet_outputs.update_output(**body).body
         return _to_fleet_output(resp["item"])

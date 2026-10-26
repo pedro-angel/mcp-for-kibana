@@ -3,6 +3,8 @@ what it lets through, and that its Client hook fails a call that leaks."""
 
 import base64
 import json
+import re
+import subprocess
 from dataclasses import asdict
 from pathlib import Path
 from types import SimpleNamespace
@@ -50,21 +52,44 @@ def test_stack_seed_creates_every_canary_file():
         "`for kind in` loop")
 
 
-def test_every_canary_file_fits_the_seed_loop():
-    """The loop POSTs the file to /api/<path> from its entry and DELETEs
-    /api/<path>/<id>, the id read back from the file with sed: every file
-    holds a top-level "id" on a line of its own, and the loop reads the path
-    from the entry. Whether the API takes that id and returns the secret on
-    GET is the contract test's job (test_canary_is_seeded_...)."""
+def _seed_id_reader() -> str:
+    """The sed expression the seed's canary loop reads a file's id with."""
     stack = (_REPO / "scripts" / "stack.sh").read_text()
     loop = stack[stack.index("for kind in"):stack.index("done", stack.index("for kind in"))]
     assert 'api="$KB/api/${kind#*:}"' in loop
+    found = re.search(r"""id=\$\(sed -n '([^']+)' "\$file"\)""", loop)
+    assert found, "the seed's canary loop no longer reads the id with sed -n '...' \"$file\""
+    return found.group(1)
+
+
+def _seed_reads(expr: str, path: Path) -> str:
+    return subprocess.run(["sed", "-n", expr, str(path)], capture_output=True,
+                          text=True, check=True).stdout
+
+
+def test_every_canary_file_fits_the_seed_loop():
+    """The loop POSTs the file to /api/<path> from its entry and DELETEs
+    /api/<path>/<id>, the id read back from the file with the loop's own sed
+    expression, run here: it must print exactly the file's top-level id.
+    Whether the API takes that id and returns the secret on GET is the
+    contract test's job (test_canary_is_seeded_...)."""
+    expr = _seed_id_reader()
     for name in scan.seeded_canaries():
-        text = (scan.CANARY_DIR / f"{name}.json").read_text()
-        ids = [ln for ln in text.splitlines() if ln.lstrip().startswith('"id":')]
-        assert len(ids) == 1 and json.loads(text)["id"], (
-            f"scripts/canaries/{name}.json needs exactly one top-level \"id\" line: "
-            "the seed reads it back to DELETE the old canary (D59)")
+        path = scan.CANARY_DIR / f"{name}.json"
+        top_id = json.loads(path.read_text()).get("id")
+        assert isinstance(top_id, str) and _seed_reads(expr, path) == top_id + "\n", (
+            f"the seed reads no single id from scripts/canaries/{name}.json: put the "
+            "top-level \"id\" as a string on a line of its own, indented with spaces "
+            "(the seed reads it back to DELETE the old canary, D59)")
+
+
+def test_the_seed_loop_check_refuses_an_id_the_seed_cannot_read(tmp_path):
+    expr = _seed_id_reader()
+    for text in ('{\n\t"id": "x",\n  "name": "n"\n}\n', '{\n  "id": 123,\n  "name": "n"\n}\n',
+                 '{"id": "x", "name": "n"}\n'):
+        path = tmp_path / "c.json"
+        path.write_text(text)
+        assert _seed_reads(expr, path) != str(json.loads(text)["id"]) + "\n"
 
 
 def test_a_raw_fleet_output_is_caught_with_the_fix():
