@@ -279,7 +279,7 @@ version section.
   skip-worktree or assume-unchanged included; an assume-unchanged file deleted
   from disk counts as deleted, an absent skip-worktree entry counts as
   deleted unless `core.sparseCheckout` is on, and paths outside the sparse
-  cone are included) and `clean` or `dirty`. A tree that changed while
+  cone are included; a submodule counts by its checked-out commit) and `clean` or `dirty`. A tree that changed while
   the criteria ran — an edit saved mid-gate, a `hygiene_hooks` fixer rewriting
   a file — is NO-GO `tree_stable`, naming the fix; before, the gate printed one
   GO over criteria that had certified two trees. `/tmp/dod-<repo>/` is cleared

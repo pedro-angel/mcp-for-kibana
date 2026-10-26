@@ -83,8 +83,9 @@ record() { printf '%s\t%s\n' "$1" "$2" >>"$results"; }
 # racy-clean check, and `git add -A` would skip them. The copy then drops
 # every assume-unchanged bit and the skip-worktree bit of every entry whose
 # file is present, since `git add -A` never rehashes an entry carrying either;
-# an absent skip-worktree entry (sparse checkout) keeps its bit, so it is not
-# recorded as deleted, while an absent assume-unchanged file is a deletion.
+# an absent skip-worktree entry keeps its bit (not recorded as deleted) only
+# when core.sparseCheckout is true; otherwise, like an absent assume-unchanged
+# file, it is a deletion. A submodule counts by its checked-out commit only.
 # unquote_path: git's C-quoted form ("a\"b") back to the raw path, so the
 # presence check sees the real name. A trailing 'x' keeps a final newline.
 unquote_path() {

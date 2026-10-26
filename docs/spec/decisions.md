@@ -1475,7 +1475,8 @@ this ledger stands without them.
   unit test in `tests/unit/test_changelog_entry.py`.
 - **D55 (2026-10-26)** — The DoD verdict is bound to a tree. At start and at
   end the gate computes the content tree id of the working tree: a copy of the
-  index in a temporary file, `git add -A`, `git write-tree` (tracked edits and
+  index in a temporary file, `git add -A --sparse` (git 2.34+), `git
+  write-tree` (tracked edits and
   untracked, non-ignored files included; the real index is never touched;
   under a second on this repo). The copy keeps the index file's mtime (`cp
   -p`), so git's racy-clean check still rehashes a same-size edit made in the
@@ -1484,9 +1485,15 @@ this ledger stands without them.
   names unquoted for that check), since `git add -A` never rehashes an entry
   carrying either (an absent skip-worktree entry keeps its bit and is not
   recorded as deleted only when `core.sparseCheckout` is on; anywhere else,
-  like an absent assume-unchanged file, it is a deletion). `git add -A
-  --sparse` (git 2.34+) also takes edits and untracked files outside the
-  sparse-checkout cone, which plain `git add -A` skips or fails on. The header line and the `VERDICT:` line name
+  like an absent assume-unchanged file, it is a deletion). `--sparse` also
+  takes edits and untracked files outside the sparse-checkout cone, which
+  plain `git add -A` skips or fails on. Known limits, left as is: a
+  submodule counts by its checked-out commit only (its uncommitted work is
+  not in the id; the repo has no submodules), and in a sparse checkout a
+  file inside the cone that someone marked skip-worktree by hand and deleted
+  reads clean, as it does in `git status` (telling it apart means matching
+  every entry against the sparse patterns, more code than the case is
+  worth). The header line and the `VERDICT:` line name
   HEAD, that tree id and `clean` (tree id equals `HEAD^{tree}`) or `dirty`. If
   the id at end differs from the one at start the gate prints `NO-GO
   tree_stable` naming both ids and the fix (commit or stash, leave the tree

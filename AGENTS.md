@@ -52,7 +52,8 @@ GO line names the version it certified.
 
 A GO is bound to a tree (D55). The gate's header and VERDICT line name HEAD,
 the content tree id — uncommitted and untracked files included (also files
-marked skip-worktree or assume-unchanged), built in a temporary index — and
+marked skip-worktree or assume-unchanged; a submodule by its commit only),
+built in a temporary index — and
 `clean` or `dirty`; a tree that changed during the run (an edit saved
 mid-gate, a `hygiene_hooks` fixer) is NO-GO `tree_stable`. The
 log dir `/tmp/dod-<repo>/` is cleared at start and ends with `verdict.json`
