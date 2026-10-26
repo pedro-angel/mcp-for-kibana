@@ -25,6 +25,8 @@ import pathlib
 import re
 from collections import Counter
 
+import pytest
+
 from kibana_mcp.tool_lists import BUILTIN_LISTS, DEPENDENCIES
 from tests._registry import TIERS, profile_sizes, registry, tier_counts
 
@@ -173,8 +175,13 @@ def _matches(line):
 def _line_figures(line, following):
     """The figures on a line, including one that wraps onto the next line
     ("... on 21" / "tools ..."): matched in `line + " " + following`, kept
-    when it starts on this line, so each figure is reported once."""
-    joined = f"{line} {following}" if following is not None else line
+    when it starts on this line, so each figure is reported once. The next
+    line's indent and blockquote markers are dropped first, so a figure that
+    wraps onto a list item's continuation ("  tools") or a quote ("> tools")
+    is still one figure."""
+    if following is None:
+        return line, _matches(line)
+    joined = line + " " + following.lstrip(" \t>")
     return joined, [f for f in _matches(joined) if f[3][0] < len(line)]
 
 
@@ -305,6 +312,15 @@ def test_tool_calls_and_versions_are_not_counts(tmp_path):
 def test_a_count_wrapped_across_a_line_break_is_still_a_count(tmp_path):
     (problem,) = _scan_one(tmp_path, "docs/index.md", "space targeting shipped on 21\ntools\n")
     assert problem.startswith("docs/index.md:1: '21 tools'")
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["- shipped on 21\n  tools accept\n", "> shipped on 21\n> tools\n", "all 999\n\t  tools\n"],
+)
+def test_a_count_wrapped_onto_an_indented_or_quoted_line_is_still_a_count(tmp_path, text):
+    (problem,) = _scan_one(tmp_path, "docs/index.md", text)
+    assert problem.startswith("docs/index.md:1: ")
 
 
 def test_a_toolbox_spec_does_not_accept_whole_surface_tier_or_list_figures(tmp_path):
