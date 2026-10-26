@@ -3,9 +3,21 @@ import os
 import pytest
 
 from kibana_mcp.config import Settings, Tier
+from tests._env import drop_kibana_names_in_other_cases
 
 _CRED_VARS = ("KIBANA_URL", "KIBANA_API_KEY", "KIBANA_MCP_API_KEY", "KIBANA_TEST_API_KEY",
              "KIBANA_MCP_ENV_FILE")
+
+
+def test_a_shell_kibana_name_in_any_case_is_cleared(monkeypatch):
+    monkeypatch.setenv("kibana_url", "http://elsewhere:9")
+    monkeypatch.setenv("Kibana_Api_Key", "stray")
+    monkeypatch.delenv("KIBANA_URL", raising=False)
+    monkeypatch.delenv("KIBANA_API_KEY", raising=False)
+    drop_kibana_names_in_other_cases(monkeypatch)
+    s = Settings()
+    assert s.kibana_url == "http://localhost:5601"
+    assert s.api_key is None
 
 
 def test_defaults(monkeypatch):

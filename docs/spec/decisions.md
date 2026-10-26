@@ -1593,7 +1593,8 @@ this ledger stands without them.
   scans `README.md`, `profiles/README.md`, `docs/*.md` and the specs except
   `decisions.md` (it records figures as they were; so does CHANGELOG.md) for
   "N tools", "N-tool", a "(R / W / D)" tier triple, "N read/write/destructive"
-  and "N edges from M tools", a figure wrapped across a line break included.
+  and "N edges from M tools", a figure wrapped across a line break (a
+  Markdown hard break too) included.
   A toolbox's spec, and its section of `docs/tools.md`, may state that
   toolbox's size, tiers and read + write, plus the cross-cutting figures (the
   total, the space-aware count and its tiers); every other line may state any

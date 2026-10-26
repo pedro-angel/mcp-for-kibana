@@ -178,11 +178,13 @@ def _line_figures(line, following):
     when it starts on this line, so each figure is reported once. The next
     line's indent and blockquote markers are dropped first, so a figure that
     wraps onto a list item's continuation ("  tools") or a quote ("> tools")
-    is still one figure."""
+    is still one figure; so are this line's trailing spaces (a Markdown hard
+    line break, "21  ")."""
     if following is None:
         return line, _matches(line)
-    joined = line + " " + following.lstrip(" \t>")
-    return joined, [f for f in _matches(joined) if f[3][0] < len(line)]
+    head = line.rstrip(" \t")
+    joined = head + " " + following.lstrip(" \t>")
+    return joined, [f for f in _matches(joined) if f[3][0] < len(head)]
 
 
 def _spans(text, needle):
@@ -316,7 +318,13 @@ def test_a_count_wrapped_across_a_line_break_is_still_a_count(tmp_path):
 
 @pytest.mark.parametrize(
     "text",
-    ["- shipped on 21\n  tools accept\n", "> shipped on 21\n> tools\n", "all 999\n\t  tools\n"],
+    [
+        "- shipped on 21\n  tools accept\n",
+        "> shipped on 21\n> tools\n",
+        "all 999\n\t  tools\n",
+        "shipped on 999  \ntools accept\n",  # a Markdown hard line break
+        "shipped on 999 \n  tools\n",
+    ],
 )
 def test_a_count_wrapped_onto_an_indented_or_quoted_line_is_still_a_count(tmp_path, text):
     (problem,) = _scan_one(tmp_path, "docs/index.md", text)
