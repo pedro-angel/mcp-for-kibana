@@ -272,6 +272,18 @@ version section.
   a reworded, re-spaced or moved line, an amended old heading or an empty
   sub-heading is not one; otherwise NO-GO naming the fix. Without a base, or
   when git fails, it fails closed naming `git fetch origin main`. `checks.yml` runs the same script on every non-Dependabot PR.
+- **The DoD verdict is bound to a tree** (D55). The gate's header and its
+  `VERDICT:` line now name HEAD, the content tree id of the working tree
+  (uncommitted and untracked files included, computed in a temporary index so
+  the real one is untouched) and `clean` or `dirty`. A tree that changed while
+  the criteria ran — an edit saved mid-gate, a `hygiene_hooks` fixer rewriting
+  a file — is NO-GO `tree_stable`, naming the fix; before, the gate printed one
+  GO over criteria that had certified two trees. `/tmp/dod-<repo>/` is cleared
+  at the start of each run, so no earlier log sits beside the new ones, and
+  ends with `verdict.json` (HEAD, tree id at start and end, dirty, config and
+  its sha256, every criterion's result, Kibana version, Claude model,
+  timestamps). A "GO at `<sha>`" claim is checked with `git rev-parse
+  <sha>^{tree}` against the recorded tree id (AGENTS.md).
 
 ### Fixed
 

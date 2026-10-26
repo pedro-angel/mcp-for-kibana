@@ -13,7 +13,8 @@ prompts and score Kibana's state afterwards, never the model's text
 
 `make dod` runs the Claude tier: `e2e_green` is `required` in `dod.config`
 (D42) and runs the same `pytest -m e2e_claude` against the seeded stack, with
-its records in the gate's log directory (`/tmp/dod-<repo>/e2e_green-runs/`). A
+its records in the gate's log directory (`/tmp/dod-<repo>/e2e_green-runs/`,
+cleared with the rest of that directory when the next gate run starts). A
 missing `claude` CLI or sign-in makes the criterion NO-GO with the fix named.
 CI's `.github/dod` configs keep `e2e_green` `n/a` (no Claude sign-in there).
 The LM Studio tier is outside every gate. Run `make test-e2e` on its own when
@@ -45,7 +46,8 @@ make test-e2e                      # starts + seeds the stack, then pytest -m e2
 
 In `make dod`, the `e2e_green` GO line names the model and runs per task it
 ran with (`CLAUDE_E2E_MODEL` / `CLAUDE_E2E_RUNS`), so a GO from an override —
-say a single run per task — is visible in the verdict.
+say a single run per task — is visible in the verdict, and the gate's
+`verdict.json` records the model (D55).
 
 The model gets this server's tools and nothing else: `--tools ""` removes
 every built-in tool (no shell, files or web), `--strict-mcp-config` loads only

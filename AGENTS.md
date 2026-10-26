@@ -50,6 +50,16 @@ test-contract` — is NO-GO on each of them, naming
 `scripts/stack.sh down && scripts/stack.sh up && scripts/stack.sh seed`; every
 GO line names the version it certified.
 
+A GO is bound to a tree (D55). The gate's header and VERDICT line name HEAD,
+the content tree id — uncommitted and untracked files included, built in a
+temporary index — and `clean` or `dirty`; a tree that changed during the run
+(an edit saved mid-gate, a `hygiene_hooks` fixer) is NO-GO `tree_stable`. The
+log dir `/tmp/dod-<repo>/` is cleared at start and ends with `verdict.json`
+(HEAD, tree id, dirty, config and its sha256, every criterion's result, Kibana
+version, Claude model, timestamps). To check a claim "GO at `<sha>`": `git
+rev-parse <sha>^{tree}` must equal the recorded tree id; a dirty GO certifies
+only the commit whose tree matches it.
+
 ## House rules
 
 - **The DoD gate certifies completion, not you.** No completion or release

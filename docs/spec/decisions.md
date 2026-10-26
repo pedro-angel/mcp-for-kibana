@@ -1473,6 +1473,38 @@ this ledger stands without them.
   sub-headings, renames, quoted non-ASCII paths, a swallowed git failure and a
   `docs/plans/` exemption for a directory that does not exist); each has a
   unit test in `tests/unit/test_changelog_entry.py`.
+- **D55 (2026-10-26)** — The DoD verdict is bound to a tree. At start and at
+  end the gate computes the content tree id of the working tree: a copy of the
+  index in a temporary file, `git add -A`, `git write-tree` (tracked edits and
+  untracked, non-ignored files included; the real index is never touched;
+  under a second on this repo). The header line and the `VERDICT:` line name
+  HEAD, that tree id and `clean` (tree id equals `HEAD^{tree}`) or `dirty`. If
+  the id at end differs from the one at start the gate prints `NO-GO
+  tree_stable` naming both ids and the fix (commit or stash, leave the tree
+  alone until the gate finishes, re-run `make dod`; the `hygiene_hooks` log
+  when that criterion ran, since its fixers rewrite files). `tree_stable` is
+  part of the gate, not a criterion: no config row, so no config can declare
+  it away, and it applies to the CI tiers too. A dirty tree is reported, not
+  refused: the GO certifies the recorded tree, and a claim "GO at `<sha>`"
+  holds only when `git rev-parse <sha>^{tree}` equals it (AGENTS.md says how to
+  check). The log dir `/tmp/dod-<repo>/` is cleared at the start of each run
+  and ends with `verdict.json`: verdict, HEAD, tree id at start and end, dirty,
+  config path and sha256, each known criterion's result (`GO`, `NO-GO`, `n/a`)
+  plus `tree_stable` (and `cycle_stack` when it failed), Kibana version and
+  Claude model when those tiers ran, UTC start and finish times. A git failure
+  while computing the id is a FAIL (exit 2) at start and NO-GO at end, naming
+  `git status && git fsck`. Why: the gate called git only for `rev-parse
+  --show-toplevel` and printed a bare `VERDICT: GO`, so a GO over untracked
+  helpers or uncommitted fixes read as a GO for whatever was committed later;
+  an edit saved during the 30-plus-minute run split the criteria across two
+  trees under one GO; and logs of earlier runs stayed in the log dir
+  (`scripts/experiment/runs/claude-e2e/baseline-2026-10-24-otel-flush/runs.jsonl`
+  has 20/20 records with `"server_dirty": true`). Evidence (2026-10-26): on a
+  fixture repo whose only required criterion writes a file, the old gate
+  printed `GO changelog_entry` and `VERDICT: GO`; the new one `NO-GO
+  tree_stable (the tree changed during the run: ... — commit or stash your
+  edits ...)` (the H3 commit message has the lines); on the real tree GO with
+  the tree id. `tests/unit/test_dod_verdict.py` runs the gate on fixtures.
 
 ## Scope and licensing (probed on Basic)
 

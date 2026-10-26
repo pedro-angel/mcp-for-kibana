@@ -283,6 +283,12 @@ audit, SAST, unit across Python 3.12–3.14, docs, image build+smoke), and
 through *this same gate script* with per-tier configs in `.github/dod/` — so CI
 verdicts and `make dod` cannot drift.
 
+Each verdict names what it certified: the header and the `VERDICT:` line give
+HEAD, the content tree id (uncommitted and untracked files included) and
+`clean`/`dirty`, a tree edited during the run is NO-GO, and the run is recorded
+in `/tmp/dod-<repo>/verdict.json`. A "GO at `<sha>`" claim checks out when
+`git rev-parse <sha>^{tree}` equals the recorded tree id.
+
 `make dod` needs the dev stack up for `contract`/`e2e_replay`/`wheel_replay`/`e2e_green` and down for
 the ephemeral tiers, so a plain run cannot satisfy both halves. To get a
 one-shot GO, let the gate cycle the stack for you (default-off, so it never

@@ -5,7 +5,13 @@
 #
 # Criteria marked `required` must pass; `n/a` are skipped (declare, don't delete, so
 # the omission is a visible decision). Full logs land in /tmp/dod-<repo>/<criterion>.log
-# (per-repo so sibling gates don't clobber each other's diagnostics).
+# (per-repo so sibling gates don't clobber each other's diagnostics), cleared at the
+# start of every run, beside verdict.json: the record of this run (D55).
+#
+# The verdict is bound to a tree (D55): the header and the VERDICT line name HEAD,
+# the content tree id (uncommitted and untracked work included) and clean/dirty,
+# and a tree that changed during the run is NO-GO (tree_stable). A GO certifies
+# commit <sha> only when `git rev-parse <sha>^{tree}` equals the recorded tree id.
 # contract/e2e need local infrastructure: scripts/stack.sh up && seed (at the pinned
 # Kibana version: the gate refuses another line, D53), plus a signed-in
 # `claude` CLI for e2e_green (D42, docs/e2e-setup.md). CI runs the fast criteria on every
@@ -62,13 +68,40 @@ done
 req()    { grep -qE "^$1[[:space:]]*=[[:space:]]*required([[:space:]]|$)" "$cfg"; }
 nogo=0
 logdir="/tmp/dod-$(basename "$(pwd)")"   # namespaced by repo dir-name so a sibling repo (kibana-py) doesn't clobber
-mkdir -p "$logdir" || { echo "FAIL: cannot create log dir $logdir"; exit 2; }
+# Cleared first, so no log or record of an earlier run sits beside this run's.
+rm -rf "$logdir" && mkdir -p "$logdir" || { echo "FAIL: cannot clear and create log dir $logdir"; exit 2; }
+results="$logdir/results.tsv"   # one '<criterion><TAB><GO|NO-GO>' line per result, read into verdict.json
+: >"$results"
+record() { printf '%s\t%s\n' "$1" "$2" >>"$results"; }
+
+# The tree the verdict certifies (D55): the content tree id of the working tree
+# — tracked edits and untracked, non-ignored files included — built in a
+# temporary copy of the index, so the real index is never touched. Equal to
+# `git rev-parse HEAD^{tree}` exactly when the tree is clean.
+content_tree() {
+  _idx=$(mktemp "${TMPDIR:-/tmp}/dod-index.XXXXXX") || return 1
+  _real=$(git rev-parse --git-path index) || { rm -f "$_idx"; return 1; }
+  if [ -f "$_real" ]; then cp "$_real" "$_idx" || { rm -f "$_idx"; return 1; }; else rm -f "$_idx"; fi
+  GIT_INDEX_FILE="$_idx" git add -A >/dev/null 2>&1 && GIT_INDEX_FILE="$_idx" git write-tree
+  _rc=$?
+  rm -f "$_idx"
+  return $_rc
+}
+tree_fail="cannot compute the content tree id (git add -A into a temporary index failed) — run: git status && git fsck, fix what they report, then re-run make dod"
+tree=$(content_tree) || { echo "FAIL: $tree_fail"; exit 2; }
+head=$(git rev-parse -q --verify HEAD) || head=none
+head_tree=$(git rev-parse -q --verify 'HEAD^{tree}') || head_tree=
+if [ "$tree" = "$head_tree" ]; then dirty=false; state=clean
+else dirty=true; state="dirty: uncommitted or untracked changes"; fi
+started_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+claude_model=
+
 run() {
   name="$1"; shift
   if "$@" >"$logdir/$name.log" 2>&1; then
-    echo "  GO    $name"
+    echo "  GO    $name"; record "$name" GO
   else
-    echo "  NO-GO $name  (log: $logdir/$name.log)"
+    echo "  NO-GO $name  (log: $logdir/$name.log)"; record "$name" NO-GO
     nogo=1
   fi
 }
@@ -85,17 +118,17 @@ run_suite() {
   name="$1"; shift
   out="$logdir/$name.log"
   if ! "$@" >"$out" 2>&1; then
-    echo "  NO-GO $name  (log: $out)"; nogo=1; return
+    echo "  NO-GO $name  (log: $out)"; record "$name" NO-GO; nogo=1; return
   fi
   summary=$(grep -E '[0-9]+ (passed|skipped|failed|error)|no tests ran' "$out" | tail -1)
   passed=$(printf '%s\n' "$summary" | grep -oE '[0-9]+ passed'  | grep -oE '^[0-9]+')
   skipped=$(printf '%s\n' "$summary" | grep -oE '[0-9]+ skipped' | grep -oE '^[0-9]+')
   : "${passed:=0}" "${skipped:=0}"
   if [ "$passed" -ge 1 ] && [ "$skipped" -eq 0 ]; then
-    echo "  GO    $name${suite_note:+  ($suite_note)}"
+    echo "  GO    $name${suite_note:+  ($suite_note)}"; record "$name" GO
   else
     echo "  NO-GO $name  (passed=$passed skipped=$skipped: empty or all-skipped suite reads NO-GO; log: $out)"
-    nogo=1
+    record "$name" NO-GO; nogo=1
   fi
 }
 
@@ -125,9 +158,10 @@ seeded_stack() {
   fi
   [ "$stack_state" = ok ]
 }
-stack_nogo() { echo "  NO-GO $1  ($stack_reason)"; nogo=1; }
+stack_nogo() { echo "  NO-GO $1  ($stack_reason)"; record "$1" NO-GO; nogo=1; }
 
 echo "Definition-of-Done gate ($cfg)"
+echo "  at HEAD $head, tree $tree ($state)"
 
 if req unit_green;       then run_suite unit_green uv run pytest -q --cov=kibana_mcp --cov-report=term-missing; fi
 if req ruff_clean;       then run ruff_clean       uv run ruff check; fi
@@ -204,10 +238,10 @@ if req e2e_green; then
   # `make test-e2e` and an explicit CLAUDE_E2E_OUT).
   if ! command -v claude >/dev/null 2>&1; then
     echo "  NO-GO e2e_green  (no \`claude\` CLI on PATH — install Claude Code (npm install -g @anthropic-ai/claude-code), then sign in: claude auth login; docs/e2e-setup.md)"
-    nogo=1
+    record e2e_green NO-GO; nogo=1
   elif ! claude auth status 2>/dev/null | grep -qE '"loggedIn"[[:space:]]*:[[:space:]]*true'; then
     echo "  NO-GO e2e_green  (the \`claude\` CLI is not signed in — run: claude auth login, then check with: claude auth status; docs/e2e-setup.md)"
-    nogo=1
+    record e2e_green NO-GO; nogo=1
   elif ! seeded_stack; then
     stack_nogo e2e_green
   else
@@ -218,8 +252,13 @@ if req e2e_green; then
     # when set, so the GO line names them: a GO from an overridden model or a
     # single run per task is visible, not silent. Resolved by the harness's own
     # defaults (tests/_claude_cli.py), never restated here.
-    suite_note=$(uv run python -c 'from tests import _claude_cli as c; print(f"model {c.claude_model()}, {c.runs_per_task()} runs per task")' 2>/dev/null) \
-      || suite_note="model and runs per task unresolved"
+    # verdict.json records the model too.
+    if e2e_meta=$(uv run python -c 'from tests import _claude_cli as c; print(c.claude_model()); print(c.runs_per_task())' 2>/dev/null); then
+      claude_model=$(printf '%s\n' "$e2e_meta" | sed -n 1p)
+      suite_note="model $claude_model, $(printf '%s\n' "$e2e_meta" | sed -n 2p) runs per task"
+    else
+      suite_note="model and runs per task unresolved"
+    fi
     suite_note="Kibana $stack_version, $suite_note"
     run_suite e2e_green env CLAUDE_E2E_OUT="$logdir/e2e_green-runs" \
       uv run pytest -m e2e_claude -q
@@ -247,7 +286,7 @@ if [ "${KIBANA_MCP_DOD_CYCLE_STACK:-0}" = "1" ] && { req streams_ephemeral || re
     echo "  ...   stopping the dev stack for the ephemeral tiers (KIBANA_MCP_DOD_CYCLE_STACK=1)"
     if ! scripts/stack.sh stop >"$logdir/cycle_stack.log" 2>&1; then
       echo "  NO-GO cycle_stack  (could not stop the dev stack; log: $logdir/cycle_stack.log)"
-      nogo=1
+      record cycle_stack NO-GO; nogo=1
     fi
   fi
 fi
@@ -274,16 +313,68 @@ if req changelog_entry; then
   # check fails closed naming `git fetch origin main`. checks.yml runs the same
   # script on every PR, so the rule is not only local.
   if changelog_reason=$(scripts/checks/changelog-entry.sh 2>"$logdir/changelog_entry.log"); then
-    echo "  GO    changelog_entry  ($changelog_reason)"
+    echo "  GO    changelog_entry  ($changelog_reason)"; record changelog_entry GO
   else
     echo "  NO-GO changelog_entry  (${changelog_reason:-the changelog check crashed; log: $logdir/changelog_entry.log})"
-    nogo=1
+    record changelog_entry NO-GO; nogo=1
   fi
 fi
 
-if [ "$nogo" -eq 0 ]; then
-  echo "VERDICT: GO"
+# The tree must not have changed while the criteria ran (D55): an edit saved
+# mid-run, or a hygiene_hooks fixer rewriting a file, means the criteria above
+# certified more than one tree. Part of the gate, not a criterion: no config can
+# declare it away.
+tree_at_end=$(content_tree) || tree_at_end=
+if [ "$tree_at_end" = "$tree" ]; then
+  record tree_stable GO
+elif [ -z "$tree_at_end" ]; then
+  echo "  NO-GO tree_stable  ($tree_fail)"; record tree_stable NO-GO; nogo=1
 else
-  echo "VERDICT: NO-GO (fix the criteria above, or mark them n/a in $cfg as a visible decision)"
+  fixer_hint=
+  req hygiene_hooks && fixer_hint=" (a hygiene_hooks fixer may have rewritten a file: see $logdir/hygiene_hooks.log)"
+  echo "  NO-GO tree_stable  (the tree changed during the run: $tree at start, $tree_at_end at end, so the criteria above certified more than one tree — commit or stash your edits, leave the tree alone until the gate finishes$fixer_hint, then re-run make dod)"
+  record tree_stable NO-GO; nogo=1
+fi
+
+# verdict.json: the record of this run, beside its logs (D55).
+json_str() { if [ -z "$1" ]; then printf 'null'; else printf '"%s"' "$(printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g')"; fi; }
+cfg_sha=$( (sha256sum "$cfg" 2>/dev/null || shasum -a 256 "$cfg") | cut -d' ' -f1)
+if [ "$nogo" -eq 0 ]; then verdict=GO; else verdict=NO-GO; fi
+{
+  printf '{\n'
+  printf '  "verdict": "%s",\n' "$verdict"
+  printf '  "head": %s,\n' "$(json_str "$head")"
+  printf '  "tree": "%s",\n' "$tree"
+  printf '  "tree_at_end": %s,\n' "$(json_str "$tree_at_end")"
+  printf '  "dirty": %s,\n' "$dirty"
+  printf '  "config": %s,\n' "$(json_str "$cfg")"
+  printf '  "config_sha256": %s,\n' "$(json_str "$cfg_sha")"
+  printf '  "kibana_version": %s,\n' "$(json_str "$stack_version")"
+  printf '  "claude_model": %s,\n' "$(json_str "$claude_model")"
+  printf '  "started_at": "%s",\n' "$started_at"
+  printf '  "finished_at": "%s",\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  printf '  "criteria": {'
+  sep=
+  for k in $known; do
+    if req "$k"; then
+      r=$(awk -F'\t' -v k="$k" '$1 == k { r = $2 } END { print r }' "$results")
+      : "${r:=not run}"
+    else
+      r=n/a
+    fi
+    printf '%s\n    "%s": "%s"' "$sep" "$k" "$r"; sep=,
+  done
+  for k in cycle_stack tree_stable; do
+    r=$(awk -F'\t' -v k="$k" '$1 == k { r = $2 } END { print r }' "$results")
+    [ -n "$r" ] && { printf '%s\n    "%s": "%s"' "$sep" "$k" "$r"; sep=,; }
+  done
+  printf '\n  }\n}\n'
+} >"$logdir/verdict.json"
+
+where="HEAD $(printf '%.12s' "$head"), tree $tree, $( [ "$dirty" = true ] && echo dirty || echo clean); record: $logdir/verdict.json"
+if [ "$nogo" -eq 0 ]; then
+  echo "VERDICT: GO  ($where)"
+else
+  echo "VERDICT: NO-GO  ($where) — fix the criteria above, or mark them n/a in $cfg as a visible decision"
   exit 1
 fi

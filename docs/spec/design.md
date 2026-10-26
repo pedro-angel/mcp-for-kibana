@@ -157,7 +157,11 @@ mode enables host/origin protection on loopback binds.
 - The whole: `make dod` → `VERDICT: GO` (see [brief.md](brief.md)), on the
   newest supported Kibana version: the gate checks the running stack's version
   against the pin before the seeded-stack criteria and names it on their GO
-  lines (D30, D53).
+  lines (D30, D53). The verdict is bound to a tree: header and VERDICT line
+  name HEAD, the content tree id (uncommitted and untracked work included) and
+  clean/dirty; a tree that changes during the run is NO-GO; the run is recorded
+  in `/tmp/dod-<repo>/verdict.json`, and a "GO at `<sha>`" claim holds only when
+  `git rev-parse <sha>^{tree}` equals the recorded tree id (D55).
 - Every change carries a CHANGELOG entry: `changelog_entry` and a `checks.yml`
   PR step run `scripts/checks/changelog-entry.sh`, which requires a new entry
   under `## [Unreleased]` when non-exempt paths changed since the merge-base
