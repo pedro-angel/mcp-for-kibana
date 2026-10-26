@@ -396,7 +396,8 @@ def test_check_refuses_a_credential_in_env_local_in_any_case(tmp_path, kibana, v
 
 
 @pytest.mark.parametrize(
-    "var", ["UV_ENV_FILE", "uv_env_file", "PYTHONPATH", "KIBANA_MCP_SERVER_BIN", "kibana_mcp_server_bin"]
+    "var",
+    ["UV_ENV_FILE", "uv_env_file", "PYTHONPATH", "LD_PRELOAD", "KIBANA_MCP_SERVER_BIN", "kibana_mcp_server_bin"],
 )
 def test_check_refuses_a_runner_setting_in_env_local(tmp_path, kibana, var):
     # .env.local is merged in after the gate clears the shell: UV_ENV_FILE made

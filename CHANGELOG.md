@@ -307,7 +307,7 @@ version section.
   replayed server read `KIBANA_API_KEY` ahead of the seed's key; `Settings`
   reads names case-insensitively, so `kibana_public_url` re-linked it too), the gate also clears `KIBANA_MCP_SERVER_BIN` (a
   leftover one replayed an installed server instead of the checkout), a
-  `UV_*`, `PYTHON*` or `KIBANA_MCP_SERVER_BIN` line in `.env.local` is refused
+  `UV_*`, `PYTHON*`, `LD_*` or `KIBANA_MCP_SERVER_BIN` line in `.env.local` is refused
   (merged back in after the clearing, a `UV_ENV_FILE` there loaded another key
   into the replayed server), and the
   suites' shadowing warning no longer prints the shell value. AGENTS.md and the

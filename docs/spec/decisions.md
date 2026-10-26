@@ -1528,7 +1528,7 @@ this ledger stands without them.
   `KIBANA_MCP_SERVER_BIN` (which makes `e2e_replay_green` replay an installed
   executable instead of the checkout; `wheel-replay.sh` sets it on its own
   command line) with `MAKEFLAGS`/`MFLAGS` before any criterion (the suites
-  merge `.env.local` back in after that, so (c) refuses a `UV_*`, `PYTHON*` or
+  merge `.env.local` back in after that, so (c) refuses a `UV_*`, `PYTHON*`, `LD_*` or
   `KIBANA_MCP_SERVER_BIN` line there: measured, a `UV_ENV_FILE` made the
   replay's `uv run` load another `KIBANA_API_KEY` into the server), and its header names the ones that
   were set (`note: cleared PYTEST_ADDOPTS ...`). Cleared, not refused: the
