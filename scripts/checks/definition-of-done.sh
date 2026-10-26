@@ -104,9 +104,13 @@ content_tree() {
   _assumed=$(printf '%s\n' "$_all" | while IFS= read -r _l; do
     case "$_l" in [hmrcks]' '*) printf '%s\n' "${_l#??}" ;; esac
   done)
+  # An absent skip-worktree entry keeps its bit (not a deletion) only in a
+  # sparse checkout; anywhere else nothing explains the missing file.
+  _sparse=$(git config --bool core.sparseCheckout 2>/dev/null) || _sparse=false
   _skipped=$(printf '%s\n' "$_all" | while IFS= read -r _l; do
     case "$_l" in
       [sS]' '*) _p=${_l#??}
+        if [ "$_sparse" != true ]; then printf '%s\n' "$_p"; continue; fi
         case "$_p" in '"'*) _f=$(unquote_path "$_p") || continue ;; *) _f=$_p ;; esac
         if [ -e "$_f" ] || [ -L "$_f" ]; then printf '%s\n' "$_p"; fi ;;
     esac
@@ -120,12 +124,14 @@ content_tree() {
     printf '%s\n' "$_skipped" | GIT_INDEX_FILE="$_idx" git update-index --no-skip-worktree --stdin >/dev/null 2>&1 \
       || { rm -f "$_idx"; return 1; }
   fi
-  GIT_INDEX_FILE="$_idx" git add -A >/dev/null 2>&1 && GIT_INDEX_FILE="$_idx" git write-tree
+  # --sparse: without it git add skips paths outside the sparse-checkout cone
+  # (an edit there would read clean) and fails on an untracked file there.
+  GIT_INDEX_FILE="$_idx" git add -A --sparse >/dev/null 2>&1 && GIT_INDEX_FILE="$_idx" git write-tree
   _rc=$?
   rm -f "$_idx"
   return $_rc
 }
-tree_fail="cannot compute the content tree id (git add -A into a temporary index failed) — run: git status && git fsck, fix what they report, then re-run make dod"
+tree_fail="cannot compute the content tree id (git add -A --sparse into a temporary index failed; needs git 2.34 or newer: git --version) — run: git status && git fsck, fix what they report, then re-run make dod"
 tree=$(content_tree) || { echo "FAIL: $tree_fail"; exit 2; }
 head=$(git rev-parse -q --verify HEAD) || head=none
 head_tree=$(git rev-parse -q --verify 'HEAD^{tree}') || head_tree=

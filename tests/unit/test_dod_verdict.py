@@ -209,6 +209,7 @@ def test_an_edit_to_a_file_git_is_told_to_ignore_is_in_the_tree(repo, flag):
 
 def test_an_absent_skip_worktree_file_is_not_recorded_as_deleted(repo):
     # Sparse checkout: a skip-worktree entry with no file on disk is not a change.
+    _git(repo, "config", "core.sparseCheckout", "true")
     _git(repo, "update-index", "--skip-worktree", "app.py")
     (repo / "app.py").unlink()
     res = _gate(repo)
@@ -223,8 +224,61 @@ def test_an_absent_skip_worktree_file_with_a_quoted_name_is_not_recorded_as_dele
     (repo / name).write_text("y = 1\n")
     _git(repo, "add", "-A")
     _git(repo, "commit", "-q", "-m", "quoted name")
+    _git(repo, "config", "core.sparseCheckout", "true")
     _git(repo, "update-index", "--skip-worktree", name)
     (repo / name).unlink()
+    res = _gate(repo)
+    assert res.returncode == 0, res.stdout
+    v = _verdict_json(repo)
+    assert v["dirty"] is False, res.stdout
+    assert v["tree"] == _git(repo, "rev-parse", "HEAD^{tree}")
+
+
+def test_an_absent_skip_worktree_file_outside_a_sparse_checkout_is_recorded_as_deleted(repo):
+    # Without core.sparseCheckout nothing explains the missing file: the
+    # criteria ran on a tree without it (review of H3).
+    _git(repo, "update-index", "--skip-worktree", "app.py")
+    (repo / "app.py").unlink()
+    res = _gate(repo)
+    assert res.returncode == 0, res.stdout
+    v = _verdict_json(repo)
+    assert v["dirty"] is True, res.stdout
+    assert v["tree"] != _git(repo, "rev-parse", "HEAD^{tree}")
+
+
+def _sparse(repo: Path) -> None:
+    """Cone-mode sparse checkout holding in/ and scripts/; out/b.py is outside the cone."""
+    for d in ("in", "out"):
+        (repo / d).mkdir()
+        (repo / d / "b.py").write_text("1\n")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "cone")
+    _git(repo, "sparse-checkout", "set", "in", "scripts")
+    assert not (repo / "out").exists()
+
+
+def test_an_edit_outside_the_sparse_cone_is_in_the_tree(repo):
+    _sparse(repo)
+    (repo / "out").mkdir()
+    (repo / "out" / "b.py").write_text("2\n")
+    res = _gate(repo)
+    assert res.returncode == 0, res.stdout
+    v = _verdict_json(repo)
+    assert v["dirty"] is True, res.stdout
+    assert v["tree"] != _git(repo, "rev-parse", "HEAD^{tree}")
+
+
+def test_an_untracked_file_outside_the_sparse_cone_is_in_the_tree(repo):
+    _sparse(repo)
+    (repo / "out").mkdir()
+    (repo / "out" / "c.py").write_text("new\n")
+    res = _gate(repo)
+    assert res.returncode == 0, res.stdout + res.stderr
+    assert _verdict_json(repo)["dirty"] is True, res.stdout
+
+
+def test_a_sparse_checkout_left_alone_is_clean(repo):
+    _sparse(repo)
     res = _gate(repo)
     assert res.returncode == 0, res.stdout
     v = _verdict_json(repo)

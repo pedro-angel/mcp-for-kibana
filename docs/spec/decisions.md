@@ -1482,9 +1482,11 @@ this ledger stands without them.
   second of the last index write, and it drops every assume-unchanged bit
   and the skip-worktree bit of every entry whose file is present (C-quoted
   names unquoted for that check), since `git add -A` never rehashes an entry
-  carrying either (an absent skip-worktree entry, as in a sparse checkout,
-  keeps its bit and is not recorded as deleted; an absent assume-unchanged
-  file is a deletion). The header line and the `VERDICT:` line name
+  carrying either (an absent skip-worktree entry keeps its bit and is not
+  recorded as deleted only when `core.sparseCheckout` is on; anywhere else,
+  like an absent assume-unchanged file, it is a deletion). `git add -A
+  --sparse` (git 2.34+) also takes edits and untracked files outside the
+  sparse-checkout cone, which plain `git add -A` skips or fails on. The header line and the `VERDICT:` line name
   HEAD, that tree id and `clean` (tree id equals `HEAD^{tree}`) or `dirty`. If
   the id at end differs from the one at start the gate prints `NO-GO
   tree_stable` naming both ids and the fix (commit or stash, leave the tree
