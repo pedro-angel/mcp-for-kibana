@@ -316,10 +316,13 @@ version section.
 - **The docs are held to the registry** (D57), inside `unit_green`.
   `tests/unit/test_docs_counts.py` computes the tool counts from the registry
   and fails on any "N tools", "N-tool", "(R / W / D)", "N read/write/destructive"
-  or "N edges from M tools" in README, `profiles/README.md`, `docs/` or the
-  specs (not `decisions.md`, which records past figures) that the registry
-  does not give in that place, naming the file, the line and the registry's
-  figure; past figures sit in its `HISTORICAL` table. `test_docs_tool_reference.py`
+  or "N edges from M tools" (also when wrapped across a line break) in README,
+  `profiles/README.md`, `docs/` or the specs (not `decisions.md`, which records
+  past figures) that the registry does not give in that place (a toolbox's
+  spec may state only its own figures, the total and the space contract),
+  naming the file, the line and each figure the registry gives there with what
+  it counts; past figures sit in its `HISTORICAL` table, each exempting only
+  its own figure. `test_docs_tool_reference.py`
   now requires one row per tool in its own toolbox's table with the registry's
   tier, the dashboards annotation table to match the real hints, and each
   "N reads + M writes" sentence to match; before, it only checked that each

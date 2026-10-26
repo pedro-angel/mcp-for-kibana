@@ -1593,14 +1593,16 @@ this ledger stands without them.
   scans `README.md`, `profiles/README.md`, `docs/*.md` and the specs except
   `decisions.md` (it records figures as they were; so does CHANGELOG.md) for
   "N tools", "N-tool", a "(R / W / D)" tier triple, "N read/write/destructive"
-  and "N edges from M tools". A toolbox's spec, and its section of
-  `docs/tools.md`, may state that toolbox's size, tiers and read + write; any
-  line may state the whole surface (total, tiers, the space-aware count and its
-  tiers, the built-in list and profile sizes, the dependency map); a page about
-  the whole surface may also name any toolbox's size. A figure that records a
+  and "N edges from M tools", a figure wrapped across a line break included.
+  A toolbox's spec, and its section of `docs/tools.md`, may state that
+  toolbox's size, tiers and read + write, plus the cross-cutting figures (the
+  total, the space-aware count and its tiers); every other line may state any
+  whole-surface figure (those, the tier totals, the built-in list and profile
+  sizes, the dependency map) and any toolbox's size. A figure that records a
   past state goes in the test's `HISTORICAL` table with the words around it,
-  and an entry that matches no line fails. A failure names the file, the line,
-  the closest registry figure and the fix. `test_docs_tool_reference.py` now
+  which exempt that figure only, not the rest of its line; an entry that
+  matches no figure fails. A failure names the file, the line and every figure
+  the registry gives there, each labelled with what it counts, and the fix. `test_docs_tool_reference.py` now
   also requires exactly one `| Tool | Tier |` row per tool in its own
   toolbox's section (the dashboards table borrows the two data-view reads on
   purpose), the tier cell equal to the registry's tier (`(upsert)` only on an
