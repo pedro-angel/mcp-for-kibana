@@ -3,7 +3,6 @@ what it lets through, and that its Client hook fails a call that leaks."""
 
 import base64
 import json
-import re
 from dataclasses import asdict
 from pathlib import Path
 from types import SimpleNamespace
@@ -40,15 +39,24 @@ def test_canaries_come_from_the_seed_files():
 
 def test_stack_seed_creates_every_canary_file():
     """Every scripts/canaries file is one `stack.sh seed` posts: its name is
-    fleet-<kind>.json and <kind> is in the seed's loop."""
-    stack = (_REPO / "scripts" / "stack.sh").read_text()
-    loop = re.search(r"for kind in ([^;]+); do", stack)
-    assert loop, "scripts/stack.sh seed no longer loops over the canary files"
-    kinds = {item.split(":")[0] for item in loop.group(1).split()}
+    <canary>.json and <canary>:<api path> is in the seed's loop."""
+    seeded = scan.seeded_canaries()
+    assert seeded, "scripts/stack.sh seed no longer loops over the canary files"
+    assert all(path and not path.startswith("/") for path in seeded.values()), seeded
     files = {p.name for p in scan.CANARY_DIR.glob("*.json")}
-    assert files == {f"fleet-{k}.json" for k in kinds}, (
+    assert files == {f"{name}.json" for name in seeded}, (
         f"scripts/canaries holds {sorted(files)} but stack.sh seed creates "
-        f"{sorted(kinds)} — add the file's kind to the seed's `for kind in` loop")
+        f"{sorted(seeded)} — add `<canary>:<Kibana API path>` to the seed's "
+        "`for kind in` loop")
+
+
+def test_the_seed_loop_takes_a_canary_of_any_kibana_type():
+    """A non-Fleet type is one more `<canary>:<path>` entry: nothing in the
+    loop or the check assumes Fleet."""
+    stack = (_REPO / "scripts" / "stack.sh").read_text()
+    loop = stack[stack.index("for kind in"):stack.index("done", stack.index("for kind in"))]
+    assert 'file="scripts/canaries/${kind%%:*}.json"' in loop
+    assert 'api="$KB/api/${kind#*:}"' in loop
 
 
 def test_a_raw_fleet_output_is_caught_with_the_fix():

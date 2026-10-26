@@ -1718,14 +1718,22 @@ this ledger stands without them.
   with a dummy `service_token` and a `config_yaml` password, a Fleet proxy
   with a dummy `certificate_key` and `Proxy-Authorization` header; neither
   default nor used), and the scan reads its values and key names from the
-  same files; a unit test holds the files to the seed's loop.
+  same files; the seed's loop takes `<canary>:<Kibana API path>` entries
+  (POST `/api/<path>`, DELETE `/api/<path>/<id>`), so a canary of a
+  non-Fleet type is one file plus one entry, and a unit test holds the files
+  to the loop.
   `tests/contract/test_secret_canaries.py` proves Kibana hands the canaries
   out in plain text to the test key (so the scan has a real secret to
   catch; NO-GO names `scripts/stack.sh seed`), proves the hook is on, and
   runs the read tools that reach the canaries (`list_outputs`,
   `get_output_health`, `list_fleet_server_hosts`, `find_saved_objects` and
   `get_saved_object` on both saved-object types) at the `read` tier of the
-  full server. How far the scan reaches is how far the tiers call tools
+  full server, and the Fleet tools that read credentials Kibana hands out —
+  `list_enrollment_keys`, `get_enrollment_key` (`api_key`),
+  `list_uninstall_tokens` (`token`) — plus `update_output` (write tier) on
+  the canary output, whose read-modify-write carries the raw
+  `service_token`; the fleet contract tests call the gateway, not a
+  `Client`, so these ran past the scan before. How far the scan reaches is how far the tiers call tools
   through a `Client`; the H8 tool-layer sweep widens that. **Dropped from
   the proposal: a canary connector.** On Basic only `.index` and
   `.server-log` connectors can be created and neither has a secrets schema

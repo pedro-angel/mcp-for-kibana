@@ -53,6 +53,19 @@ FIX = ("never return credentials from a tool: drop the field in the adapter's "
        "object type (as get_saved_object does), D59")
 
 
+_SEED_LOOP = re.compile(r"for kind in ([^;]+); do")
+
+
+def seeded_canaries() -> dict[str, str]:
+    """{canary name: Kibana API path} from `scripts/stack.sh seed`'s loop
+    (entries `<canary>:<path>`; the seed POSTs scripts/canaries/<canary>.json
+    to /api/<path>). Empty when the loop is gone."""
+    loop = _SEED_LOOP.search((CANARY_DIR.parents[0] / "stack.sh").read_text())
+    if not loop:
+        return {}
+    return dict(item.split(":", 1) for item in loop.group(1).split())
+
+
 def _canary_bodies() -> list[dict]:
     return [json.loads(p.read_text()) for p in sorted(CANARY_DIR.glob("*.json"))]
 

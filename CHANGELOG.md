@@ -343,7 +343,11 @@ version section.
   output with a dummy `service_token` and `config_yaml` password, and a
   Fleet proxy with a dummy `certificate_key` and proxy header.
   `tests/contract/test_secret_canaries.py` runs the read tools that reach
-  them at the `read` tier.
+  them at the `read` tier, the Fleet tools that read credentials
+  (`list_enrollment_keys`, `get_enrollment_key`, `list_uninstall_tokens`)
+  and `update_output` on the canary output. The seed's canary loop takes
+  `<canary>:<Kibana API path>` entries, so a non-Fleet type is one file plus
+  one entry.
 - **Privilege-dependent tools run under restricted keys** (D58), inside
   `contract_green`. One shared `restricted_key` fixture
   (`tests/contract/conftest.py`: a throwaway role, user and the API key that
