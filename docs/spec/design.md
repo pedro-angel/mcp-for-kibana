@@ -183,9 +183,10 @@ mode enables host/origin protection on loopback binds.
   `source_space`, `target_spaces` or `spaces`, and every listing guard,
   through the MCP tool layer under three keys from the shared
   `restricted_key` fixture (default-space `all`, `read` everywhere, no Kibana
-  privilege) and fails on a crash, masked text, a write by a read-only key or
-  a hidden space reported as missing; a unit test holds its rows to the
-  registry, so a new space-taking tool has a row by construction.
+  privilege) and fails on a crash, masked text, a write tool succeeding under
+  the read-only key or a hidden space reported as missing; a unit test holds
+  its rows to the registry and to reaching Kibana, so a new space-taking tool
+  has a working row by construction.
 - Every change carries a CHANGELOG entry: `changelog_entry` and a `checks.yml`
   PR step run `scripts/checks/changelog-entry.sh`, which requires a new entry
   under `## [Unreleased]` when non-exempt paths changed since the merge-base

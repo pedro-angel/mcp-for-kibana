@@ -1650,14 +1650,20 @@ this ledger stands without them.
   of the full server under three keys — `all` in 'default' only, `read` in
   every space, no Kibana privilege — and accepts a complete result, a
   curated refusal or an auth error naming the fix, never a crash, masked
-  text, a write by the read-only key or a hidden space reported as missing;
+  text, a success of a write tool under the read-only key, or a hidden space
+  reported as missing (the arguments name nothing real: of the write and
+  destructive rows under that key, those that reach the write get Kibana's
+  403 naming the fix, the rest a not-found or payload refusal the superuser
+  key would get too, so that row proves "no write", not "Kibana refused it");
   its first rows prove each key is the restricted one (not the test key;
   Kibana's `/internal/security/me` names the throwaway user). The rows'
   arguments come from each tool's schema plus `OVERRIDES` in
   `tests/_privilege_matrix.py`; `tests/unit/test_privilege_matrix_rows.py`
-  runs each row against a factory that refuses every space and fails unless
-  the call reaches it, so a schema or guard change cannot turn a row into a
-  validation error that tests nothing, and every space-taking tool in the
+  runs each row twice — against a factory that refuses every space, and
+  against the real adapter over a client whose every call raises — and fails
+  unless the call reaches the space check and then a request to Kibana, so a
+  schema or guard change (in the tool or the adapter) cannot turn a row into
+  a validation error that tests nothing, and every space-taking tool in the
   registry has a row by construction (a listing guard is added to
   `LISTING_GUARDS` by hand). The verifier's preference over a
   "nonzero `-m restricted_key`" count (the finding's option c) was taken:

@@ -13,8 +13,8 @@ under three keys minted by the shared `restricted_key` fixture:
 - `no-features`: no Kibana privilege at all.
 
 Every call ends in a complete result, a curated refusal, or an auth error
-that names the fix — never a crash, masked text, a write by a read-only key
-or a hidden space reported as missing. The arguments name nothing real, so
+that names the fix — never a crash, masked text, a write tool succeeding
+under the read-only key or a hidden space reported as missing. The arguments name nothing real, so
 no row changes anything; the matrix creates and removes its own space, data
 view, roles, users and keys.
 """
@@ -188,7 +188,10 @@ async def test_a_space_the_key_cannot_read_is_refused_naming_the_fix(matrix, too
 @pytest.mark.parametrize("tool", _SPACE_TOOLS)
 async def test_a_read_only_key_reads_or_is_refused_never_writes(matrix, tool):
     # The space is visible to this key: reads return a result or a curated
-    # error for the made-up ids; anything that writes is refused.
+    # error for the made-up ids. A write or destructive tool must end in an
+    # error: Kibana's 403 naming the fix where the row reaches the write, else
+    # the curated not-found or payload refusal its made-up arguments earn
+    # (which the superuser key would get too). Either way nothing is written.
     key_name = "read-everywhere"
     result, text = await _call(matrix, key_name, tool, _hidden_args(tool, matrix["hidden"]))
     _assert_not_crashed(tool, key_name, text)
@@ -253,22 +256,26 @@ async def test_copy_and_share_targets_under_each_key(matrix, key_name):
     assert in_hidden == 0 and "default" in view.get("namespaces", ["default"])
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture
 def tcp_installed(matrix):
-    """The tcp integration installed (no package policy) for the uninstall
-    rows; removed afterwards unless it was installed before."""
+    """The tcp integration installed (no package policy) before each uninstall
+    row, so a row that may uninstall it never decides the next row's outcome;
+    removed afterwards unless it was installed before. Yields whether Fleet
+    space awareness is on."""
     with KibanaPyGateway.connect(os.environ["KIBANA_URL"], os.environ["KIBANA_TEST_API_KEY"]) as gw:
         epm = gw._client.fleet_epm
-        before = epm.get_package(pkg_name="tcp").body["item"].get("status") == "installed"
-        if not before:
-            gw.install_package(name="tcp")
-        aware = bool(gw._client.fleet.get_settings().body["item"].get(
-            "use_space_awareness_migration_status"))
+
+        def installed():
+            return epm.get_package(pkg_name="tcp").body["item"].get("status") == "installed"
+
+        before = installed()
         try:
-            yield aware
+            if not before:
+                gw.install_package(name="tcp")
+            yield bool(gw._client.fleet.get_settings().body["item"].get(
+                "use_space_awareness_migration_status"))
         finally:
-            if not before and epm.get_package(pkg_name="tcp").body["item"].get(
-                    "status") == "installed":
+            if not before and installed():
                 epm.uninstall_package(pkg_name="tcp", force=True)
 
 

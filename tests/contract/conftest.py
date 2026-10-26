@@ -53,15 +53,22 @@ def _restricted_key(kibana_privileges):
             key_id = made["id"]
             yield made["encoded"], role
         finally:
-            if key_id is not None:
-                admin.perform_request(
-                    "POST", "/internal/security/api_key/invalidate", headers=INTERNAL,
-                    body={"apiKeys": [{"id": key_id, "name": "ct"}], "isAdmin": True})
-            with contextlib.suppress(kibana.NotFoundError):
-                admin.perform_request(
-                    "DELETE", f"/internal/security/users/{user}", headers=INTERNAL)
-            with contextlib.suppress(kibana.NotFoundError):
-                admin.security.delete_role(name=role)
+            # Each step runs whatever the one before it raised (ExitStack runs
+            # them all, then re-raises), so nothing is left behind.
+            with contextlib.ExitStack() as cleanup:
+                cleanup.callback(_quietly, admin.security.delete_role, name=role)
+                cleanup.callback(_quietly, admin.perform_request, "DELETE",
+                                 f"/internal/security/users/{user}", headers=INTERNAL)
+                if key_id is not None:
+                    cleanup.callback(
+                        admin.perform_request, "POST", "/internal/security/api_key/invalidate",
+                        headers=INTERNAL,
+                        body={"apiKeys": [{"id": key_id, "name": "ct"}], "isAdmin": True})
+
+
+def _quietly(fn, *args, **kw):
+    with contextlib.suppress(kibana.NotFoundError):
+        fn(*args, **kw)
 
 
 @pytest.fixture(scope="session")

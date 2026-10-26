@@ -342,10 +342,11 @@ version section.
   calls every tool that takes `space`, `source_space`, `target_spaces` or
   `spaces`, plus `list_spaces` and `uninstall_package`, through the MCP tool
   layer under three keys (`all` in 'default' only, `read` everywhere, no
-  Kibana privilege) and fails on a crash, masked text, a write by the
-  read-only key, a hidden space reported as missing, or a key that is
-  secretly the superuser test key. `tests/unit/test_privilege_matrix_rows.py`
-  fails when a row's arguments stop before the space is read.
+  Kibana privilege) and fails on a crash, masked text, a write tool
+  succeeding under the read-only key, a hidden space reported as missing, or
+  a key that is secretly the superuser test key.
+  `tests/unit/test_privilege_matrix_rows.py` fails when a row's arguments
+  stop before the space is read or before a request to Kibana.
 
 ### Fixed
 
