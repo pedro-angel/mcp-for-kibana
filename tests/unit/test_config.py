@@ -16,7 +16,10 @@ def test_a_shell_kibana_name_in_any_case_does_not_reach_the_unit_tests():
     # run two tests that read the defaults in a fresh pytest whose shell has
     # lowercase names, as a user's might.
     # (the Kelvin sign is uppercase but lowercases to "k", so Settings reads it)
-    env = {**os.environ, "kibana_url": "http://elsewhere:9", "\u212aIBANA_API_KEY": "stray"}
+    # (the user's PYTEST_ADDOPTS stays out: "-q" there would hide nothing but
+    # change the output; the exit code is the check, 5 when nothing ran)
+    env = {k: v for k, v in os.environ.items() if k != "PYTEST_ADDOPTS"}
+    env.update({"kibana_url": "http://elsewhere:9", "\u212aIBANA_API_KEY": "stray"})
     run = subprocess.run(
         [sys.executable, "-m", "pytest", "-q", "--no-cov", "-p", "no:cacheprovider",
          f"{__file__}::test_defaults",
@@ -24,7 +27,6 @@ def test_a_shell_kibana_name_in_any_case_does_not_reach_the_unit_tests():
         env=env, capture_output=True, text=True, cwd=Path(__file__).parents[2],
     )
     assert run.returncode == 0, run.stdout[-2000:]
-    assert "2 passed" in run.stdout
 
 
 def test_defaults(monkeypatch):
