@@ -317,7 +317,7 @@ version section.
   `tests/unit/test_docs_counts.py` computes the tool counts from the registry
   and fails on any "N tools", "N-tool", "(R / W / D)", "N read/write/destructive"
   or "N edges from M tools" (also when wrapped across a line break, a
-  Markdown hard break included) in README,
+  Markdown hard break, trailing spaces or a backslash, included) in README,
   `profiles/README.md`, `docs/` or the specs (not `decisions.md`, which records
   past figures) that the registry does not give in that place (a toolbox's
   spec may state only its own figures, the total and the space contract),
@@ -341,8 +341,8 @@ version section.
   `Settings` reads env names in any letter case, but the unit tests cleared
   only the uppercase ones, so a shell `kibana_url` or `kibana_api_key` failed
   5 of them and made `unit_green` NO-GO (never a false GO). An autouse
-  fixture in `tests/unit/conftest.py` now drops every `KIBANA*` name not in
-  uppercase.
+  fixture in `tests/unit/conftest.py` now drops every `KIBANA*` name not
+  spelled in ASCII uppercase.
 - **OpenTelemetry export no longer loses the last spans of a stdio session.**
   The server now exports 500 ms after a span ends instead of the SDK's 5 s
   (`OTEL_BSP_SCHEDULE_DELAY` still wins), and flushes its queue on SIGTERM as

@@ -1,23 +1,30 @@
 import os
+import subprocess
+import sys
+from pathlib import Path
 
 import pytest
 
 from kibana_mcp.config import Settings, Tier
-from tests._env import drop_kibana_names_in_other_cases
 
 _CRED_VARS = ("KIBANA_URL", "KIBANA_API_KEY", "KIBANA_MCP_API_KEY", "KIBANA_TEST_API_KEY",
              "KIBANA_MCP_ENV_FILE")
 
 
-def test_a_shell_kibana_name_in_any_case_is_cleared(monkeypatch):
-    monkeypatch.setenv("kibana_url", "http://elsewhere:9")
-    monkeypatch.setenv("Kibana_Api_Key", "stray")
-    monkeypatch.delenv("KIBANA_URL", raising=False)
-    monkeypatch.delenv("KIBANA_API_KEY", raising=False)
-    drop_kibana_names_in_other_cases(monkeypatch)
-    s = Settings()
-    assert s.kibana_url == "http://localhost:5601"
-    assert s.api_key is None
+def test_a_shell_kibana_name_in_any_case_does_not_reach_the_unit_tests():
+    # The autouse fixture in tests/unit/conftest.py is what protects the tier:
+    # run two tests that read the defaults in a fresh pytest whose shell has
+    # lowercase names, as a user's might.
+    # (the Kelvin sign is uppercase but lowercases to "k", so Settings reads it)
+    env = {**os.environ, "kibana_url": "http://elsewhere:9", "\u212aIBANA_API_KEY": "stray"}
+    run = subprocess.run(
+        [sys.executable, "-m", "pytest", "-q", "--no-cov", "-p", "no:cacheprovider",
+         f"{__file__}::test_defaults",
+         f"{__file__}::test_load_without_env_file_is_plain_settings"],
+        env=env, capture_output=True, text=True, cwd=Path(__file__).parents[2],
+    )
+    assert run.returncode == 0, run.stdout[-2000:]
+    assert "2 passed" in run.stdout
 
 
 def test_defaults(monkeypatch):
