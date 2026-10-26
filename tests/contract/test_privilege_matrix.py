@@ -260,8 +260,8 @@ async def test_copy_and_share_targets_under_each_key(matrix, key_name):
 def tcp_installed(matrix):
     """The tcp integration installed (no package policy) before each uninstall
     row, so a row that may uninstall it never decides the next row's outcome;
-    removed afterwards unless it was installed before. Yields whether Fleet
-    space awareness is on."""
+    left as it was found (removed, or installed again if a row uninstalled a
+    tcp that was there before). Yields whether Fleet space awareness is on."""
     with KibanaPyGateway.connect(os.environ["KIBANA_URL"], os.environ["KIBANA_TEST_API_KEY"]) as gw:
         epm = gw._client.fleet_epm
 
@@ -275,8 +275,11 @@ def tcp_installed(matrix):
             yield bool(gw._client.fleet.get_settings().body["item"].get(
                 "use_space_awareness_migration_status"))
         finally:
-            if not before and installed():
-                epm.uninstall_package(pkg_name="tcp", force=True)
+            if installed() != before:
+                if before:
+                    gw.install_package(name="tcp")
+                else:
+                    epm.uninstall_package(pkg_name="tcp", force=True)
 
 
 @pytest.mark.parametrize("key_name", sorted(KEYS))

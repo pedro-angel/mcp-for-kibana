@@ -60,10 +60,20 @@ def _restricted_key(kibana_privileges):
                 cleanup.callback(_quietly, admin.perform_request, "DELETE",
                                  f"/internal/security/users/{user}", headers=INTERNAL)
                 if key_id is not None:
-                    cleanup.callback(
-                        admin.perform_request, "POST", "/internal/security/api_key/invalidate",
-                        headers=INTERNAL,
-                        body={"apiKeys": [{"id": key_id, "name": "ct"}], "isAdmin": True})
+                    cleanup.callback(_invalidate, admin, key_id)
+
+
+def _invalidate(admin, key_id):
+    """Invalidate the key or fail: Kibana answers 200 with per-key `errors`,
+    and a key outlives its deleted owner, so a silent miss would leave a live
+    key on the shared stack."""
+    body = admin.perform_request(
+        "POST", "/internal/security/api_key/invalidate", headers=INTERNAL,
+        body={"apiKeys": [{"id": key_id, "name": "ct"}], "isAdmin": True}).body
+    done = [k.get("id") for k in body.get("itemsInvalidated") or ()]
+    assert key_id in done and not body.get("errors"), (
+        f"restricted_key could not invalidate API key {key_id}: {body.get('errors')} — "
+        "invalidate it with POST /_security/api_key/_invalidate before the next run")
 
 
 def _quietly(fn, *args, **kw):
