@@ -1,9 +1,12 @@
 #!/bin/sh
 # The DoD gate's `changelog_entry` check (D54), also a checks.yml step on PRs.
 #
-# A change that touches anything outside the exemption list below must add a
-# non-blank line to CHANGELOG.md under `## [Unreleased]` (or under a release
-# section the same change adds — a release cut moves entries there). The change
+# A change that touches anything outside the exemption list below must make
+# CHANGELOG.md gain an entry under `## [Unreleased]`: more entry lines there than
+# at the base, at least one of them text the base changelog does not hold (so a
+# reworded, re-spaced or moved entry is not one), where an entry line is any
+# non-blank line that is not a heading. A release cut — a `## [x.y.z]` heading
+# whose version the base does not have — counts as the entry. The change
 # is everything since the base: committed, staged, unstaged and untracked (not
 # ignored) files. The base is `git merge-base HEAD origin/main`, falling back to
 # the latest `v*` tag; with neither, the check fails closed naming the fetch.
@@ -14,12 +17,13 @@ set -u
 
 cd "$(git rev-parse --show-toplevel)" || exit 2
 
-# Paths that never need an entry: committed run records (data, not behaviour),
-# working plans, and lock-file-only dependency bumps. Keep this list short; a
-# path here is a promise that changing it changes nothing a user sees.
+# Paths that never need an entry: committed run records (data, not behaviour)
+# and the working plans under .claude/plans/. Keep this list short; a path here
+# is a promise that changing it changes nothing a user sees. uv.lock is not on
+# it: the image installs from it, and a lock-file-only CVE fix gets an entry.
 exempt() {
   case "$1" in
-    CHANGELOG.md | scripts/experiment/runs/* | docs/plans/* | uv.lock) return 0 ;;
+    CHANGELOG.md | scripts/experiment/runs/* | .claude/plans/*) return 0 ;;
   esac
   return 1
 }
@@ -38,7 +42,14 @@ else
   exit 1
 fi
 
-changed=$( { git -c core.quotePath=false diff --name-only "$base" --; git ls-files -o --exclude-standard; } | sort -u)
+# Renames off, so a file moved into an exempt path still counts at its old one.
+# A git failure here is NO-GO, never an empty (passing) list.
+if ! diffed=$(git -c core.quotePath=false diff --no-renames --name-only "$base" --) \
+  || ! untracked=$(git -c core.quotePath=false ls-files -o --exclude-standard); then
+  echo "could not list the changed paths since the $base_label (git failed) — repair the clone (git fsck; git fetch origin main) and re-run"
+  exit 1
+fi
+changed=$(printf '%s\n%s\n' "$diffed" "$untracked" | sort -u)
 need=
 n=0
 set -f                       # no globbing, split on newlines only: paths may hold spaces
@@ -63,30 +74,58 @@ if [ ! -f CHANGELOG.md ]; then
   exit 1
 fi
 
-# Line numbers (in the working-tree CHANGELOG.md) of the lines this change
-# added, from the -U0 hunk headers `@@ -a,b +c,d @@` (d omitted means 1).
-added=$(git diff -U0 --no-color "$base" -- CHANGELOG.md | awk '
-  /^@@ / {
-    split($3, r, ","); start = substr(r[1], 2) + 0; cnt = (2 in r) ? r[2] + 0 : 1
-    for (i = 0; i < cnt; i++) print start + i
-  }')
+# The base changelog (empty when the base has none). A missing path is the only
+# failure tolerated; anything else is NO-GO.
+if git cat-file -e "$base:CHANGELOG.md" 2>/dev/null; then
+  if ! base_log=$(git show "$base:CHANGELOG.md"); then
+    echo "could not read CHANGELOG.md at the $base_label (git failed) — repair the clone (git fsck; git fetch origin main) and re-run"
+    exit 1
+  fi
+else
+  base_log=
+fi
 
-entries=$(printf '%s\n' "$added" | awk '
-  FNR == NR { if ($0 != "") add[$0] = 1; next }
-  /^## / {
-    if ($0 ~ /^## \[?[Uu]nreleased/) sec = "unreleased"
-    else if ($0 ~ /^## \[?[0-9]+\.[0-9]+\.[0-9]+/ && (FNR in add)) { sec = "new-release"; n++ }
-    else sec = "other"
+# Pass 1 (the base): every line's text with trailing blanks dropped, the release
+# versions, and the entry-line count under [Unreleased]. Pass 2 (the working
+# tree): the same count, how many of those lines are text the base lacks, and
+# release headings whose version is new.
+result=$(printf '%s\n' "$base_log" | awk '
+  function rtrim(s) { sub(/[[:space:]]+$/, "", s); return s }
+  function version(s) { sub(/^## \[?/, "", s); sub(/[^0-9.].*$/, "", s); return s }
+  function section(s) {
+    if (s ~ /^## \[?[Uu]nreleased/) return "unreleased"
+    if (s ~ /^## \[?[0-9]+\.[0-9]+\.[0-9]+/) return "release"
+    return "other"
+  }
+  function entry(s) { return s ~ /[^[:space:]]/ && s !~ /^#/ }
+  FNR == NR {
+    t = rtrim($0); seen[t] = 1
+    if (t ~ /^#/) { sec = (t ~ /^## /) ? section(t) : (t ~ /^# / ? "other" : sec); if (sec == "release") ver[version(t)] = 1; next }
+    if (sec == "unreleased" && entry(t)) old++
     next
   }
-  /^# / { sec = "other"; next }
-  (FNR in add) && $0 ~ /[^[:space:]]/ && (sec == "unreleased" || sec == "new-release") { n++ }
-  END { print n + 0 }
+  FNR == 1 { sec = "" }
+  {
+    t = rtrim($0)
+    if (t ~ /^#/) {
+      if (t ~ /^## /) { sec = section(t); if (sec == "release" && !(version(t) in ver)) cut++ }
+      else if (t ~ /^# /) sec = "other"
+      next
+    }
+    if (sec == "unreleased" && entry(t)) { now++; if (!(t in seen)) fresh++ }
+  }
+  END { printf "%d %d %d %d\n", old, now, fresh, cut }
 ' - CHANGELOG.md)
+set -- $result
+old=$1 now=$2 fresh=$3 cut=$4
 
-if [ "$entries" -ge 1 ]; then
-  echo "$entries line(s) added under [Unreleased] or a new release section; $n changed path(s) since the $base_label"
+if [ "$cut" -ge 1 ]; then
+  echo "release cut: $cut new release section(s) in CHANGELOG.md; $n changed path(s) since the $base_label"
   exit 0
 fi
-echo "$n changed path(s) since the $base_label ($need) but no line added under ## [Unreleased] — add an entry under ## [Unreleased] in CHANGELOG.md"
+if [ "$now" -gt "$old" ] && [ "$fresh" -ge 1 ]; then
+  echo "$((now - old)) entry line(s) gained under [Unreleased] ($fresh new); $n changed path(s) since the $base_label"
+  exit 0
+fi
+echo "$n changed path(s) since the $base_label ($need) but CHANGELOG.md gained no entry under ## [Unreleased] ($old entry line(s) at the base, $now now, $fresh new) — add an entry under ## [Unreleased] in CHANGELOG.md"
 exit 1

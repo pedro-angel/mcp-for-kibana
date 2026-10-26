@@ -267,10 +267,11 @@ version section.
   heading, which it always has, so it read GO on every tree. Now
   `scripts/checks/changelog-entry.sh` diffs the tree (untracked files included)
   against the merge-base with `origin/main` (fallback: the latest `v*` tag) and,
-  when anything outside `scripts/experiment/runs/`, `docs/plans/` and `uv.lock`
-  changed, requires a line added under `## [Unreleased]`; otherwise NO-GO
-  naming the fix. Without a base it fails closed naming `git fetch origin
-  main`. `checks.yml` runs the same script on every non-Dependabot PR.
+  when anything outside `scripts/experiment/runs/` and `.claude/plans/`
+  changed (`uv.lock` included), requires a new entry under `## [Unreleased]` —
+  a reworded, re-spaced or moved line, an amended old heading or an empty
+  sub-heading is not one; otherwise NO-GO naming the fix. Without a base, or
+  when git fails, it fails closed naming `git fetch origin main`. `checks.yml` runs the same script on every non-Dependabot PR.
 
 ### Fixed
 

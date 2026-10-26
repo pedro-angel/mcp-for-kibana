@@ -1443,11 +1443,18 @@ this ledger stands without them.
   the change is every path that differs from the base — `git merge-base HEAD
   origin/main`, else the latest `v*` tag — in the working tree, plus untracked
   files that are not ignored. If any of them is outside the exemption list
-  (`scripts/experiment/runs/` run records, `docs/plans/`, a `uv.lock`-only
-  bump), CHANGELOG.md must gain a non-blank line under `## [Unreleased]`, or
-  under a `## [x.y.z]` section the same change adds (a release cut moves entries
-  there). A line added under an older release, or above the first section, does
-  not count. With neither `origin/main` nor a `v*` tag the check is NO-GO naming
+  (`scripts/experiment/runs/` run records, the working plans under
+  `.claude/plans/`; renames are off, so a file moved into an exempt path counts
+  at its old one), CHANGELOG.md must gain an entry under `## [Unreleased]`: more
+  entry lines (non-blank, not a heading) there than at the base, at least one
+  with text the base changelog does not hold — or a `## [x.y.z]` heading whose
+  version the base lacks (a release cut moves entries there). A line under an
+  older release, above the first section, an amended old heading, an empty
+  sub-heading, or a reworded, re-spaced or moved entry does not count.
+  `uv.lock` is not exempt: the image installs from it, and lock-file-only CVE
+  fixes get a `### Security` entry. A git failure while listing the paths or
+  reading the base changelog is NO-GO naming `git fsck; git fetch origin main`,
+  never an empty passing list. With neither `origin/main` nor a `v*` tag the check is NO-GO naming
   `git fetch origin main`; a shallow clone without the merge-base names `git
   fetch --unshallow origin main`; a missing entry names `add an entry under ##
   [Unreleased] in CHANGELOG.md` and lists up to five of the paths. The GO line
@@ -1461,7 +1468,11 @@ this ledger stands without them.
   test-timing fix, Dependabot bumps). Evidence (2026-10-25): on a code change
   with no entry the old gate printed `GO    changelog_entry` and the new one
   NO-GO naming the fix; on the real tree GO (the H2 commit message has the
-  lines).
+  lines). An adversarial review then found 8 ways through the first version
+  (the `uv.lock` exemption, amended headings, edited or moved lines, empty
+  sub-headings, renames, quoted non-ASCII paths, a swallowed git failure and a
+  `docs/plans/` exemption for a directory that does not exist); each has a
+  unit test in `tests/unit/test_changelog_entry.py`.
 
 ## Scope and licensing (probed on Basic)
 

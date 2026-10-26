@@ -124,7 +124,7 @@ def test_a_line_added_under_unreleased_passes(tmp_path):
     _commit(repo)
     res = _check(repo)
     assert res.returncode == 0, res.stdout
-    assert "1 line" in res.stdout and "[Unreleased]" in res.stdout
+    assert "1 entry line" in res.stdout and "[Unreleased]" in res.stdout
 
 
 def test_an_entry_still_uncommitted_passes(tmp_path):
@@ -160,6 +160,54 @@ def test_editing_only_the_changelog_heading_area_is_not_an_entry(tmp_path):
     assert _check(repo).returncode == 1
 
 
+def test_amending_an_old_release_heading_is_not_an_entry(tmp_path):
+    repo = _repo(tmp_path)
+    (repo / "src" / "app.py").write_text("x = 2\n")
+    text = (repo / "CHANGELOG.md").read_text()
+    (repo / "CHANGELOG.md").write_text(text.replace("## [0.1.0]", "## [0.1.0] (amended)", 1))
+    res = _check(repo)
+    assert res.returncode == 1 and _FIX_ENTRY in res.stdout
+
+
+def test_re_spacing_an_existing_entry_is_not_an_entry(tmp_path):
+    repo = _repo(tmp_path)
+    (repo / "src" / "app.py").write_text("x = 2\n")
+    text = (repo / "CHANGELOG.md").read_text()
+    (repo / "CHANGELOG.md").write_text(text.replace("- An earlier entry.\n", "- An earlier entry.  \n", 1))
+    res = _check(repo)
+    assert res.returncode == 1 and _FIX_ENTRY in res.stdout
+
+
+def test_rewording_an_existing_entry_is_not_an_entry(tmp_path):
+    repo = _repo(tmp_path)
+    (repo / "src" / "app.py").write_text("x = 2\n")
+    text = (repo / "CHANGELOG.md").read_text()
+    (repo / "CHANGELOG.md").write_text(text.replace("- An earlier entry.\n", "- An earlier, fixed entry.\n", 1))
+    res = _check(repo)
+    assert res.returncode == 1 and _FIX_ENTRY in res.stdout
+
+
+def test_moving_an_old_entry_into_unreleased_is_not_an_entry(tmp_path):
+    repo = _repo(tmp_path)
+    (repo / "src" / "app.py").write_text("x = 2\n")
+    text = (repo / "CHANGELOG.md").read_text()
+    old = "- The first release.\n"
+    assert old in text
+    (repo / "CHANGELOG.md").write_text(
+        text.replace(old, "", 1).replace("- An earlier entry.\n", "- An earlier entry.\n" + old, 1)
+    )
+    res = _check(repo)
+    assert res.returncode == 1 and _FIX_ENTRY in res.stdout
+
+
+def test_an_empty_sub_heading_is_not_an_entry(tmp_path):
+    repo = _repo(tmp_path)
+    (repo / "src" / "app.py").write_text("x = 2\n")
+    _add_under_unreleased(repo, line="### Removed")
+    res = _check(repo)
+    assert res.returncode == 1 and _FIX_ENTRY in res.stdout
+
+
 def test_a_release_cut_moving_entries_into_a_new_section_passes(tmp_path):
     repo = _repo(tmp_path)
     (repo / "src" / "app.py").write_text("x = 2\n")
@@ -181,8 +229,7 @@ def test_a_release_cut_moving_entries_into_a_new_section_passes(tmp_path):
     "path",
     [
         "scripts/experiment/runs/claude-e2e/x/runs.jsonl",
-        "docs/plans/next.md",
-        "uv.lock",
+        ".claude/plans/next.md",
     ],
 )
 def test_exempt_paths_alone_need_no_entry(tmp_path, path):
@@ -197,11 +244,52 @@ def test_exempt_paths_alone_need_no_entry(tmp_path, path):
 
 def test_an_exempt_path_does_not_excuse_a_code_change(tmp_path):
     repo = _repo(tmp_path)
-    (repo / "uv.lock").write_text("data\n")
+    runs = repo / "scripts" / "experiment" / "runs"
+    runs.mkdir(parents=True)
+    (runs / "r.jsonl").write_text("data\n")
     (repo / "src" / "app.py").write_text("x = 2\n")
     res = _check(repo)
     assert res.returncode == 1
-    assert "src/app.py" in res.stdout and "uv.lock" not in res.stdout
+    assert "src/app.py" in res.stdout and "runs/r.jsonl" not in res.stdout
+
+
+def test_a_lock_file_only_change_needs_an_entry(tmp_path):
+    """The image installs from uv.lock: a lock-file-only CVE fix ships to users."""
+    repo = _repo(tmp_path)
+    (repo / "uv.lock").write_text("data\n")
+    res = _check(repo)
+    assert res.returncode == 1 and "uv.lock" in res.stdout and _FIX_ENTRY in res.stdout
+
+
+def test_a_file_moved_into_an_exempt_path_still_counts(tmp_path):
+    repo = _repo(tmp_path)
+    (repo / ".claude" / "plans").mkdir(parents=True)
+    _git(repo, "mv", "src/app.py", ".claude/plans/app.py")
+    _commit(repo)
+    res = _check(repo)
+    assert res.returncode == 1 and "src/app.py" in res.stdout
+
+
+def test_an_untracked_non_ascii_exempt_path_is_exempt(tmp_path):
+    repo = _repo(tmp_path)
+    runs = repo / "scripts" / "experiment" / "runs"
+    runs.mkdir(parents=True)
+    (runs / "caf\u00e9.json").write_text("{}\n")
+    res = _check(repo)
+    assert res.returncode == 0, res.stdout
+
+
+def test_a_git_failure_listing_the_paths_is_no_go(tmp_path):
+    """A failing `git diff` must not read as an empty, passing list."""
+    repo = _repo(tmp_path)
+    (repo / "src" / "app.py").write_text("x = 2\n")
+    _commit(repo)
+    tree = _git(repo, "rev-parse", "origin/main^{tree}").strip()
+    obj = repo / ".git" / "objects" / tree[:2] / tree[2:]
+    obj.chmod(0o644)
+    obj.unlink()
+    res = _check(repo)
+    assert res.returncode == 1 and "git failed" in res.stdout and "git fetch origin main" in res.stdout
 
 
 def test_no_change_since_the_base_passes(tmp_path):

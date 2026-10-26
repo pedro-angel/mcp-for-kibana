@@ -159,6 +159,6 @@ mode enables host/origin protection on loopback binds.
   against the pin before the seeded-stack criteria and names it on their GO
   lines (D30, D53).
 - Every change carries a CHANGELOG entry: `changelog_entry` and a `checks.yml`
-  PR step run `scripts/checks/changelog-entry.sh`, which requires a line added
+  PR step run `scripts/checks/changelog-entry.sh`, which requires a new entry
   under `## [Unreleased]` when non-exempt paths changed since the merge-base
   with `origin/main` (D54).
