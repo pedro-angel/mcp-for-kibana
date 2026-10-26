@@ -1,0 +1,7 @@
+{
+  "id": "mcp-for-kibana-canary-proxy",
+  "name": "mcp-for-kibana canary proxy (secret scan, D59)",
+  "url": "https://canary.invalid:3128",
+  "certificate_key": "mcp-for-kibana-canary-secret-certificate-key-5b2e8f61",
+  "proxy_headers": {"Proxy-Authorization": "mcp-for-kibana-canary-secret-proxy-header-5b2e8f61"}
+}

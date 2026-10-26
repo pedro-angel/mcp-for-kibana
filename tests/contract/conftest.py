@@ -6,9 +6,22 @@ import kibana
 import pytest
 
 from kibana_mcp.adapters.kibana.gateway import KibanaPyGateway
+from tests import _secret_scan
 from tests._stack_env import require_stack_env
 
 pytestmark = pytest.mark.contract
+
+
+@pytest.fixture(autouse=True)
+def secret_scan(monkeypatch):
+    """Every tool result a fastmcp Client receives here is scanned for
+    credentials (D59, tests/_secret_scan.py): a hit raises at the call, and
+    fails the test here too in case the test swallowed the raise. Yields the
+    list of leaks (the canary test clears its own deliberate one)."""
+    leaks = _secret_scan.install(monkeypatch)
+    yield leaks
+    if leaks:
+        pytest.fail("\n".join(leaks), pytrace=False)
 
 
 @pytest.fixture(scope="session")

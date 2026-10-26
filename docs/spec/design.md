@@ -187,6 +187,12 @@ mode enables host/origin protection on loopback binds.
   the read-only key or a hidden space reported as missing; a unit test holds
   its rows to the registry and to reaching Kibana, so a new space-taking tool
   has a working row by construction.
+- No tool result carries a credential (D59): every result the contract and
+  replay tiers receive through a fastmcp `Client` is scanned for the seeded
+  canaries (a Fleet output and a Fleet proxy with dummy `service_token`,
+  `config_yaml`, `certificate_key` and proxy-header values, created by
+  `scripts/stack.sh seed` from `scripts/canaries/`), the test key, and
+  secret-bearing keys with a value; a hit fails the test naming the fix.
 - Every change carries a CHANGELOG entry: `changelog_entry` and a `checks.yml`
   PR step run `scripts/checks/changelog-entry.sh`, which requires a new entry
   under `## [Unreleased]` when non-exempt paths changed since the merge-base

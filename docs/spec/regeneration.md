@@ -57,7 +57,8 @@ trust the observation, and **reconcile the contract in the same change**
 
 - Live stack: `scripts/stack.sh up && scripts/stack.sh seed` (Elasticsearch
   + Kibana on the newest supported line (D30) + Fleet from `elastic-start-local/`); seed **after every**
-  stack start — the API key dies with the stack.
+  stack start — the API key dies with the stack. Seeding also creates the
+  secret canaries (`scripts/canaries/*.json`) the secret scan needs (D59).
 - Fast gates: `make check`. Full certification: `KIBANA_MCP_DOD_CYCLE_STACK=1
   make dod` → must print `VERDICT: GO`. Criteria in `dod.config`; the gate,
   not the author, certifies completion. It includes the Claude live-model

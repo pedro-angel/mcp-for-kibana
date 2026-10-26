@@ -123,6 +123,26 @@ case "${1:?$USAGE}" in
     curl -fsSu "elastic:${ESPW}" -X POST "$KB/api/sample_data/flights" \
       -H 'kbn-xsrf: true' -H 'x-elastic-internal-origin: Kibana'
     echo ""
+    # Secret canaries (D59): one Fleet output and one Fleet proxy whose secret
+    # fields hold known dummy values (scripts/canaries/*.json), so the contract
+    # and replay tiers' secret scan (tests/_secret_scan.py) has a real secret
+    # on the stack to catch. Deleted and created again on every seed, so the
+    # stack always holds the files' values. Neither is a default or used.
+    echo "seeding secret canaries..."
+    for kind in output:outputs proxy:proxies; do
+      file="scripts/canaries/fleet-${kind%%:*}.json"
+      api="$KB/api/fleet/${kind#*:}"
+      id=$(sed -n 's/^ *"id": *"\([^"]*\)".*/\1/p' "$file")
+      code=$(curl -s -o /dev/null -w '%{http_code}' -u "elastic:${ESPW}" -X DELETE \
+        "$api/$id" -H 'kbn-xsrf: true' || true)
+      case "$code" in
+        200|404) ;;
+        *) echo "FAIL: could not remove the old canary Fleet ${kind%%:*} '$id' (HTTP $code) — check Fleet is set up: scripts/stack.sh down && scripts/stack.sh up && scripts/stack.sh seed" >&2; exit 1 ;;
+      esac
+      curl -fsS -o /dev/null -u "elastic:${ESPW}" -X POST "$api" -H 'kbn-xsrf: true' \
+        -H 'Content-Type: application/json' --data-binary "@$file" \
+        || { echo "FAIL: could not create the canary Fleet ${kind%%:*} from $file — check Fleet is set up: scripts/stack.sh down && scripts/stack.sh up && scripts/stack.sh seed" >&2; exit 1; }
+    done
     # Keep the existing key when it still authenticates (/api/features because
     # /api/status is auth-blind); any non-200 routes to mint (benign re-mint).
     KEY=$(grep '^KIBANA_TEST_API_KEY=' "$ENVFILE" 2>/dev/null | cut -d= -f2- || true)

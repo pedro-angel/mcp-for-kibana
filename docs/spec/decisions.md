@@ -1697,6 +1697,52 @@ this ledger stands without them.
   failed naming "never as missing" against D49's "create the space with
   create_space" text; both pass on the real tree (the H6 commit message has
   the lines).
+- **D59 (2026-10-26, probes on 9.5.4, Basic)** — No tool result carries a
+  credential, checked across the contract and replay tiers (inside
+  `contract_green`, `e2e_replay_green` and `wheel_replay_green`; no new
+  criterion). An autouse `secret_scan` fixture in
+  `tests/contract/conftest.py` and `tests/e2e_replay/conftest.py` patches
+  `fastmcp.Client.call_tool_mcp` (which `call_tool` uses) and scans every
+  result, its text blocks and structured content, with
+  `tests/_secret_scan.py`; a hit raises at the call and fails the test at
+  teardown too, so a test that swallows the raise still fails. A hit is a
+  seeded canary value, the test key (`KIBANA_TEST_API_KEY` encoded, or its
+  secret half), or a secret-bearing key with a value (`password`,
+  `secrets`, `api_key`, `kibana_api_key`, `service_token`,
+  `certificate_key`, `proxy_headers`, `ssl.key`, … and every key a canary
+  is seeded under), or `config_yaml`/`otel_exporter_config_yaml` text that
+  names a credential; the message names the tool, where and what, and the
+  fix (drop the field in the adapter's summary or refuse the type). The
+  canaries are one source, `scripts/canaries/*.json`: `scripts/stack.sh
+  seed` deletes and creates each (a `remote_elasticsearch` Fleet output
+  with a dummy `service_token` and a `config_yaml` password, a Fleet proxy
+  with a dummy `certificate_key` and `Proxy-Authorization` header; neither
+  default nor used), and the scan reads its values and key names from the
+  same files; a unit test holds the files to the seed's loop.
+  `tests/contract/test_secret_canaries.py` proves Kibana hands the canaries
+  out in plain text to the test key (so the scan has a real secret to
+  catch; NO-GO names `scripts/stack.sh seed`), proves the hook is on, and
+  runs the read tools that reach the canaries (`list_outputs`,
+  `get_output_health`, `list_fleet_server_hosts`, `find_saved_objects` and
+  `get_saved_object` on both saved-object types) at the `read` tier of the
+  full server. How far the scan reaches is how far the tiers call tools
+  through a `Client`; the H8 tool-layer sweep widens that. **Dropped from
+  the proposal: a canary connector.** On Basic only `.index` and
+  `.server-log` connectors can be created and neither has a secrets schema
+  (Kibana answers 400 "Unrecognized key: \"password\"" for one; probed), so
+  a connector canary would hold no secret; the connector tools are covered
+  by the key and test-key checks. Why: under the superuser-snapshot test
+  key a tool that passes a credential on is seen by every live tier and
+  nothing looked — 5da1b18's `get_saved_object` returned Fleet output
+  `service_token`/`config_yaml` and proxy attributes in plain text through
+  `make check`, contract and replay, and only review found it (d1a09c6).
+  Evidence (2026-10-26, dev stack on 9.5.4): with `list_outputs` doctored to
+  return Fleet's raw items, the pre-H7 contract fleet tests and the canary
+  test without the hook passed (25 passed; 3 passed), and with the hook the
+  call failed naming the canaries, `service_token`, `config_yaml` and the
+  fix; with `get_saved_object`'s type allowlist removed, the
+  `ingest-outputs` read failed the same way; all pass on the real tree (the
+  H7 commit message has the lines).
 
 ## Scope and licensing (probed on Basic)
 

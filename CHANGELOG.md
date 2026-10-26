@@ -334,6 +334,16 @@ version section.
   unit test pins 17 tools, not 11; platform-health.md cites
   `test_read_only_explorer_profile_is_fourteen_read_tools` (renamed). design.md
   now says `docs://tools` is deliberately not tier-gated.
+- **No tool result carries a credential** (D59), inside `contract_green`
+  and both replay criteria. Every tool result the contract and replay tiers
+  receive through a fastmcp `Client` is scanned (`tests/_secret_scan.py`)
+  for the seeded secret canaries, the test key and secret-bearing keys with
+  a value, and a hit fails the test naming the fix. `scripts/stack.sh seed`
+  now also creates the canaries from `scripts/canaries/*.json`: a Fleet
+  output with a dummy `service_token` and `config_yaml` password, and a
+  Fleet proxy with a dummy `certificate_key` and proxy header.
+  `tests/contract/test_secret_canaries.py` runs the read tools that reach
+  them at the `read` tier.
 - **Privilege-dependent tools run under restricted keys** (D58), inside
   `contract_green`. One shared `restricted_key` fixture
   (`tests/contract/conftest.py`: a throwaway role, user and the API key that

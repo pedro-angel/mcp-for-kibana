@@ -46,6 +46,10 @@ records the run (D55). Every suite line shows `N passed / M collected`, and a
 shell `KIBANA_URL`/`KIBANA_TEST_API_KEY` that differs from `.env.seed` is
 NO-GO (D56). Unit tests hold the docs to the registry: the tool counts in the
 prose, each `docs/tools.md` row's section and tier, and every cited test (D57).
+The contract and replay tiers scan every tool result for credentials: the
+seeded canaries (a Fleet output and proxy), the test key and secret-bearing
+keys (D59); the scan reaches only the tools those tiers call through a
+client, and no connector canary exists (Basic has no connector with a secret).
 The flag only stops the stack; afterwards it stays stopped, so
 start and seed it again before the next live tier.
 

@@ -105,5 +105,11 @@ with `scripts/stack.sh up && scripts/stack.sh seed` before the next live tier.
   takes a space gets a privilege-matrix row automatically, and one that acts
   on a space listing without taking a space goes in `LISTING_GUARDS`
   (`tests/_privilege_matrix.py`).
+- **No tool result carries a credential** (D59): the contract and replay
+  tiers scan every result a fastmcp `Client` receives (autouse `secret_scan`,
+  `tests/_secret_scan.py`) for the seeded canaries (`scripts/canaries/*.json`,
+  created by `scripts/stack.sh seed`), the test key and secret-bearing keys
+  with a value; a hit fails the test naming the fix. A new secret-bearing
+  Kibana object type gets a canary file (and its kind in the seed's loop).
 - `.env.local` and `~/.lmstudio/mcp.json` are user-owned: never written by
   tooling or agents.
