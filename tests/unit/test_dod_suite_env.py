@@ -5,7 +5,9 @@ MAKEFLAGS/MFLAGS, so a `PYTEST_ADDOPTS='-k ... --no-cov'` left in the shell
 shrank every suite to a handful of tests, dropped the coverage floor, and still
 read `GO`. The gate now clears the variables that change what pytest selects,
 loads or enforces (PYTEST_ADDOPTS, PYTEST_PLUGINS, PYTEST_DEBUG,
-PYTEST_DISABLE_PLUGIN_AUTOLOAD, COVERAGE_RCFILE), names the ones it cleared,
+PYTEST_DISABLE_PLUGIN_AUTOLOAD, COVERAGE_RCFILE) and the replay's
+KIBANA_MCP_SERVER_BIN (which swaps the replayed server for an installed
+executable), names the ones it cleared,
 and prints `N passed / M collected` on every suite line.
 
 The gate runs on a fixture repo whose config requires only `streams_ephemeral`,
@@ -30,6 +32,7 @@ _CLEARED = (
     "PYTEST_DEBUG",
     "PYTEST_DISABLE_PLUGIN_AUTOLOAD",
     "COVERAGE_RCFILE",
+    "KIBANA_MCP_SERVER_BIN",  # swaps the server e2e_replay_green replays
 )
 
 pytestmark = pytest.mark.skipif(shutil.which("git") is None, reason="needs git")

@@ -245,6 +245,42 @@ def test_main_prints_the_shell_refusal_on_one_line(tmp_path, kibana, capsys):
     assert "\n" not in out and _UNSET in out
 
 
+# The replay servers inherit the suite's environment (.env.local merged in) and
+# read KIBANA_API_KEY ahead of the seed's bridged key, so an export of it
+# re-credentials the server under test; the public-URL pair moves its links.
+
+
+@pytest.mark.parametrize("var", sv._SERVER_SETTINGS)
+def test_check_refuses_a_shell_server_setting_and_never_prints_it(tmp_path, kibana, var):
+    root = _write_stack(tmp_path, seed=f"KIBANA_URL={kibana}\nKIBANA_TEST_API_KEY=k\n")
+    with pytest.raises(sv.StackVersionError) as exc:
+        sv.check(root, {var: "s3cr3t-other"}, _SUPPORTED)
+    message = str(exc.value)
+    assert f"the shell sets {var}" in message and f"{_UNSET} {var}" in message
+    assert "s3cr3t-other" not in message
+    assert _Status.seen_auth == [], "the refusal comes before any call to a Kibana"
+
+
+def test_check_refuses_a_server_key_in_env_local(tmp_path, kibana):
+    root = _write_stack(tmp_path, seed=f"KIBANA_URL={kibana}\nKIBANA_TEST_API_KEY=k\n")
+    (root / ".env.local").write_text("LMSTUDIO_MODEL=m\nKIBANA_API_KEY=s3cr3t-local\n")
+    with pytest.raises(sv.StackVersionError) as exc:
+        sv.check(root, {}, _SUPPORTED)
+    message = str(exc.value)
+    assert ".env.local sets KIBANA_API_KEY" in message
+    assert "remove KIBANA_API_KEY from .env.local" in message
+    assert "s3cr3t-local" not in message
+
+
+def test_check_ignores_server_aliases_the_seed_shadows(tmp_path, kibana):
+    # Settings reads the first alias present; the seed fills KIBANA_URL and
+    # KIBANA_API_KEY, so the KIBANA_MCP_ spellings never reach the server.
+    _Status.version = "9.5.4"
+    root = _write_stack(tmp_path, seed=f"KIBANA_URL={kibana}\nKIBANA_TEST_API_KEY=k\n")
+    env = {"KIBANA_MCP_API_KEY": "x", "KIBANA_MCP_KIBANA_URL": "http://x:1"}
+    assert sv.check(root, env, _SUPPORTED) == "9.5.4"
+
+
 def test_check_without_a_seed_names_the_seed_command(tmp_path):
     root = _write_stack(tmp_path)
     with pytest.raises(sv.StackVersionError, match=r"scripts/stack.sh seed"):

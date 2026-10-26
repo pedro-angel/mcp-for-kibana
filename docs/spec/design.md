@@ -164,7 +164,9 @@ mode enables host/origin protection on loopback binds.
   `git rev-parse <sha>^{tree}` equals the recorded tree id (D55). The suites
   run as declared: the gate clears the pytest and coverage variables that
   reshape them, prints `N passed / M collected` on every suite line, and
-  refuses shell Kibana credentials that differ from `.env.seed` (D56).
+  refuses shell Kibana credentials that differ from `.env.seed`, and server
+  credentials in the shell or `.env.local` that the replayed server would read
+  ahead of the seed (D56).
 - Every change carries a CHANGELOG entry: `changelog_entry` and a `checks.yml`
   PR step run `scripts/checks/changelog-entry.sh`, which requires a new entry
   under `## [Unreleased]` when non-exempt paths changed since the merge-base

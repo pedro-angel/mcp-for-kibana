@@ -121,6 +121,16 @@ def test_require_warns_when_shell_shadows_a_differing_value(env_root, monkeypatc
         _stack_env.require_stack_env()  # no raise — shell still wins
 
 
+def test_the_shadowing_warning_never_prints_the_shell_value(env_root, monkeypatch):
+    (env_root / "elastic-start-local" / ".env.seed").write_text(
+        "KIBANA_URL=http://a:1\nKIBANA_TEST_API_KEY=k\n"
+    )
+    monkeypatch.setenv("KIBANA_TEST_API_KEY", "s3cr3t-shell-key")
+    with pytest.warns(UserWarning, match="KIBANA_TEST_API_KEY") as record:
+        _stack_env.require_stack_env()
+    assert all("s3cr3t-shell-key" not in str(w.message) for w in record)
+
+
 def test_parse_raises_runtime_error_on_unreadable_file(env_root):
     (env_root / "elastic-start-local" / ".env.seed").mkdir()
     with pytest.raises(RuntimeError, match="cannot read"):

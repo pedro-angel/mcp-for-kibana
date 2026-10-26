@@ -19,7 +19,9 @@ exits 0; otherwise it prints one line naming the fix and exits 1. The gate
 certifies the seeded local stack (D56): the suites let shell env win over
 .env.seed (tests/_stack_env.py), so a shell KIBANA_URL or KIBANA_TEST_API_KEY
 that differs from the seed (an empty one included) is refused before any call,
-naming `unset KIBANA_URL KIBANA_TEST_API_KEY`. A loader-parsed helper, never a
+naming `unset KIBANA_URL KIBANA_TEST_API_KEY`; so is a KIBANA_API_KEY,
+KIBANA_PUBLIC_URL or KIBANA_MCP_PUBLIC_KIBANA_URL in the shell or .env.local,
+which the replayed server would read ahead of the seed. A loader-parsed helper, never a
 test module.
 """
 
@@ -88,22 +90,44 @@ def expected_version(
 
 
 _CREDS = ("KIBANA_URL", "KIBANA_TEST_API_KEY")
+# What the replay servers (e2e_replay_green, wheel_replay_green) read ahead of
+# the seed: they inherit the suite's environment, .env.local merged in, and
+# Settings.load bridges the seed's key to KIBANA_API_KEY only by setdefault, so
+# any of these, set at all, replaces the seed's key or link base inside the
+# server under test. The seed holds none of them. (KIBANA_MCP_API_KEY and
+# KIBANA_MCP_KIBANA_URL lose to the seed-filled first alias: measured.)
+_SERVER_SETTINGS = ("KIBANA_API_KEY", "KIBANA_PUBLIC_URL", "KIBANA_MCP_PUBLIC_KIBANA_URL")
 
 
-def shell_divergence(environ: Mapping[str, str], seed: Mapping[str, str]) -> str | None:
-    """None when no credential in the shell differs from .env.seed, else the refusal.
+def shell_divergence(
+    environ: Mapping[str, str], seed: Mapping[str, str], local: Mapping[str, str] | None = None
+) -> str | None:
+    """None when nothing in the shell or .env.local moves the suites off .env.seed, else the refusal.
 
     The suites let shell env win (tests/_stack_env.py), so a differing value
-    would aim the gate's mutating suites at another Kibana. Values are never
-    printed: one of them is a key.
+    would aim the gate's mutating suites at another Kibana, and a server
+    setting would re-credential the replayed server. Values are never
+    printed: some of them are keys.
     """
+    local = local or {}
     differ = [k for k in _CREDS if k in environ and environ[k] != seed.get(k, "")]
-    if not differ:
+    shell_server = [k for k in _SERVER_SETTINGS if k in environ]
+    local_server = [k for k in _SERVER_SETTINGS if k in local and k not in environ]
+    if not (differ or shell_server or local_server):
         return None
+    parts = []
+    if differ:
+        parts.append(f"the shell sets {' and '.join(differ)} to a value that differs from {_SEED}")
+    if shell_server:
+        parts.append(f"the shell sets {' and '.join(shell_server)}")
+    if local_server:
+        parts.append(f".env.local sets {' and '.join(local_server)}")
+    fix = f"unset {' '.join((*_CREDS, *shell_server))}"
+    if local_server:
+        fix += f", remove {' and '.join(local_server)} from .env.local"
     return (
-        f"the shell sets {' and '.join(differ)} to a value that differs from {_SEED}, "
-        "and the suites would use it — the gate certifies the seeded local stack: "
-        f"unset {' '.join(_CREDS)}, then re-run make dod"
+        f"{'; '.join(parts)}, and the suites or the server under test would use it — "
+        f"the gate certifies the seeded local stack: {fix}, then re-run make dod"
     )
 
 
@@ -154,7 +178,7 @@ def check(root: Path, environ: Mapping[str, str], supported: Iterable[str]) -> s
     for key in _CREDS:
         if not seed.get(key):
             raise StackVersionError(f"{key} is empty or missing in {_SEED} — re-run: scripts/stack.sh seed")
-    refusal = shell_divergence(environ, seed)
+    refusal = shell_divergence(environ, seed, _stack_env._parse(root / ".env.local"))
     if refusal:
         raise StackVersionError(refusal)
     expected, source = expected_version(environ, pinned_version(root), supported)

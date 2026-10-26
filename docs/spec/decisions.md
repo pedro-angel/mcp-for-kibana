@@ -1524,8 +1524,10 @@ this ledger stands without them.
   the tree id. `tests/unit/test_dod_verdict.py` runs the gate on fixtures.
 - **D56 (2026-10-26)** — The DoD suites run as declared, and their lines show
   how much ran. (a) The gate clears `PYTEST_ADDOPTS`, `PYTEST_PLUGINS`,
-  `PYTEST_DEBUG`, `PYTEST_DISABLE_PLUGIN_AUTOLOAD` and `COVERAGE_RCFILE` with
-  `MAKEFLAGS`/`MFLAGS` before any criterion, and its header names the ones that
+  `PYTEST_DEBUG`, `PYTEST_DISABLE_PLUGIN_AUTOLOAD`, `COVERAGE_RCFILE` and
+  `KIBANA_MCP_SERVER_BIN` (which makes `e2e_replay_green` replay an installed
+  executable instead of the checkout; `wheel-replay.sh` sets it on its own
+  command line) with `MAKEFLAGS`/`MFLAGS` before any criterion, and its header names the ones that
   were set (`note: cleared PYTEST_ADDOPTS ...`). Cleared, not refused: the
   gate's own command lines and `pyproject.toml` (committed, in the tree id)
   declare what runs, so a stale export is not an error to fix first.
@@ -1543,7 +1545,15 @@ this ledger stands without them.
   that differs from `elastic-start-local/.env.seed` (an empty one included)
   before any HTTP call, naming the variables (never their values) and `unset
   KIBANA_URL KIBANA_TEST_API_KEY`: the gate certifies the seeded local stack.
-  Outside the gate the suites keep shell-wins precedence with a warning
+  It also refuses a `KIBANA_API_KEY`, `KIBANA_PUBLIC_URL` or
+  `KIBANA_MCP_PUBLIC_KIBANA_URL` set in the shell or `.env.local`: the replay
+  servers inherit the suite's environment and `Settings.load` fills the seed's
+  key in only by `setdefault`, so these would re-credential (or re-link) the
+  server under test; the fix adds them to the `unset` (or names the
+  `.env.local` line to remove). `KIBANA_MCP_API_KEY` and
+  `KIBANA_MCP_KIBANA_URL` are not refused: the seed-filled first alias wins
+  over them (measured). Outside the gate the suites keep shell-wins precedence
+  with a warning that names the variable, not its value
   (`tests/_stack_env.py`), so `make test-contract` against another stack still
   works; the refusal is the gate's. This supersedes D53's "credentials the
   suites use (shell env, else .env.seed)" and its `unset KIBANA_URL ...`

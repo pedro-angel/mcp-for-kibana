@@ -63,12 +63,15 @@ rev-parse <sha>^{tree}` must equal the recorded tree id; a dirty GO certifies
 only the commit whose tree matches it.
 
 The suites run as declared (D56). The gate clears `PYTEST_ADDOPTS`,
-`PYTEST_PLUGINS`, `PYTEST_DEBUG`, `PYTEST_DISABLE_PLUGIN_AUTOLOAD` and
-`COVERAGE_RCFILE` (its header names the ones it cleared), every suite line shows
-`N passed / M collected` (deselected tests included in M), and a shell
-`KIBANA_URL` or `KIBANA_TEST_API_KEY` that differs from
-`elastic-start-local/.env.seed` is NO-GO on the seeded-stack criteria, naming
-`unset KIBANA_URL KIBANA_TEST_API_KEY`: the gate certifies the seeded local stack.
+`PYTEST_PLUGINS`, `PYTEST_DEBUG`, `PYTEST_DISABLE_PLUGIN_AUTOLOAD`,
+`COVERAGE_RCFILE` and `KIBANA_MCP_SERVER_BIN` (its header names the ones it
+cleared), every suite line shows `N passed / M collected` (deselected tests
+included in M), and a shell `KIBANA_URL` or `KIBANA_TEST_API_KEY` that differs
+from `elastic-start-local/.env.seed` is NO-GO on the seeded-stack criteria,
+naming `unset KIBANA_URL KIBANA_TEST_API_KEY`: the gate certifies the seeded
+local stack. So is a `KIBANA_API_KEY`, `KIBANA_PUBLIC_URL` or
+`KIBANA_MCP_PUBLIC_KIBANA_URL` in the shell or `.env.local`, which the replayed
+server would read ahead of the seed.
 
 `KIBANA_MCP_DOD_CYCLE_STACK=1` only lets the gate **stop** the dev stack between
 the seeded-stack criteria and the ephemeral tiers (`scripts/stack.sh stop`:

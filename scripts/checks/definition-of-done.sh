@@ -31,10 +31,12 @@
 #
 # The suites run as declared (D56): the gate clears the variables that change
 # what pytest selects, loads or enforces (PYTEST_ADDOPTS, PYTEST_PLUGINS,
-# PYTEST_DEBUG, PYTEST_DISABLE_PLUGIN_AUTOLOAD, COVERAGE_RCFILE) and names them,
-# every suite line shows `N passed / M collected`, and a shell KIBANA_URL or
-# KIBANA_TEST_API_KEY that differs from elastic-start-local/.env.seed is NO-GO
-# on the seeded-stack criteria.
+# PYTEST_DEBUG, PYTEST_DISABLE_PLUGIN_AUTOLOAD, COVERAGE_RCFILE) and the replay's
+# KIBANA_MCP_SERVER_BIN, and names them; every suite line shows `N passed / M
+# collected`; and a shell KIBANA_URL or KIBANA_TEST_API_KEY that differs from
+# elastic-start-local/.env.seed, or a KIBANA_API_KEY, KIBANA_PUBLIC_URL or
+# KIBANA_MCP_PUBLIC_KIBANA_URL in the shell or .env.local, is NO-GO on the
+# seeded-stack criteria.
 #
 # Portable POSIX sh; zero deps beyond the project's own tooling (uv).
 # Concept adapted from cmanaha/extended-superpowers (MIT).
@@ -47,9 +49,12 @@ set -u
 # gate always runs in a clean environment, matching the sibling kibana-py gate.
 # The pytest and coverage variables reshape the suites themselves (D56): a
 # leftover PYTEST_ADDOPTS='-k ... --no-cov' ran three unit tests with no
-# coverage floor and read GO, and COVERAGE_RCFILE swaps the floor's config. The
-# header names the ones that were set, so the clearing is visible.
-suite_env="PYTEST_ADDOPTS PYTEST_PLUGINS PYTEST_DEBUG PYTEST_DISABLE_PLUGIN_AUTOLOAD COVERAGE_RCFILE"
+# coverage floor and read GO, and COVERAGE_RCFILE swaps the floor's config.
+# KIBANA_MCP_SERVER_BIN swaps the server e2e_replay_green replays for an
+# installed executable (tests/e2e_replay/test_replay.py); wheel-replay.sh sets
+# it on its own command line, so clearing it here breaks nothing. The header
+# names the ones that were set, so the clearing is visible.
+suite_env="PYTEST_ADDOPTS PYTEST_PLUGINS PYTEST_DEBUG PYTEST_DISABLE_PLUGIN_AUTOLOAD COVERAGE_RCFILE KIBANA_MCP_SERVER_BIN"
 cleared=
 for v in $suite_env; do printenv "$v" >/dev/null 2>&1 && cleared="$cleared $v"; done
 # shellcheck disable=SC2086  # word-splitting the list is the point

@@ -121,7 +121,8 @@ def require_stack_env() -> None:
         if machine_value and shell_value and shell_value != machine_value:
             warnings.warn(
                 f"shell {key} overrides elastic-start-local/.env.seed "
-                f"({os.environ[key]!r} wins — shell env has precedence by design)",
+                "(the shell value wins — shell env has precedence by design; "
+                "value not shown: one of these is a key)",
                 stacklevel=2,
             )
 

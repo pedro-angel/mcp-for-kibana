@@ -298,7 +298,12 @@ version section.
   `KIBANA_TEST_API_KEY` that differs from `elastic-start-local/.env.seed` is
   now NO-GO on the seeded-stack criteria naming `unset KIBANA_URL
   KIBANA_TEST_API_KEY`; before, the suites certified (and mutated) whatever
-  Kibana the shell pointed at, with only a warning in a log. AGENTS.md and the
+  Kibana the shell pointed at, with only a warning in a log. A
+  `KIBANA_API_KEY`, `KIBANA_PUBLIC_URL` or `KIBANA_MCP_PUBLIC_KIBANA_URL` in the
+  shell or `.env.local` is refused the same way (the replayed server read it
+  ahead of the seed's key), the gate also clears `KIBANA_MCP_SERVER_BIN` (a
+  leftover one replayed an installed server instead of the checkout), and the
+  suites' shadowing warning no longer prints the shell value. AGENTS.md and the
   gate header now say that `KIBANA_MCP_DOD_CYCLE_STACK=1` only stops the dev
   stack between the halves, never starts or restarts it, and leaves it stopped.
 
