@@ -1586,6 +1586,46 @@ this ledger stands without them.
   9.5.4)` and the new one NO-GO naming the unset (the H4 commit message has
   the lines). `tests/unit/test_dod_suite_env.py` runs the gate on fixtures;
   `tests/unit/test_stack_version.py` covers the refusal.
+- **D57 (2026-10-26)** — The docs' figures, tool tables and test citations
+  are checked against the code, inside `unit_green` (no new criterion).
+  `tests/unit/test_docs_counts.py` computes the figures from the registry
+  (`tests/_registry.py`: every toolbox at `destructive` on a FakeGateway) and
+  scans `README.md`, `profiles/README.md`, `docs/*.md` and the specs except
+  `decisions.md` (it records figures as they were; so does CHANGELOG.md) for
+  "N tools", "N-tool", a "(R / W / D)" tier triple, "N read/write/destructive"
+  and "N edges from M tools". A toolbox's spec, and its section of
+  `docs/tools.md`, may state that toolbox's size, tiers and read + write; any
+  line may state the whole surface (total, tiers, the space-aware count and its
+  tiers, the built-in list and profile sizes, the dependency map); a page about
+  the whole surface may also name any toolbox's size. A figure that records a
+  past state goes in the test's `HISTORICAL` table with the words around it,
+  and an entry that matches no line fails. A failure names the file, the line,
+  the closest registry figure and the fix. `test_docs_tool_reference.py` now
+  also requires exactly one `| Tool | Tier |` row per tool in its own
+  toolbox's section (the dashboards table borrows the two data-view reads on
+  purpose), the tier cell equal to the registry's tier (`(upsert)` only on an
+  idempotent tool), the dashboards annotation table to list the dashboards
+  table's tools in rows whose hints are theirs, and each "shows the N reads +
+  M writes" sentence to match. `test_docs_test_citations.py` requires every
+  `test_<name>` and `tests/....py` cited in README, AGENTS.md, `docs/` and the
+  specs to exist under `tests/` (a Synthetics field `test_run_id` excepted),
+  naming the closest existing test. design.md's tier invariant now says
+  `docs://tools` is deliberately not tier-gated. Why: the counts were typed by
+  hand in a dozen files and only review caught drift (d1a09c6 found 162/80/21
+  left after 5da1b18 passed the gate); the space contract read "86 tools" in
+  four spec lines and data-management's Enforcement "11-tool surface" while
+  the registry had 92 and 17; the reference page served to models was checked
+  only for each name somewhere on it, so 094e102's three add_esql_* tools
+  missing from the dashboards and annotation tables passed; and
+  platform-health.md cited the read-only-explorer profile test by the name it
+  had before afe9b17 renamed it. Evidence (2026-10-26): on the tree before the fix the
+  counts test failed on exactly those five figures (each naming 92 or 13 as
+  the registry's figure; data-management's Enforcement says 17 now, its test
+  asserts the 17-tool set) and the citations test on the stale name (naming
+  `test_read_only_explorer_profile_is_fourteen_read_tools`); a doctored
+  tools.md (`delete_alert_rule` as write, `add_esql_metric_panel` dropped from
+  the annotation table) failed the table tests while the name test passed; all
+  pass on the fixed tree (the H5 commit message has the lines).
 
 ## Scope and licensing (probed on Basic)
 

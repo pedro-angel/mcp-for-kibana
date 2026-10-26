@@ -95,6 +95,9 @@ with `scripts/stack.sh up && scripts/stack.sh seed` before the next live tier.
 - **Additive is default-off**; error text must name the fix; specs are
   reconciled onto shipped code in the same change-set.
 - **Report numbers trace to committed run records** — never hand-transcribe
-  results into documents.
+  results into documents. Tool-surface figures in the docs are checked against
+  the registry (`tests/unit/test_docs_counts.py`; a figure that records a past
+  state goes in its `HISTORICAL` table), `docs/tools.md` rows against each
+  tool's toolbox and tier, and every cited test must exist (D57).
 - `.env.local` and `~/.lmstudio/mcp.json` are user-owned: never written by
   tooling or agents.

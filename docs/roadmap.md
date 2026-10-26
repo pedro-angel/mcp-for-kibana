@@ -44,7 +44,9 @@ re-provision command (D53). The verdict names HEAD and the tree it certified,
 and a tree edited during the run is NO-GO; `/tmp/dod-<repo>/verdict.json`
 records the run (D55). Every suite line shows `N passed / M collected`, and a
 shell `KIBANA_URL`/`KIBANA_TEST_API_KEY` that differs from `.env.seed` is
-NO-GO (D56). The flag only stops the stack; afterwards it stays stopped, so
+NO-GO (D56). Unit tests hold the docs to the registry: the tool counts in the
+prose, each `docs/tools.md` row's section and tier, and every cited test (D57).
+The flag only stops the stack; afterwards it stays stopped, so
 start and seed it again before the next live tier.
 
 Day to day: `make check` for the fast gates, `make dod` before any completion or

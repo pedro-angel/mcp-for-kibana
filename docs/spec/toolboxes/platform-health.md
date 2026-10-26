@@ -120,7 +120,7 @@ Behavioral guarantees).
 - `tests/unit/test_server_assembly.py` —
   `test_platform_health_toolbox_boots_read_only` pins the exact 3-tool set
   at the default tier; `test_platform_health_combines_with_dashboards` and
-  `test_read_only_explorer_profile_is_nine_read_tools` pin additive
+  `test_read_only_explorer_profile_is_fourteen_read_tools` pin additive
   composition with other toolboxes.
 - `tests/contract/test_gateway_contract.py` — `test_kibana_status_live`,
   `test_kibana_stats_live`, `test_task_manager_health_live` pin all three

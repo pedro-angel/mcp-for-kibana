@@ -313,6 +313,23 @@ version section.
   suites' shadowing warning no longer prints the shell value. AGENTS.md and the
   gate header now say that `KIBANA_MCP_DOD_CYCLE_STACK=1` only stops the dev
   stack between the halves, never starts or restarts it, and leaves it stopped.
+- **The docs are held to the registry** (D57), inside `unit_green`.
+  `tests/unit/test_docs_counts.py` computes the tool counts from the registry
+  and fails on any "N tools", "N-tool", "(R / W / D)", "N read/write/destructive"
+  or "N edges from M tools" in README, `profiles/README.md`, `docs/` or the
+  specs (not `decisions.md`, which records past figures) that the registry
+  does not give in that place, naming the file, the line and the registry's
+  figure; past figures sit in its `HISTORICAL` table. `test_docs_tool_reference.py`
+  now requires one row per tool in its own toolbox's table with the registry's
+  tier, the dashboards annotation table to match the real hints, and each
+  "N reads + M writes" sentence to match; before, it only checked that each
+  name appeared somewhere on the page served to models as `docs://tools`.
+  `tests/unit/test_docs_test_citations.py` requires every test the docs cite
+  to exist. Fixed what they found: the shared space contract is 92 tools, not
+  86, in the alerting, cases and data-management specs; data-management's
+  unit test pins 17 tools, not 11; platform-health.md cites
+  `test_read_only_explorer_profile_is_fourteen_read_tools` (renamed). design.md
+  now says `docs://tools` is deliberately not tier-gated.
 
 ### Fixed
 

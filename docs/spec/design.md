@@ -77,7 +77,10 @@ Tiering and destruction:
   disables by tag, so an untagged tool would be visible at every tier.
 - Write safety is a **registration-time** tier: tools above the deployment
   cap are disabled at registration and never appear in the advertised list
-  — the point is that destructive tools never enter the model's context.
+  — the point is that destructive tools never enter the model's tool list.
+  The `docs://tools` reference resource is deliberately not tier-gated (it
+  documents every tool; a hidden one still fails as unknown), so its tier
+  cells must be right: `test_docs_tool_reference.py` pins them (D57).
   A call naming a hidden tool fails as unknown (observed; the pinned
   assertions cover list-time visibility).
 - Surface selection only ever hides. The per-tool allow list
@@ -171,3 +174,8 @@ mode enables host/origin protection on loopback binds.
   PR step run `scripts/checks/changelog-entry.sh`, which requires a new entry
   under `## [Unreleased]` when non-exempt paths changed since the merge-base
   with `origin/main` (D54).
+- The docs state the registry's figures (D57): unit tests compare the tool
+  counts in the prose (README, `docs/*.md`, the specs but `decisions.md`,
+  `profiles/README.md`) with the registry, each `docs/tools.md` table row's
+  section and tier with the tool's toolbox and tier, the annotation table with
+  the real hints, and every test the docs cite with `tests/`.

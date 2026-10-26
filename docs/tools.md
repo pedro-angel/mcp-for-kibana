@@ -10,9 +10,11 @@ via [`KIBANA_MCP_TOOLS`](configuration.md#tool-selection): **dashboards**,
 **[security-detections](#security-detections-toolbox)**,
 **[platform-admin](#platform-admin-toolbox)**,
 **[streams](#streams-toolbox)**, and **[fleet](#fleet-toolbox)** — 184 tools in
-all. This reference details every toolbox in full. A drift-guard test
-(`tests/unit/test_docs_tool_reference.py`) asserts that every registered tool
-name appears on this page, so it cannot silently fall behind the code.
+all. This reference details every toolbox in full. Drift-guard tests
+(`tests/unit/test_docs_tool_reference.py`, `tests/unit/test_docs_counts.py`)
+assert that every registered tool has one row in its own toolbox's table with
+its tier, and that the counts on this page are the registry's, so it cannot
+silently fall behind the code.
 [`KIBANA_MCP_TIER`](configuration.md#tier-semantics) caps which tiers are
 visible to the model — a tool above the cap is not merely denied at call
 time, it never appears in the tool list (registered, then hidden via
