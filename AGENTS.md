@@ -70,7 +70,7 @@ included in M), and a shell `KIBANA_URL` or `KIBANA_TEST_API_KEY` that differs
 from `elastic-start-local/.env.seed` is NO-GO on the seeded-stack criteria,
 naming `unset KIBANA_URL KIBANA_TEST_API_KEY`: the gate certifies the seeded
 local stack. So is a `KIBANA_API_KEY`, `KIBANA_PUBLIC_URL` or
-`KIBANA_MCP_PUBLIC_KIBANA_URL` in the shell or `.env.local`, which the replayed
+`KIBANA_MCP_PUBLIC_KIBANA_URL` (any letter case) in the shell or `.env.local`, which the replayed
 server would read ahead of the seed.
 
 `KIBANA_MCP_DOD_CYCLE_STACK=1` only lets the gate **stop** the dev stack between

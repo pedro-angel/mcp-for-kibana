@@ -96,7 +96,15 @@ _CREDS = ("KIBANA_URL", "KIBANA_TEST_API_KEY")
 # any of these, set at all, replaces the seed's key or link base inside the
 # server under test. The seed holds none of them. (KIBANA_MCP_API_KEY and
 # KIBANA_MCP_KIBANA_URL lose to the seed-filled first alias: measured.)
+# pydantic-settings reads names case-insensitively (config.Settings sets no
+# case_sensitive), so any spelling counts: `kibana_public_url` moves the links
+# as KIBANA_PUBLIC_URL does (measured with Settings.load).
 _SERVER_SETTINGS = ("KIBANA_API_KEY", "KIBANA_PUBLIC_URL", "KIBANA_MCP_PUBLIC_KIBANA_URL")
+
+
+def _server_settings_in(values: Mapping[str, str]) -> list[str]:
+    """The names in values that config.Settings reads as a server setting, as spelled."""
+    return sorted(k for k in values if k.upper() in _SERVER_SETTINGS)
 
 
 def shell_divergence(
@@ -111,8 +119,8 @@ def shell_divergence(
     """
     local = local or {}
     differ = [k for k in _CREDS if k in environ and environ[k] != seed.get(k, "")]
-    shell_server = [k for k in _SERVER_SETTINGS if k in environ]
-    local_server = [k for k in _SERVER_SETTINGS if k in local and k not in environ]
+    shell_server = _server_settings_in(environ)
+    local_server = [k for k in _server_settings_in(local) if k not in environ]
     if not (differ or shell_server or local_server):
         return None
     parts = []

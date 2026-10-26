@@ -272,6 +272,25 @@ def test_check_refuses_a_server_key_in_env_local(tmp_path, kibana):
     assert "s3cr3t-local" not in message
 
 
+@pytest.mark.parametrize("var", ["kibana_public_url", "Kibana_Api_Key", "kibana_mcp_public_kibana_url"])
+def test_check_refuses_a_server_setting_in_any_case(tmp_path, kibana, var):
+    # config.Settings reads env names case-insensitively, so a lowercase export
+    # reaches the replayed server as surely as the uppercase one.
+    root = _write_stack(tmp_path, seed=f"KIBANA_URL={kibana}\nKIBANA_TEST_API_KEY=k\n")
+    with pytest.raises(sv.StackVersionError) as exc:
+        sv.check(root, {var: "http://evil"}, _SUPPORTED)
+    message = str(exc.value)
+    assert f"the shell sets {var}" in message and f"{_UNSET} {var}" in message
+    assert "http://evil" not in message
+
+
+def test_check_refuses_a_lowercase_server_setting_in_env_local(tmp_path, kibana):
+    root = _write_stack(tmp_path, seed=f"KIBANA_URL={kibana}\nKIBANA_TEST_API_KEY=k\n")
+    (root / ".env.local").write_text("kibana_public_url=http://evil\n")
+    with pytest.raises(sv.StackVersionError, match=r"remove kibana_public_url from \.env\.local"):
+        sv.check(root, {}, _SUPPORTED)
+
+
 def test_check_ignores_server_aliases_the_seed_shadows(tmp_path, kibana):
     # Settings reads the first alias present; the seed fills KIBANA_URL and
     # KIBANA_API_KEY, so the KIBANA_MCP_ spellings never reach the server.

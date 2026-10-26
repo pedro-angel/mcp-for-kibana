@@ -1546,7 +1546,9 @@ this ledger stands without them.
   before any HTTP call, naming the variables (never their values) and `unset
   KIBANA_URL KIBANA_TEST_API_KEY`: the gate certifies the seeded local stack.
   It also refuses a `KIBANA_API_KEY`, `KIBANA_PUBLIC_URL` or
-  `KIBANA_MCP_PUBLIC_KIBANA_URL` set in the shell or `.env.local`: the replay
+  `KIBANA_MCP_PUBLIC_KIBANA_URL` set in the shell or `.env.local`, in any
+  letter case (`Settings` reads names case-insensitively, so a
+  `kibana_public_url` re-links the server too: measured): the replay
   servers inherit the suite's environment and `Settings.load` fills the seed's
   key in only by `setdefault`, so these would re-credential (or re-link) the
   server under test; the fix adds them to the `unset` (or names the
