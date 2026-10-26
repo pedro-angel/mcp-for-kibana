@@ -379,48 +379,11 @@ def _space_awareness_on(gateway):
         "use_space_awareness_migration_status"))
 
 
-def _es_admin():
-    """(Elasticsearch URL, elastic password) from the stack's own
-    elastic-start-local/.env, or None: only Elasticsearch mints an API key with
-    privileges (one the test key derives has none, probed)."""
-    from tests._stack_env import _parse, _repo_root
-
-    env = _parse(_repo_root() / "elastic-start-local" / ".env") or {}
-    if not env.get("ES_LOCAL_PORT") or not env.get("ES_LOCAL_PASSWORD"):
-        return None
-    return f"http://localhost:{env['ES_LOCAL_PORT']}", env["ES_LOCAL_PASSWORD"]
+# Fleet and Integrations in space 'default' only: the key cannot read any other space.
+_DEFAULT_SPACE_FLEET = [{"feature": {"fleetv2": ["all"], "fleet": ["all"]}, "spaces": ["default"]}]
 
 
-def _es(es, method, path, body):
-    import base64
-    import json
-    import urllib.request
-
-    url, password = es
-    request = urllib.request.Request(
-        url + path, method=method, data=json.dumps(body).encode(),
-        headers={"Content-Type": "application/json", "Authorization": "Basic " + base64.b64encode(
-            f"elastic:{password}".encode()).decode()})
-    with urllib.request.urlopen(request, timeout=30) as response:  # noqa: S310 (local stack URL)
-        return json.loads(response.read())
-
-
-@contextlib.contextmanager
-def _default_space_fleet_key(es):
-    """A throwaway API key granting Fleet and Integrations in space 'default' only
-    (invalidated after)."""
-    key = _es(es, "POST", "/_security/api_key", {
-        "name": f"mcp-d51-restricted-{uuid.uuid4().hex[:8]}", "expiration": "30m",
-        "role_descriptors": {"fleet_default_only": {"applications": [{
-            "application": "kibana-.kibana", "resources": ["space:default"],
-            "privileges": ["feature_fleetv2.all", "feature_fleet.all"]}]}}})
-    try:
-        yield key["encoded"]
-    finally:
-        _es(es, "DELETE", "/_security/api_key", {"ids": [key["id"]]})
-
-
-def test_uninstall_refused_for_a_space_the_key_cannot_list_live(gateway):
+def test_uninstall_refused_for_a_space_the_key_cannot_list_live(gateway, restricted_key):
     # Why uninstall_package refuses with Fleet space awareness on: a key that
     # cannot read a space is not told it exists, and Kibana's uninstall with
     # that key, no force, still deletes the package policy there.
@@ -432,11 +395,9 @@ def test_uninstall_refused_for_a_space_the_key_cannot_list_live(gateway):
 
     if not _space_awareness_on(gateway):
         pytest.skip("Fleet space awareness is off: every space lists every package policy")
-    es = _es_admin()
-    if es is None:
-        pytest.skip("no ES_LOCAL_PORT/ES_LOCAL_PASSWORD in elastic-start-local/.env")
     _ensure_uninstalled(gateway, "tcp")
-    with _fleet_space(gateway) as (space_id, scoped), _default_space_fleet_key(es) as key:
+    with _fleet_space(gateway) as (space_id, scoped), \
+            restricted_key(_DEFAULT_SPACE_FLEET) as (key, _):
         pol = scoped.fleet_policies.create_agent_policy(
             name=f"mcp-d51-sp-{space_id}", namespace="default", monitoring_enabled=[]).body["item"]
         try:

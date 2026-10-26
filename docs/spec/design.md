@@ -72,9 +72,11 @@ Authentication and credentials:
 Tiering and destruction:
 
 - Every tool is registered under exactly one of read / write / destructive.
-  This exactly-one rule is currently unenforced by any test (an open gap a
-  rewrite should close) — but it is load-bearing: the tier mechanism
-  disables by tag, so an untagged tool would be visible at every tier.
+  The rule is load-bearing: the tier mechanism disables by tag, so an
+  untagged tool would be visible at every tier. `tests/_registry.py` enforces
+  it — `registry()` unpacks each tool's tags against the three tiers and fails
+  on none or two — and every test that reads the registry runs it (among them
+  `test_every_figure_in_the_prose_matches_the_registry`).
 - Write safety is a **registration-time** tier: tools above the deployment
   cap are disabled at registration and never appear in the advertised list
   — the point is that destructive tools never enter the model's tool list.
@@ -117,6 +119,12 @@ Space targeting:
   is already `/s/<id>`-pinned refuses the parameter with guidance.
 - Tool-level argument guards run **before** the factory call, so a guard
   failure performs no space validation.
+- A space the API key has no privilege in is a privilege problem, never a
+  missing space: Kibana answers 403 for such an id whether or not a space has
+  it, and its space listing leaves it out, so `space`/`source_space`
+  validation and the copy/share target check name the key's privileges and
+  `list_spaces` ("spaces this key can view"), never `create_space`; only a
+  404 from a key that can read spaces means the space does not exist (D58).
 
 Error guidance:
 
@@ -170,6 +178,14 @@ mode enables host/origin protection on loopback binds.
   refuses shell Kibana credentials that differ from `.env.seed`, and server
   credentials in the shell or `.env.local` that the replayed server would read
   ahead of the seed (D56).
+- Privilege-dependent behaviour runs under restricted keys (D58): the
+  contract tier's privilege matrix calls every tool that takes `space`,
+  `source_space`, `target_spaces` or `spaces`, and every listing guard,
+  through the MCP tool layer under three keys from the shared
+  `restricted_key` fixture (default-space `all`, `read` everywhere, no Kibana
+  privilege) and fails on a crash, masked text, a write by a read-only key or
+  a hidden space reported as missing; a unit test holds its rows to the
+  registry, so a new space-taking tool has a row by construction.
 - Every change carries a CHANGELOG entry: `changelog_entry` and a `checks.yml`
   PR step run `scripts/checks/changelog-entry.sh`, which requires a new entry
   under `## [Unreleased]` when non-exempt paths changed since the merge-base

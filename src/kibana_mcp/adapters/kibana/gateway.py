@@ -148,6 +148,8 @@ from kibana_mcp.core.space_sharing import (
     sharing_refusal,
     source_fixed_reason,
     space_failure_fix,
+    unreadable_space_fix,
+    unreadable_spaces_message,
     unshare_refusal,
 )
 from kibana_mcp.core.visualizations.translate import describe_lens_config, lens_chart_type
@@ -180,6 +182,21 @@ _SPACE_GUIDANCE = (
 )
 
 
+# What to do about a 401 / 403 from Kibana (D17: the error names the fix). A
+# 403 names no single privilege: Kibana's text says which action it refused.
+_SEND_KEY = "send it as 'Authorization: ApiKey <key>' or set KIBANA_API_KEY"
+_INVALID_KEY_FIX = f"the API key is invalid, expired or invalidated: use a valid one — {_SEND_KEY}"
+_PRIVILEGE_FIX = (
+    "the API key lacks the privilege for this action in this space; a key keeps the "
+    "privileges its owner had when it was created, so use an API key created by a user "
+    f"whose role grants it there — {_SEND_KEY}"
+)
+
+
+def _auth_error(e: AuthenticationException | AuthorizationException, fix: str) -> str:
+    return f"Kibana rejected the API key or permissions: {e.message} — {fix}"
+
+
 def _translated(e: BaseException, space: str | None) -> BaseException:
     """One shared map for the decorator and connect(): ordered isinstance
     dispatch (the kibana-py hierarchy nests); every arm keeps its current
@@ -190,8 +207,10 @@ def _translated(e: BaseException, space: str | None) -> BaseException:
         return KibanaRejected(
             f"invalid space id '{space}': lowercase a-z, 0-9, '_', '-' only"
         )
-    if isinstance(e, (AuthenticationException, AuthorizationException)):
-        return KibanaAuthError(f"Kibana rejected the API key or permissions: {e.message}")
+    if isinstance(e, AuthenticationException):
+        return KibanaAuthError(_auth_error(e, _INVALID_KEY_FIX))
+    if isinstance(e, AuthorizationException):
+        return KibanaAuthError(_auth_error(e, _PRIVILEGE_FIX))
     if isinstance(e, NotFoundError):
         return KibanaNotFound(str(e.message))
     if isinstance(e, ConflictError):
@@ -1476,12 +1495,13 @@ class KibanaPyGateway:
                 with contextlib.suppress(Exception):
                     root.close()
                 translated = _translated(e, space)
-                if isinstance(translated, KibanaAuthError):
-                    raise KibanaAuthError(
-                        f"{translated.message} (raised while validating space "
-                        f"'{space}'; the API key must be valid and able to read "
-                        "spaces)"
-                    ) from e
+                if isinstance(e, (AuthenticationException, AuthorizationException)):
+                    raise KibanaAuthError(_auth_error(e, (
+                        f"raised while validating space '{space}'; the API key must be "
+                        "valid and able to read spaces: " + (
+                            unreadable_space_fix([space])
+                            if isinstance(e, AuthorizationException) else _INVALID_KEY_FIX)
+                    ))) from e
                 if translated is e:
                     raise  # pass-through unchanged, no self-referential cause
                 raise translated from e
@@ -3102,6 +3122,13 @@ class KibanaPyGateway:
             st = self._client.lists.get_index_status().body
         except NotFoundError:
             st = {}
+        except ApiError as e:
+            # A key without the lists privilege gets a bare 500 here (9.5.4,
+            # probed with a `read` key); create_index answers it with the 403
+            # naming the privilege, so try it rather than mask the error.
+            if e.meta.status != 500:
+                raise
+            st = {}
         if not (st.get("list_index") and st.get("list_item_index")):
             self._client.lists.create_index()
 
@@ -3343,10 +3370,22 @@ class KibanaPyGateway:
         wanted = [s for s in dict.fromkeys(spaces) if s != ALL_SPACES]
         if not wanted:
             return
+        # get_all lists only the spaces this key can view: a miss is either no
+        # such space (get answers 404) or one the key has no privilege in
+        # (403, also for an id no space has when the key cannot read it).
         known = {str(s.get("id")) for s in self._client.spaces.get_all().body}
-        missing = [s for s in wanted if s not in known]
-        if missing:
-            raise KibanaSpaceNotFound(missing_spaces_message(missing))
+        hidden, absent = [], []
+        for s in (s for s in wanted if s not in known):
+            try:
+                self._client.spaces.get(id=s)
+            except NotFoundError:
+                absent.append(s)
+            except AuthorizationException:
+                hidden.append(s)
+        if hidden:
+            raise KibanaAuthError(unreadable_spaces_message(hidden, absent))
+        if absent:
+            raise KibanaSpaceNotFound(missing_spaces_message(absent))
 
     def _source_spaces(self) -> SpacesClient:
         """The spaces routes on the source space. Unscoped, the base path is

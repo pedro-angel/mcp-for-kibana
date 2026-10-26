@@ -3303,45 +3303,7 @@ async def test_copy_and_overwrite_saved_objects_between_spaces_live(gateway):
     assert restored["data_view"]["name"] == "ct copy source"
 
 
-# Kibana's internal security routes (the ones its UI calls) want this header.
-_INTERNAL = {"x-elastic-internal-origin": "Kibana"}
-
-
-@contextlib.contextmanager
-def _restricted_key(kibana_privileges):
-    """A throwaway role, user and API key the user creates for itself (the
-    superuser key cannot: Elasticsearch gives a key made by a key no
-    privileges), so the key holds a snapshot of the role's privileges; yields
-    (encoded key, role name). Everything is removed afterwards."""
-    tag = uuid.uuid4().hex[:8]
-    role, user, password = f"mcp-for-kibana-ct-role-{tag}", f"mcp-for-kibana-ct-user-{tag}", uuid.uuid4().hex
-    key_id = None
-    with _raw_kibana() as raw:
-        try:
-            raw.security.create_or_update_role(
-                name=role, elasticsearch={"cluster": ["manage_own_api_key"]},
-                kibana=kibana_privileges)
-            raw.perform_request("POST", f"/internal/security/users/{user}", headers=_INTERNAL,
-                                body={"username": user, "password": password, "roles": [role]})
-            with contextlib.closing(
-                    kibana.Kibana(os.environ["KIBANA_URL"], basic_auth=(user, password))) as own:
-                made = own.perform_request(
-                    "POST", "/internal/security/api_key", headers=_INTERNAL,
-                    body={"name": f"mcp-for-kibana-ct-key-{tag}", "role_descriptors": {}}).body
-            key_id = made["id"]
-            yield made["encoded"], role
-        finally:
-            if key_id is not None:
-                raw.perform_request(
-                    "POST", "/internal/security/api_key/invalidate", headers=_INTERNAL,
-                    body={"apiKeys": [{"id": key_id, "name": "ct"}], "isAdmin": True})
-            with contextlib.suppress(kibana.NotFoundError):
-                raw.perform_request("DELETE", f"/internal/security/users/{user}", headers=_INTERNAL)
-            with contextlib.suppress(kibana.NotFoundError):
-                raw.security.delete_role(name=role)
-
-
-async def test_copy_reports_a_target_space_kibana_refuses_whole_live(gateway):
+async def test_copy_reports_a_target_space_kibana_refuses_whole_live(gateway, restricted_key):
     # A key with `all` in one target space and `read` in the other: Kibana
     # answers the copy 200, the first space copied, the second a bare
     # {statusCode, error, message} with no object (9.5.4). That space's object
@@ -3355,7 +3317,7 @@ async def test_copy_reports_a_target_space_kibana_refuses_whole_live(gateway):
         with _temp_space(gateway, "mcp-for-kibana-ct-ok") as ok, \
                 _temp_space(gateway, "mcp-for-kibana-ct-ro") as ro:
             grants = [{"base": ["all"], "spaces": [ok]}, {"base": ["read"], "spaces": ["default", ro]}]
-            with _restricted_key(grants) as (key, role):
+            with restricted_key(grants) as (key, role):
                 args = {"objects": [{"type": "index-pattern", "id": view_id}],
                         "target_spaces": [ro, ok]}
                 async with Client(_platform_admin_tool_server(key)) as client:

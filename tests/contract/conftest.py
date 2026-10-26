@@ -1,5 +1,8 @@
+import contextlib
 import os
+import uuid
 
+import kibana
 import pytest
 
 from kibana_mcp.adapters.kibana.gateway import KibanaPyGateway
@@ -15,3 +18,58 @@ def gateway():
         os.environ["KIBANA_URL"], os.environ["KIBANA_TEST_API_KEY"]
     ) as gw:
         yield gw
+
+
+# Kibana's internal security routes (the ones its UI calls) want this header.
+INTERNAL = {"x-elastic-internal-origin": "Kibana"}
+
+
+@contextlib.contextmanager
+def _restricted_key(kibana_privileges):
+    """A throwaway role, user and API key the user creates for itself (the
+    superuser test key cannot: Elasticsearch gives a key made by a key no
+    privileges), so the key holds a snapshot of the role's privileges; yields
+    (encoded key, role name). Needs no Elasticsearch admin credentials: only
+    the test key and Kibana's own security routes. Everything is removed
+    afterwards, the key invalidated before its user is deleted."""
+    tag = uuid.uuid4().hex[:8]
+    role, user, password = (
+        f"mcp-for-kibana-ct-role-{tag}", f"mcp-for-kibana-ct-user-{tag}", uuid.uuid4().hex)
+    key_id = None
+    with contextlib.closing(
+            kibana.Kibana(os.environ["KIBANA_URL"], api_key=os.environ["KIBANA_TEST_API_KEY"])
+    ) as admin:
+        try:
+            admin.security.create_or_update_role(
+                name=role, elasticsearch={"cluster": ["manage_own_api_key"]},
+                kibana=kibana_privileges)
+            admin.perform_request("POST", f"/internal/security/users/{user}", headers=INTERNAL,
+                                  body={"username": user, "password": password, "roles": [role]})
+            with contextlib.closing(
+                    kibana.Kibana(os.environ["KIBANA_URL"], basic_auth=(user, password))) as own:
+                made = own.perform_request(
+                    "POST", "/internal/security/api_key", headers=INTERNAL,
+                    body={"name": f"mcp-for-kibana-ct-key-{tag}", "role_descriptors": {}}).body
+            key_id = made["id"]
+            yield made["encoded"], role
+        finally:
+            if key_id is not None:
+                admin.perform_request(
+                    "POST", "/internal/security/api_key/invalidate", headers=INTERNAL,
+                    body={"apiKeys": [{"id": key_id, "name": "ct"}], "isAdmin": True})
+            with contextlib.suppress(kibana.NotFoundError):
+                admin.perform_request(
+                    "DELETE", f"/internal/security/users/{user}", headers=INTERNAL)
+            with contextlib.suppress(kibana.NotFoundError):
+                admin.security.delete_role(name=role)
+
+
+@pytest.fixture(scope="session")
+def restricted_key():
+    """The one way the contract tier gets a restricted credential (D58):
+    `with restricted_key(kibana_privileges) as (key, role):`, where
+    kibana_privileges is a Kibana role's `kibana` list, e.g.
+    `[{"base": ["read"], "spaces": ["*"]}]` or
+    `[{"feature": {"fleetv2": ["all"]}, "spaces": ["default"]}]`."""
+    require_stack_env()
+    return _restricted_key

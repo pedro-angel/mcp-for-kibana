@@ -2,6 +2,7 @@ from types import SimpleNamespace
 
 import pytest
 from kibana.exceptions import (
+    AuthenticationException,
     AuthorizationException,
     BadRequestError,
     ConnectionTimeout,
@@ -448,6 +449,32 @@ def test_connect_auth_error_names_the_precheck(monkeypatch):
     assert isinstance(err, KibanaAuthError) and stub.closed
     assert "raised while validating space 'sales'" in err.message
     assert "must be valid and able to read spaces" in err.message
+    # a 403 names the privilege fix, never a missing space (privilege-2)
+    assert "this API key has no privilege in 'sales'" in err.message
+    assert "list_spaces shows the spaces this key can view" in err.message
+    assert "create_space" not in err.message
+
+
+def test_connect_invalid_key_names_a_valid_key_not_a_privilege(monkeypatch):
+    exc = AuthenticationException("unauthorized", SimpleNamespace(status=401), None)
+    stub, err = _connect_with(monkeypatch, exc)
+    assert isinstance(err, KibanaAuthError) and stub.closed
+    assert "the API key is invalid, expired or invalidated" in err.message
+    assert "KIBANA_API_KEY" in err.message and "no privilege in" not in err.message
+
+
+@pytest.mark.parametrize(("exc", "needle"), [
+    (AuthenticationException("unauthorized", SimpleNamespace(status=401), None),
+     "the API key is invalid, expired or invalidated: use a valid one"),
+    (AuthorizationException("forbidden", SimpleNamespace(status=403), None),
+     "the API key lacks the privilege for this action in this space"),
+])
+def test_auth_errors_name_the_fix(exc, needle):
+    # D17: a 401/403 from any call names what to do, both ways to send a key.
+    err = gateway_mod._translated(exc, None)
+    assert isinstance(err, KibanaAuthError)
+    assert err.message.startswith("Kibana rejected the API key or permissions: ")
+    assert needle in err.message and "'Authorization: ApiKey <key>'" in err.message
 
 
 def test_connect_transport_error_translated(monkeypatch):

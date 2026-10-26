@@ -861,6 +861,9 @@ this ledger stands without them.
   fix names both ways a key reaches the server, `Authorization: ApiKey
   <key>` and `KIBANA_API_KEY` (as `adapters/mcp/auth.py` does), because in
   HTTP mode the env key is ignored unless `KIBANA_MCP_ALLOW_ENV_KEY_HTTP`.
+  Amended by D58: a target the space listing leaves out is read with
+  `spaces.get`, and a 403 there is reported as the key's missing privilege,
+  not as a space to create.
 - **D50 (2026-10-25, probes on 9.5.4, Basic)** — The security-detections
   toolbox gains exception-list edit, copy, export and import:
   `update_exception_list`, `duplicate_exception_list` and
@@ -1629,6 +1632,65 @@ this ledger stands without them.
   tools.md (`delete_alert_rule` as write, `add_esql_metric_panel` dropped from
   the annotation table) failed the table tests while the name test passed; all
   pass on the fixed tree (the H5 commit message has the lines).
+- **D58 (2026-10-26, probes on 9.5.4, Basic)** — Privilege-dependent
+  behaviour is tested under restricted keys, inside `contract_green` (no new
+  criterion). One shared fixture, `restricted_key` in
+  `tests/contract/conftest.py`, makes every restricted credential the
+  contract tier uses: a throwaway role (its `kibana` privileges as given,
+  plus `manage_own_api_key`), a user with it, and an API key that user mints
+  for itself through Kibana's security routes (a key the superuser test key
+  makes carries no privileges; no Elasticsearch admin credentials needed);
+  the key is invalidated, then the user and role deleted. It replaces the
+  two ad hoc fixtures (the copy test's role+user+key and the Fleet
+  uninstall test's Elasticsearch `role_descriptors` key, which needed the
+  `elastic` password and skipped without it).
+  `tests/contract/test_privilege_matrix.py` runs every tool that takes
+  `space`, `source_space`, `target_spaces` or `spaces`, plus the listing
+  guards `list_spaces` and `uninstall_package`, through the MCP tool layer
+  of the full server under three keys — `all` in 'default' only, `read` in
+  every space, no Kibana privilege — and accepts a complete result, a
+  curated refusal or an auth error naming the fix, never a crash, masked
+  text, a write by the read-only key or a hidden space reported as missing;
+  its first rows prove each key is the restricted one (not the test key;
+  Kibana's `/internal/security/me` names the throwaway user). The rows'
+  arguments come from each tool's schema plus `OVERRIDES` in
+  `tests/_privilege_matrix.py`; `tests/unit/test_privilege_matrix_rows.py`
+  runs each row against a factory that refuses every space and fails unless
+  the call reaches it, so a schema or guard change cannot turn a row into a
+  validation error that tests nothing, and every space-taking tool in the
+  registry has a row by construction (a listing guard is added to
+  `LISTING_GUARDS` by hand). The verifier's preference over a
+  "nonzero `-m restricted_key`" count (the finding's option c) was taken:
+  the registry decides the rows, so no marker is needed.
+  **Product fixes the matrix and privilege-2 brought.** Kibana answers 403
+  for a space the key has no privilege in whether or not a space has that id
+  (probed with all three keys: `Unauthorized to get <id> space` for an
+  existing hidden space and for a made-up id alike; a key with `read`
+  everywhere gets 404 for the made-up id), and its listing leaves such a
+  space out. So the copy, overwrite and share target check now reads each
+  id the listing lacks with `spaces.get`: 404 keeps D49's "not found …
+  create_space" text, 403 raises an auth error, "cannot write into space
+  '<id>': this API key has no privilege in '<id>' … list_spaces shows the
+  spaces this key can view … use an API key created by a user whose role
+  grants a privilege there … 'Authorization: ApiKey <key>' or
+  KIBANA_API_KEY; nothing was changed". The same fix is appended to the 403
+  `connect()` raises while validating `space` or `source_space`, and every
+  401/403 Kibana returns now names its fix (an invalid key: use a valid one;
+  a missing privilege: a key from a user whose role grants it), where before
+  it was only "Kibana rejected the API key or permissions: <Kibana's text>".
+  `list_spaces` says it lists the spaces this key can view. The matrix's
+  first run found one more: `create_value_list` and `create_value_list_item`
+  under the `read` key answered "Kibana returned an unexpected error",
+  because Kibana answers the lists index status with a bare 500 for a key
+  without the lists privilege (probed); a 500 there now falls through to
+  `create_index`, whose 403 names `[lists-all]`. Evidence (2026-10-26): with
+  `restricted_key` doctored to yield `KIBANA_TEST_API_KEY` the matrix failed
+  naming the fixture fix (each key "is KIBANA_TEST_API_KEY", `list_spaces`
+  under the default-only key showing the throwaway space); with the
+  pre-change target check, copy, overwrite and share into the hidden space
+  failed naming "never as missing" against D49's "create the space with
+  create_space" text; both pass on the real tree (the H6 commit message has
+  the lines).
 
 ## Scope and licensing (probed on Basic)
 

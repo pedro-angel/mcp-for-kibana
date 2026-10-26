@@ -145,9 +145,10 @@ class PlatformAdminToolbox:
     def _register_read(self, mcp: FastMCP, deps: ToolboxDeps) -> None:
         @mcp.tool(tags={self.name, "read"}, annotations=_READ)
         def list_spaces() -> list[dict[str, Any]]:
-            """List all Kibana spaces: id, name, description, solution
-            ('es'/'classic'/'oblt'/'security'), the features disabled in the
-            space, and whether it is a reserved system space."""
+            """List the Kibana spaces this API key can view (Kibana leaves out
+            a space the key has no privilege in): id, name, description,
+            solution ('es'/'classic'/'oblt'/'security'), the features disabled
+            in the space, and whether it is a reserved system space."""
             with gateway_errors(), deps.gateway_factory() as gw:
                 return [asdict(s) for s in gw.list_spaces()]
 

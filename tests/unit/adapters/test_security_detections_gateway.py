@@ -7,10 +7,10 @@ regression to a wrong termination key over-collects and fails."""
 from types import SimpleNamespace
 
 import pytest
-from kibana.exceptions import ConflictError, NotFoundError
+from kibana.exceptions import ApiError, AuthorizationException, ConflictError, NotFoundError
 
 from kibana_mcp.adapters.kibana.gateway import KibanaPyGateway
-from kibana_mcp.core.errors import KibanaNotFound, KibanaRejected
+from kibana_mcp.core.errors import KibanaAuthError, KibanaNotFound, KibanaRejected
 from tests.unit.adapters.test_kibana_gateway import FakeResponse, make_fake_client
 
 # Real GET bodies captured from a seeded rule / exception list.
@@ -442,6 +442,33 @@ def test_create_value_list_skips_index_when_both_present():
         create=lambda **kw: FakeResponse({"id": kw["id"], "name": kw["name"], "type": kw["type"], "description": ""})))
     gw.create_value_list(name="l", description="d", type="keyword", id="vl3")
     assert calls == []  # both true -> skip create_index
+
+
+def test_create_value_list_index_status_500_tries_create_index_for_the_real_refusal():
+    # A key without the lists privilege gets a bare 500 from the index status
+    # (9.5.4, probed with a `read` key; the privilege matrix found it): the
+    # create_index 403 names the privilege instead of "unexpected error".
+    def status():
+        raise ApiError("(unknown error message)", meta=SimpleNamespace(status=500), body=None)
+
+    def create_index():
+        raise AuthorizationException(
+            "API [POST /api/lists/index] is unauthorized for user, this action is granted by "
+            "the Kibana privileges [lists-all]", meta=SimpleNamespace(status=403), body=None)
+
+    gw = _gw(lists=_lists(get_index_status=status, create_index=create_index))
+    with pytest.raises(KibanaAuthError) as exc:
+        gw.create_value_list(name="l", description="d", type="keyword", id="vl4")
+    assert "[lists-all]" in exc.value.message and "KIBANA_API_KEY" in exc.value.message
+
+
+def test_create_value_list_index_status_other_errors_still_raise():
+    def status():
+        raise ApiError("bad gateway", meta=SimpleNamespace(status=502), body=None)
+
+    gw = _gw(lists=_lists(get_index_status=status, create_index=lambda: pytest.fail("called")))
+    with pytest.raises(Exception, match="unexpected error"):
+        gw.create_value_list(name="l", description="d", type="keyword", id="vl5")
 
 
 def test_create_value_list_duplicate_id_maps_rejected():

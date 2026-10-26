@@ -1460,7 +1460,7 @@ default `write` tier; the four `destructive` tools require `KIBANA_MCP_TIER=dest
 
 | Tool | Tier | Description |
 |---|---|---|
-| `list_spaces` | read | List all Kibana spaces (id, name, description, solution, disabled features, whether reserved). |
+| `list_spaces` | read | List the Kibana spaces this API key can view (id, name, description, solution, disabled features, whether reserved). |
 | `get_space` | read | Get one space by its `space_id` (e.g. `default`). |
 | `list_roles` | read | List all roles (incl. reserved) with a privilege summary: ES cluster + index privileges, run_as, and per-space Kibana base/feature grants. |
 | `get_role` | read | Get one role by `role_name` (e.g. `kibana_system`). |

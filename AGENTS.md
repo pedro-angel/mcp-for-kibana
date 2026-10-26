@@ -99,5 +99,11 @@ with `scripts/stack.sh up && scripts/stack.sh seed` before the next live tier.
   the registry (`tests/unit/test_docs_counts.py`; a figure that records a past
   state goes in its `HISTORICAL` table), `docs/tools.md` rows against each
   tool's toolbox and tier, and every cited test must exist (D57).
+- **Restricted keys come from one fixture** (D58): a contract test that needs
+  a credential other than the superuser test key uses `restricted_key`
+  (`tests/contract/conftest.py`), never a key of its own; a new tool that
+  takes a space gets a privilege-matrix row automatically, and one that acts
+  on a space listing without taking a space goes in `LISTING_GUARDS`
+  (`tests/_privilege_matrix.py`).
 - `.env.local` and `~/.lmstudio/mcp.json` are user-owned: never written by
   tooling or agents.

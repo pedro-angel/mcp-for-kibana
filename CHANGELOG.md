@@ -334,8 +334,37 @@ version section.
   unit test pins 17 tools, not 11; platform-health.md cites
   `test_read_only_explorer_profile_is_fourteen_read_tools` (renamed). design.md
   now says `docs://tools` is deliberately not tier-gated.
+- **Privilege-dependent tools run under restricted keys** (D58), inside
+  `contract_green`. One shared `restricted_key` fixture
+  (`tests/contract/conftest.py`: a throwaway role, user and the API key that
+  user mints, all removed afterwards; no Elasticsearch admin password)
+  replaces the two ad hoc ones. `tests/contract/test_privilege_matrix.py`
+  calls every tool that takes `space`, `source_space`, `target_spaces` or
+  `spaces`, plus `list_spaces` and `uninstall_package`, through the MCP tool
+  layer under three keys (`all` in 'default' only, `read` everywhere, no
+  Kibana privilege) and fails on a crash, masked text, a write by the
+  read-only key, a hidden space reported as missing, or a key that is
+  secretly the superuser test key. `tests/unit/test_privilege_matrix_rows.py`
+  fails when a row's arguments stop before the space is read.
 
 ### Fixed
+
+- **A space the API key cannot see is no longer reported as missing.** Copy,
+  overwrite and share into an existing space the key has no privilege in
+  said "space not found … create the space with create_space first"; Kibana's
+  space listing leaves such a space out and answers 403 for it. They now
+  refuse it as the key's missing privilege, naming `list_spaces` (the spaces
+  this key can view) and a key whose role grants that space, sent as
+  `Authorization: ApiKey <key>` or `KIBANA_API_KEY`; a space that really does
+  not exist is still named as missing. The same fix now follows the 403 that
+  `space`/`source_space` validation raises, every other 401/403 from Kibana
+  names what to do, and `list_spaces` says it lists the spaces this key can
+  view.
+- **`create_value_list` and `create_value_list_item` name the missing
+  privilege.** For a key without the lists privilege Kibana answers the
+  lists index status with a bare 500, which reached the caller as "Kibana
+  returned an unexpected error"; the tools now report Kibana's 403 naming
+  `[lists-all]`.
 
 - **A lowercase `kibana_url` in the shell no longer fails the unit tests.**
   `Settings` reads env names in any letter case, but the unit tests cleared
