@@ -1545,10 +1545,18 @@ this ledger stands without them.
   that differs from `elastic-start-local/.env.seed` (an empty one included)
   before any HTTP call, naming the variables (never their values) and `unset
   KIBANA_URL KIBANA_TEST_API_KEY`: the gate certifies the seeded local stack.
-  It also refuses a `KIBANA_API_KEY`, `KIBANA_PUBLIC_URL` or
+  Those two count in any letter case and in `.env.local` too: `Settings`
+  lowercases env names and the later one wins, so a `kibana_url` beside the
+  seed's `KIBANA_URL` aimed the replayed server at another Kibana with the
+  seed's key (measured with `Settings.load`); a differing shell spelling joins
+  the `unset`, and `.env.local` may hold neither name in any case
+  (`tests/_stack_env.py` fails on it too). It also refuses a `KIBANA_API_KEY`, `KIBANA_PUBLIC_URL` or
   `KIBANA_MCP_PUBLIC_KIBANA_URL` set in the shell or `.env.local`, in any
   letter case (`Settings` reads names case-insensitively, so a
-  `kibana_public_url` re-links the server too: measured): the replay
+  `kibana_public_url` re-links the server too: measured; a lowercase
+  `kibana_api_key` does not win, because `Settings.load` sets the uppercase
+  name from the seed after it, but it is refused anyway, as one rule for every
+  spelling is simpler than one measured case each): the replay
   servers inherit the suite's environment and `Settings.load` fills the seed's
   key in only by `setdefault`, so these would re-credential (or re-link) the
   server under test; the fix adds them to the `unset` (or names the

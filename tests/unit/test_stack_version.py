@@ -355,3 +355,41 @@ def test_no_criterion_checks_the_seed_file_on_its_own():
     )
     outside = gate.split("seeded_stack() {", 1)[0] + gate.split("stack_nogo() {", 1)[1]
     assert "-f elastic-start-local/.env.seed" not in outside
+
+
+@pytest.mark.parametrize(
+    "env",
+    [
+        {"kibana_url": "http://evil"},
+        {"KIBANA_URL": "http://seed-equal", "kibana_url": "http://evil"},
+        {"Kibana_Test_Api_Key": "s3cr3t-other"},
+    ],
+)
+def test_check_refuses_a_credential_spelled_in_another_case(tmp_path, kibana, env):
+    # Settings lowercases env names and the later key wins, so a lowercase
+    # kibana_url points the replayed server at another Kibana with the seed key.
+    seed_url = env.get("KIBANA_URL", kibana)
+    root = _write_stack(tmp_path, seed=f"KIBANA_URL={seed_url}\nKIBANA_TEST_API_KEY=k\n")
+    odd = next(k for k in env if k not in sv._CREDS)
+    with pytest.raises(sv.StackVersionError) as exc:
+        sv.check(root, env, _SUPPORTED)
+    message = str(exc.value)
+    assert f"{odd} to a value that differs" in message and f"{_UNSET} {odd}" in message
+    assert "http://evil" not in message and "s3cr3t-other" not in message
+    assert _Status.seen_auth == [], "the refusal comes before any call to a Kibana"
+
+
+def test_check_accepts_a_lowercase_credential_equal_to_the_seed(tmp_path, kibana):
+    _Status.version = "9.5.4"
+    root = _write_stack(tmp_path, seed=f"KIBANA_URL={kibana}\nKIBANA_TEST_API_KEY=k\n")
+    assert sv.check(root, {"kibana_url": kibana}, _SUPPORTED) == "9.5.4"
+
+
+@pytest.mark.parametrize("var", ["kibana_url", "KIBANA_TEST_API_KEY"])
+def test_check_refuses_a_credential_in_env_local_in_any_case(tmp_path, kibana, var):
+    root = _write_stack(tmp_path, seed=f"KIBANA_URL={kibana}\nKIBANA_TEST_API_KEY=k\n")
+    (root / ".env.local").write_text(f"{var}=http://evil\n")
+    with pytest.raises(sv.StackVersionError) as exc:
+        sv.check(root, {}, _SUPPORTED)
+    message = str(exc.value)
+    assert f"remove {var} from .env.local" in message and "http://evil" not in message

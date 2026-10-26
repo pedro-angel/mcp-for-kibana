@@ -18,8 +18,9 @@ On a match it prints the version (one line, for the criteria's GO lines) and
 exits 0; otherwise it prints one line naming the fix and exits 1. The gate
 certifies the seeded local stack (D56): the suites let shell env win over
 .env.seed (tests/_stack_env.py), so a shell KIBANA_URL or KIBANA_TEST_API_KEY
-that differs from the seed (an empty one included) is refused before any call,
-naming `unset KIBANA_URL KIBANA_TEST_API_KEY`; so is a KIBANA_API_KEY,
+that differs from the seed (an empty one included), in any letter case, or
+either name in .env.local, is refused before any call, naming `unset
+KIBANA_URL KIBANA_TEST_API_KEY`; so is a KIBANA_API_KEY,
 KIBANA_PUBLIC_URL or KIBANA_MCP_PUBLIC_KIBANA_URL in the shell or .env.local,
 which the replayed server would read ahead of the seed. A loader-parsed helper, never a
 test module.
@@ -118,9 +119,17 @@ def shell_divergence(
     printed: some of them are keys.
     """
     local = local or {}
-    differ = [k for k in _CREDS if k in environ and environ[k] != seed.get(k, "")]
+    # Settings and the suites' loader read these in any letter case too, so a
+    # lowercase `kibana_url` (shell or .env.local) aims the replayed server at
+    # another Kibana with the seed's key (measured with Settings.load).
+    differ = sorted(
+        k for k in environ if k.upper() in _CREDS and environ[k] != seed.get(k.upper(), "")
+    )
     shell_server = _server_settings_in(environ)
-    local_server = [k for k in _server_settings_in(local) if k not in environ]
+    local_server = sorted(
+        {k for k in _server_settings_in(local) if k not in environ}
+        | {k for k in local if k.upper() in _CREDS}
+    )
     if not (differ or shell_server or local_server):
         return None
     parts = []
@@ -130,7 +139,8 @@ def shell_divergence(
         parts.append(f"the shell sets {' and '.join(shell_server)}")
     if local_server:
         parts.append(f".env.local sets {' and '.join(local_server)}")
-    fix = f"unset {' '.join((*_CREDS, *shell_server))}"
+    extra = [k for k in differ if k not in _CREDS]
+    fix = f"unset {' '.join((*_CREDS, *extra, *shell_server))}"
     if local_server:
         fix += f", remove {' and '.join(local_server)} from .env.local"
     return (

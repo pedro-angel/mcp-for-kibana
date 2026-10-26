@@ -108,7 +108,7 @@ def require_stack_env() -> None:
     local = local or {}
     _merge_into_environ(machine, local)
 
-    forbidden = [k for k in _MACHINE_KEYS if k in local]
+    forbidden = [k for k in local if k.upper() in _MACHINE_KEYS]  # any case: Settings reads it so
     if forbidden:
         pytest.fail(
             "machine-owned keys belong to elastic-start-local/.env.seed — remove "

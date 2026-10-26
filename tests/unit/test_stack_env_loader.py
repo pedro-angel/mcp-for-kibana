@@ -155,3 +155,13 @@ def test_lmstudio_model_is_required_with_the_fix(monkeypatch):
 def test_lmstudio_model_returns_the_named_model(monkeypatch):
     monkeypatch.setenv("LMSTUDIO_MODEL", " qwen/qwen3.8-27b ")
     assert _stack_env.lmstudio_model() == "qwen/qwen3.8-27b"
+
+
+def test_require_fails_on_a_lowercase_machine_key_in_local(env_root):
+    # Settings reads env names case-insensitively, so kibana_url is KIBANA_URL.
+    (env_root / "elastic-start-local" / ".env.seed").write_text(
+        "KIBANA_URL=http://a:1\nKIBANA_TEST_API_KEY=k\n"
+    )
+    (env_root / ".env.local").write_text("kibana_url=http://stale:1\n")
+    with pytest.raises(pytest.fail.Exception, match="machine-owned.*kibana_url"):
+        _stack_env.require_stack_env()
