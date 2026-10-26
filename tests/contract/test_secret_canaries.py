@@ -8,9 +8,9 @@ through the autouse `secret_scan` hook (tests/_secret_scan.py). Here the read
 tools that reach those objects run through the full server at the `read`
 tier — the documented safe profile — and the hook fails any that passes a
 canary on, as get_saved_object did before d1a09c6. The Fleet tools that read
-real credentials Kibana hands out (enrollment keys' `api_key`, uninstall
-tokens) and update_output's read-modify-write of the raw canary output run
-here too: no other live test calls them through a Client.
+a credential Kibana hands out (enrollment keys' `api_key`) and update_output's
+read-modify-write of the raw canary output run here too: no other live test
+calls them through a Client.
 """
 
 import contextlib
@@ -117,16 +117,22 @@ async def test_read_tier_tools_that_reach_the_canaries_return_no_secret():
 
 async def test_fleet_credential_tools_return_no_secret():
     """The SECRET-REDACTED Fleet reads (fleet/toolbox.py) through the server:
-    Kibana returns each enrollment key's `api_key` and each uninstall token's
-    `token` to the test key, so a tool that passed the raw item on is caught
-    by the hook. The seeded stack holds enrollment keys (the agent policies')."""
+    Kibana returns each enrollment key's `api_key` to the test key, so a tool
+    that passed the raw item on is caught by the hook. The seeded stack holds
+    enrollment keys (the agent policies'). list_uninstall_tokens runs too, but
+    it is not credential coverage: Kibana's list endpoint returns metadata
+    only (no `token`; the value is only on GET /uninstall_tokens/<id>, which
+    no tool calls), so its result is scanned for the test key and
+    secret-bearing keys only."""
+    fix = "scripts/stack.sh down && scripts/stack.sh up && scripts/stack.sh seed"
     async with Client(_server()) as client:
         keys = (await client.call_tool("list_enrollment_keys", {})).structured_content["result"]
-        assert keys, ("list_enrollment_keys is empty, so the scan sees no key — "
-                      "scripts/stack.sh down && scripts/stack.sh up && scripts/stack.sh seed")
+        assert keys, f"list_enrollment_keys is empty, so the scan sees no key — {fix}"
         for key in keys[:3]:
             await client.call_tool("get_enrollment_key", {"key_id": key["id"]})
-        await client.call_tool("list_uninstall_tokens", {})
+        tokens = await client.call_tool("list_uninstall_tokens", {})
+        assert tokens.structured_content["result"], (
+            f"list_uninstall_tokens is empty (every agent policy has one) — {fix}")
 
 
 def _reseed(kb, name):
@@ -142,9 +148,8 @@ def _reseed(kb, name):
 async def test_update_output_on_the_canary_returns_no_secret():
     """update_output reads the raw output (service_token, config_yaml) and
     writes it back: pointed at the canary output at the write tier, its result
-    carries no secret. The write clears the canary's service_token (kibana-py's
-    update takes none, so the read-modify-write drops it: docs/roadmap.md), so
-    the canary is put back afterwards for the next run."""
+    carries no secret (the hook scans it). The write clears the canary's
+    service_token (pinned below), so the canary is put back afterwards."""
     body = _CANARIES["fleet-output"]
     with contextlib.closing(kibana.Kibana(
             os.environ["KIBANA_URL"], api_key=os.environ["KIBANA_TEST_API_KEY"])) as kb:
@@ -153,5 +158,30 @@ async def test_update_output_on_the_canary_returns_no_secret():
                 got = await client.call_tool(
                     "update_output", {"output_id": body["id"], "name": body["name"]})
             assert got.structured_content["id"] == body["id"]
+        finally:
+            _reseed(kb, "fleet-output")
+
+
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
+    "update_output's read-modify-write drops a remote_elasticsearch output's "
+    "service_token (docs/roadmap.md); remove this mark with the fix"))
+async def test_update_output_preserves_the_canary_service_token():
+    """fleet.md: an omitted field is preserved. A rename of the canary output
+    must leave its service_token as seeded. Known broken (kibana-py's
+    update_output takes no service_token), so strict xfail: the fix turns
+    this test into an XPASS failure until the mark comes off."""
+    body = _CANARIES["fleet-output"]
+    with contextlib.closing(kibana.Kibana(
+            os.environ["KIBANA_URL"], api_key=os.environ["KIBANA_TEST_API_KEY"])) as kb:
+        try:
+            async with Client(_server("write")) as client:
+                await client.call_tool(
+                    "update_output", {"output_id": body["id"], "name": body["name"]})
+            item = kb.perform_request(
+                "GET", f"{_API['fleet-output']}/{body['id']}").body["item"]
+            assert item.get("service_token") == body["service_token"], (
+                "update_output dropped the output's service_token (Kibana now holds "
+                f"{item.get('service_token')!r}) — send the stored token back on the PUT "
+                "or refuse outputs that hold one (docs/spec/toolboxes/fleet.md)")
         finally:
             _reseed(kb, "fleet-output")

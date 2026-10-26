@@ -67,8 +67,9 @@ As of this page:
   rename of the canary output left Kibana holding `service_token: null`
   (dev stack, 9.5.4); fleet.md says an omitted field is preserved. A fix sends
   the stored token back on the PUT (raw request) or refuses outputs that hold
-  one; `tests/contract/test_secret_canaries.py` re-seeds the canary after its
-  `update_output` call until then.
+  one; `test_update_output_preserves_the_canary_service_token`
+  (`tests/contract/test_secret_canaries.py`) is a strict xfail until then:
+  the fix turns it XPASS, and the mark comes off.
 - feat: `update_alert_rule` returns the rule's detail — **open (left open by
   D40)**. Its result is still the summary, so a model confirms an edit with a
   second call to `get_alert_rule`; returning `get_alert_rule`'s shape instead

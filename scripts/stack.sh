@@ -129,8 +129,11 @@ case "${1:?$USAGE}" in
     # on the stack to catch. Deleted and created again on every seed, so the
     # stack always holds the files' values. Neither is a default or used.
     # Each entry is <canary>:<Kibana API path>: scripts/canaries/<canary>.json
-    # is POSTed to $KB/api/<path> and DELETEd at $KB/api/<path>/<id>, so a
-    # canary of any Kibana type is one file plus one entry here.
+    # is POSTed to $KB/api/<path> and DELETEd at $KB/api/<path>/<id>. That fits
+    # an API that takes a caller-chosen top-level "id" in the POST body and
+    # hands the secret back on GET <path>/<id> (Fleet outputs and proxies). A
+    # type that does not (a connector: id in the path, secrets never returned;
+    # a private location: server-generated id) needs its own seed step (D59).
     echo "seeding secret canaries..."
     for kind in fleet-output:fleet/outputs fleet-proxy:fleet/proxies; do
       file="scripts/canaries/${kind%%:*}.json"
@@ -140,11 +143,11 @@ case "${1:?$USAGE}" in
         "$api/$id" -H 'kbn-xsrf: true' || true)
       case "$code" in
         200|404) ;;
-        *) echo "FAIL: could not remove the old canary ${kind%%:*} '$id' (HTTP $code) — check Fleet is set up: scripts/stack.sh down && scripts/stack.sh up && scripts/stack.sh seed" >&2; exit 1 ;;
+        *) echo "FAIL: could not remove the old canary ${kind%%:*} '$id' at $api/$id (HTTP $code) — check Kibana serves that API (Fleet set up: scripts/stack.sh down && scripts/stack.sh up && scripts/stack.sh seed)" >&2; exit 1 ;;
       esac
       curl -fsS -o /dev/null -u "elastic:${ESPW}" -X POST "$api" -H 'kbn-xsrf: true' \
         -H 'Content-Type: application/json' --data-binary "@$file" \
-        || { echo "FAIL: could not create the canary ${kind%%:*} from $file — check Fleet is set up: scripts/stack.sh down && scripts/stack.sh up && scripts/stack.sh seed" >&2; exit 1; }
+        || { echo "FAIL: could not create the canary ${kind%%:*} from $file at $api — check $file fits that API (a top-level \"id\" it accepts in the body: D59) and Kibana serves it (Fleet set up: scripts/stack.sh down && scripts/stack.sh up && scripts/stack.sh seed)" >&2; exit 1; }
     done
     # Keep the existing key when it still authenticates (/api/features because
     # /api/status is auth-blind); any non-200 routes to mint (benign re-mint).

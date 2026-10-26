@@ -50,13 +50,21 @@ def test_stack_seed_creates_every_canary_file():
         "`for kind in` loop")
 
 
-def test_the_seed_loop_takes_a_canary_of_any_kibana_type():
-    """A non-Fleet type is one more `<canary>:<path>` entry: nothing in the
-    loop or the check assumes Fleet."""
+def test_every_canary_file_fits_the_seed_loop():
+    """The loop POSTs the file to /api/<path> from its entry and DELETEs
+    /api/<path>/<id>, the id read back from the file with sed: every file
+    holds a top-level "id" on a line of its own, and the loop reads the path
+    from the entry. Whether the API takes that id and returns the secret on
+    GET is the contract test's job (test_canary_is_seeded_...)."""
     stack = (_REPO / "scripts" / "stack.sh").read_text()
     loop = stack[stack.index("for kind in"):stack.index("done", stack.index("for kind in"))]
-    assert 'file="scripts/canaries/${kind%%:*}.json"' in loop
     assert 'api="$KB/api/${kind#*:}"' in loop
+    for name in scan.seeded_canaries():
+        text = (scan.CANARY_DIR / f"{name}.json").read_text()
+        ids = [ln for ln in text.splitlines() if ln.lstrip().startswith('"id":')]
+        assert len(ids) == 1 and json.loads(text)["id"], (
+            f"scripts/canaries/{name}.json needs exactly one top-level \"id\" line: "
+            "the seed reads it back to DELETE the old canary (D59)")
 
 
 def test_a_raw_fleet_output_is_caught_with_the_fix():

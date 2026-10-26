@@ -111,8 +111,9 @@ with `scripts/stack.sh up && scripts/stack.sh seed` before the next live tier.
   created by `scripts/stack.sh seed`), the test key and secret-bearing keys
   with a value; a hit fails the test naming the fix. A new secret-bearing
   Kibana object type gets a canary file `scripts/canaries/<canary>.json` and
-  a `<canary>:<Kibana API path>` entry in the seed's loop (any type, not only
-  Fleet), and a tool that returns credentials Kibana hands out is called
+  a `<canary>:<Kibana API path>` entry in the seed's loop when its API takes
+  the `id` in the POST body and returns the secret on GET (else its own seed
+  step: D59), and a tool that returns credentials Kibana hands out is called
   through a `Client` in a live test (`tests/contract/test_secret_canaries.py`).
 - `.env.local` and `~/.lmstudio/mcp.json` are user-owned: never written by
   tooling or agents.
