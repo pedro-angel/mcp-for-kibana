@@ -35,8 +35,8 @@
 # KIBANA_MCP_SERVER_BIN, and names them; every suite line shows `N passed / M
 # collected`; and a shell KIBANA_URL or KIBANA_TEST_API_KEY that differs from
 # elastic-start-local/.env.seed, or a KIBANA_API_KEY, KIBANA_PUBLIC_URL or
-# KIBANA_MCP_PUBLIC_KIBANA_URL in the shell or .env.local, is NO-GO on the
-# seeded-stack criteria.
+# KIBANA_MCP_PUBLIC_KIBANA_URL in the shell or .env.local, or a UV_*, PYTHON* or
+# KIBANA_MCP_SERVER_BIN line in .env.local, is NO-GO on the seeded-stack criteria.
 #
 # Portable POSIX sh; zero deps beyond the project's own tooling (uv).
 # Concept adapted from cmanaha/extended-superpowers (MIT).

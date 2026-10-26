@@ -1527,7 +1527,10 @@ this ledger stands without them.
   `PYTEST_DEBUG`, `PYTEST_DISABLE_PLUGIN_AUTOLOAD`, `COVERAGE_RCFILE` and
   `KIBANA_MCP_SERVER_BIN` (which makes `e2e_replay_green` replay an installed
   executable instead of the checkout; `wheel-replay.sh` sets it on its own
-  command line) with `MAKEFLAGS`/`MFLAGS` before any criterion, and its header names the ones that
+  command line) with `MAKEFLAGS`/`MFLAGS` before any criterion (the suites
+  merge `.env.local` back in after that, so (c) refuses a `UV_*`, `PYTHON*` or
+  `KIBANA_MCP_SERVER_BIN` line there: measured, a `UV_ENV_FILE` made the
+  replay's `uv run` load another `KIBANA_API_KEY` into the server), and its header names the ones that
   were set (`note: cleared PYTEST_ADDOPTS ...`). Cleared, not refused: the
   gate's own command lines and `pyproject.toml` (committed, in the tree id)
   declare what runs, so a stale export is not an error to fix first.

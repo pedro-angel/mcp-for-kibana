@@ -393,3 +393,26 @@ def test_check_refuses_a_credential_in_env_local_in_any_case(tmp_path, kibana, v
         sv.check(root, {}, _SUPPORTED)
     message = str(exc.value)
     assert f"remove {var} from .env.local" in message and "http://evil" not in message
+
+
+@pytest.mark.parametrize(
+    "var", ["UV_ENV_FILE", "uv_env_file", "PYTHONPATH", "KIBANA_MCP_SERVER_BIN", "kibana_mcp_server_bin"]
+)
+def test_check_refuses_a_runner_setting_in_env_local(tmp_path, kibana, var):
+    # .env.local is merged in after the gate clears the shell: UV_ENV_FILE made
+    # `uv run` load another KIBANA_API_KEY into the replayed server, and
+    # KIBANA_MCP_SERVER_BIN replayed an installed server instead of the checkout.
+    root = _write_stack(tmp_path, seed=f"KIBANA_URL={kibana}\nKIBANA_TEST_API_KEY=k\n")
+    (root / ".env.local").write_text(f"LMSTUDIO_MODEL=m\n{var}=/tmp/s3cr3t-path\n")
+    with pytest.raises(sv.StackVersionError) as exc:
+        sv.check(root, {}, _SUPPORTED)
+    message = str(exc.value)
+    assert f"remove {var} from .env.local" in message and "s3cr3t-path" not in message
+    assert _Status.seen_auth == [], "the refusal comes before any call to a Kibana"
+
+
+def test_check_accepts_the_lm_studio_settings_in_env_local(tmp_path, kibana):
+    _Status.version = "9.5.4"
+    root = _write_stack(tmp_path, seed=f"KIBANA_URL={kibana}\nKIBANA_TEST_API_KEY=k\n")
+    (root / ".env.local").write_text("LMSTUDIO_MODEL=m\nLMSTUDIO_URL=http://localhost:1234\nLMSTUDIO_API_TOKEN=\n")
+    assert sv.check(root, {}, _SUPPORTED) == "9.5.4"

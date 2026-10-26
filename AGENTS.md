@@ -72,7 +72,9 @@ naming `unset KIBANA_URL KIBANA_TEST_API_KEY`: the gate certifies the seeded
 local stack. Both names count in any letter case, and `.env.local` may not set
 either. So is a `KIBANA_API_KEY`, `KIBANA_PUBLIC_URL` or
 `KIBANA_MCP_PUBLIC_KIBANA_URL` (any letter case) in the shell or `.env.local`, which the replayed
-server would read ahead of the seed.
+server would read ahead of the seed, and a `UV_*`, `PYTHON*` or
+`KIBANA_MCP_SERVER_BIN` line in `.env.local`, which the suites merge back in
+after the gate clears the shell.
 
 `KIBANA_MCP_DOD_CYCLE_STACK=1` only lets the gate **stop** the dev stack between
 the seeded-stack criteria and the ephemeral tiers (`scripts/stack.sh stop`:

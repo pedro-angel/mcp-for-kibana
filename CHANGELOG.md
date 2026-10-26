@@ -306,7 +306,10 @@ version section.
   shell or `.env.local`, in any letter case, is refused the same way (the
   replayed server read `KIBANA_API_KEY` ahead of the seed's key; `Settings`
   reads names case-insensitively, so `kibana_public_url` re-linked it too), the gate also clears `KIBANA_MCP_SERVER_BIN` (a
-  leftover one replayed an installed server instead of the checkout), and the
+  leftover one replayed an installed server instead of the checkout), a
+  `UV_*`, `PYTHON*` or `KIBANA_MCP_SERVER_BIN` line in `.env.local` is refused
+  (merged back in after the clearing, a `UV_ENV_FILE` there loaded another key
+  into the replayed server), and the
   suites' shadowing warning no longer prints the shell value. AGENTS.md and the
   gate header now say that `KIBANA_MCP_DOD_CYCLE_STACK=1` only stops the dev
   stack between the halves, never starts or restarts it, and leaves it stopped.
