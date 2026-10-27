@@ -266,6 +266,9 @@ version section.
   Kibana itself reports this run, `live_tokens`);
   `tests/unit/test_replay_coverage.py` fails `unit_green` for a toolbox no
   transcript reaches, or a stateless task whose transcript pins no live value.
+  A replay whose recorded call no longer matches the server (a renamed tool,
+  a tightened schema) now names the fix: restore the surface, or re-record
+  that transcript with the recorder its `recorded.by` names.
 - **The Docker image is replayed over HTTP** (D62): a new criterion,
   `image_replay_green`, required locally and in CI's contract job, builds the
   image and replays every transcript into its own container over streamable

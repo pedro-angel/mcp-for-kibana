@@ -115,3 +115,22 @@ def test_a_task_with_no_state_rung_is_held_by_a_live_needle():
             "key names: add `live_tokens` to its transcript and a needle carrying "
             "that value (see kibana-status-platform-health.json)"
         )
+
+
+def test_every_transcript_names_a_working_rerecord_path():
+    """A surface mismatch names how to re-record the transcript (house rule):
+    each transcript's `recorded.by` is a recorder the replay knows, or it is
+    the one capture with none (flights), whose hint says so."""
+    from tests.e2e_replay.test_replay import _RERECORD_BY, _rerecord
+
+    root = TRANSCRIPT_DIR.parents[2]
+    for script in _RERECORD_BY:
+        assert (root / script).exists(), f"{script} is named as a recorder but missing"
+    for name, _ in TRANSCRIPTS:
+        t = _load(name)
+        by = t["recorded"].get("by")
+        assert by in _RERECORD_BY or (by is None and name == "flights-dashboard.json"), (
+            f"{name}: recorded.by={by!r} is no recorder the replay's fix text names — "
+            "add it to _RERECORD_BY in tests/e2e_replay/test_replay.py"
+        )
+        assert "re-record this transcript" in _rerecord(t)

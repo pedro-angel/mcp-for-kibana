@@ -135,14 +135,38 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 # it would silently replace the surface the transcript was recorded against
 # (KIBANA_MCP_TOOLS alone decides the surface, D34). Matched case-insensitively,
 # as pydantic-settings reads environment names.
-# The fix a surface mismatch names (house rule: error text names the fix).
-_RERECORD = (
-    "If the change is unintended, restore the tool's name or schema; if it is "
-    "deliberate, re-record the transcript from a passing run of the changed "
-    "surface: `make test-e2e`, then `uv run python "
-    "tests/e2e_replay/record_claude_turn.py <run dir>` (D61; the LM Studio and "
-    "authored transcripts: record_model_turn.py / record_space_transcript.py)"
-)
+# The fix a surface mismatch names (house rule: error text names the fix),
+# per transcript: each is re-recorded by the script its `recorded.by` names.
+_RERECORD_BY = {
+    "tests/e2e_replay/record_claude_turn.py": (
+        "`make test-e2e`, then `uv run python tests/e2e_replay/record_claude_turn.py "
+        "<passing run dir>` (D61)"
+    ),
+    "tests/e2e_replay/record_model_turn.py": (
+        "`KIBANA_MCP_E2E_DUMP=<dir> uv run pytest tests/e2e/test_lmstudio_space.py "
+        "(or test_lmstudio_alerting_space.py) -m e2e`, then "
+        "`uv run python tests/e2e_replay/record_model_turn.py <dump>`"
+    ),
+    "tests/e2e_replay/record_space_transcript.py": (
+        "`uv run python tests/e2e_replay/record_space_transcript.py`"
+    ),
+}
+
+
+def _rerecord(transcript) -> str:
+    how = _RERECORD_BY.get(transcript["recorded"].get("by", ""))
+    if how is None:
+        # flights-dashboard.json: a 2026-08-09 LM Studio capture with no recorder
+        how = (
+            "no recorder exists for it: edit its recorded arguments to the new "
+            "surface by hand and say so in its `recorded` block, or remove it from "
+            "tests/e2e_replay/_transcripts.py if another transcript covers its toolbox"
+        )
+    return (
+        "If the change is unintended, restore the tool's name or schema; if it is "
+        f"deliberate, re-record this transcript: {how}."
+    )
+
 
 _SELECTION_VARS = frozenset({"KIBANA_MCP_TOOLBOXES", "KIBANA_MCP_TOOLS", "KIBANA_MCP_TIER"})
 
@@ -314,7 +338,7 @@ async def test_recorded_turn_replays_end_to_end(
             assert not missing, (
                 f"tools the recorded turn used no longer exist: {missing}. "
                 "Renaming a tool breaks every prompt and transcript in the wild. "
-                f"{_RERECORD}"
+                f"{_rerecord(transcript)}"
             )
 
             # (3) the arguments the recording runtime rejected must STILL be
@@ -344,7 +368,7 @@ async def test_recorded_turn_replays_end_to_end(
                     f"step {index} ({tool_name}): recorded arguments no "
                     f"longer satisfy the live inputSchema — "
                     f"{[f'{list(e.path)}: {e.message}' for e in errors]}. "
-                f"{_RERECORD}"
+                    f"{_rerecord(transcript)}"
                 )
 
                 result = await client.call_tool(tool_name, args, raise_on_error=False)
