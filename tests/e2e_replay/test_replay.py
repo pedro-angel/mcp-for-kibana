@@ -135,6 +135,15 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 # it would silently replace the surface the transcript was recorded against
 # (KIBANA_MCP_TOOLS alone decides the surface, D34). Matched case-insensitively,
 # as pydantic-settings reads environment names.
+# The fix a surface mismatch names (house rule: error text names the fix).
+_RERECORD = (
+    "If the change is unintended, restore the tool's name or schema; if it is "
+    "deliberate, re-record the transcript from a passing run of the changed "
+    "surface: `make test-e2e`, then `uv run python "
+    "tests/e2e_replay/record_claude_turn.py <run dir>` (D61; the LM Studio and "
+    "authored transcripts: record_model_turn.py / record_space_transcript.py)"
+)
+
 _SELECTION_VARS = frozenset({"KIBANA_MCP_TOOLBOXES", "KIBANA_MCP_TOOLS", "KIBANA_MCP_TIER"})
 
 
@@ -284,10 +293,13 @@ async def test_recorded_turn_replays_end_to_end(
         fresh_title = _substitute(transcript["dashboard_title"], tokens)
         tokens[recorded_id] = derive_dashboard_id(fresh_title)
     for recorded, source in transcript.get("live_tokens", {}).items():
-        # A value read from Kibana itself, not from the server under test (a
-        # read-only task leaves no state, so its needle is the assertion).
+        # A value read from Kibana's own /api/status over raw HTTP, not through
+        # the adapter the server under test uses (a read-only task leaves no
+        # state, so its needle is the assertion).
         assert source == "kibana_version", f"unknown live_tokens source {source!r}"
-        tokens[recorded] = gateway.get_kibana_status().version
+        tokens[recorded] = gateway._client.perform_request(
+            "GET", "/api/status", headers={"accept": "application/json"}
+        ).body["version"]["number"]
     try:
         if task is not None:
             seeded = task.seed(gateway, marker)
@@ -301,7 +313,8 @@ async def test_recorded_turn_replays_end_to_end(
             missing = sorted(reached - tools.keys())
             assert not missing, (
                 f"tools the recorded turn used no longer exist: {missing}. "
-                "Renaming a tool breaks every prompt and transcript in the wild."
+                "Renaming a tool breaks every prompt and transcript in the wild. "
+                f"{_RERECORD}"
             )
 
             # (3) the arguments the recording runtime rejected must STILL be
@@ -330,7 +343,8 @@ async def test_recorded_turn_replays_end_to_end(
                 assert not errors, (
                     f"step {index} ({tool_name}): recorded arguments no "
                     f"longer satisfy the live inputSchema — "
-                    f"{[f'{list(e.path)}: {e.message}' for e in errors]}"
+                    f"{[f'{list(e.path)}: {e.message}' for e in errors]}. "
+                f"{_RERECORD}"
                 )
 
                 result = await client.call_tool(tool_name, args, raise_on_error=False)

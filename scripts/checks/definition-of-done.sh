@@ -399,12 +399,14 @@ ephemeral_line() {
     if [ "${GITHUB_ACTIONS:-}" = true ] && [ -n "$eph_override" ]; then
       # CI's matrix picks the line, which must be one kibana-py supports
       # (the same set integration.yml's versions job fans out over).
-      if eph_supported=$(uv run python -c 'import kibana; print(" ".join(v for _, v in kibana.SUPPORTED_VERSIONS))' 2>/dev/null) \
-        && case " $eph_supported " in *" $eph_override "*) true ;; *) false ;; esac; then
+      if ! eph_supported=$(uv run python -c 'import kibana; print(" ".join(v for _, v in kibana.SUPPORTED_VERSIONS))' 2>/dev/null) || [ -z "$eph_supported" ]; then
+        eph_state=bad
+        eph_reason="could not read kibana.SUPPORTED_VERSIONS to check the CI matrix's ES_LOCAL_VERSION=$eph_override — run uv sync --group dev before the gate"
+      elif case " $eph_supported " in *" $eph_override "*) true ;; *) false ;; esac; then
         eph_state=ok; eph_version=$eph_override
       else
         eph_state=bad
-        eph_reason="the CI matrix's ES_LOCAL_VERSION=$eph_override is not in kibana.SUPPORTED_VERSIONS (${eph_supported:-unreadable}) — take the matrix from integration.yml's versions job"
+        eph_reason="the CI matrix's ES_LOCAL_VERSION=$eph_override is not in kibana.SUPPORTED_VERSIONS ($eph_supported) — take the matrix from integration.yml's versions job"
       fi
     elif [ -z "$eph_pin" ]; then
       eph_state=bad

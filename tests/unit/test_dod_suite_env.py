@@ -220,6 +220,21 @@ def test_in_ci_an_unsupported_matrix_line_is_no_go(repo):
     assert not (repo / "ran").exists(), "the tier must not run on the wrong line"
 
 
+def test_in_ci_an_unreadable_supported_set_is_no_go_naming_the_sync(repo, tmp_path):
+    # The re-review's path: uv failing is not an unsupported line, and the
+    # fix it names is the sync, not the versions job.
+    fake = tmp_path / "bin"
+    fake.mkdir()
+    (fake / "uv").write_text("#!/bin/sh\nexit 1\n")
+    (fake / "uv").chmod(0o755)
+    res = _gate(repo, ES_LOCAL_VERSION="9.4.7", GITHUB_ACTIONS="true",
+                PATH=f"{fake}:{os.environ['PATH']}")
+    assert res.returncode == 1, res.stdout
+    line = _line(res.stdout, "streams_ephemeral")
+    assert line.startswith("  NO-GO") and "could not read kibana.SUPPORTED_VERSIONS" in line
+    assert "uv sync --group dev" in line and "versions job" not in line
+
+
 def test_a_missing_ephemeral_pin_is_no_go_naming_the_restore(repo):
     (repo / "elastic-start-local" / ".env.ephemeral.example").unlink()
     _git(repo, "commit", "-qam", "drop pin")

@@ -18,7 +18,8 @@ seeded. Two rung kinds exist: state rungs, read from Kibana, and run rungs,
 read from the run's own record (which tools were called, with what input,
 and the final answer). The replay tier has no run record, so it scores state
 rungs only (`run=None`); a task whose every rung is a run rung
-(`kibana_status`) then has nothing more to check than the replayed calls.
+(`kibana_status`) is held instead by its transcript's `live_tokens` needle
+(the version Kibana's own /api/status reports, D61).
 
 tests/unit/test_toolbox_tasks.py pins every prompt byte for byte and every
 scoring branch against fakes. A loader-parsed helper module, never a test

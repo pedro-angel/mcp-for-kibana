@@ -1237,9 +1237,10 @@ this ledger stands without them.
   recorded wire bytes — its order carries no evidence about model behavior
   and each transcript's `recorded` block says which kind it is.
 - **D31 (2026-10-04)** — *The on-demand rule below now runs `make test-e2e`,
-  the Claude tier, superseded by D38; the gate decision is superseded for the
-  local `dod.config` by D42 (`e2e_green = required` there) and stands for
-  every `.github/dod` config.* The
+  the Claude tier, superseded by D38; the gate decision was superseded for the
+  local `dod.config` by D42 (`e2e_green = required` there, 2026-10-17) until
+  D61 restored `n/a` (2026-10-27), and it stands for every `.github/dod`
+  config.* The
   Definition of Done needs no LLM: `e2e_green` is
   `n/a` in `dod.config` as in every `.github/dod` config. Why: the gate must
   reach GO wherever the project is worked on — CI runners and Claude Code
@@ -1932,7 +1933,8 @@ this ledger stands without them.
   cleanup is the task's. A task with no state rung (`kibana_status`, a read)
   would pass any successful call that way, so its transcript carries
   `live_tokens`: the recorded version is replaced by the one Kibana's own
-  `/api/status` reports this run, and a needle holds the tool's answer to it. `tests/e2e_replay/_transcripts.py` lists them, and
+  `/api/status` reports this run (read over raw HTTP, not through the
+  adapter the server uses), and a needle holds the tool's answer to it. `tests/e2e_replay/_transcripts.py` lists them, and
   `tests/unit/test_replay_coverage.py` fails `unit_green` when a toolbox has
   no transcript reaching one of its tools on a server that loads it, when a
   transcript file is unlisted, or when a per-toolbox transcript does not cite
@@ -1972,9 +1974,8 @@ this ledger stands without them.
   `resolve_api_key` reading headers without `authorization` passes
   `image-smoke.sh` and fails `image-replay.sh` (all ten transcripts and two
   of the three HTTP tests, the header test naming
-  `adapters/mcp/auth.py resolve_api_key`); the real image passes them all
-  (the gate's `image_replay_green` line in the H9 commits' messages gives the
-  count and the Kibana version).
+  `adapters/mcp/auth.py resolve_api_key`); the real image must pass them
+  all, which is what `image_replay_green` certifies on each gate run.
   **Every line for the ephemeral tiers.** `scripts/stack-version.sh`
   (`env_with_version <template> <env file>`) is the one rule for which line a
   stack runs: an `ES_LOCAL_VERSION` in the environment replaces the
