@@ -423,8 +423,10 @@ version section.
   default space) now records the dashboards already on the stack and its
   cleanup reinstalls the flights sample if the run deleted one, raising with
   the ids and the fix if any is still missing — and any live run whose
-  cleanup raised now fails with that message instead of keeping it only in
-  `record.json`; `image_replay_green` joins the
+  cleanup raised now fails with that message (after the API key leak check,
+  which it never hides) instead of keeping it only in `record.json`, and
+  `SUMMARY.md` lists it under "Cleanup failures" while the run's pass and
+  validity stay as scored (`CLAUDE_E2E.md` says so); `image_replay_green` joins the
   unit test that holds every seeded criterion to the version check; and the
   "toolboxes" block of `CLAUDE_E2E.md` says it was committed with its
   results, not before them.

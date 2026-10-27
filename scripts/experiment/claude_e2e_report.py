@@ -115,6 +115,12 @@ def render(records, block_name):
             + (", ".join(f"`{c}`" for c in r.get("tool_calls") or []) or "none")
             + "."
         )
+    # A cleanup failure leaves pass and valid as scored (CLAUDE_E2E.md) but
+    # fails the pytest run, so the summary names it whatever the run scored.
+    unclean = [r for r in records if r.get("cleanup_error")]
+    if unclean:
+        lines += ["", "## Cleanup failures", ""]
+        lines += [f"- `{r['run_id']}` ({r['task']}): {r['cleanup_error']}" for r in unclean]
     return "\n".join(lines) + "\n"
 
 

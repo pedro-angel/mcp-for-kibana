@@ -73,6 +73,11 @@ server's, the CLI reported no permission denial, and the CLI ended with a
 result event (or the run timed out, which is a valid failed run). An invalid
 run counts as not passed. No run is re-run or dropped.
 
+Cleanup after a run is not a rung and does not change whether the run passed
+or was valid. A cleanup that raises leaves the shared stack changed, so it
+fails that run's pytest test with its message (an API key leak is reported
+first), and `SUMMARY.md` lists it under "Cleanup failures".
+
 ## Analysis
 
 Generated from `runs.jsonl` by `claude_e2e_report.py` into `SUMMARY.md`
