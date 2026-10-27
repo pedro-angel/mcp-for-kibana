@@ -144,7 +144,8 @@ this ledger stands without them.
   may get the input elsewhere, e.g. an id the user pastes). Dependencies are
   followed transitively; tools hidden by the tier are not checked; toolbox
   selections are not checked. **Dependency map**: one owner, data —
-  `DEPENDENCIES` in `src/kibana_mcp/tool_lists.py`, 79 edges from 69 tools.
+  `DEPENDENCIES` in `src/kibana_mcp/tool_lists.py`, 79 edges from 69 tools
+  (125 from 109 since D60, which gave every id-named input a source).
   An edge A → B means A takes an input only B shows the model and A's own
   description or error guidance sends the model there: an index or field name
   (`update_panel`/`delete_panel` → `get_dashboard`; every VizSpec tool →
@@ -1773,6 +1774,112 @@ this ledger stands without them.
   `config_yaml` kept. `test_update_output_preserves_the_canary_service_token`
   failed on the old gateway naming the fix and passes now;
   `test_update_output_changes_a_type_live` holds the type change.
+
+- **D60 (2026-10-27, probes on 9.5.4, Basic; owner: the surface budget)** —
+  The tool layer meets real Kibana for every read tool, the surface a model
+  is handed is budgeted, and every id a tool takes has a stated source
+  (inside `unit_green`, `contract_green`, `streams_ephemeral` and
+  `fleet_ephemeral`; no new criterion).
+  **Read-tool sweep.** `tests/contract/test_read_tool_sweep.py` builds the
+  full server (every toolbox at `destructive`) against the seeded stack and
+  calls each read-tier tool once through a fastmcp `Client` with the
+  arguments in `tests/_read_sweep.py` (one row per read tool; ids from the
+  matching list tool, or from throwaway objects — a case, a connector, a
+  disabled `.es-query` rule, a visualization, a short URL, an exception
+  list, a value list, a disabled detection rule, an APM agent
+  configuration, and a disabled HTTP monitor on a private location on its
+  own agent policy — created through the write tools and deleted after the
+  module; each list gets one item). Each call must return without
+  `isError` and with structured content (validated against the tool's
+  output schema, which for 71 of the 74 says only "an object" or "a list of
+  objects": they return `dict[str, Any]`, so the check is the call and the
+  shaping, not the field set), and the list tools in `NON_EMPTY` must
+  return rows, so their shaping meets real data;
+  `search_apm_annotations` is the one read that returns no rows (no APM
+  data on the stack). The D59 scan sees every result, the sweep's own
+  setup and teardown calls included. The rows must equal the registry's read tools, checked in the
+  contract module and in `tests/unit/test_read_sweep_coverage.py`, so a new
+  read tool fails `unit_green` until it has a row. A delete that fails
+  fails the run naming the object; a run killed before its teardown is
+  cleaned up by the next (caller-chosen ids first, then the `mcp-sweep-`
+  name prefix, and the short URL by the marker path its locator holds). One effect outlives it, as for the contract tier's own
+  synthetics test: Kibana installs the `synthetics` package for the first
+  private location. The two ephemeral suites drive their actions through
+  the same server and a `Client` (the `call_tool` fixture in
+  `tests/ephemeral/conftest.py`): each confirm-gated call (`bulk_*`,
+  `update_output` on the default output, `disable_streams`) is made first
+  without `confirm=True` and must be refused, and a Kibana refusal
+  (`upgrade_agent` to an invalid version) must reach the caller as a
+  `ToolError`; the gateway only observes.
+  **Surface budget.** `docs/spec/surface-budget.toml` caps the default
+  selection, every shipped profile, every toolbox at `destructive` and all
+  of them together by tool count, total description characters and total
+  input-schema characters (compact JSON), and every tool by description and
+  input-schema size; `tests/unit/test_surface_budget.py` measures them from
+  a FakeGateway build. The owner's rule (H8): caps at today's values plus
+  modest headroom, and "the growth should be pondered, not just adding
+  because of new tools" — so a cap is raised only by a new decision that
+  states the new numbers in the form below and says why the growth is
+  worth it; a new tool alone is not a reason. The test fails a surface or
+  tool over its cap naming that fix, a cap whose cited decision does not
+  state it or has no `Why:`, a cap citing an older decision than the newest
+  that states it, a new cap or one above these founding numbers that
+  cites this entry, and any decision's budget lines that differ from the
+  test's `LEDGER` (this entry's numbers, and each later raise's), so no
+  decision is edited in place and none before this one can be cited. The
+  surfaces are measured with every `KIBANA_MCP_*` variable unset, so a
+  shell selection cannot shrink them. Measured 2026-10-27 (after this entry's description
+  sentences): default 27 tools, 12470 description and 20458 input-schema
+  characters; all toolboxes 184 / 65689 / 63868; read-only-explorer 14 /
+  4308 / 3083; fleet-admin 41 / 11312 / 8131; the longest description
+  `uninstall_package` 1167, the largest schema `create_dashboard` 2806. Caps
+  are those plus 5 % (characters rounded up to the next 100; tool counts
+  +5 %, at least one):
+  - `budget all-toolboxes: 193 tools, 69000 description_chars, 67100 input_schema_chars`
+  - `budget default: 28 tools, 13100 description_chars, 21500 input_schema_chars`
+  - `budget profile:dashboards-analyst: 28 tools, 13100 description_chars, 21500 input_schema_chars`
+  - `budget profile:fleet-admin: 43 tools, 11900 description_chars, 8600 input_schema_chars`
+  - `budget profile:read-only-explorer: 15 tools, 4600 description_chars, 3300 input_schema_chars`
+  - `budget toolbox:alerting: 23 tools, 10900 description_chars, 6900 input_schema_chars`
+  - `budget toolbox:cases: 7 tools, 1100 description_chars, 2100 input_schema_chars`
+  - `budget toolbox:dashboards: 18 tools, 5800 description_chars, 18000 input_schema_chars`
+  - `budget toolbox:data-management: 18 tools, 9600 description_chars, 5300 input_schema_chars`
+  - `budget toolbox:fleet: 43 tools, 11900 description_chars, 8600 input_schema_chars`
+  - `budget toolbox:observability: 23 tools, 7900 description_chars, 5600 input_schema_chars`
+  - `budget toolbox:platform-admin: 15 tools, 6300 description_chars, 6300 input_schema_chars`
+  - `budget toolbox:platform-health: 4 tools, 400 description_chars, 200 input_schema_chars`
+  - `budget toolbox:security-detections: 31 tools, 11800 description_chars, 12500 input_schema_chars`
+  - `budget toolbox:streams: 13 tools, 3700 description_chars, 2000 input_schema_chars`
+  - `budget per-tool: 1300 description_chars, 3000 input_schema_chars`
+  **Dependency completeness.** Every tool with an id-like input (`id`,
+  `ids`, `*_id`, `*_ids`, `handle`) has a `DEPENDENCIES` edge to the tool
+  that shows it, or sits in `ID_INPUTS_WITHOUT_SOURCE`
+  (`src/kibana_mcp/tool_lists.py`) with a reason — a caller-chosen id
+  (`create_space`, `create_value_list`, `create_exception_list`,
+  `create_detection_rule`) or a documented constant (`create_connector`,
+  `create_short_url`); every such tool's description names one of its edge
+  targets ("`case_id` comes from list_cases."); and the coherence check runs
+  over every toolbox at every tier and every shipped profile, which must
+  leave out nothing but the reviewed cross-toolbox gaps in
+  `tests/unit/test_tool_lists.py` (`ACCEPTED_GAPS`, exact). The map grew from
+  79 edges from 69 tools to 125 from 109 (cases → `list_cases`, fleet agents
+  and bulk actions → `list_agents`/`list_agent_policies`, detection rules →
+  `find_detection_rules`, value lists → `find_value_lists`,
+  `export_saved_objects` → `find_saved_objects` for its nested `objects`
+  ids, …); the check reads top-level parameter names, so a nested id is
+  covered only where an edge like that one was added by hand;
+  `create_alert_rule` → `list_rule_types` is an edge, not an exemption
+  (rule types vary by licence and version). The server still logs no
+  coherence warning for a toolbox-only selection (D41); the check is the
+  test's. Why: 108 of 184 tools never ran through the tool layer against
+  Kibana, so a real shape the fake does not model reached users with GO
+  (surface-3); the default selection grew 16 → 27 tools with only a README
+  digit to bump (usability-2); and 35 id-taking tools had no edge, so a
+  narrow `KIBANA_MCP_TOOLS` selection got no warning and `get_case` gave no
+  hint where a case id comes from (usability-3). Evidence: the sweep, 75
+  passed on 9.5.4 (no false positive; a planted `mcp-sweep-` case, the
+  sweep's value list and a marked short URL were removed by the next run);
+  the bite proofs are in the H8 commit message.
 
 ## Scope and licensing (probed on Basic)
 

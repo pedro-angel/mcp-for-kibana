@@ -334,6 +334,26 @@ version section.
   unit test pins 17 tools, not 11; platform-health.md cites
   `test_read_only_explorer_profile_is_fourteen_read_tools` (renamed). design.md
   now says `docs://tools` is deliberately not tier-gated.
+- **Every read tool runs through the tool layer against Kibana; the surface
+  has a budget; every id has a source** (D60), inside `unit_green`,
+  `contract_green` and the two ephemeral criteria. A contract read-tool sweep
+  (`tests/contract/test_read_tool_sweep.py`) calls each of the 74 read tools
+  once through a fastmcp `Client` on the full server and requires no
+  `isError`, structured content (checked against the output schema, which
+  for most read tools only says "an object") and, for the list tools the
+  stack or the sweep fills, rows; its throwaway objects are created and
+  deleted through the write tools, and a killed run's are removed by the
+  next. The
+  streams and fleet ephemeral suites call the tools through a `Client`,
+  each confirm gate refused first. `docs/spec/surface-budget.toml` caps the
+  default selection, the profiles, each toolbox and each tool (today's values
+  plus 5 %); `tests/unit/test_surface_budget.py` fails a surface over its cap
+  and a cap raised without a new decision that states the numbers and why.
+  Every tool with an id-named input now has a dependency edge (46 added: 125
+  edges from 109 tools) or a reasoned exemption, and its description names
+  where the id comes from (68 descriptions gained one sentence or clause, e.g. "`case_id` comes
+  from list_cases."); unit tests hold both and run the coherence check over
+  every toolbox, tier and profile.
 - **No tool result carries a credential** (D59), inside `contract_green`
   and both replay criteria. Every tool result the contract and replay tiers
   receive through a fastmcp `Client` is scanned (`tests/_secret_scan.py`)

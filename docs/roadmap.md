@@ -50,6 +50,12 @@ The contract and replay tiers scan every tool result for credentials: the
 seeded canaries (a Fleet output and proxy), the test key and secret-bearing
 keys (D59); the scan reaches only the tools those tiers call through a
 client, and no connector canary exists (Basic has no connector with a secret).
+The contract tier's read-tool sweep calls every read tool once through a
+client, and the ephemeral suites drive their destructive calls through one,
+confirm gates refused first; unit tests cap the model-facing surface
+(`docs/spec/surface-budget.toml`, raised only by a decision saying why) and
+require every id input to have a stated source tool (D60). Not yet run on
+9.4.7 locally (CI's other contract line runs the sweep).
 The flag only stops the stack; afterwards it stays stopped, so
 start and seed it again before the next live tier.
 

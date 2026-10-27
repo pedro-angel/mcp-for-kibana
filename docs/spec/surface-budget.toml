@@ -1,0 +1,114 @@
+# The surface budget (D60): caps on what a model is handed, held by
+# tests/unit/test_surface_budget.py inside unit_green.
+#
+# [surface.<name>] caps a surface: the default selection, each shipped profile
+# (profiles/*.mcp.json), each toolbox at `destructive`, and every toolbox at
+# `destructive` together, by tool count, total description characters and
+# total input-schema characters (compact JSON, as the tool listing sends it).
+# [per_tool] caps every single tool; [per_tool.exceptions.<tool>] lifts one
+# tool's cap (none today).
+#
+# Every cap cites the decision in docs/spec/decisions.md that sets it; that
+# entry states it as `budget <name>: N tools, N description_chars, N
+# input_schema_chars` (per-tool caps: `budget per-tool: ...`, an exception
+# `budget tool:<name>: ...`) and says Why. To raise a cap, write a NEW
+# decision that states the new numbers and why the growth is worth it — a new
+# tool alone is not a reason (owner rule) — and cite it here. D60 set the
+# caps at the values measured 2026-10-27 plus 5 % (characters rounded up to
+# the next 100; tool counts +5 %, at least one).
+
+
+[surface."all-toolboxes"]
+tools = 193
+description_chars = 69000
+input_schema_chars = 67100
+decision = "D60"
+
+[surface."default"]
+tools = 28
+description_chars = 13100
+input_schema_chars = 21500
+decision = "D60"
+
+[surface."profile:dashboards-analyst"]
+tools = 28
+description_chars = 13100
+input_schema_chars = 21500
+decision = "D60"
+
+[surface."profile:fleet-admin"]
+tools = 43
+description_chars = 11900
+input_schema_chars = 8600
+decision = "D60"
+
+[surface."profile:read-only-explorer"]
+tools = 15
+description_chars = 4600
+input_schema_chars = 3300
+decision = "D60"
+
+[surface."toolbox:alerting"]
+tools = 23
+description_chars = 10900
+input_schema_chars = 6900
+decision = "D60"
+
+[surface."toolbox:cases"]
+tools = 7
+description_chars = 1100
+input_schema_chars = 2100
+decision = "D60"
+
+[surface."toolbox:dashboards"]
+tools = 18
+description_chars = 5800
+input_schema_chars = 18000
+decision = "D60"
+
+[surface."toolbox:data-management"]
+tools = 18
+description_chars = 9600
+input_schema_chars = 5300
+decision = "D60"
+
+[surface."toolbox:fleet"]
+tools = 43
+description_chars = 11900
+input_schema_chars = 8600
+decision = "D60"
+
+[surface."toolbox:observability"]
+tools = 23
+description_chars = 7900
+input_schema_chars = 5600
+decision = "D60"
+
+[surface."toolbox:platform-admin"]
+tools = 15
+description_chars = 6300
+input_schema_chars = 6300
+decision = "D60"
+
+[surface."toolbox:platform-health"]
+tools = 4
+description_chars = 400
+input_schema_chars = 200
+decision = "D60"
+
+[surface."toolbox:security-detections"]
+tools = 31
+description_chars = 11800
+input_schema_chars = 12500
+decision = "D60"
+
+[surface."toolbox:streams"]
+tools = 13
+description_chars = 3700
+input_schema_chars = 2000
+decision = "D60"
+
+[per_tool]
+description_chars = 1300
+input_schema_chars = 3000
+decision = "D60"

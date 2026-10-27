@@ -193,6 +193,20 @@ mode enables host/origin protection on loopback binds.
   `config_yaml`, `certificate_key` and proxy-header values, created by
   `scripts/stack.sh seed` from `scripts/canaries/`), the test key, and
   secret-bearing keys with a value; a hit fails the test naming the fix.
+- Every read tool runs through the MCP tool layer against real Kibana (D60):
+  the contract tier's read-tool sweep calls each read-tier tool once through
+  a fastmcp `Client` on the full server and requires no `isError`,
+  structured content, and rows from the list tools the stack or the sweep
+  fills; its rows equal the registry's read tools. The ephemeral suites drive their destructive calls
+  through a `Client` too, each confirm gate refused first.
+- The model-facing surface is budgeted (D60): `docs/spec/surface-budget.toml`
+  caps the default selection, every profile, every toolbox and every tool by
+  tool count, description and input-schema size; a cap is raised only by a
+  new decision that states the new numbers and why the growth is worth it.
+- Every id-named input a tool takes has a stated source (D60): a `DEPENDENCIES` edge to
+  the tool that shows it, named in the description, or a reasoned exemption;
+  every toolbox at every tier and every profile is coherent but for reviewed
+  cross-toolbox gaps.
 - Every change carries a CHANGELOG entry: `changelog_entry` and a `checks.yml`
   PR step run `scripts/checks/changelog-entry.sh`, which requires a new entry
   under `## [Unreleased]` when non-exempt paths changed since the merge-base

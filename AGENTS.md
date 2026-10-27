@@ -105,6 +105,14 @@ with `scripts/stack.sh up && scripts/stack.sh seed` before the next live tier.
   takes a space gets a privilege-matrix row automatically, and one that acts
   on a space listing without taking a space goes in `LISTING_GUARDS`
   (`tests/_privilege_matrix.py`).
+- **Every read tool has a sweep row; the surface has a budget** (D60): a new
+  read tool gets a row in `tests/_read_sweep.py` (its ids from the matching
+  list tool, or a throwaway object the sweep creates and deletes); a new
+  id-taking tool gets a `DEPENDENCIES` edge named in its description, or an
+  `ID_INPUTS_WITHOUT_SOURCE` reason (`src/kibana_mcp/tool_lists.py`). A surface
+  or tool over its cap in `docs/spec/surface-budget.toml` is trimmed, or the
+  cap is raised by a NEW decision that states the numbers and says why the
+  growth is worth it — a new tool alone is not a reason.
 - **No tool result carries a credential** (D59): the contract and replay
   tiers scan every result a fastmcp `Client` receives (autouse `secret_scan`,
   `tests/_secret_scan.py`) for the seeded canaries (`scripts/canaries/*.json`,

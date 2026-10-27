@@ -220,7 +220,7 @@ class PlatformAdminToolbox:
             """Update a Kibana space's fields (read-modify-write — omitted fields are
             preserved). The `id` cannot change. `solution` reshapes the space's
             features. Pass `description=""` to clear the description. Returns the
-            updated space."""
+            updated space. `space_id` comes from list_spaces."""
             with gateway_errors(), deps.gateway_factory() as gw:
                 return asdict(
                     gw.update_space(
@@ -327,7 +327,7 @@ class PlatformAdminToolbox:
             """Delete a Kibana space. DESTRUCTIVE: permanently removes EVERY saved
             object in the space (dashboards, rules, data views, …). Requires
             force=True (the whole-space wipe is not reversible); refuses the default
-            + reserved system spaces regardless of force."""
+            + reserved system spaces regardless of force. `space_id` comes from list_spaces."""
             with gateway_errors(), deps.gateway_factory() as gw:
                 gw.delete_space(space_id, force)
             return {"deleted": True, "space_id": space_id}

@@ -125,6 +125,7 @@ class SecurityDetectionsToolbox:
         ) -> dict[str, Any]:
             """Get one detection rule by its stable `rule_id` or its `id` (uuid).
             Provide exactly one. Errors if no matching rule exists.
+            `rule_id` and `id` come from find_detection_rules.
 
             `space` targets a Kibana space by id (default: the default space)."""
             with gateway_errors(), deps.gateway_factory(space) as gw:
@@ -185,7 +186,7 @@ class SecurityDetectionsToolbox:
             """Get one exception-list container by its `id` (uuid) or stable
             `list_id`. Provide exactly one. Errors if no matching list exists.
             A list created with namespace_type="agnostic" is found only with
-            namespace_type="agnostic".
+            namespace_type="agnostic". `id` and `list_id` come from find_exception_lists.
 
             `space` targets a Kibana space by id (default: the default space)."""
             with gateway_errors(), deps.gateway_factory(space) as gw:
@@ -202,6 +203,7 @@ class SecurityDetectionsToolbox:
             """List the exception items within an exception list (by its
             `list_id`): id, item_id, name, list_id. Paginated to completion.
             Pass namespace_type="agnostic" for an agnostic list.
+            `list_id` comes from find_exception_lists.
 
             `space` targets a Kibana space by id (default: the default space)."""
             with gateway_errors(), deps.gateway_factory(space) as gw:
@@ -221,7 +223,7 @@ class SecurityDetectionsToolbox:
             import_exception_list (a new copy) or overwrite_exception_list
             (restore in place). `include_expired_exceptions=False` leaves out
             items whose expire_time has passed. The server keeps the last 20
-            exception-list exports.
+            exception-list exports. `id` and `list_id` come from find_exception_lists.
 
             `space` targets a Kibana space by id (default: the default space)."""
             _one_list_id(id, list_id)
@@ -261,7 +263,7 @@ class SecurityDetectionsToolbox:
         ) -> list[dict[str, Any]]:
             """List the items of a value list, by the list's `id` (passed here as
             `list_id`): id, list_id, value, type, timestamp. Paginated to
-            completion.
+            completion. `list_id` comes from find_value_lists.
 
             `space` targets a Kibana space by id (default: the default space)."""
             with gateway_errors(), deps.gateway_factory(space) as gw:
@@ -343,7 +345,7 @@ class SecurityDetectionsToolbox:
             """Add an exception item to an exception list (by the list's
             `list_id`). Each `entries` condition is a field==value (operator
             'included') or field!=value ('excluded') match; all entries in one
-            item are ANDed. Returns the created item.
+            item are ANDed. Returns the created item. `list_id` comes from find_exception_lists.
 
             `namespace_type="agnostic"` objects are shared across ALL spaces; `space` chooses the routing space but does not isolate them.
             `space` targets a Kibana space by id (default: the default space)."""
@@ -379,6 +381,7 @@ class SecurityDetectionsToolbox:
             list changes between this tool's read and its write, nothing is
             written and the error says to call again. Returns the list and
             `previous` (name, description, tags): passing those back undoes it.
+            `id` and `list_id` come from find_exception_lists.
 
             `namespace_type="agnostic"` objects are shared across ALL spaces; `space` chooses the routing space but does not isolate them.
             `space` targets a Kibana space by id (default: the default space)."""
@@ -410,6 +413,7 @@ class SecurityDetectionsToolbox:
             refuses to duplicate endpoint lists: copy one with
             export_exception_list + import_exception_list. To copy into another
             space, use those two tools. Returns the new list and `source_list_id`.
+            `id` and `list_id` come from find_exception_lists.
 
             `namespace_type="agnostic"` objects are shared across ALL spaces; `space` chooses the routing space but does not isolate them.
             `space` targets a Kibana space by id (default: the default space)."""
@@ -486,7 +490,7 @@ class SecurityDetectionsToolbox:
             enable_detection_rule / disable_detection_rule instead) or actions. The returned
             rule is a summary: patched `query`/`description`/`interval` apply but are not
             echoed. A static `severity` is overridden per-alert if the rule has a
-            severity_mapping.
+            severity_mapping. `rule_id` and `id` come from find_detection_rules.
 
             `space` targets a Kibana space by id (default: the default space)."""
             if bool(rule_id) == bool(id):
@@ -520,6 +524,7 @@ class SecurityDetectionsToolbox:
             `language`. Only the fields you pass change; pass at least one. Does NOT
             edit `enabled` (use enable_detection_rule / disable_detection_rule instead)
             or actions. Refuses an Elastic-prebuilt (immutable) rule.
+            `rule_id` and `id` come from find_detection_rules.
 
             `space` targets a Kibana space by id (default: the default space)."""
             if bool(rule_id) == bool(id):
@@ -544,6 +549,7 @@ class SecurityDetectionsToolbox:
         ) -> dict[str, Any]:
             """Enable a detection rule (start its schedule) by its stable `rule_id`
             or its `id` (uuid). Provide exactly one.
+            `rule_id` and `id` come from find_detection_rules.
 
             `space` targets a Kibana space by id (default: the default space)."""
             with gateway_errors(), deps.gateway_factory(space) as gw:
@@ -557,6 +563,7 @@ class SecurityDetectionsToolbox:
         ) -> dict[str, Any]:
             """Disable a detection rule (stop its schedule) by its stable `rule_id`
             or its `id` (uuid). Provide exactly one.
+            `rule_id` and `id` come from find_detection_rules.
 
             `space` targets a Kibana space by id (default: the default space)."""
             with gateway_errors(), deps.gateway_factory(space) as gw:
@@ -589,7 +596,7 @@ class SecurityDetectionsToolbox:
             """Add an item (a value) to a value list, by the list's `id` (passed
             here as `list_id`). The `.lists`/`.items` backing indices are per-space
             (created on first value-list write in a space; mirrors
-            create_value_list). Returns the created item.
+            create_value_list). Returns the created item. `list_id` comes from find_value_lists.
 
             `space` targets a Kibana space by id (default: the default space)."""
             with gateway_errors(), deps.gateway_factory(space) as gw:
@@ -605,7 +612,7 @@ class SecurityDetectionsToolbox:
             space: Annotated[str, Field(pattern=SPACE_ID_PATTERN)] | None = None,
         ) -> dict[str, Any]:
             """Permanently delete a detection rule by its stable `rule_id` or its
-            `id` (uuid). Provide exactly one.
+            `id` (uuid). Provide exactly one. `rule_id` and `id` come from find_detection_rules.
 
             `space` targets a Kibana space by id (default: the default space)."""
             if bool(rule_id) == bool(id):
@@ -623,6 +630,7 @@ class SecurityDetectionsToolbox:
         ) -> dict[str, Any]:
             """Permanently delete an exception-list container (and its items) by
             its `id` (uuid) or stable `list_id`. Provide exactly one.
+            `id` and `list_id` come from find_exception_lists.
 
             `namespace_type="agnostic"` objects are shared across ALL spaces; `space` chooses the routing space but does not isolate them.
             `space` targets a Kibana space by id (default: the default space)."""
@@ -678,7 +686,7 @@ class SecurityDetectionsToolbox:
             space: Annotated[str, Field(pattern=SPACE_ID_PATTERN)] | None = None,
         ) -> dict[str, Any]:
             """Permanently delete an exception item by its `id` (uuid) or stable
-            `item_id`. Provide exactly one.
+            `item_id`. Provide exactly one. `id` and `item_id` come from find_exception_items.
 
             `namespace_type="agnostic"` objects are shared across ALL spaces; `space` chooses the routing space but does not isolate them.
             `space` targets a Kibana space by id (default: the default space)."""
@@ -697,6 +705,7 @@ class SecurityDetectionsToolbox:
             """Permanently delete a value list (and all its items) by `id`. Refuses (409)
             a list referenced by an exception item unless `force=True`, which deletes it
             anyway and leaves those exceptions with a dangling reference.
+            `id` comes from find_value_lists.
 
             `space` targets a Kibana space by id (default: the default space)."""
             with gateway_errors(), deps.gateway_factory(space) as gw:
@@ -710,6 +719,7 @@ class SecurityDetectionsToolbox:
         ) -> dict[str, Any]:
             """Permanently delete a single value-list item by its `item_id`
             (leaves the parent value list and its other items untouched).
+            `item_id` comes from find_value_list_items.
 
             `space` targets a Kibana space by id (default: the default space)."""
             with gateway_errors(), deps.gateway_factory(space) as gw:

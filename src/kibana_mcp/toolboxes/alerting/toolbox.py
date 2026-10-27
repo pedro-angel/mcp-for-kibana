@@ -159,6 +159,7 @@ class AlertingToolbox:
             non-secret `config`, and flags (is_preconfigured, is_missing_secrets,
             is_deprecated, is_system_action, is_connector_type_deprecated).
             Secrets are never returned — Kibana does not expose them.
+            `connector_id` comes from list_connectors.
 
             Preconfigured connectors (defined in kibana.yml) are instance-global and resolve in every space.
             `space` targets a Kibana space by id (default: the default space)."""
@@ -181,6 +182,7 @@ class AlertingToolbox:
             '.index-threshold'; `consumer` is usually 'stackAlerts'; `params` is
             the rule-type-specific config; `schedule_interval` e.g. '1m'.
             Created DISABLED by default — call enable_alert_rule to start it.
+            `rule_type_id` comes from list_rule_types.
 
             Example `.es-query` params (note `esQuery` is a JSON *string*):
             {"searchType": "esQuery", "esQuery": "{\\"query\\":{\\"match_all\\":{}}}",
@@ -238,7 +240,7 @@ class AlertingToolbox:
             rule_id: str,
             space: Annotated[str, Field(pattern=SPACE_ID_PATTERN)] | None = None,
         ) -> dict[str, Any]:
-            """Enable (start running) an alerting rule.
+            """Enable (start running) an alerting rule. `rule_id` comes from list_alert_rules.
 
             `space` targets a Kibana space by id (default: the default space)."""
             with gateway_errors(), deps.gateway_factory(space) as gw:
@@ -255,6 +257,7 @@ class AlertingToolbox:
             alerts stay active, as Kibana leaves them; `untrack=True` also marks
             them untracked, so they stop being reported as active (the alert
             documents are kept). Re-enabling the rule raises alerts afresh either way.
+            `rule_id` comes from list_alert_rules.
 
             `space` targets a Kibana space by id (default: the default space)."""
             with gateway_errors(), deps.gateway_factory(space) as gw:
@@ -326,6 +329,7 @@ class AlertingToolbox:
             tool lists a rule's alert ids, so after unmute_alert_rule they are
             restored only by mute_alert on each, and a repeat of this call
             returns an empty list. get_alert_rule shows `muted`.
+            `rule_id` comes from list_alert_rules.
 
             `space` targets a Kibana space by id (default: the default space)."""
             with gateway_errors(), deps.gateway_factory(space) as gw:
@@ -345,7 +349,7 @@ class AlertingToolbox:
             muted; snoozes stay (unsnooze_alert_rule). The result lists the
             alerts it unmuted in `cleared_alert_ids`; to keep any of them muted,
             call mute_alert on each (no tool lists a rule's alert ids). To unmute
-            one alert only, use unmute_alert.
+            one alert only, use unmute_alert. `rule_id` comes from list_alert_rules.
 
             `space` targets a Kibana space by id (default: the default space)."""
             with gateway_errors(), deps.gateway_factory(space) as gw:
@@ -368,6 +372,7 @@ class AlertingToolbox:
             rule has not raised, and this tool refuses a rule muted as a whole
             (Kibana would record nothing). get_alert_rule lists muted alerts in
             `muted_alert_ids`. To silence the whole rule use mute_alert_rule.
+            `rule_id` comes from list_alert_rules.
 
             `space` targets a Kibana space by id (default: the default space)."""
             with gateway_errors(), deps.gateway_factory(space) as gw:
@@ -411,6 +416,7 @@ class AlertingToolbox:
             unsnooze_alert_rule takes it and Kibana's public API never lists a
             rule's snoozes (get_alert_rule cannot show them). A rule holds at most
             5 snoozes, expired ones included. For no end time use mute_alert_rule.
+            `rule_id` comes from list_alert_rules.
 
             `space` targets a Kibana space by id (default: the default space)."""
             window = _snooze_duration(duration)
@@ -454,7 +460,7 @@ class AlertingToolbox:
             with this server's API key's privileges. Use it when a rule fails
             because the key it ran with was revoked or lost privileges. It does not
             change the rule's definition or enabled state, and no key material is
-            returned.
+            returned. `rule_id` comes from list_alert_rules.
 
             `space` targets a Kibana space by id (default: the default space)."""
             with gateway_errors(), deps.gateway_factory(space) as gw:
@@ -467,7 +473,7 @@ class AlertingToolbox:
             rule_id: Annotated[str, Field(min_length=1)],
             space: Annotated[str, Field(pattern=SPACE_ID_PATTERN)] | None = None,
         ) -> dict[str, Any]:
-            """Permanently delete an alerting rule.
+            """Permanently delete an alerting rule. `rule_id` comes from list_alert_rules.
 
             `space` targets a Kibana space by id (default: the default space)."""
             with gateway_errors(), deps.gateway_factory(space) as gw:
@@ -480,6 +486,7 @@ class AlertingToolbox:
             space: Annotated[str, Field(pattern=SPACE_ID_PATTERN)] | None = None,
         ) -> dict[str, Any]:
             """Permanently delete an action connector. This cannot be undone.
+            `connector_id` comes from list_connectors.
 
             `space` targets a Kibana space by id (default: the default space)."""
             with gateway_errors(), deps.gateway_factory(space) as gw:
@@ -496,6 +503,7 @@ class AlertingToolbox:
             .server-log: {'message': ...}; .index: {'documents': [...]}).
             WARNING: this fires the connector's real external action (send email,
             post to Slack, create a ticket) — it is not reversible.
+            `connector_id` comes from list_connectors.
 
             Preconfigured connectors are instance-global: executing one succeeds in any space.
             `space` targets a Kibana space by id (default: the default space)."""

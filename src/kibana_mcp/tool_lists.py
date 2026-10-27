@@ -68,12 +68,16 @@ DEPENDENCIES: Mapping[str, tuple[str, ...]] = MappingProxyType({
     "describe_data_view": ("list_data_views",),
     "update_data_view": ("list_data_views",),
     "import_saved_objects": ("export_saved_objects",),
+    # (the `objects` it exports by type and id come from a find)
+    "export_saved_objects": ("find_saved_objects",),
     "overwrite_saved_objects": ("export_saved_objects",),
     # (runtime fields, the default data view and the saved-objects reads, D48)
     "upsert_runtime_field": ("list_data_views",),
     "delete_runtime_field": ("list_data_views",),
     "set_default_data_view": ("list_data_views",),
     "get_saved_object": ("find_saved_objects",),
+    "delete_data_view": ("list_data_views",),
+    "delete_short_url": ("resolve_short_url",),
     # alerting
     "get_alert_rule": ("list_alert_rules",),
     "update_alert_rule": ("get_alert_rule",),
@@ -89,6 +93,14 @@ DEPENDENCIES: Mapping[str, tuple[str, ...]] = MappingProxyType({
     "update_alert_rule_api_key": ("list_alert_rules",),
     "get_connector": ("list_connectors",),
     "update_connector": ("get_connector",),
+    "delete_connector": ("list_connectors",),
+    "execute_connector": ("list_connectors",),
+    "create_alert_rule": ("list_rule_types",),
+    # cases
+    "get_case": ("list_cases",),
+    "update_case": ("list_cases",),
+    "add_case_comment": ("list_cases",),
+    "delete_case": ("list_cases",),
     # observability (the Synthetics write tier, D46), platform-admin, fleet
     "get_synthetic_monitor": ("list_synthetic_monitors",),
     "create_synthetic_monitor": ("list_synthetic_private_locations",),
@@ -104,6 +116,8 @@ DEPENDENCIES: Mapping[str, tuple[str, ...]] = MappingProxyType({
     "upsert_apm_agent_config": ("get_apm_agent_config",),
     "delete_apm_agent_config": ("list_apm_agent_configs",),
     "get_space": ("list_spaces",),
+    "update_space": ("list_spaces",),
+    "delete_space": ("list_spaces",),
     # (saved objects between spaces, D49: the objects come from a find on the
     # source space, the target space ids from list_spaces)
     "copy_saved_objects_to_spaces": ("find_saved_objects", "list_spaces"),
@@ -119,9 +133,38 @@ DEPENDENCIES: Mapping[str, tuple[str, ...]] = MappingProxyType({
     "export_exception_list": ("find_exception_lists",),
     "import_exception_list": ("export_exception_list",),
     "overwrite_exception_list": ("export_exception_list",),
-    "create_package_policy": ("get_package",),
-    "update_package_policy": ("get_package",),
-    "upgrade_agent": ("list_agent_versions",),
+    "delete_exception_list": ("find_exception_lists",),
+    "create_exception_item": ("find_exception_lists",),
+    "delete_exception_item": ("find_exception_items",),
+    "get_detection_rule": ("find_detection_rules",),
+    "update_detection_rule": ("find_detection_rules",),
+    "replace_detection_rule": ("find_detection_rules",),
+    "enable_detection_rule": ("find_detection_rules",),
+    "disable_detection_rule": ("find_detection_rules",),
+    "delete_detection_rule": ("find_detection_rules",),
+    "find_value_list_items": ("find_value_lists",),
+    "create_value_list_item": ("find_value_lists",),
+    "delete_value_list": ("find_value_lists",),
+    "delete_value_list_item": ("find_value_list_items",),
+    # fleet
+    "create_package_policy": ("get_package", "list_agent_policies"),
+    "update_package_policy": ("get_package", "list_package_policies", "list_agent_policies"),
+    "get_package_policy": ("list_package_policies",),
+    "delete_package_policy": ("list_package_policies",),
+    "upgrade_agent": ("list_agent_versions", "list_agents"),
+    "get_agent": ("list_agents",),
+    "unenroll_agent": ("list_agents",),
+    "reassign_agent": ("list_agents", "list_agent_policies"),
+    "bulk_reassign": ("list_agents", "list_agent_policies"),
+    "bulk_upgrade": ("list_agents",),
+    "bulk_unenroll": ("list_agents",),
+    "get_agent_policy": ("list_agent_policies",),
+    "update_agent_policy": ("list_agent_policies",),
+    "delete_agent_policy": ("list_agent_policies",),
+    "get_output_health": ("list_outputs",),
+    "update_output": ("list_outputs",),
+    "delete_output": ("list_outputs",),
+    "get_enrollment_key": ("list_enrollment_keys",),
     # (fleet advanced ops, D51: an unknown agent id names list_agents, an unknown
     # package list_packages, a package that is not installed list_installed_packages)
     "update_agent_tags": ("list_agents",),
@@ -129,6 +172,19 @@ DEPENDENCIES: Mapping[str, tuple[str, ...]] = MappingProxyType({
     "list_agent_diagnostics": ("list_agents",),
     "install_package": ("list_packages",),
     "uninstall_package": ("list_installed_packages",),
+})
+
+# Tools that take an id-like input (`id`, `*_id`, `*_ids`, `handle`) yet need
+# no edge: every such input is chosen by the caller or is a constant the
+# description spells out. tests/unit/test_tool_lists.py holds every other
+# id-taking tool to an edge above, and its description to naming the source.
+ID_INPUTS_WITHOUT_SOURCE: Mapping[str, str] = MappingProxyType({
+    "create_space": "`id` is the new space's id, chosen by the caller",
+    "create_value_list": "`id` is optional and chosen by the caller",
+    "create_exception_list": "`list_id` is optional and chosen by the caller",
+    "create_detection_rule": "`rule_id` is optional and chosen by the caller",
+    "create_connector": "`connector_type_id` is a constant; the description names the types",
+    "create_short_url": "`locator_id` is a constant; the description names the one supported",
 })
 
 LIST_FILE_VERSION = 1
