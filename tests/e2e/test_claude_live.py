@@ -311,6 +311,13 @@ def test_claude_completes_task(task, run_index, creds, root_gateway, session_inf
         "check that `claude` is on PATH and signed in (`claude auth status`) and that "
         "the stack is up and seeded (`scripts/stack.sh up && scripts/stack.sh seed`)"
     )
+    # A failed cleanup leaves the shared stack changed for every later test;
+    # its message names what is missing and the fix, so it fails the test
+    # itself rather than surfacing only in record.json.
+    assert not record.get("cleanup_error"), (
+        f"cleanup after the run failed, the stack may be left changed: "
+        f"{record['cleanup_error']} (record: {run_dir}/record.json)"
+    )
     assert record.get("key_in_transcript") is not True, (
         "the Kibana API key appeared in the run's output (redacted on disk); "
         "find how it reached the model before trusting any result"

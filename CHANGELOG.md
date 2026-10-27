@@ -422,7 +422,9 @@ version section.
   `delete_one_dashboard` live task (superuser key at `destructive` in the
   default space) now records the dashboards already on the stack and its
   cleanup reinstalls the flights sample if the run deleted one, raising with
-  the ids and the fix if any is still missing; `image_replay_green` joins the
+  the ids and the fix if any is still missing — and any live run whose
+  cleanup raised now fails with that message instead of keeping it only in
+  `record.json`; `image_replay_green` joins the
   unit test that holds every seeded criterion to the version check; and the
   "toolboxes" block of `CLAUDE_E2E.md` says it was committed with its
   results, not before them.
