@@ -104,9 +104,12 @@ summary, generated from its records, is
 
 ## Block "toolboxes" (registered 2026-10-27, D61)
 
-Registered 2026-10-27, by the owner's H9 decision ("replays for all
+Written 2026-10-27, by the owner's H9 decision ("replays for all
 toolboxes … I would limit models to on demand"), before any counted run of
-these tasks. Seven tasks join the four above: one for each toolbox no model
+these tasks — but not committed before them: this block, the harness and
+the tasks first appear in git in the same commit as the 35 counted records
+(`8bf24fe`), so git history cannot show that the registration preceded the
+results. What the records do tie down is stated under **Result**. Seven tasks join the four above: one for each toolbox no model
 had been offered (cases, security-detections, observability, streams, fleet,
 platform-health), and one destructive-tier precision task (surface-2). Their
 definitions, prompts and ladders are `tests/_toolbox_tasks.py`, pinned byte for
@@ -131,7 +134,15 @@ input, in order). Since D61 the live-model tier is outside the DoD gate:
 
 Before a `delete_one_dashboard` run the harness seeds two empty dashboards
 in the default space, '`<marker>` flights keep' and '`<marker>` flights
-remove', and records their ids (`seeded_dashboards`).
+remove', and records their ids (`seeded_dashboards`). Added after the
+counted block (H9 review): the seed first records the ids of the dashboards
+already on the stack (`dashboards_before`), and cleanup reinstalls the
+flights sample when the run deleted one of them, raising with their ids and
+the fix if any is still missing — the run's server holds the superuser key
+at `destructive` in the default space, beside the sample the contract tier
+reads. The model sees the same seeded state and the ladder is unchanged;
+none of the five counted runs deleted anything but its target (S3 and S4
+held in all five), so the block's results stand and it is not re-run.
 
 Pass criteria — state rungs are read from Kibana's raw API after the run;
 run rungs (marked *run*) from the run's own record, because a read-only task
@@ -164,8 +175,13 @@ it is not part of any result.
 
 The counted block ran on 2026-10-27 with no change to this block's tasks,
 criteria or N: the server at commit `e9b0090` (no change under `src/`, which
-each record states as `server_dirty: false`), the harness and these tasks as
-committed with the block. Its summary, generated from the records, is
+each record states as `server_dirty: false`). `server_dirty` covers `src/`
+only, and `e9b0090` holds neither this block nor `tests/_toolbox_tasks.py`:
+the harness and tasks the runs used were uncommitted then, and were
+committed with the records in `8bf24fe`. What ties the runs to the committed
+tasks is each run's own `prompt.txt`, which equals the prompt
+`tests/_toolbox_tasks.py` builds from that run's marker in all 35 runs
+(checked 2026-10-27 by the H9 review fix). Its summary, generated from the records, is
 `runs/claude-e2e/counted-2026-10-27-toolboxes/SUMMARY.md`; the six replay
 transcripts cite the run each was converted from.
 

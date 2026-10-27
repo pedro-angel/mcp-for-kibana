@@ -330,7 +330,13 @@ def test_main_prints_one_line_naming_the_fix_and_exits_one(tmp_path, kibana, cap
 # --- the gate's wiring -------------------------------------------------------
 
 _GATE = Path(__file__).resolve().parents[2] / "scripts" / "checks" / "definition-of-done.sh"
-_SEEDED_CRITERIA = ("contract_green", "e2e_replay_green", "wheel_replay_green", "e2e_green")
+_SEEDED_CRITERIA = (
+    "contract_green",
+    "e2e_replay_green",
+    "wheel_replay_green",
+    "image_replay_green",
+    "e2e_green",
+)
 
 
 def test_every_seeded_stack_criterion_goes_through_the_version_check():
@@ -344,6 +350,17 @@ def test_every_seeded_stack_criterion_goes_through_the_version_check():
         assert "Kibana $stack_version" in block, (
             f"{criterion}'s GO line must name the Kibana version it certified (D53)"
         )
+
+
+@pytest.mark.parametrize("criterion", ["streams_ephemeral", "fleet_ephemeral"])
+def test_every_ephemeral_criterion_goes_through_the_line_check(criterion):
+    # D62: the ephemeral scripts honour an exported ES_LOCAL_VERSION, so the
+    # gate refuses one off the pin locally and names the line on the GO line
+    # (behaviour: tests/unit/test_dod_suite_env.py).
+    gate = _GATE.read_text()
+    block = gate.split(f"if req {criterion}; then", 1)[1].split("\nfi\n", 1)[0]
+    assert "ephemeral_line" in block and f"NO-GO {criterion}  ($eph_reason)" in block
+    assert "Kibana $eph_version" in block
 
 
 def test_no_criterion_checks_the_seed_file_on_its_own():

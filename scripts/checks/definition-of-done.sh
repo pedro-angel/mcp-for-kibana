@@ -383,7 +383,35 @@ fi
 # stack back. Without the flag, behaviour is unchanged — fleet_ephemeral's own
 # guard reports NO-GO with an actionable message, which is the honest outcome
 # rather than a silent skip.
-if [ "${KIBANA_MCP_DOD_CYCLE_STACK:-0}" = "1" ] && { req streams_ephemeral || req fleet_ephemeral; }; then
+# Which line the ephemeral tiers run (D62): their scripts write an exported
+# ES_LOCAL_VERSION over the .env.ephemeral.example pin (scripts/stack-version.sh),
+# which CI's matrix relies on. Locally the gate certifies the newest line (D30,
+# D53), so a shell override that differs from the pin is NO-GO on both tiers,
+# naming `unset ES_LOCAL_VERSION`, before anything is stopped or started; their
+# GO lines name the line they ran.
+eph_state=        # '' unchecked | ok | bad
+eph_version=
+eph_reason=
+ephemeral_line() {
+  if [ -z "$eph_state" ]; then
+    eph_pin=$(sed -n 's/^ES_LOCAL_VERSION=//p' elastic-start-local/.env.ephemeral.example 2>/dev/null | tail -1 | tr -d "\"' \r")
+    eph_override=${ES_LOCAL_VERSION:-}
+    if [ "${GITHUB_ACTIONS:-}" = true ] && [ -n "$eph_override" ]; then
+      eph_state=ok; eph_version=$eph_override
+    elif [ -z "$eph_pin" ]; then
+      eph_state=bad
+      eph_reason="no ES_LOCAL_VERSION pin in elastic-start-local/.env.ephemeral.example — restore it (git checkout -- elastic-start-local/.env.ephemeral.example)"
+    elif [ -n "$eph_override" ] && [ "$eph_override" != "$eph_pin" ]; then
+      eph_state=bad
+      eph_reason="the shell exports ES_LOCAL_VERSION=$eph_override, which the ephemeral stacks would run instead of the $eph_pin pin, but the local gate certifies the newest line (D30, D53, D62) — unset ES_LOCAL_VERSION, then re-run make dod"
+    else
+      eph_state=ok; eph_version=$eph_pin
+    fi
+  fi
+  [ "$eph_state" = ok ]
+}
+
+if [ "${KIBANA_MCP_DOD_CYCLE_STACK:-0}" = "1" ] && { req streams_ephemeral || req fleet_ephemeral; } && ephemeral_line; then
   if [ -n "$(docker compose -p mcp-for-kibana-stack ps -q 2>/dev/null)" ]; then
     echo "  ...   stopping the dev stack for the ephemeral tiers (KIBANA_MCP_DOD_CYCLE_STACK=1)"
     if ! scripts/stack.sh stop >"$logdir/cycle_stack.log" 2>&1; then
@@ -397,7 +425,13 @@ if req streams_ephemeral; then
   # The harness owns its own isolated stack lifecycle (up -> pytest -m ephemeral
   # -> down), so unlike contract/e2e it has no .env.seed precondition. run_suite
   # parses the wrapped pytest summary so an all-skipped run can't read a false GO.
-  run_suite streams_ephemeral scripts/ephemeral_stack.sh
+  if ephemeral_line; then
+    suite_note="Kibana $eph_version"
+    run_suite streams_ephemeral scripts/ephemeral_stack.sh
+    suite_note=
+  else
+    echo "  NO-GO streams_ephemeral  ($eph_reason)"; record streams_ephemeral NO-GO; nogo=1
+  fi
 fi
 
 if req fleet_ephemeral; then
@@ -405,7 +439,13 @@ if req fleet_ephemeral; then
   # fleet stack lifecycle (up -> pytest -m fleet_ephemeral -> down), so no .env.seed
   # precondition. run_suite parses the wrapped pytest summary so an all-skipped run
   # can't read a false GO.
-  run_suite fleet_ephemeral scripts/fleet_ephemeral.sh
+  if ephemeral_line; then
+    suite_note="Kibana $eph_version"
+    run_suite fleet_ephemeral scripts/fleet_ephemeral.sh
+    suite_note=
+  else
+    echo "  NO-GO fleet_ephemeral  ($eph_reason)"; record fleet_ephemeral NO-GO; nogo=1
+  fi
 fi
 
 if req changelog_entry; then

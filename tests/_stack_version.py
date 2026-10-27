@@ -1,7 +1,7 @@
 """The DoD gate's stack-version check (D53): is the seeded stack the line the gate certifies?
 
 The seeded-stack criteria (contract_green, e2e_replay_green, wheel_replay_green,
-e2e_green) run on whatever Kibana elastic-start-local/.env.seed points at. Before
+image_replay_green, e2e_green) run on whatever Kibana elastic-start-local/.env.seed points at. Before
 any of them runs, scripts/checks/definition-of-done.sh calls
 `uv run python -m tests._stack_version`, which reads that Kibana's version from
 `/api/status` with the seed key and compares it with the version the gate

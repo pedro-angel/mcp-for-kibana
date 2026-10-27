@@ -54,7 +54,11 @@ from `/api/status` with the seed key and requires the `ES_LOCAL_VERSION` pin in
 another line — a study's 9.5.5, or 9.4.7 after `ES_LOCAL_VERSION=9.4.7 make
 test-contract` — is NO-GO on each of them, naming
 `scripts/stack.sh down && scripts/stack.sh up && scripts/stack.sh seed`; every
-GO line names the version it certified.
+GO line names the version it certified. The ephemeral tiers (`streams_ephemeral`,
+`fleet_ephemeral`) run the `elastic-start-local/.env.ephemeral.example` pin
+locally: a shell `ES_LOCAL_VERSION` that differs from it is NO-GO on both,
+naming `unset ES_LOCAL_VERSION` (in CI they run the matrix's version, D62), and
+their GO lines name the line they ran.
 
 A GO is bound to a tree (D55). The gate's header and VERDICT line name HEAD,
 the content tree id — uncommitted and untracked files included (also files

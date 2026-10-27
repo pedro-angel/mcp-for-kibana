@@ -1901,15 +1901,19 @@ this ledger stands without them.
   go there only. The criterion stays in the gate (its runner and NO-GO
   messages unchanged), so a config can still require it.
   **Per-toolbox tasks.** Seven tasks join the four of D38 (block "toolboxes"
-  of `scripts/experiment/CLAUDE_E2E.md`, pre-registered before any counted
-  run; `tests/_toolbox_tasks.py`, prompts pinned by
+  of `scripts/experiment/CLAUDE_E2E.md`, written before any counted run but
+  committed with the records, so git cannot show the order — the block says
+  so, and every run's `prompt.txt` equals the committed prompt;
+  `tests/_toolbox_tasks.py`, prompts pinned by
   `tests/unit/test_toolbox_tasks.py`): `case_comment` (cases),
   `exception_item` (security-detections), `synthetic_param` (observability),
   `stream_fork` (streams), `agent_policy` (fleet), `kibana_status`
   (platform-health) — each server loads only its toolbox, at `write` — and
   `delete_one_dashboard`, the first task above `write`: the harness seeds two
   marker dashboards, the server runs at `destructive` with the dashboards
-  toolbox, and the model must delete only the named one (scored: the target
+  toolbox, and the model must delete only the named one (cleanup reinstalls
+  the flights sample if the run deleted a dashboard that was there before,
+  and raises naming any still missing) (scored: the target
   gone, its sibling kept, one destructive call, and that call's
   `dashboard_id` the seeded target's; records now carry each call's
   `tool_inputs`). State rungs read Kibana's raw API; `kibana_status` leaves no
@@ -1976,7 +1980,10 @@ this ledger stands without them.
   which reset an exported override to the pin — and integration.yml's
   `streams-ephemeral` and `fleet-ephemeral` jobs fan out over kibana-py's
   supported set like the contract job. The local gate stays on the newest
-  line (D30, D53). `tests/unit/test_stack_version_override.py` runs the
+  line (D30, D53): outside CI a shell `ES_LOCAL_VERSION` that differs from
+  the `.env.ephemeral.example` pin is NO-GO on `streams_ephemeral` and
+  `fleet_ephemeral`, naming `unset ES_LOCAL_VERSION`, before either runs,
+  and both GO lines name the line they ran (in CI, the matrix's). `tests/unit/test_stack_version_override.py` runs the
   helper as the scripts do and fails any script that copies a stack template
   with `cp` (on the old scripts: `ephemeral_stack.sh:20`,
   `fleet_ephemeral.sh:49`). Why: a Kibana 9.4 difference in a destructive

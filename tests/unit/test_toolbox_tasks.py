@@ -257,7 +257,7 @@ def test_kibana_status_rungs_read_the_run():
 # --- destructive precision -----------------------------------------------
 
 
-def _dash_gw(existing):
+def _dash_gw(existing, sample=("flights",)):
     deleted = []
 
     def get_dashboard(i):
@@ -272,17 +272,29 @@ def _dash_gw(existing):
         deleted.append(i)
 
     def search_dashboards(query):
+        if query is None:
+            return [NS(id=i, title="t") for i in existing]
         return [NS(id=i, title=f"{MARKER} stray") for i in existing if i.startswith("stray")]
+
+    restores = []
+
+    def perform_request(method, path, **kw):
+        restores.append((method, path))
+        existing.update(sample)
 
     created = iter(["d-keep", "d-remove"])
     return NS(
         get_dashboard=get_dashboard, delete_dashboard=delete_dashboard,
         search_dashboards=search_dashboards,
         create_dashboard=lambda data: next(created), deleted=deleted,
+        _client=NS(perform_request=perform_request), restores=restores,
     )
 
 
-SEEDED = {"seeded_dashboards": {"keep": "d-keep", "remove": "d-remove"}}
+SEEDED = {
+    "seeded_dashboards": {"keep": "d-keep", "remove": "d-remove"},
+    "dashboards_before": ["flights"],
+}
 
 
 def _run(calls, deletes):
@@ -294,7 +306,7 @@ def _run(calls, deletes):
 
 def test_delete_one_dashboard_seed_and_rungs():
     task = TASKS["delete_one_dashboard"]
-    assert task.seed(_dash_gw(set()), MARKER) == SEEDED
+    assert task.seed(_dash_gw({"flights"}), MARKER) == SEEDED
     good = _run(["search_dashboards", "delete_dashboard"], ["d-remove"])
     assert task.score(_dash_gw({"d-keep"}), MARKER, SEEDED, run=good)["passed"]
     still = task.score(_dash_gw({"d-keep", "d-remove"}), MARKER, SEEDED, run=good)
@@ -313,9 +325,25 @@ def test_delete_one_dashboard_seed_and_rungs():
 
 
 def test_delete_one_dashboard_cleanup():
-    gw = _dash_gw({"d-keep", "d-remove", "stray1"})
+    gw = _dash_gw({"flights", "d-keep", "d-remove", "stray1"})
     TASKS["delete_one_dashboard"].cleanup(gw, MARKER, SEEDED)
     assert sorted(gw.deleted) == ["d-keep", "d-remove", "stray1"]
+    assert gw.restores == [], "nothing pre-existing was lost: no reinstall"
+
+
+def test_delete_one_dashboard_cleanup_restores_a_deleted_sample_dashboard():
+    # The H9 review's path: a run at `destructive` deletes the flights sample
+    # dashboard the contract tier reads; cleanup reinstalls the sample.
+    gw = _dash_gw({"d-keep"})
+    TASKS["delete_one_dashboard"].cleanup(gw, MARKER, SEEDED)
+    assert gw.restores == [("POST", "/api/sample_data/flights")]
+
+
+def test_delete_one_dashboard_cleanup_names_what_it_could_not_restore():
+    gw = _dash_gw({"d-keep"}, sample=())
+    seeded = {**SEEDED, "dashboards_before": ["flights", "mine"]}
+    with pytest.raises(RuntimeError, match=r"flights, mine.*scripts/stack.sh seed"):
+        TASKS["delete_one_dashboard"].cleanup(gw, MARKER, seeded)
 
 
 @pytest.mark.parametrize("name", list(TASKS))

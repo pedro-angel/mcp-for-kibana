@@ -413,6 +413,19 @@ version section.
 
 ### Fixed
 
+- **The local DoD gate's ephemeral tiers stay on the newest line** (D62, H9
+  review): `streams_ephemeral` and `fleet_ephemeral` had run whatever
+  `ES_LOCAL_VERSION` the shell exported, since their scripts honour it, and
+  read GO with no version. Outside CI an override that differs from the
+  `.env.ephemeral.example` pin is now NO-GO on both, naming `unset
+  ES_LOCAL_VERSION`, and their GO lines name the line they ran. The
+  `delete_one_dashboard` live task (superuser key at `destructive` in the
+  default space) now records the dashboards already on the stack and its
+  cleanup reinstalls the flights sample if the run deleted one, raising with
+  the ids and the fix if any is still missing; `image_replay_green` joins the
+  unit test that holds every seeded criterion to the version check; and the
+  "toolboxes" block of `CLAUDE_E2E.md` says it was committed with its
+  results, not before them.
 - **`update_output` keeps a remote Elasticsearch output's service token.**
   A rename (or any edit that leaves `type` as it is) sent the output's type
   back to Fleet, which then reset the output's `service_token` (a

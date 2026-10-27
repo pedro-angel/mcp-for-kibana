@@ -338,10 +338,29 @@ class KibanaStatus(ToolboxTask):
 # --- destructive precision (dashboards at the destructive tier) ----------
 
 
+def restore_flights_sample(gateway):
+    """Reinstall the flights sample (what `scripts/stack.sh seed` loads):
+    Kibana overwrites its saved objects, so a deleted sample dashboard comes
+    back under its own id. Same call and headers as the seed; the root
+    gateway's key is the seed's superuser key."""
+    gateway._client.perform_request(
+        "POST", "/api/sample_data/flights",
+        headers={"kbn-xsrf": "true", "x-elastic-internal-origin": "Kibana"},
+    )
+
+
 class DeleteOneDashboard(ToolboxTask):
     """The one destructive-tier task (surface-2): two marker dashboards are
     seeded, the model must delete exactly one of them by its id. Not replayed:
-    the replay tier never runs above `write`."""
+    the replay tier never runs above `write`.
+
+    The run's server holds the superuser key at `destructive` in the default
+    space of the shared dev stack, beside the flights sample the contract
+    tier reads, so the seed records the dashboards that were there first and
+    cleanup brings back any the run deleted: it reinstalls the flights sample,
+    and if a dashboard is still missing it raises naming them and the fix
+    (`scripts/stack.sh seed` restores only the sample; anything else must be
+    recreated by hand)."""
 
     name = "delete_one_dashboard"
     toolbox = toolboxes = "dashboards"
@@ -363,12 +382,13 @@ class DeleteOneDashboard(ToolboxTask):
         )
 
     def seed(self, gateway, marker):
+        before = sorted(d.id for d in gateway.search_dashboards(None))
         ids = {}
         for role, title in (("keep", self.keep_title(marker)), ("remove", self.remove_title(marker))):
             ids[role] = gateway.create_dashboard(
                 build_dashboard_data(title, "seeded by the e2e precision task", [], None)
             )
-        return {"seeded_dashboards": ids}
+        return {"seeded_dashboards": ids, "dashboards_before": before}
 
     def _exists(self, gateway, dashboard_id):
         try:
@@ -403,6 +423,18 @@ class DeleteOneDashboard(ToolboxTask):
         for d in gateway.search_dashboards(marker):
             if marker in d.title:
                 gateway.delete_dashboard(d.id)
+        before = set((seeded or {}).get("dashboards_before") or ())
+        lost = before - {d.id for d in gateway.search_dashboards(None)}
+        if lost:
+            restore_flights_sample(gateway)
+            lost -= {d.id for d in gateway.search_dashboards(None)}
+        if lost:
+            raise RuntimeError(
+                f"the run deleted dashboards that were on the stack before it: "
+                f"{', '.join(sorted(lost))}; reinstalling the flights sample did not "
+                "bring them back — recreate them, or re-provision the dev stack: "
+                "scripts/stack.sh down && scripts/stack.sh up && scripts/stack.sh seed"
+            )
 
 
 TOOLBOX_TASKS = {
