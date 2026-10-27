@@ -397,7 +397,15 @@ ephemeral_line() {
     eph_pin=$(sed -n 's/^ES_LOCAL_VERSION=//p' elastic-start-local/.env.ephemeral.example 2>/dev/null | tail -1 | tr -d "\"' \r")
     eph_override=${ES_LOCAL_VERSION:-}
     if [ "${GITHUB_ACTIONS:-}" = true ] && [ -n "$eph_override" ]; then
-      eph_state=ok; eph_version=$eph_override
+      # CI's matrix picks the line, which must be one kibana-py supports
+      # (the same set integration.yml's versions job fans out over).
+      if eph_supported=$(uv run python -c 'import kibana; print(" ".join(v for _, v in kibana.SUPPORTED_VERSIONS))' 2>/dev/null) \
+        && case " $eph_supported " in *" $eph_override "*) true ;; *) false ;; esac; then
+        eph_state=ok; eph_version=$eph_override
+      else
+        eph_state=bad
+        eph_reason="the CI matrix's ES_LOCAL_VERSION=$eph_override is not in kibana.SUPPORTED_VERSIONS (${eph_supported:-unreadable}) — take the matrix from integration.yml's versions job"
+      fi
     elif [ -z "$eph_pin" ]; then
       eph_state=bad
       eph_reason="no ES_LOCAL_VERSION pin in elastic-start-local/.env.ephemeral.example — restore it (git checkout -- elastic-start-local/.env.ephemeral.example)"

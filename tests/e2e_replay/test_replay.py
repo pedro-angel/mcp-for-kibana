@@ -89,7 +89,9 @@ runs of the pre-registered tasks in tests/_toolbox_tasks.py, converted by
 record_claude_turn.py (each `recorded.source` names the committed run record).
 They carry a `task` (the final assertion is that task's own ladder, state
 rungs only, and the cleanup is the task's), the `toolboxes` their server loads,
-a `hex_token` (the marker's 8 hex digits, substituted everywhere, so the
+`live_tokens` (a recorded value replaced by what Kibana itself reports this
+run — the platform-health read has no state rung, so its version needle is
+its assertion), a `hex_token` (the marker's 8 hex digits, substituted everywhere, so the
 marker, a stream name and a parameter key are fresh per run) and `bindings`:
 an id a later step passes, bound to the value THIS run's earlier step returned
 at the recorded JSON path. The list of transcripts and their server selection
@@ -281,6 +283,11 @@ async def test_recorded_turn_replays_end_to_end(
         # title yields a fresh id, so the recorded one is re-derived per run
         fresh_title = _substitute(transcript["dashboard_title"], tokens)
         tokens[recorded_id] = derive_dashboard_id(fresh_title)
+    for recorded, source in transcript.get("live_tokens", {}).items():
+        # A value read from Kibana itself, not from the server under test (a
+        # read-only task leaves no state, so its needle is the assertion).
+        assert source == "kibana_version", f"unknown live_tokens source {source!r}"
+        tokens[recorded] = gateway.get_kibana_status().version
     try:
         if task is not None:
             seeded = task.seed(gateway, marker)

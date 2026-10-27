@@ -261,9 +261,11 @@ version section.
   its id; run records now carry each call's input). The counted block passed
   35 of 35. A passing run of each write-tier task is now a replay transcript
   (`tests/e2e_replay/record_claude_turn.py`), so every gate run and CI replay
-  all ten toolboxes, scored with the live task's own ladder;
+  all ten toolboxes, scored with the live task's own ladder (the
+  platform-health read leaves no state, so its transcript pins the version
+  Kibana itself reports this run, `live_tokens`);
   `tests/unit/test_replay_coverage.py` fails `unit_green` for a toolbox no
-  transcript reaches.
+  transcript reaches, or a stateless task whose transcript pins no live value.
 - **The Docker image is replayed over HTTP** (D62): a new criterion,
   `image_replay_green`, required locally and in CI's contract job, builds the
   image and replays every transcript into its own container over streamable
@@ -426,7 +428,12 @@ version section.
   cleanup raised now fails with that message (after the API key leak check,
   which it never hides) instead of keeping it only in `record.json`, and
   `SUMMARY.md` lists it under "Cleanup failures" while the run's pass and
-  validity stay as scored (`CLAUDE_E2E.md` says so); `image_replay_green` joins the
+  validity stay as scored (`CLAUDE_E2E.md` says so); the precision task's
+  cleanup also repairs a pre-existing dashboard that lost panels or a deleted
+  visualization (its server offers `delete_panel` and `delete_visualization`);
+  `scripts/stack-version.sh` accepts only three dot-separated numbers, and in
+  CI the gate's ephemeral tiers are NO-GO on a matrix line outside
+  `kibana.SUPPORTED_VERSIONS`; `image_replay_green` joins the
   unit test that holds every seeded criterion to the version check; and the
   "toolboxes" block of `CLAUDE_E2E.md` says it was committed with its
   results, not before them.

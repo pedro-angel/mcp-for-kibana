@@ -356,11 +356,13 @@ class DeleteOneDashboard(ToolboxTask):
 
     The run's server holds the superuser key at `destructive` in the default
     space of the shared dev stack, beside the flights sample the contract
-    tier reads, so the seed records the dashboards that were there first and
-    cleanup brings back any the run deleted: it reinstalls the flights sample,
-    and if a dashboard is still missing it raises naming them and the fix
-    (`scripts/stack.sh seed` restores only the sample; anything else must be
-    recreated by hand)."""
+    tier reads. Its server also offers `delete_panel` and
+    `delete_visualization`, so the seed snapshots every dashboard with its
+    panel count and every saved visualization, and cleanup repairs any loss
+    against that snapshot: a dashboard gone or with fewer panels, or a
+    visualization gone, reinstalls the flights sample, and whatever is still
+    missing after that raises naming it and the fix (`scripts/stack.sh seed`
+    restores only the sample; anything else must be recreated by hand)."""
 
     name = "delete_one_dashboard"
     toolbox = toolboxes = "dashboards"
@@ -381,14 +383,40 @@ class DeleteOneDashboard(ToolboxTask):
             f"'{self.remove_title(marker)}'. Do not delete or change anything else."
         )
 
+    @staticmethod
+    def _snapshot(gateway):
+        dashboards = {}
+        for d in gateway.search_dashboards(None):
+            with contextlib.suppress(KibanaNotFound):
+                dashboards[d.id] = len(gateway.get_dashboard(d.id).panels)
+        visualizations = sorted(v.id for v in gateway.search_visualizations(None))
+        return dashboards, visualizations
+
+    def _damage(self, gateway, seeded):
+        """What the run removed from the stack as it was before the seed."""
+        before = seeded.get("panels_before") or {}
+        vis_before = set(seeded.get("visualizations_before") or ())
+        now, vis_now = self._snapshot(gateway)
+        damage = [f"dashboard {i}" for i in sorted(set(before) - set(now))]
+        damage += [
+            f"dashboard {i} ({now[i]} of {n} panels)"
+            for i, n in sorted(before.items()) if i in now and now[i] < n
+        ]
+        damage += [f"visualization {i}" for i in sorted(vis_before - set(vis_now))]
+        return damage
+
     def seed(self, gateway, marker):
-        before = sorted(d.id for d in gateway.search_dashboards(None))
+        panels, visualizations = self._snapshot(gateway)
         ids = {}
         for role, title in (("keep", self.keep_title(marker)), ("remove", self.remove_title(marker))):
             ids[role] = gateway.create_dashboard(
                 build_dashboard_data(title, "seeded by the e2e precision task", [], None)
             )
-        return {"seeded_dashboards": ids, "dashboards_before": before}
+        return {
+            "seeded_dashboards": ids,
+            "panels_before": panels,
+            "visualizations_before": visualizations,
+        }
 
     def _exists(self, gateway, dashboard_id):
         try:
@@ -423,16 +451,15 @@ class DeleteOneDashboard(ToolboxTask):
         for d in gateway.search_dashboards(marker):
             if marker in d.title:
                 gateway.delete_dashboard(d.id)
-        before = set((seeded or {}).get("dashboards_before") or ())
-        lost = before - {d.id for d in gateway.search_dashboards(None)}
-        if lost:
+        damage = self._damage(gateway, seeded or {})
+        if damage:
             restore_flights_sample(gateway)
-            lost -= {d.id for d in gateway.search_dashboards(None)}
-        if lost:
+            damage = self._damage(gateway, seeded or {})
+        if damage:
             raise RuntimeError(
-                f"the run deleted dashboards that were on the stack before it: "
-                f"{', '.join(sorted(lost))}; reinstalling the flights sample did not "
-                "bring them back — recreate them, or re-provision the dev stack: "
+                f"the run removed what was on the stack before it: {', '.join(damage)}; "
+                "reinstalling the flights sample did not bring it back — recreate it, "
+                "or re-provision the dev stack: "
                 "scripts/stack.sh down && scripts/stack.sh up && scripts/stack.sh seed"
             )
 

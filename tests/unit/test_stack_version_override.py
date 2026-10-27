@@ -59,10 +59,12 @@ def test_unset_keeps_the_pin_silently(tmp_path, template):
     assert "override" not in proc.stdout
 
 
-def test_a_malformed_version_fails_naming_the_shape(tmp_path):
-    proc, _ = _run(tmp_path, _TEMPLATES[1], "9.4.7; rm -rf /")
+@pytest.mark.parametrize("bad", ["9.4.7; rm -rf /", "9", ".", "9..4", "9.4.", ".9.4", "9.4.7.1"])
+def test_a_malformed_version_fails_naming_the_shape(tmp_path, bad):
+    proc, dst = _run(tmp_path, _TEMPLATES[1], bad)
     assert proc.returncode != 0
-    assert "is not a version like 9.5.4" in proc.stderr
+    assert "is not a version like 9.5.4" in proc.stderr and "unset it" in proc.stderr
+    assert not dst.exists()
 
 
 @pytest.mark.parametrize("script", _STACK_SCRIPTS)

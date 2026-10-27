@@ -29,13 +29,16 @@
    "expect": {
     "is_error": false,
     "contains": [
+     "\"version\":\"9.5.4\"",
      "\"overall_level\":",
      "\"overall_summary\":",
-     "\"version\":",
      "\"unhealthy\":"
     ],
-    "gates": "step 0 of a passing kibana_status run: it still succeeds and echoes what the model passed"
+    "gates": "step 0 of a passing kibana_status run: it still succeeds and reports the version Kibana's own /api/status gives (the recorded 9.5.4 is replaced by the live one, live_tokens); a read leaves no state, so this needle is the replay's assertion"
    }
   }
- ]
+ ],
+ "live_tokens": {
+  "9.5.4": "kibana_version"
+ }
 }

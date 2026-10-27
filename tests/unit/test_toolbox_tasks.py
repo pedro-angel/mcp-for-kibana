@@ -257,13 +257,19 @@ def test_kibana_status_rungs_read_the_run():
 # --- destructive precision -----------------------------------------------
 
 
-def _dash_gw(existing, sample=("flights",)):
+def _dash_gw(existing, sample=("flights",), panels=None, vis=None, sample_vis=("v1",)):
+    """A dashboards fake. `existing` dashboard ids; `panels` maps an id to its
+    panel count (default 2); `vis` is the saved visualization ids (default
+    the sample's). Reinstalling the sample restores its dashboards with 2
+    panels each and its visualizations."""
     deleted = []
+    panels = dict(panels or {})
+    vis = set(sample_vis if vis is None else vis)
 
     def get_dashboard(i):
         if i not in existing:
             raise KibanaNotFound(i)
-        return NS(id=i)
+        return NS(id=i, panels=(None,) * panels.get(i, 2))
 
     def delete_dashboard(i):
         if i not in existing:
@@ -276,16 +282,22 @@ def _dash_gw(existing, sample=("flights",)):
             return [NS(id=i, title="t") for i in existing]
         return [NS(id=i, title=f"{MARKER} stray") for i in existing if i.startswith("stray")]
 
+    def search_visualizations(query):
+        return [NS(id=i) for i in vis]
+
     restores = []
 
     def perform_request(method, path, **kw):
         restores.append((method, path))
         existing.update(sample)
+        for i in sample:
+            panels.pop(i, None)
+        vis.update(sample_vis)
 
     created = iter(["d-keep", "d-remove"])
     return NS(
         get_dashboard=get_dashboard, delete_dashboard=delete_dashboard,
-        search_dashboards=search_dashboards,
+        search_dashboards=search_dashboards, search_visualizations=search_visualizations,
         create_dashboard=lambda data: next(created), deleted=deleted,
         _client=NS(perform_request=perform_request), restores=restores,
     )
@@ -293,7 +305,8 @@ def _dash_gw(existing, sample=("flights",)):
 
 SEEDED = {
     "seeded_dashboards": {"keep": "d-keep", "remove": "d-remove"},
-    "dashboards_before": ["flights"],
+    "panels_before": {"flights": 2},
+    "visualizations_before": ["v1"],
 }
 
 
@@ -340,9 +353,33 @@ def test_delete_one_dashboard_cleanup_restores_a_deleted_sample_dashboard():
 
 
 def test_delete_one_dashboard_cleanup_names_what_it_could_not_restore():
-    gw = _dash_gw({"d-keep"}, sample=())
-    seeded = {**SEEDED, "dashboards_before": ["flights", "mine"]}
-    with pytest.raises(RuntimeError, match=r"flights, mine.*scripts/stack.sh seed"):
+    gw = _dash_gw({"d-keep"}, sample=(), sample_vis=())
+    seeded = {**SEEDED, "panels_before": {"flights": 2, "mine": 1}}
+    with pytest.raises(
+        RuntimeError,
+        match=r"dashboard flights, dashboard mine, visualization v1.*scripts/stack.sh seed",
+    ):
+        TASKS["delete_one_dashboard"].cleanup(gw, MARKER, seeded)
+
+
+def test_delete_one_dashboard_cleanup_restores_a_removed_panel():
+    # The re-review's path: the run's server offers delete_panel, so a
+    # sample dashboard can survive with a panel fewer; cleanup reinstalls.
+    gw = _dash_gw({"flights", "d-keep"}, panels={"flights": 1})
+    TASKS["delete_one_dashboard"].cleanup(gw, MARKER, SEEDED)
+    assert gw.restores == [("POST", "/api/sample_data/flights")]
+
+
+def test_delete_one_dashboard_cleanup_restores_a_deleted_visualization():
+    gw = _dash_gw({"flights", "d-keep"}, vis=())
+    TASKS["delete_one_dashboard"].cleanup(gw, MARKER, SEEDED)
+    assert gw.restores == [("POST", "/api/sample_data/flights")]
+
+
+def test_delete_one_dashboard_cleanup_names_a_panel_it_could_not_restore():
+    gw = _dash_gw({"mine", "d-keep"}, sample=(), panels={"mine": 1})
+    seeded = {**SEEDED, "panels_before": {"mine": 3}}
+    with pytest.raises(RuntimeError, match=r"dashboard mine \(1 of 3 panels\)"):
         TASKS["delete_one_dashboard"].cleanup(gw, MARKER, seeded)
 
 
@@ -354,7 +391,8 @@ def test_a_scorer_never_raises_on_a_broken_gateway(name):
 
     gw = NS(**{m: boom for m in (
         "list_cases", "find_exception_lists", "list_synthetic_params", "get_stream",
-        "list_agent_policies", "get_kibana_status", "get_dashboard")})
+        "list_agent_policies", "get_kibana_status", "get_dashboard",
+        "search_visualizations")})
     run = {"tool_calls": [], "tool_inputs": [], "final_text": ""}
     result = TASKS[name].score(gw, MARKER, SEEDED, run=run)
     assert result["passed"] is False

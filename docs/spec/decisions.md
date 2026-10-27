@@ -1929,7 +1929,10 @@ this ledger stands without them.
   marker's 8 hex digits are the one fresh-per-run token; an id a later step
   passes is bound to the value the live step returns at the recorded JSON
   path; the final assertion is the task's own ladder, state rungs only, and
-  cleanup is the task's. `tests/e2e_replay/_transcripts.py` lists them, and
+  cleanup is the task's. A task with no state rung (`kibana_status`, a read)
+  would pass any successful call that way, so its transcript carries
+  `live_tokens`: the recorded version is replaced by the one Kibana's own
+  `/api/status` reports this run, and a needle holds the tool's answer to it. `tests/e2e_replay/_transcripts.py` lists them, and
   `tests/unit/test_replay_coverage.py` fails `unit_green` when a toolbox has
   no transcript reaching one of its tools on a server that loads it, when a
   transcript file is unlisted, or when a per-toolbox transcript does not cite
@@ -1969,8 +1972,9 @@ this ledger stands without them.
   `resolve_api_key` reading headers without `authorization` passes
   `image-smoke.sh` and fails `image-replay.sh` (all ten transcripts and two
   of the three HTTP tests, the header test naming
-  `adapters/mcp/auth.py resolve_api_key`); the real image passes 13 of 13 on
-  9.5.4 (Python 3.14.8, fastmcp 4.1.3, kibana-py 0.6.0).
+  `adapters/mcp/auth.py resolve_api_key`); the real image passes them all
+  (the gate's `image_replay_green` line in the H9 commits' messages gives the
+  count and the Kibana version).
   **Every line for the ephemeral tiers.** `scripts/stack-version.sh`
   (`env_with_version <template> <env file>`) is the one rule for which line a
   stack runs: an `ES_LOCAL_VERSION` in the environment replaces the
@@ -1983,7 +1987,10 @@ this ledger stands without them.
   line (D30, D53): outside CI a shell `ES_LOCAL_VERSION` that differs from
   the `.env.ephemeral.example` pin is NO-GO on `streams_ephemeral` and
   `fleet_ephemeral`, naming `unset ES_LOCAL_VERSION`, before either runs,
-  and both GO lines name the line they ran (in CI, the matrix's). `tests/unit/test_stack_version_override.py` runs the
+  and both GO lines name the line they ran (in CI, the matrix's, which must
+  be in `kibana.SUPPORTED_VERSIONS` or both are NO-GO naming the versions
+  job). The helper takes only three dot-separated numbers.
+  `tests/unit/test_stack_version_override.py` runs the
   helper as the scripts do and fails any script that copies a stack template
   with `cp` (on the old scripts: `ephemeral_stack.sh:20`,
   `fleet_ephemeral.sh:49`). Why: a Kibana 9.4 difference in a destructive
@@ -2078,9 +2085,10 @@ this ledger stands without them.
   Claude tier and the LM Studio tests are `make test-e2e-local`.
 
 - ~~D31's gate decision for the local `dod.config` (`e2e_green = n/a`, the
-  Definition of Done needs no LLM)~~ — superseded by D42: the local gate
-  requires the Claude run. `e2e_green = n/a` stands in every `.github/dod`
-  config.
+  Definition of Done needs no LLM)~~ — superseded by D42, which made the
+  local gate require the Claude run from 2026-10-17 until D61 took it out
+  again (2026-10-27: `e2e_green = n/a` locally, `make test-e2e` on demand).
+  `e2e_green = n/a` stands in every `.github/dod` config.
 
 - ~~D29 (2026-09-21): track the newest 9.4 patch and defer Kibana 9.5~~ —
   deferred 9.5 until kibana-py released its supported-set module, and on the

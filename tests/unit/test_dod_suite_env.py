@@ -210,6 +210,16 @@ def test_in_ci_the_matrix_es_local_version_is_the_line(repo):
     assert "Kibana 9.4.7" in _line(res.stdout, "streams_ephemeral")
 
 
+def test_in_ci_an_unsupported_matrix_line_is_no_go(repo):
+    # The re-review's path: GITHUB_ACTIONS=true with any override read GO.
+    res = _gate(repo, ES_LOCAL_VERSION="8.0.0", GITHUB_ACTIONS="true")
+    assert res.returncode == 1, res.stdout
+    line = _line(res.stdout, "streams_ephemeral")
+    assert line.startswith("  NO-GO") and "kibana.SUPPORTED_VERSIONS" in line
+    assert "9.5.4" in line and "versions job" in line
+    assert not (repo / "ran").exists(), "the tier must not run on the wrong line"
+
+
 def test_a_missing_ephemeral_pin_is_no_go_naming_the_restore(repo):
     (repo / "elastic-start-local" / ".env.ephemeral.example").unlink()
     _git(repo, "commit", "-qam", "drop pin")
