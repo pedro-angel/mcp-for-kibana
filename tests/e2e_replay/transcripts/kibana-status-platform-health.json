@@ -1,0 +1,41 @@
+{
+ "recorded": {
+  "at": "2026-10-27",
+  "by": "tests/e2e_replay/record_claude_turn.py",
+  "model": "claude-haiku-5-5",
+  "runtime": "claude -p (Claude Code 2.1.311 (Claude Code)) -> uv run mcp-for-kibana (KIBANA_MCP_TIER=write, KIBANA_MCP_TOOLBOXES=platform-health)",
+  "stack": "elastic-start-local, Kibana 9.5.4",
+  "source": "scripts/experiment/runs/claude-e2e/counted-2026-10-27-toolboxes/20261027T054620Z-kibana_status-1-2315ed (committed run record, git e9b0090)",
+  "note": "REAL model turn from a committed run record: call order and arguments are the model's own, observed_output the server's verbatim answer. Authored by construction: the needles (verified present in the recorded body), the bindings and the schema_rejected entry."
+ },
+ "task": "kibana_status",
+ "toolboxes": "platform-health",
+ "prompt": "Using the kibana tools, find out which version of Kibana this is and its overall status level. Reply with the version number and the level.",
+ "marker_token": "E2E 73a5e48a",
+ "hex_token": "73a5e48a",
+ "bindings": [],
+ "schema_rejected": {
+  "tool": "get_kibana_status",
+  "arguments": {
+   "unexpected_property": true
+  },
+  "runtime_reason": "authored: step 0's recorded arguments plus a property the schema does not declare (additionalProperties is false)"
+ },
+ "steps": [
+  {
+   "tool": "get_kibana_status",
+   "arguments": {},
+   "observed_output": "{\"overall_level\":\"available\",\"overall_summary\":\"All services and plugins are available\",\"version\":\"9.5.4\",\"unhealthy\":[]}",
+   "expect": {
+    "is_error": false,
+    "contains": [
+     "\"overall_level\":",
+     "\"overall_summary\":",
+     "\"version\":",
+     "\"unhealthy\":"
+    ],
+    "gates": "step 0 of a passing kibana_status run: it still succeeds and echoes what the model passed"
+   }
+  }
+ ]
+}

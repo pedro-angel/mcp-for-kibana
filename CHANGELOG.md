@@ -249,6 +249,35 @@ version section.
 
 ### Changed
 
+- **Every toolbox is replayed; the live model runs on demand** (D61,
+  superseding D42). `e2e_green` is `n/a` in `dod.config` again: `make
+  test-e2e` (Claude via `claude -p`) is run when a change touches tool names,
+  descriptions or schemas, and new live tasks go there only. It gains seven
+  pre-registered tasks (`tests/_toolbox_tasks.py`, block "toolboxes" of
+  `scripts/experiment/CLAUDE_E2E.md`): one for each toolbox no model had been
+  offered — cases, security-detections, observability, streams, fleet,
+  platform-health — and `delete_one_dashboard`, the first task at the
+  `destructive` tier (delete only the named one of two seeded dashboards, by
+  its id; run records now carry each call's input). The counted block passed
+  35 of 35. A passing run of each write-tier task is now a replay transcript
+  (`tests/e2e_replay/record_claude_turn.py`), so every gate run and CI replay
+  all ten toolboxes, scored with the live task's own ladder;
+  `tests/unit/test_replay_coverage.py` fails `unit_green` for a toolbox no
+  transcript reaches.
+- **The Docker image is replayed over HTTP** (D62): a new criterion,
+  `image_replay_green`, required locally and in CI's contract job, builds the
+  image and replays every transcript into its own container over streamable
+  HTTP with the key in an `Authorization: ApiKey` header and none in the
+  container (`scripts/checks/image-replay.sh`), and checks that a call
+  without the header, or with another scheme, is refused naming the fix even
+  when the container holds a `KIBANA_API_KEY`. The gate clears a shell
+  `KIBANA_MCP_SERVER_IMAGE` and refuses one in `.env.local`.
+- **The ephemeral tiers run on every supported Kibana line in CI** (D62):
+  `scripts/ephemeral_stack.sh` and `scripts/fleet_ephemeral.sh` honour
+  `ES_LOCAL_VERSION` like `scripts/stack.sh` (one helper,
+  `scripts/stack-version.sh`; sourcing the copied template had reset an
+  exported override to the pin), and integration.yml's streams and fleet
+  ephemeral jobs fan out over kibana-py's supported set.
 - **The DoD gate certifies only the newest supported Kibana version** (D53).
   Before `contract_green`, `e2e_replay_green`, `wheel_replay_green` and
   `e2e_green` it reads the running Kibana's version from `/api/status` with

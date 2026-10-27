@@ -20,8 +20,8 @@ certifies the seeded local stack (D56): the suites let shell env win over
 .env.seed (tests/_stack_env.py), so a shell KIBANA_URL or KIBANA_TEST_API_KEY
 that differs from the seed (an empty one included), in any letter case, or
 either name in .env.local, is refused before any call, naming `unset
-KIBANA_URL KIBANA_TEST_API_KEY`; so is a UV_*, PYTHON*, LD_* or KIBANA_MCP_SERVER_BIN
-line in .env.local (it would change what the replay runs), and a KIBANA_API_KEY,
+KIBANA_URL KIBANA_TEST_API_KEY`; so is a UV_*, PYTHON*, LD_*, KIBANA_MCP_SERVER_BIN or
+KIBANA_MCP_SERVER_IMAGE line in .env.local (it would change what the replay runs), and a KIBANA_API_KEY,
 KIBANA_PUBLIC_URL or KIBANA_MCP_PUBLIC_KIBANA_URL in the shell or .env.local,
 which the replayed server would read ahead of the seed. A loader-parsed helper, never a
 test module.
@@ -108,13 +108,15 @@ _SERVER_SETTINGS = ("KIBANA_API_KEY", "KIBANA_PUBLIC_URL", "KIBANA_MCP_PUBLIC_KI
 # shell, and the replay servers start through `uv run` (or the binary named in
 # KIBANA_MCP_SERVER_BIN): a UV_ENV_FILE there loads another key into the server,
 # a PYTHON* path or an LD_PRELOAD can load other code, and KIBANA_MCP_SERVER_BIN replays an
-# installed server instead of the checkout (all measured by the H4 review).
+# installed server instead of the checkout (all measured by the H4 review);
+# KIBANA_MCP_SERVER_IMAGE replays a Docker image instead (D62).
 # .env.local holds the LM Studio settings; none of these belong there.
 def _runner_settings_in(values: Mapping[str, str]) -> list[str]:
     """The .env.local names that change what the suites' subprocesses run or load."""
     return sorted(
         k for k in values
-        if k.upper() == "KIBANA_MCP_SERVER_BIN" or k.upper().startswith(("UV_", "PYTHON", "LD_"))
+        if k.upper() in ("KIBANA_MCP_SERVER_BIN", "KIBANA_MCP_SERVER_IMAGE")
+        or k.upper().startswith(("UV_", "PYTHON", "LD_"))
     )
 
 

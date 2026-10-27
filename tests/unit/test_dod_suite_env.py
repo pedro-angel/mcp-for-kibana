@@ -33,6 +33,7 @@ _CLEARED = (
     "PYTEST_DISABLE_PLUGIN_AUTOLOAD",
     "COVERAGE_RCFILE",
     "KIBANA_MCP_SERVER_BIN",  # swaps the server e2e_replay_green replays
+    "KIBANA_MCP_SERVER_IMAGE",  # swaps it for a Docker image (D62)
 )
 
 pytestmark = pytest.mark.skipif(shutil.which("git") is None, reason="needs git")

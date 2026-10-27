@@ -61,11 +61,13 @@ trust the observation, and **reconcile the contract in the same change**
   secret canaries (`scripts/canaries/*.json`) the secret scan needs (D59).
 - Fast gates: `make check`. Full certification: `KIBANA_MCP_DOD_CYCLE_STACK=1
   make dod` → must print `VERDICT: GO`. Criteria in `dod.config`; the gate,
-  not the author, certifies completion. It includes the Claude live-model
-  tier (`e2e_green`, D42), so it needs a signed-in `claude` CLI.
+  not the author, certifies completion. It needs docker (the image build,
+  `image_smoke`, and its HTTP replay, `image_replay_green`, D62) and no
+  model: the live-model tier runs on demand since D61 (`e2e_green` `n/a`).
 - Live-model tiers ([e2e-setup.md](../e2e-setup.md)): `make test-e2e` drives
   Claude via `claude -p` with only this server's tools through the
-  pre-registered tasks, model `CLAUDE_E2E_MODEL` (default `haiku`, D38);
+  pre-registered tasks, model `CLAUDE_E2E_MODEL` (default `haiku`, D38) —
+  run it when a change touches tool names, descriptions or schemas;
   `make test-e2e-local` drives LM Studio, where `LMSTUDIO_MODEL` is required
   and no model is privileged (D33).
 

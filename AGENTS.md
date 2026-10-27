@@ -28,21 +28,27 @@ make test-e2e-local                            # live model: LM Studio (small lo
 KIBANA_MCP_DOD_CYCLE_STACK=1 make dod          # full Definition-of-Done → VERDICT: GO
 ```
 
-`make dod` runs the Claude live-model tier: the criterion `e2e_green` is
-`required` in `dod.config` (D42) and runs what `make test-e2e` runs — headless
-Claude Code (`claude -p`) with only this server's tools through the
-pre-registered tasks (`scripts/experiment/CLAUDE_E2E.md`), about 5–6 minutes.
-It needs a seeded stack and a signed-in `claude` CLI, no API key (check with
-`claude auth status`; without a sign-in the criterion is NO-GO and names the
-fix); the model is `CLAUDE_E2E_MODEL`, default `haiku` (D38). CI's configs keep
-`e2e_green` `n/a` (no Claude sign-in there). Run `make test-e2e` on its own when
-a change touches tool names, descriptions or schemas. `make test-e2e-local`
-runs the LM Studio tests for small local models — a tool-use model loaded and
-named in `LMSTUDIO_MODEL` ([docs/e2e-setup.md](docs/e2e-setup.md)).
+Live-model tests run on demand, outside `make dod` (D61, superseding D42):
+`e2e_green` is `n/a` in every config. **Run `make test-e2e` when a change
+touches tool names, descriptions or schemas** — headless Claude Code (`claude
+-p`) with only this server's tools through the pre-registered tasks
+(`scripts/experiment/CLAUDE_E2E.md`: eleven tasks, one or more per toolbox and
+one at the destructive tier), about 12 minutes; it needs a seeded stack and a
+signed-in `claude` CLI, no API key (`claude auth status`), and the model is
+`CLAUDE_E2E_MODEL`, default `haiku` (D38). New live tasks go to `make
+test-e2e` only. What every gate run and CI run is the replay: recorded
+real-model turns for every toolbox (`tests/e2e_replay/transcripts/`; a
+toolbox without one fails `unit_green`), replayed from the checkout
+(`e2e_replay_green`), the built wheel (`wheel_replay_green`) and the built
+Docker image over HTTP with the key in an `Authorization: ApiKey` header
+(`image_replay_green`, D62). `make test-e2e-local` runs the LM Studio tests
+for small local models — a tool-use model loaded and named in
+`LMSTUDIO_MODEL` ([docs/e2e-setup.md](docs/e2e-setup.md)).
 
 The DoD certifies the newest Kibana version the server supports (D30, D53).
 Before the seeded-stack criteria (`contract_green`, `e2e_replay_green`,
-`wheel_replay_green`, `e2e_green`) the gate reads the running Kibana's version
+`wheel_replay_green`, `image_replay_green`, and `e2e_green` where a config
+requires it) the gate reads the running Kibana's version
 from `/api/status` with the seed key and requires the `ES_LOCAL_VERSION` pin in
 `elastic-start-local/.env.example` (in CI: the matrix's version). A stack left on
 another line — a study's 9.5.5, or 9.4.7 after `ES_LOCAL_VERSION=9.4.7 make
@@ -64,16 +70,16 @@ only the commit whose tree matches it.
 
 The suites run as declared (D56). The gate clears `PYTEST_ADDOPTS`,
 `PYTEST_PLUGINS`, `PYTEST_DEBUG`, `PYTEST_DISABLE_PLUGIN_AUTOLOAD`,
-`COVERAGE_RCFILE` and `KIBANA_MCP_SERVER_BIN` (its header names the ones it
-cleared), every suite line shows `N passed / M collected` (deselected tests
+`COVERAGE_RCFILE`, `KIBANA_MCP_SERVER_BIN` and `KIBANA_MCP_SERVER_IMAGE` (its
+header names the ones it cleared), every suite line shows `N passed / M collected` (deselected tests
 included in M), and a shell `KIBANA_URL` or `KIBANA_TEST_API_KEY` that differs
 from `elastic-start-local/.env.seed` is NO-GO on the seeded-stack criteria,
 naming `unset KIBANA_URL KIBANA_TEST_API_KEY`: the gate certifies the seeded
 local stack. Both names count in any letter case, and `.env.local` may not set
 either. So is a `KIBANA_API_KEY`, `KIBANA_PUBLIC_URL` or
 `KIBANA_MCP_PUBLIC_KIBANA_URL` (any letter case) in the shell or `.env.local`, which the replayed
-server would read ahead of the seed, and a `UV_*`, `PYTHON*`, `LD_*` or
-`KIBANA_MCP_SERVER_BIN` line in `.env.local`, which the suites merge back in
+server would read ahead of the seed, and a `UV_*`, `PYTHON*`, `LD_*`,
+`KIBANA_MCP_SERVER_BIN` or `KIBANA_MCP_SERVER_IMAGE` line in `.env.local`, which the suites merge back in
 after the gate clears the shell.
 
 `KIBANA_MCP_DOD_CYCLE_STACK=1` only lets the gate **stop** the dev stack between

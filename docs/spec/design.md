@@ -162,9 +162,16 @@ mode enables host/origin protection on loopback binds.
 - Layering and purity: import-linter contracts (`pyproject.toml`), CI job.
 - Invariants: `tests/unit/` (fakes; auth, tiers, space threading, guards),
   `tests/contract/` (live Kibana), `tests/e2e_replay/` (recorded turns,
-  guidance strings, schema-rejection pins), `tests/e2e/` (live models:
-  Claude via `claude -p`, and a local model in LM Studio),
-  `tests/ephemeral/` (destructive paths on throwaway stacks).
+  guidance strings, schema-rejection pins), `tests/e2e/` (live models, on
+  demand since D61: Claude via `claude -p`, and a local model in LM Studio),
+  `tests/ephemeral/` (destructive paths on throwaway stacks, on every
+  supported Kibana line in CI, D62).
+- Every toolbox's model-facing surface is replayed (D61): each has at least
+  one recorded real-model turn in `tests/e2e_replay/transcripts/`
+  (`tests/unit/test_replay_coverage.py` fails a toolbox without one), and
+  the gate replays them from the checkout, the built wheel and the built
+  Docker image over HTTP with the key in an `Authorization: ApiKey` header,
+  where a call without the header is refused naming the fix (D62).
 - The whole: `make dod` → `VERDICT: GO` (see [brief.md](brief.md)), on the
   newest supported Kibana version: the gate checks the running stack's version
   against the pin before the seeded-stack criteria and names it on their GO

@@ -124,9 +124,13 @@ def model_env(environ, api_key):
     }
 
 
-def write_mcp_config(path, repo_root, kibana_url, api_key, toolboxes, telemetry_env=None):
+def write_mcp_config(
+    path, repo_root, kibana_url, api_key, toolboxes, telemetry_env=None, tier="write"
+):
     """The private MCP config. `telemetry_env` (server_telemetry_env()) is
-    merged first, so it can never override the URL, key, toolboxes or tier."""
+    merged first, so it can never override the URL, key, toolboxes or tier.
+    `tier` is `write` for every task but the destructive precision task
+    (tests/_toolbox_tasks.py, D61)."""
     cfg = {
         "mcpServers": {
             MCP_SERVER: {
@@ -137,7 +141,7 @@ def write_mcp_config(path, repo_root, kibana_url, api_key, toolboxes, telemetry_
                     "KIBANA_URL": kibana_url,
                     "KIBANA_API_KEY": api_key,
                     "KIBANA_MCP_TOOLBOXES": toolboxes,
-                    "KIBANA_MCP_TIER": "write",
+                    "KIBANA_MCP_TIER": tier,
                 },
             }
         }
@@ -181,13 +185,14 @@ def parse_stream(stdout):
     init = next((e for e in events if e.get("subtype") == "init"), {})
     result = next((e for e in events if e.get("type") == "result"), {})
     tools = init.get("tools") or []
-    calls = [
-        b.get("name", "?")
+    uses = [
+        b
         for e in events
         if e.get("type") == "assistant"
         for b in (e.get("message") or {}).get("content", [])
         if isinstance(b, dict) and b.get("type") == "tool_use"
     ]
+    calls = [b.get("name", "?") for b in uses]
     denied = {
         e.get("tool_use_id")
         for e in events
@@ -204,6 +209,12 @@ def parse_stream(stdout):
         "offered_tools": sorted(t.removeprefix(prefix) for t in tools if t.startswith(prefix)),
         "non_server_tools": sorted(t for t in tools if not t.startswith(prefix)),
         "tool_calls": [c.removeprefix(prefix) for c in calls],
+        # What each call was given, in call order: the precision task scores
+        # the id its delete used (tests/_toolbox_tasks.py).
+        "tool_inputs": [
+            {"name": b.get("name", "?").removeprefix(prefix), "input": b.get("input")}
+            for b in uses
+        ],
         "n_tool_calls": len(calls),
         "num_turns": result.get("num_turns"),
         "total_cost_usd": result.get("total_cost_usd"),

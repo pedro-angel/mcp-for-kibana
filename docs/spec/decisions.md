@@ -1324,7 +1324,10 @@ this ledger stands without them.
   `KIBANA_MCP_TOOLS` (D34). Evidence: the count is checked against a live
   listing by `tests/unit/test_profiles.py` (the `dashboards-analyst` profile,
   which is the default selection at `write`, listed 21 then; 26 since D48, which records that growth).
-- **D42 (2026-10-17, owner: Q16)** — The local Definition-of-Done gate
+- **D42 (2026-10-17, owner: Q16)** — *Superseded by D61: `e2e_green` is
+  `n/a` in `dod.config` again, and the live model runs on demand; the
+  criterion's runner and NO-GO messages below stand for any config that
+  requires it.* The local Definition-of-Done gate
   requires the Claude live-model run: `e2e_green = required` in `dod.config`
   (the gate a cloud session or the owner's laptop runs), and the criterion runs
   `make test-e2e`'s selection — `pytest -m e2e_claude`, headless Claude Code
@@ -1888,6 +1891,98 @@ this ledger stands without them.
   passed on 9.5.4 (no false positive; a planted `mcp-sweep-` case, the
   sweep's value list and a marked short URL were removed by the next run);
   the bite proofs are in the H8 commit message.
+
+- **D61 (2026-10-27, owner: H9, "replays for all toolboxes … I would limit
+  models to on demand")** — Every toolbox is replayed in every gate run and
+  in CI, and the live model leaves the gate. **Supersedes D42**:
+  `e2e_green = n/a` in `dod.config` as in every `.github/dod` config; `make
+  test-e2e` is the on-demand live tier, run when a change touches tool names,
+  descriptions or schemas (D31's rule, restated in AGENTS.md); new live tasks
+  go there only. The criterion stays in the gate (its runner and NO-GO
+  messages unchanged), so a config can still require it.
+  **Per-toolbox tasks.** Seven tasks join the four of D38 (block "toolboxes"
+  of `scripts/experiment/CLAUDE_E2E.md`, pre-registered before any counted
+  run; `tests/_toolbox_tasks.py`, prompts pinned by
+  `tests/unit/test_toolbox_tasks.py`): `case_comment` (cases),
+  `exception_item` (security-detections), `synthetic_param` (observability),
+  `stream_fork` (streams), `agent_policy` (fleet), `kibana_status`
+  (platform-health) — each server loads only its toolbox, at `write` — and
+  `delete_one_dashboard`, the first task above `write`: the harness seeds two
+  marker dashboards, the server runs at `destructive` with the dashboards
+  toolbox, and the model must delete only the named one (scored: the target
+  gone, its sibling kept, one destructive call, and that call's
+  `dashboard_id` the seeded target's; records now carry each call's
+  `tool_inputs`). State rungs read Kibana's raw API; `kibana_status` leaves no
+  state, so its rungs read the run (the status tool was called; the answer
+  names the version Kibana reports to the harness). The counted block passed
+  35 of 35, every run valid, $0.0341
+  (`scripts/experiment/runs/claude-e2e/counted-2026-10-27-toolboxes/SUMMARY.md`).
+  **Replay for every toolbox.** The first passing counted run of each
+  write-tier task is converted by `tests/e2e_replay/record_claude_turn.py`
+  into a transcript (call order, arguments and outputs are the model's run;
+  needles, id bindings and `schema_rejected` are authored and say so), so
+  the replay tier has ten transcripts and reaches all ten toolboxes. The
+  marker's 8 hex digits are the one fresh-per-run token; an id a later step
+  passes is bound to the value the live step returns at the recorded JSON
+  path; the final assertion is the task's own ladder, state rungs only, and
+  cleanup is the task's. `tests/e2e_replay/_transcripts.py` lists them, and
+  `tests/unit/test_replay_coverage.py` fails `unit_green` when a toolbox has
+  no transcript reaching one of its tools on a server that loads it, when a
+  transcript file is unlisted, or when a per-toolbox transcript does not cite
+  a committed run record. The precision task is not replayed: the replay
+  tier stays at `write` (`test_replay.py` pins the tier, so a replay never deletes). Why: 114
+  of 184 tools, in six toolboxes, had never been shown to a model and 128
+  were offered in no gate tier (surface-1), and no model had seen the
+  destructive tier (surface-2); the owner chose cheap deterministic replays
+  in every run over a live model in every run. Evidence: on the tree before
+  this change the coverage test fails naming the six toolboxes and the fix;
+  with `update_agent_policy`'s `agent_policy_id` tightened to a pattern the
+  fleet replay fails at step 1 naming the schema while the four older
+  transcripts pass; a seeded precision run that deletes both dashboards
+  scores `first_missing: s2_kept`.
+
+- **D62 (2026-10-27)** — The built Docker image is replayed over HTTP with
+  the key in the `Authorization` header (`image_replay_green`, a new
+  criterion, required in `dod.config` and in CI's contract job), and both
+  ephemeral tiers run on every supported Kibana line in CI.
+  **Image replay.** `scripts/checks/image-replay.sh <image>` (after
+  `scripts/checks/image-build.sh`, the `image_smoke` recipe) sets
+  `KIBANA_MCP_SERVER_IMAGE`, and `tests/e2e_replay/test_replay.py` then starts
+  one container per transcript (`--network host`, bound to 127.0.0.1 on a free
+  port, the transcript's toolboxes, `write`, the seed's Kibana URL and no API
+  key) and replays through `StreamableHttpTransport` with `Authorization:
+  ApiKey <seed key>`. `tests/e2e_replay/test_image_http.py` (marker
+  `image_replay`, outside the default selection and `-m e2e_replay`) adds the
+  other half on a container that holds a `KIBANA_API_KEY`: a call without
+  the header is refused with "no Kibana credentials: send 'Authorization:
+  ApiKey <key>' …", a Bearer header with the scheme error, and the header
+  authenticates the same call. The gate clears `KIBANA_MCP_SERVER_IMAGE` with
+  the other suite variables and refuses it in `.env.local` (D56's rule for
+  `KIBANA_MCP_SERVER_BIN`). Why: every live tier ran stdio with an
+  environment key on CPython 3.12/3.13, while the image runs Python 3.14 over
+  HTTP with a per-request key, and `image_smoke` asserts only that some HTTP
+  status comes back (environment-3). Evidence: an image built with
+  `resolve_api_key` reading headers without `authorization` passes
+  `image-smoke.sh` and fails `image-replay.sh` (all ten transcripts and two
+  of the three HTTP tests, the header test naming
+  `adapters/mcp/auth.py resolve_api_key`); the real image passes 13 of 13 on
+  9.5.4 (Python 3.14.8, fastmcp 4.1.3, kibana-py 0.6.0).
+  **Every line for the ephemeral tiers.** `scripts/stack-version.sh`
+  (`env_with_version <template> <env file>`) is the one rule for which line a
+  stack runs: an `ES_LOCAL_VERSION` in the environment replaces the
+  template's pin in the written env file. `scripts/stack.sh`,
+  `scripts/ephemeral_stack.sh` and `scripts/fleet_ephemeral.sh` all use it —
+  the two ephemeral scripts copied `.env.ephemeral.example` and sourced it,
+  which reset an exported override to the pin — and integration.yml's
+  `streams-ephemeral` and `fleet-ephemeral` jobs fan out over kibana-py's
+  supported set like the contract job. The local gate stays on the newest
+  line (D30, D53). `tests/unit/test_stack_version_override.py` runs the
+  helper as the scripts do and fails any script that copies a stack template
+  with `cp` (on the old scripts: `ephemeral_stack.sh:20`,
+  `fleet_ephemeral.sh:49`). Why: a Kibana 9.4 difference in a destructive
+  path (the `updated_at` rejection the streams writes work around) would
+  pass every tier (environment-4). Not yet run on 9.4.7 locally: CI's first
+  9.4.7 run of either ephemeral tier is its first.
 
 ## Scope and licensing (probed on Basic)
 

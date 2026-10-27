@@ -17,7 +17,12 @@ import statistics
 import sys
 from pathlib import Path
 
-TASK_ORDER = ("flights_dashboard", "space_dashboard", "alerting_space", "fix_rule_threshold")
+TASK_ORDER = (
+    "flights_dashboard", "space_dashboard", "alerting_space", "fix_rule_threshold",
+    # block "toolboxes" (2026-10-27, D61)
+    "case_comment", "exception_item", "synthetic_param", "stream_fork", "agent_policy",
+    "kibana_status", "delete_one_dashboard",
+)
 
 
 def load(block):

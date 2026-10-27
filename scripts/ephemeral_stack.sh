@@ -3,7 +3,7 @@
 #
 # disable_streams deletes ALL wired streams + data cluster-wide, so it can't run
 # against the shared dev stack. This spins up a throwaway single-node ES+Kibana
-# (the .env.ephemeral.example pin) under a DISTINCT compose project (mcp-for-kibana-ephemeral), with distinct
+# (the .env.ephemeral.example pin, or ES_LOCAL_VERSION) under a DISTINCT compose project (mcp-for-kibana-ephemeral), with distinct
 # container names + ports (29200/25601) + creds from .env.ephemeral — so it never
 # collides with the dev stack (mcp-for-kibana-stack, 19200/15601) even when that is up.
 # Minted creds go to the test PROCESS ENV only, never elastic-start-local/.env.seed
@@ -17,7 +17,10 @@ STACK_DIR=elastic-start-local
 PROJECT=mcp-for-kibana-ephemeral
 ENVFILE="$STACK_DIR/.env.ephemeral"
 
-cp "$STACK_DIR/.env.ephemeral.example" "$ENVFILE"
+# The .env.ephemeral.example pin, or an ES_LOCAL_VERSION from the environment
+# (CI runs this tier on every supported line; scripts/stack-version.sh).
+. scripts/stack-version.sh
+env_with_version "$STACK_DIR/.env.ephemeral.example" "$ENVFILE"
 # shellcheck disable=SC1090
 . "$ENVFILE"
 

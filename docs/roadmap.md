@@ -22,11 +22,12 @@ project does not run, or on a decision that has not been taken. Subscription-gat
 work is not open work at all — it is out of scope (below).
 
 Seven test tiers back that claim: unit (fakes), contract (live stack), e2e-replay
-(a recorded model turn through a real MCP client), two live-model tiers — e2e
+(recorded model turns for every toolbox through a real MCP client, from the
+checkout, the wheel and the Docker image over HTTP), two live-model tiers — e2e
 (Claude via `claude -p`, D38) and e2e-local (a local model in LM Studio) —
 plus two ephemeral tiers that stand up throwaway stacks for the destructive
-paths. Everything except the live-model tiers runs in CI; the local gate runs
-the Claude tier too (D42).
+paths. Everything except the live-model tiers runs in CI and in the local
+gate; the live-model tiers run on demand (D61).
 
 The command that certifies completion is the Definition-of-Done gate — `make dod`,
 criteria declared in `dod.config`. Nothing is "done" because its author says so.
@@ -56,6 +57,13 @@ confirm gates refused first; unit tests cap the model-facing surface
 (`docs/spec/surface-budget.toml`, raised only by a decision saying why) and
 require every id input to have a stated source tool (D60). Not yet run on
 9.4.7 locally (CI's other contract line runs the sweep).
+Every toolbox has a recorded real-model turn in the replay tier (a unit test
+fails a toolbox without one), and the gate replays them from the checkout, the
+wheel and the Docker image over HTTP with the key in the `Authorization`
+header (D61, D62); the live model runs on demand (`make test-e2e`, eleven
+pre-registered tasks, one at the `destructive` tier). CI runs both ephemeral
+tiers on every supported line (D62); neither has been run on 9.4.7 locally,
+so CI's first 9.4.7 run of them is their first.
 The flag only stops the stack; afterwards it stays stopped, so
 start and seed it again before the next live tier.
 

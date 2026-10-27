@@ -66,7 +66,7 @@ test-e2e-local: ## Live-model tier on a small local model in LM Studio (LMSTUDIO
 	scripts/stack.sh up && scripts/stack.sh seed && uv run pytest -m e2e -q
 
 .PHONY: test-e2e-replay
-test-e2e-replay: ## Replay a RECORDED real-model turn through a real MCP client (stack only — no LLM, so this one runs in CI)
+test-e2e-replay: ## Replay the RECORDED real-model turns (every toolbox) through a real MCP client (stack only — no LLM, so this one runs in CI)
 	scripts/stack.sh up && scripts/stack.sh seed && uv run pytest -m e2e_replay -q
 
 .PHONY: streams-ephemeral

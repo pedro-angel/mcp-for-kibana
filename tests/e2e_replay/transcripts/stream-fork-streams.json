@@ -1,0 +1,46 @@
+{
+ "recorded": {
+  "at": "2026-10-27",
+  "by": "tests/e2e_replay/record_claude_turn.py",
+  "model": "claude-haiku-5-5",
+  "runtime": "claude -p (Claude Code 2.1.311 (Claude Code)) -> uv run mcp-for-kibana (KIBANA_MCP_TIER=write, KIBANA_MCP_TOOLBOXES=streams)",
+  "stack": "elastic-start-local, Kibana 9.5.4",
+  "source": "scripts/experiment/runs/claude-e2e/counted-2026-10-27-toolboxes/20261027T054410Z-stream_fork-1-cef229 (committed run record, git e9b0090)",
+  "note": "REAL model turn from a committed run record: call order and arguments are the model's own, observed_output the server's verbatim answer. Authored by construction: the needles (verified present in the recorded body), the bindings and the schema_rejected entry."
+ },
+ "task": "stream_fork",
+ "toolboxes": "streams",
+ "prompt": "Using the kibana tools, fork the wired stream 'logs.ecs' into a new child stream named 'logs.ecs.e2e2d8e2c41' that receives the documents whose field 'service.name' equals 'e2e-2d8e2c41'.",
+ "marker_token": "E2E 2d8e2c41",
+ "hex_token": "2d8e2c41",
+ "bindings": [],
+ "schema_rejected": {
+  "tool": "fork_stream",
+  "arguments": {
+   "child_name": "logs.ecs.e2e2d8e2c41",
+   "condition_field": "service.name",
+   "condition_value": "e2e-2d8e2c41"
+  },
+  "runtime_reason": "authored: step 0's recorded arguments with the required 'parent_name' removed"
+ },
+ "steps": [
+  {
+   "tool": "fork_stream",
+   "arguments": {
+    "parent_name": "logs.ecs",
+    "child_name": "logs.ecs.e2e2d8e2c41",
+    "condition_field": "service.name",
+    "condition_value": "e2e-2d8e2c41"
+   },
+   "observed_output": "{\"acknowledged\":true,\"result\":\"created\"}",
+   "expect": {
+    "is_error": false,
+    "contains": [
+     "\"acknowledged\":",
+     "\"result\":"
+    ],
+    "gates": "step 0 of a passing stream_fork run: it still succeeds and echoes what the model passed"
+   }
+  }
+ ]
+}

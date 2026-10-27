@@ -4,7 +4,7 @@
 # The fleet write tools reassign / upgrade / unenroll REAL agents, so they can't
 # be certified against the shared dev stack (that would mutate the always-on demo
 # agent other contract tests depend on). This spins up a throwaway single-node
-# ES+Kibana (the .env.ephemeral.example pin) + a Fleet Server + TWO sacrificial enrolled agents under a
+# ES+Kibana (the .env.ephemeral.example pin, or ES_LOCAL_VERSION) + a Fleet Server + TWO sacrificial enrolled agents under a
 # DISTINCT compose project (mcp-for-kibana-fleet-ephemeral), with distinct container
 # names + ports + creds from .env.ephemeral — so it never collides with the dev
 # stack (mcp-for-kibana-stack) even when that is up. Two agents so a lifecycle test can
@@ -46,7 +46,10 @@ if [ -n "$(docker compose -p mcp-for-kibana-stack ps -q 2>/dev/null)" ]; then
   exit 1
 fi
 
-cp "$STACK_DIR/.env.ephemeral.example" "$ENVFILE"
+# The .env.ephemeral.example pin, or an ES_LOCAL_VERSION from the environment
+# (CI runs this tier on every supported line; scripts/stack-version.sh).
+. scripts/stack-version.sh
+env_with_version "$STACK_DIR/.env.ephemeral.example" "$ENVFILE"
 # shellcheck disable=SC1090
 . "$ENVFILE"
 

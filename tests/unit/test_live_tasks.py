@@ -172,6 +172,14 @@ def test_mcp_config_holds_the_key_and_is_private(tmp_path):
                             "KIBANA_MCP_TOOLBOXES": "alerting", "KIBANA_MCP_TIER": "write"}
 
 
+def test_mcp_config_tier_is_write_unless_a_task_asks(tmp_path):
+    # Only the destructive precision task (tests/_toolbox_tasks.py, D61) asks.
+    path = cli.write_mcp_config(
+        tmp_path / "mcp.json", "/repo", "http://k", KEY, "dashboards", tier="destructive")
+    entry = json.loads(path.read_text())["mcpServers"][cli.MCP_SERVER]
+    assert entry["env"]["KIBANA_MCP_TIER"] == "destructive"
+
+
 HC = "hcaik_01telemetry-team-key"
 
 
@@ -248,7 +256,8 @@ def test_parse_stream():
          "tools": ["mcp__mcp-for-kibana__list_spaces", "mcp__mcp-for-kibana__create_space"]},
         {"type": "assistant", "message": {"content": [
             {"type": "text", "text": "ok"},
-            {"type": "tool_use", "name": "mcp__mcp-for-kibana__list_spaces"}]}},
+            {"type": "tool_use", "name": "mcp__mcp-for-kibana__list_spaces",
+             "input": {"query": "x"}}]}},
         {"type": "result", "subtype": "success", "num_turns": 2, "total_cost_usd": 0.01,
          "is_error": False, "usage": {"input_tokens": 5, "output_tokens": 7},
          "modelUsage": {"claude-haiku-5-5": {}}, "permission_denials": [], "result": "done"},
@@ -257,6 +266,7 @@ def test_parse_stream():
     assert out["offered_tools"] == ["create_space", "list_spaces"]
     assert out["non_server_tools"] == []
     assert out["tool_calls"] == ["list_spaces"]
+    assert out["tool_inputs"] == [{"name": "list_spaces", "input": {"query": "x"}}]
     assert out["num_turns"] == 2 and out["total_cost_usd"] == 0.01
     assert out["models_reported"] == ["claude-haiku-5-5"]
     assert out["permission_denials"] == 0 and out["has_result"]

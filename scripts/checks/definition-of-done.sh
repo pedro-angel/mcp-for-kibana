@@ -12,10 +12,12 @@
 # the content tree id (uncommitted and untracked work included) and clean/dirty,
 # and a tree that changed during the run is NO-GO (tree_stable). A GO certifies
 # commit <sha> only when `git rev-parse <sha>^{tree}` equals the recorded tree id.
-# contract/e2e need local infrastructure: scripts/stack.sh up && seed (at the pinned
-# Kibana version: the gate refuses another line, D53), plus a signed-in
-# `claude` CLI for e2e_green (D42, docs/e2e-setup.md). CI runs the fast criteria on every
-# PR (checks.yml) and the live tiers minus e2e_green through this same gate over per-tier
+# contract and the replays need local infrastructure: scripts/stack.sh up && seed (at
+# the pinned Kibana version: the gate refuses another line, D53), and docker for
+# image_smoke and image_replay_green. e2e_green (the live model, `claude -p`) is
+# n/a in every config since D61: `make test-e2e` runs it on demand; its branch
+# below still runs it when a config marks it required. CI runs the fast criteria on every
+# PR (checks.yml) and the live tiers through this same gate over per-tier
 # configs in .github/dod/ (integration.yml); this gate over dod.config remains the full
 # superset a human or a cloud session runs where all the infrastructure lives.
 #
@@ -32,11 +34,12 @@
 # The suites run as declared (D56): the gate clears the variables that change
 # what pytest selects, loads or enforces (PYTEST_ADDOPTS, PYTEST_PLUGINS,
 # PYTEST_DEBUG, PYTEST_DISABLE_PLUGIN_AUTOLOAD, COVERAGE_RCFILE) and the replay's
-# KIBANA_MCP_SERVER_BIN, and names them; every suite line shows `N passed / M
+# KIBANA_MCP_SERVER_BIN and KIBANA_MCP_SERVER_IMAGE, and names them; every suite line shows `N passed / M
 # collected`; and a shell KIBANA_URL or KIBANA_TEST_API_KEY that differs from
 # elastic-start-local/.env.seed, or a KIBANA_API_KEY, KIBANA_PUBLIC_URL or
-# KIBANA_MCP_PUBLIC_KIBANA_URL in the shell or .env.local, or a UV_*, PYTHON*, LD_* or
-# KIBANA_MCP_SERVER_BIN line in .env.local, is NO-GO on the seeded-stack criteria.
+# KIBANA_MCP_PUBLIC_KIBANA_URL in the shell or .env.local, or a UV_*, PYTHON*, LD_*,
+# KIBANA_MCP_SERVER_BIN or KIBANA_MCP_SERVER_IMAGE line in .env.local, is NO-GO on the
+# seeded-stack criteria.
 #
 # Portable POSIX sh; zero deps beyond the project's own tooling (uv).
 # Concept adapted from cmanaha/extended-superpowers (MIT).
@@ -51,10 +54,11 @@ set -u
 # leftover PYTEST_ADDOPTS='-k ... --no-cov' ran three unit tests with no
 # coverage floor and read GO, and COVERAGE_RCFILE swaps the floor's config.
 # KIBANA_MCP_SERVER_BIN swaps the server e2e_replay_green replays for an
-# installed executable (tests/e2e_replay/test_replay.py); wheel-replay.sh sets
-# it on its own command line, so clearing it here breaks nothing. The header
+# installed executable (tests/e2e_replay/test_replay.py), and KIBANA_MCP_SERVER_IMAGE
+# for a Docker image (D62); wheel-replay.sh and image-replay.sh set them on their
+# own command lines, so clearing them here breaks nothing. The header
 # names the ones that were set, so the clearing is visible.
-suite_env="PYTEST_ADDOPTS PYTEST_PLUGINS PYTEST_DEBUG PYTEST_DISABLE_PLUGIN_AUTOLOAD COVERAGE_RCFILE KIBANA_MCP_SERVER_BIN"
+suite_env="PYTEST_ADDOPTS PYTEST_PLUGINS PYTEST_DEBUG PYTEST_DISABLE_PLUGIN_AUTOLOAD COVERAGE_RCFILE KIBANA_MCP_SERVER_BIN KIBANA_MCP_SERVER_IMAGE"
 cleared=
 for v in $suite_env; do printenv "$v" >/dev/null 2>&1 && cleared="$cleared $v"; done
 # shellcheck disable=SC2086  # word-splitting the list is the point
@@ -71,7 +75,8 @@ cfg="${1:-dod.config}"
 # delete`). The value is anchored to the FIRST `=` so it matches `req()`'s
 # single-`=` grammar below. Keep `known` in sync with the criteria dispatched.
 known="unit_green ruff_clean types_clean import_contracts hygiene_hooks docs_strict \
-audit_clean sast_clean vocabulary_conformant image_smoke contract_green e2e_replay_green wheel_replay_green e2e_green streams_ephemeral fleet_ephemeral changelog_entry"
+audit_clean sast_clean vocabulary_conformant image_smoke contract_green e2e_replay_green wheel_replay_green \
+image_replay_green e2e_green streams_ephemeral fleet_ephemeral changelog_entry"
 seen=" "
 while IFS= read -r line || [ -n "$line" ]; do            # tolerate a missing final newline
   line=$(printf '%s' "$line" | tr -d '\r')               # CRLF-safe
@@ -208,7 +213,7 @@ run_suite() {
 }
 
 # Seeded-stack precondition (D53), shared by contract_green, e2e_replay_green,
-# wheel_replay_green and e2e_green: .env.seed exists AND the Kibana it points at
+# wheel_replay_green, image_replay_green and e2e_green: .env.seed exists AND the Kibana it points at
 # runs the version this gate certifies — the elastic-start-local/.env.example pin
 # (the newest supported version, D30) locally, the matrix's ES_LOCAL_VERSION in
 # CI. tests/_stack_version.py reads /api/status with the seed key (about 1 s,
@@ -300,10 +305,31 @@ if req wheel_replay_green; then
   fi
 fi
 
+if req image_replay_green; then
+  # The same replay once more, against the built Docker image over HTTP (D62):
+  # one container per transcript, the seed's Kibana URL and no API key in it,
+  # and the seed key in an `Authorization: ApiKey` header on every request —
+  # the image's Python, its --no-dev venv and the per-request credential path
+  # that HTTP users of the published image run, which no other tier reaches;
+  # plus calls without the header (or with another scheme) that must be
+  # refused naming the fix. It builds the image first (the image_smoke recipe,
+  # cached when image_smoke just built it), so the criterion stands alone in
+  # CI's contract job. Same seeded-stack precondition as e2e_replay_green.
+  if seeded_stack; then
+    suite_note="Kibana $stack_version"
+    run_suite image_replay_green sh -c 'scripts/checks/image-build.sh mcp-for-kibana:dev && scripts/checks/image-replay.sh mcp-for-kibana:dev'
+    suite_note=
+  else
+    stack_nogo image_replay_green
+  fi
+fi
+
 if req e2e_green; then
-  # The live-model criterion (D42): headless Claude Code (`claude -p`) with only
+  # The live-model criterion, n/a in every config since D61 (the live model
+  # runs on demand: `make test-e2e`), kept so a config can still require it.
+  # From D42: headless Claude Code (`claude -p`) with only
   # this server's tools runs the pre-registered tasks (scripts/experiment/
-  # CLAUDE_E2E.md; four tasks, CLAUDE_E2E_RUNS each, default 5) and Kibana's
+  # CLAUDE_E2E.md; eleven tasks, CLAUDE_E2E_RUNS each, default 5) and Kibana's
   # state is scored afterwards. The model is CLAUDE_E2E_MODEL (default the
   # `haiku` alias, D38). This is `make test-e2e`'s pytest selection, mirrored
   # rather than nested (like image_smoke) and without its stack up+seed: the

@@ -1,0 +1,77 @@
+{
+ "recorded": {
+  "at": "2026-10-27",
+  "by": "tests/e2e_replay/record_claude_turn.py",
+  "model": "claude-haiku-5-5",
+  "runtime": "claude -p (Claude Code 2.1.311 (Claude Code)) -> uv run mcp-for-kibana (KIBANA_MCP_TIER=write, KIBANA_MCP_TOOLBOXES=observability)",
+  "stack": "elastic-start-local, Kibana 9.5.4",
+  "source": "scripts/experiment/runs/claude-e2e/counted-2026-10-27-toolboxes/20261027T054318Z-synthetic_param-1-060945 (committed run record, git e9b0090)",
+  "note": "REAL model turn from a committed run record: call order and arguments are the model's own, observed_output the server's verbatim answer. Authored by construction: the needles (verified present in the recorded body), the bindings and the schema_rejected entry."
+ },
+ "task": "synthetic_param",
+ "toolboxes": "observability",
+ "prompt": "Using the kibana tools, create a Synthetics global parameter with the key 'e2e_750553aa_env', the value 'staging' and the description 'E2E 750553aa staging', then change that parameter's description to 'E2E 750553aa production'.",
+ "marker_token": "E2E 750553aa",
+ "hex_token": "750553aa",
+ "bindings": [
+  {
+   "value": "31edf376-f3b6-4527-9803-41a824026e24",
+   "step": 0,
+   "path": [
+    "id"
+   ]
+  }
+ ],
+ "schema_rejected": {
+  "tool": "create_synthetic_param",
+  "arguments": {
+   "value": "staging",
+   "description": "E2E 750553aa staging"
+  },
+  "runtime_reason": "authored: step 0's recorded arguments with the required 'key' removed"
+ },
+ "steps": [
+  {
+   "tool": "create_synthetic_param",
+   "arguments": {
+    "key": "e2e_750553aa_env",
+    "value": "staging",
+    "description": "E2E 750553aa staging"
+   },
+   "observed_output": "{\"id\":\"31edf376-f3b6-4527-9803-41a824026e24\",\"key\":\"e2e_750553aa_env\",\"description\":\"E2E 750553aa staging\",\"tags\":[]}",
+   "expect": {
+    "is_error": false,
+    "contains": [
+     "e2e_750553aa_env",
+     "staging",
+     "E2E 750553aa staging",
+     "\"id\":",
+     "\"key\":",
+     "\"description\":",
+     "\"tags\":"
+    ],
+    "gates": "step 0 of a passing synthetic_param run: it still succeeds and echoes what the model passed"
+   }
+  },
+  {
+   "tool": "update_synthetic_param",
+   "arguments": {
+    "param_id": "31edf376-f3b6-4527-9803-41a824026e24",
+    "description": "E2E 750553aa production"
+   },
+   "observed_output": "{\"id\":\"31edf376-f3b6-4527-9803-41a824026e24\",\"key\":\"e2e_750553aa_env\",\"description\":\"E2E 750553aa production\",\"tags\":[]}",
+   "expect": {
+    "is_error": false,
+    "contains": [
+     "31edf376-f3b6-4527-9803-41a824026e24",
+     "E2E 750553aa production",
+     "\"id\":",
+     "\"key\":",
+     "\"description\":",
+     "\"tags\":"
+    ],
+    "gates": "step 1 of a passing synthetic_param run: it still succeeds and echoes what the model passed"
+   }
+  }
+ ]
+}

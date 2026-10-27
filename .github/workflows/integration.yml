@@ -6,18 +6,19 @@ name: integration
 # the SAME Definition-of-Done gate (scripts/checks/definition-of-done.sh) with
 # a per-tier config from .github/dod/ — so CI's verdicts and `make dod` cannot
 # drift, and CI inherits the gate's anti-skip guard (an empty or all-skipped
-# suite reads NO-GO, not green). Tier coverage here: contract_green,
-# e2e_replay_green and wheel_replay_green on every supported Kibana line;
-# streams_ephemeral and fleet_ephemeral on the pinned (newest) line. The fast
-# criteria run in checks.yml via the make leaves.
+# suite reads NO-GO, not green). Tier coverage here, on every supported Kibana
+# line (the matrix reads kibana-py's set): contract_green, e2e_replay_green,
+# wheel_replay_green and image_replay_green (the built image over HTTP, D62)
+# in the contract job; streams_ephemeral and fleet_ephemeral in their own jobs
+# (their scripts honour ES_LOCAL_VERSION through scripts/stack-version.sh). The
+# fast criteria run in checks.yml via the make leaves.
 #
-# e2e_green is `n/a` in every .github/dod config: its run is Claude via
-# `claude -p` (D38), which needs a Claude sign-in CI does not have. The local
-# gate over dod.config requires it (D42), so `make dod` on a laptop or in a
-# cloud session runs the live model; `make test-e2e-local` (LM Studio) stays
-# on demand. What CI runs per PR is e2e_replay_green — the
-# same MCP surface driven by a recorded real-model turn instead of a live one.
-# That closes the per-PR gap without pretending a model ran.
+# e2e_green is `n/a` in every config, dod.config included, since D61: the live
+# model (Claude via `claude -p`, D38) runs on demand, `make test-e2e`, when a
+# change touches tool names, descriptions or schemas. What every gate run and
+# CI run per PR is the replay: recorded real-model turns, one or more per
+# toolbox (D61), driven through the real server with no model in the loop.
+# That covers the surface without pretending a model ran.
 #
 # Rollout: now runs per-PR as well as on push-to-main, so `dod-live` can be a
 # required status. Kept a separate workflow (not folded into checks.yml) so the
@@ -94,10 +95,13 @@ jobs:
           scripts/stack.sh up
           scripts/stack.sh seed
 
-      # Two criteria over the one provisioned stack: contract_green and
-      # e2e_replay_green (a recorded real-model turn replayed through a real
-      # MCP client — no LLM, so it is deterministic enough for CI).
-      - name: DoD gate — seeded-stack tier (contract + e2e replay + wheel replay)
+      # Four criteria over the one provisioned stack: contract_green,
+      # e2e_replay_green (recorded real-model turns replayed through a real
+      # MCP client — no LLM, so it is deterministic enough for CI), the same
+      # replay from the built wheel (wheel_replay_green) and from the built
+      # Docker image over HTTP with the key in the Authorization header
+      # (image_replay_green, D62; the gate builds the image first).
+      - name: DoD gate — seeded-stack tier (contract + e2e, wheel and image replay)
         run: |
           uv sync --group dev
           scripts/checks/definition-of-done.sh .github/dod/ci-contract.config
@@ -112,11 +116,21 @@ jobs:
           ( cd elastic-start-local && docker compose -p mcp-for-kibana-stack logs --tail=200 ) || true
 
   streams-ephemeral:
+    needs: versions
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    name: streams-ephemeral (${{ matrix.kibana }})
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
       contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        kibana: ${{ fromJSON(needs.versions.outputs.kibana) }}
+    # scripts/ephemeral_stack.sh writes this over the .env.ephemeral.example pin
+    # (scripts/stack-version.sh), as stack.sh does for the contract job.
+    env:
+      ES_LOCAL_VERSION: ${{ matrix.kibana }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -139,11 +153,19 @@ jobs:
         run: cat "/tmp/dod-$(basename "$PWD")"/*.log 2>/dev/null || true
 
   fleet-ephemeral:
+    needs: versions
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    name: fleet-ephemeral (${{ matrix.kibana }})
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
       contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        kibana: ${{ fromJSON(needs.versions.outputs.kibana) }}
+    env:
+      ES_LOCAL_VERSION: ${{ matrix.kibana }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
