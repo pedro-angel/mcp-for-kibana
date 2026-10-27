@@ -50,6 +50,7 @@ _EXCEPTION_LIST = "mcp-sweep-exceptions"
 _DETECTION_RULE = "mcp-sweep-rule"
 _APM_SERVICE = "mcp-sweep-service"
 _PREFIX = "mcp-sweep-"  # every throwaway object's name starts with it
+_PARAM_PREFIX = "mcp_sweep_"  # a synthetics parameter key (the sweep's prefix in key form)
 # The short URL has no name and no list tool: it is found by this path.
 _SHORT_URL_PATH = "/app/dashboards#/list?mcp-sweep"
 _SEED_FIX = "scripts/stack.sh down && scripts/stack.sh up && scripts/stack.sh seed"
@@ -116,13 +117,14 @@ async def _preclean(c):
         ("list_alert_rules", "name", "delete_alert_rule", "rule_id", {}),
         ("search_visualizations", "title", "delete_visualization", "visualization_id", {}),
         ("list_synthetic_monitors", "name", "delete_synthetic_monitor", "monitor_id", {}),
+        ("list_synthetic_params", "key", "delete_synthetic_param", "param_id", {}),
         ("list_synthetic_private_locations", "label", "delete_synthetic_private_location",
          "location_id", {}),
         ("list_agent_policies", "name", "delete_agent_policy", "agent_policy_id",
          {"force": True}),
     ):
         for row in (await _call(c, lister, {}))["result"]:
-            if str(row.get(name_key) or "").startswith(_PREFIX):
+            if str(row.get(name_key) or "").startswith((_PREFIX, _PARAM_PREFIX)):
                 await _call(c, delete, {param: row["id"], **extra})
 
 
@@ -181,11 +183,15 @@ async def _create(c, tag, undo):
     await _call(c, "create_value_list_item", {"list_id": _VALUE_LIST, "value": "mcp-sweep"})
     await make("detection_rule", "create_detection_rule", {
         "name": f"{_PREFIX}{tag}", "description": "sweep", "query": "*",
-        "index": [FLIGHTS], "rule_id": _DETECTION_RULE, "enabled": False},
+        "index": [FLIGHTS], "rule_id": _DETECTION_RULE, "enabled": False,
+        "tags": [_PREFIX + "tag"]},
         lambda sc: ("delete_detection_rule", {"rule_id": _DETECTION_RULE}), "rule_id")
     await make("apm_config", "upsert_apm_agent_config", {
         "service_name": _APM_SERVICE, "settings": {"transaction_sample_rate": "0.5"}},
         lambda sc: ("delete_apm_agent_config", {"service_name": _APM_SERVICE}), "service_name")
+    await make("synthetic_param", "create_synthetic_param", {
+        "key": f"{_PARAM_PREFIX}{tag}", "value": "sweep"},
+        lambda sc: ("delete_synthetic_param", {"param_id": sc["id"]}))
     # A monitor needs a private location, which needs an agent policy of its own.
     await make("sweep_policy", "create_agent_policy", {
         "name": f"{_PREFIX}{tag}", "namespace": "default", "monitoring_enabled": []},

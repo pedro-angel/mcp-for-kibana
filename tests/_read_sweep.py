@@ -123,9 +123,11 @@ NON_EMPTY: frozenset[str] = frozenset({
     "list_agent_policies", "list_agent_versions", "list_agents", "list_enrollment_keys",
     "list_installed_packages", "list_outputs", "list_package_categories",
     "list_package_policies", "list_packages", "list_uninstall_tokens",
-    "list_apm_agent_configs", "list_synthetic_monitors", "list_synthetic_private_locations",
+    "list_apm_agent_configs", "list_synthetic_monitors", "list_synthetic_params",
+    "list_synthetic_private_locations",
     "list_roles", "list_spaces",
-    "find_detection_rules", "find_exception_items", "find_exception_lists",
+    "find_detection_rules", "list_detection_rule_tags", "find_exception_items",
+    "find_exception_lists",
     "find_value_list_items", "find_value_lists", "list_streams",
 })
 

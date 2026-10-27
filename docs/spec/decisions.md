@@ -145,7 +145,7 @@ this ledger stands without them.
   followed transitively; tools hidden by the tier are not checked; toolbox
   selections are not checked. **Dependency map**: one owner, data —
   `DEPENDENCIES` in `src/kibana_mcp/tool_lists.py`, 79 edges from 69 tools
-  (125 from 109 since D60, which gave every id-named input a source).
+  (125 from 109 since D60, which gave every id-taking tool a source).
   An edge A → B means A takes an input only B shows the model and A's own
   description or error guidance sends the model there: an index or field name
   (`update_panel`/`delete_panel` → `get_dashboard`; every VizSpec tool →
@@ -1777,7 +1777,7 @@ this ledger stands without them.
 
 - **D60 (2026-10-27, probes on 9.5.4, Basic; owner: the surface budget)** —
   The tool layer meets real Kibana for every read tool, the surface a model
-  is handed is budgeted, and every id a tool takes has a stated source
+  is handed is budgeted, and every tool that takes an id has a stated source
   (inside `unit_green`, `contract_green`, `streams_ephemeral` and
   `fleet_ephemeral`; no new criterion).
   **Read-tool sweep.** `tests/contract/test_read_tool_sweep.py` builds the
@@ -1786,17 +1786,21 @@ this ledger stands without them.
   arguments in `tests/_read_sweep.py` (one row per read tool; ids from the
   matching list tool, or from throwaway objects — a case, a connector, a
   disabled `.es-query` rule, a visualization, a short URL, an exception
-  list, a value list, a disabled detection rule, an APM agent
-  configuration, and a disabled HTTP monitor on a private location on its
+  list, a value list, a disabled, tagged detection rule, an APM agent
+  configuration, a synthetics parameter, and a disabled HTTP monitor on a private location on its
   own agent policy — created through the write tools and deleted after the
   module; each list gets one item). Each call must return without
   `isError` and with structured content (validated against the tool's
   output schema, which for 71 of the 74 says only "an object" or "a list of
   objects": they return `dict[str, Any]`, so the check is the call and the
   shaping, not the field set), and the list tools in `NON_EMPTY` must
-  return rows, so their shaping meets real data;
-  `search_apm_annotations` is the one read that returns no rows (no APM
-  data on the stack). The D59 scan sees every result, the sweep's own
+  return rows, so their shaping meets real data. Seven reads still return
+  no rows on the seeded stack, so their row shaping is checked on fakes
+  only: `search_apm_annotations` and `list_apm_sourcemaps` (no APM data),
+  `find_timelines`, `search_detection_alerts` (the sweep's rule is
+  disabled), `list_agent_tags` (tagging would edit the demo agents),
+  `list_fleet_server_hosts`, `list_agent_diagnostics` (none requested) —
+  and `list_uninstall_tokens`' rows are metadata only (D59). The D59 scan sees every result, the sweep's own
   setup and teardown calls included. The rows must equal the registry's read tools, checked in the
   contract module and in `tests/unit/test_read_sweep_coverage.py`, so a new
   read tool fails `unit_green` until it has a row. A delete that fails
@@ -1825,8 +1829,10 @@ this ledger stands without them.
   state it or has no `Why:`, a cap citing an older decision than the newest
   that states it, a new cap or one above these founding numbers that
   cites this entry, and any decision's budget lines that differ from the
-  test's `LEDGER` (this entry's numbers, and each later raise's), so no
-  decision is edited in place and none before this one can be cited. The
+  test's `LEDGER` (this entry's numbers, and each later raise's), so a
+  decision edited in place, or one before this one cited, fails unless the
+  test's `LEDGER` is edited in the same change — a diff a reviewer sees; the
+  test is not an anchor against that. The
   surfaces are measured with every `KIBANA_MCP_*` variable unset, so a
   shell selection cannot shrink them. Measured 2026-10-27 (after this entry's description
   sentences): default 27 tools, 12470 description and 20458 input-schema
@@ -1867,7 +1873,9 @@ this ledger stands without them.
   `find_detection_rules`, value lists → `find_value_lists`,
   `export_saved_objects` → `find_saved_objects` for its nested `objects`
   ids, …); the check reads top-level parameter names, so a nested id is
-  covered only where an edge like that one was added by hand;
+  covered only where an edge like that one was added by hand; and the check
+  is per tool, not per input (a tool with two id inputs passes with one
+  edge named; `mute_alert`'s `alert_id` has no listing tool at all);
   `create_alert_rule` → `list_rule_types` is an edge, not an exemption
   (rule types vary by licence and version). The server still logs no
   coherence warning for a toolbox-only selection (D41); the check is the

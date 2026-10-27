@@ -203,8 +203,9 @@ mode enables host/origin protection on loopback binds.
   caps the default selection, every profile, every toolbox and every tool by
   tool count, description and input-schema size; a cap is raised only by a
   new decision that states the new numbers and why the growth is worth it.
-- Every id-named input a tool takes has a stated source (D60): a `DEPENDENCIES` edge to
-  the tool that shows it, named in the description, or a reasoned exemption;
+- Every tool that takes an id has a stated source (D60): a `DEPENDENCIES`
+  edge to a tool that shows it, named in the description, or a reasoned
+  exemption (checked per tool, not per input);
   every toolbox at every tier and every profile is coherent but for reviewed
   cross-toolbox gaps.
 - Every change carries a CHANGELOG entry: `changelog_entry` and a `checks.yml`

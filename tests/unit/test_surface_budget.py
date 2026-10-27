@@ -11,8 +11,9 @@ Measured here from a FakeGateway build, as the tool listing reaches a client.
 Each cap cites a decision in docs/spec/decisions.md whose entry states the
 cap's numbers in the form the file's header gives and carries a `Why:`; a cap
 above its founding value (FOUNDING, D60's numbers), or new, must cite a later
-decision, and every decision's budget lines are pinned here (LEDGER), so none
-is edited in place and none before D60 can be cited.
+decision, and every decision's budget lines are pinned here (LEDGER), so a
+decision edited in place, or one before D60 cited, fails unless LEDGER is
+edited in the same change (a diff a reviewer sees).
 So growth past the headroom is a diff to the budget plus a decision entry
 saying why it is worth it — a new tool alone is not a reason (owner, H8).
 """
@@ -172,9 +173,10 @@ FOUNDING = {
     "per-tool": {"description_chars": 1300, "input_schema_chars": 3000},
 }
 # Every budget line any decision states, by decision. Pinned here so a
-# decision's numbers are never edited in place (a silent supersede) and a cap
-# can cite only a decision from D60 on: a decision that raises a cap adds its
-# own entry here, beside its entry in docs/spec/decisions.md.
+# decision's numbers edited in place (a silent supersede), or a cap citing a
+# decision before D60, fails unless this table changes in the same diff: a
+# decision that raises a cap adds its own entry here, beside its entry in
+# docs/spec/decisions.md.
 LEDGER = {
     FOUNDING_DECISION: FOUNDING,
 }
