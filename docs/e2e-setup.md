@@ -33,8 +33,10 @@ security-detections, observability, streams, fleet, platform-health), each
 with a server that loads only that toolbox; and `delete_one_dashboard`, the
 one task at the `destructive` tier, where the harness seeds two marker
 dashboards and the model must delete exactly the one it is told to, by its id.
-Tasks, pass criteria and N are pre-registered in
-`scripts/experiment/CLAUDE_E2E.md`.
+Tasks, pass criteria and N are fixed in
+`scripts/experiment/CLAUDE_E2E.md` (the first four tasks pre-registered; the
+seven of block "toolboxes" committed with their runs, so not
+pre-registered).
 
 One-time setup — the fixes the `e2e_green` NO-GO lines point to:
 
@@ -361,7 +363,7 @@ toolbox (D61) — against the real server and real Kibana. It needs only the
 docker stack, so unlike this page's live harness it runs in every gate run
 and on every PR (`e2e_replay_green`).
 
-The per-toolbox turns are Claude runs of the pre-registered tasks in
+The per-toolbox turns are Claude runs of the tasks (not pre-registered) in
 `tests/_toolbox_tasks.py`, converted from their committed run records by
 `tests/e2e_replay/record_claude_turn.py` (call order and arguments are the
 model's own; the needles, the id bindings and the `schema_rejected` entry are

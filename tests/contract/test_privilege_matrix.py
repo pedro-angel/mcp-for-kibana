@@ -32,6 +32,7 @@ from kibana_mcp.adapters.kibana.gateway import KibanaPyGateway
 from kibana_mcp.config import Settings, Tier
 from kibana_mcp.server import build_server
 from kibana_mcp.toolboxes import TOOLBOXES
+from tests import _fleet_awareness
 from tests._privilege_matrix import EXPORTS, LISTING_GUARDS, minimal_args, space_params
 from tests._registry import registry
 from tests.contract.conftest import INTERNAL
@@ -272,8 +273,12 @@ def tcp_installed(matrix):
         try:
             if not before:
                 gw.install_package(name="tcp")
-            yield bool(gw._client.fleet.get_settings().body["item"].get(
+            on = bool(gw._client.fleet.get_settings().body["item"].get(
                 "use_space_awareness_migration_status"))
+            why = _fleet_awareness.mismatch(on)  # each tier certifies its own mode (D63)
+            if why:
+                pytest.fail(why, pytrace=False)
+            yield on
         finally:
             if installed() != before:
                 if before:
@@ -282,6 +287,7 @@ def tcp_installed(matrix):
                     epm.uninstall_package(pkg_name="tcp", force=True)
 
 
+@pytest.mark.fleet_unaware
 @pytest.mark.parametrize("key_name", sorted(KEYS))
 async def test_uninstall_package_under_each_key(matrix, tcp_installed, key_name):
     # The listing guard: with Fleet space awareness on no key's listing is
@@ -292,5 +298,7 @@ async def test_uninstall_package_under_each_key(matrix, tcp_installed, key_name)
     _assert_names_the_fix("uninstall_package", key_name, text)
     if tcp_installed or key_name != "default-only-all":
         assert result.is_error, f"uninstall_package under {key_name} succeeded: {text[:400]}"
+    else:
+        assert not result.is_error, f"uninstall_package under {key_name} failed: {text[:400]}"
     if tcp_installed and key_name != "no-features":
         assert "Fleet space awareness is on" in text, text[:400]

@@ -4,7 +4,7 @@ The dev stack always did (scripts/stack.sh, the CI contract matrix); the two
 isolated stacks copied .env.ephemeral.example and sourced it, which reset an
 exported ES_LOCAL_VERSION to the pin, so CI could run the destructive tiers on
 the newest line only. One sourced helper (scripts/stack-version.sh) now writes
-every stack's env file, and CI runs both ephemeral tiers over the supported
+every stack's env file, and CI runs the ephemeral tiers over the supported
 set. These tests run the helper as the scripts do and refuse a stack template
 copied any other way.
 """
@@ -18,7 +18,8 @@ import pytest
 _ROOT = Path(__file__).resolve().parents[2]
 _HELPER = _ROOT / "scripts" / "stack-version.sh"
 _TEMPLATES = ("elastic-start-local/.env.example", "elastic-start-local/.env.ephemeral.example")
-_STACK_SCRIPTS = ("scripts/stack.sh", "scripts/ephemeral_stack.sh", "scripts/fleet_ephemeral.sh")
+_STACK_SCRIPTS = ("scripts/stack.sh", "scripts/ephemeral_stack.sh", "scripts/fleet_ephemeral.sh",
+                  "scripts/fleet_unaware_ephemeral.sh")
 
 
 def _run(tmp_path, template, version):

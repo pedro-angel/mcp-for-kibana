@@ -110,6 +110,7 @@ A build of this project is correct when the Definition-of-Done gate prints
 `VERDICT: GO`: unit, lint, types, import contracts, hygiene, docs-strict,
 dependency audit, SAST, vocabulary, image smoke, contract tier (live
 Kibana), e2e-replay tier (recorded model turns through a real MCP client),
-live-model e2e tier, both ephemeral destructive tiers, and a changelog
+live-model e2e tier, the three ephemeral tiers (two destructive paths and
+Fleet with space awareness off), and a changelog
 entry. A rewrite that reaches GO without reading the old implementation has
 preserved everything this project promises.

@@ -229,13 +229,14 @@ make test-e2e          # REAL Claude (claude -p, default haiku) with only this s
 make test-e2e-local    # a REAL local model in LM Studio — see docs/e2e-setup.md
 make streams-ephemeral # destructive streams path on its own throwaway stack
 make fleet-ephemeral   # agent lifecycle on a throwaway 2-agent fleet stack
+make fleet-unaware-ephemeral # uninstall_package's guards on Fleet with space awareness off
 ```
 
 Everything except the two live-model tiers (`test-e2e`, `test-e2e-local`)
-runs in CI. The two ephemeral tiers own their
-stack's whole lifecycle (up → test → down) because their paths are destructive:
-they delete every wired stream, or mutate real enrolled agents, so they cannot
-share the dev stack. They also cannot run *beside* it — see
+runs in CI. The three ephemeral tiers own their
+stack's whole lifecycle (up → test → down): their paths are destructive (they
+delete every wired stream, or mutate real enrolled agents), or need a Fleet
+booted with space awareness off, so they cannot share the dev stack. They also cannot run *beside* it — see
 `scripts/fleet_ephemeral.sh` for the measured memory headroom.
 
 **On the two e2e tiers.** They are not redundant, and one is not a substitute
@@ -259,7 +260,7 @@ your data's field names, and degrading `"field 'price' does not exist … did yo
 mean 'Carrier'?"` to a bare 400 breaks self-correction for every LLM using this
 server. Four mutation tests confirm the tier fails when each guard is broken.
 Since D61 every toolbox has at least one recorded turn — Claude runs of the
-pre-registered per-toolbox tasks for cases, security-detections,
+per-toolbox tasks (not pre-registered) for cases, security-detections,
 observability, streams, fleet and platform-health — and a toolbox without one
 fails the unit tier. The gate replays them three ways: from the checkout, from
 the built wheel, and from the built Docker image over HTTP with the key in an

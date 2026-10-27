@@ -84,8 +84,9 @@ tiers cannot drift in what "built it correctly" means.
 The per-toolbox transcripts (D61) — `case-comment-cases.json`,
 `exception-item-security-detections.json`, `synthetic-param-observability.json`,
 `stream-fork-streams.json`, `agent-policy-fleet.json`,
-`kibana-status-platform-health.json` — are REAL Claude turns: passing counted
-runs of the pre-registered tasks in tests/_toolbox_tasks.py, converted by
+`kibana-status-platform-health.json` — are REAL Claude turns: passing runs
+of the tasks in tests/_toolbox_tasks.py (block "toolboxes", not
+pre-registered: its runs are these transcripts' provenance), converted by
 record_claude_turn.py (each `recorded.source` names the committed run record).
 They carry a `task` (the final assertion is that task's own ladder, state
 rungs only, and the cleanup is the task's), the `toolboxes` their server loads,

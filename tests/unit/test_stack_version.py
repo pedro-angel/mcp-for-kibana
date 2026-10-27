@@ -352,7 +352,8 @@ def test_every_seeded_stack_criterion_goes_through_the_version_check():
         )
 
 
-@pytest.mark.parametrize("criterion", ["streams_ephemeral", "fleet_ephemeral"])
+@pytest.mark.parametrize("criterion", ["streams_ephemeral", "fleet_ephemeral",
+                                       "fleet_unaware_ephemeral"])
 def test_every_ephemeral_criterion_goes_through_the_line_check(criterion):
     # D62: the ephemeral scripts honour an exported ES_LOCAL_VERSION, so the
     # gate refuses one off the pin locally and names the line on the GO line

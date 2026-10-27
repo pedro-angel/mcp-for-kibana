@@ -1902,9 +1902,11 @@ this ledger stands without them.
   go there only. The criterion stays in the gate (its runner and NO-GO
   messages unchanged), so a config can still require it.
   **Per-toolbox tasks.** Seven tasks join the four of D38 (block "toolboxes"
-  of `scripts/experiment/CLAUDE_E2E.md`, written before any counted run but
-  committed with the records, so git cannot show the order — the block says
-  so, and every run's `prompt.txt` equals the committed prompt;
+  of `scripts/experiment/CLAUDE_E2E.md`, committed with the runs' records,
+  so it is not a pre-registration and its runs are not a pre-registered
+  result: they are kept as the provenance of the replay transcripts (the
+  block and its SUMMARY say so; every run's `prompt.txt` equals the
+  committed prompt);
   `tests/_toolbox_tasks.py`, prompts pinned by
   `tests/unit/test_toolbox_tasks.py`): `case_comment` (cases),
   `exception_item` (security-detections), `synthetic_param` (observability),
@@ -1919,10 +1921,10 @@ this ledger stands without them.
   `dashboard_id` the seeded target's; records now carry each call's
   `tool_inputs`). State rungs read Kibana's raw API; `kibana_status` leaves no
   state, so its rungs read the run (the status tool was called; the answer
-  names the version Kibana reports to the harness). The counted block passed
-  35 of 35, every run valid, $0.0341
+  names the version Kibana reports to the harness). The block's runs passed
+  35 of 35, every run valid, $0.0341 (not a pre-registered result)
   (`scripts/experiment/runs/claude-e2e/counted-2026-10-27-toolboxes/SUMMARY.md`).
-  **Replay for every toolbox.** The first passing counted run of each
+  **Replay for every toolbox.** The first passing run of each
   write-tier task is converted by `tests/e2e_replay/record_claude_turn.py`
   into a transcript (call order, arguments and outputs are the model's run;
   needles, id bindings and `schema_rejected` are authored and say so), so
@@ -1998,6 +2000,83 @@ this ledger stands without them.
   path (the `updated_at` rejection the streams writes work around) would
   pass every tier (environment-4). Not yet run on 9.4.7 locally: CI's first
   9.4.7 run of either ephemeral tier is its first.
+
+- **D63 (2026-10-27, probes on 9.5.4, Basic; owner: H10)** — Fleet with
+  space awareness OFF is a gate tier: the required criterion
+  `fleet_unaware_ephemeral` (local `dod.config`; CI job
+  `fleet-unaware-ephemeral` over `.github/dod/ci-fleet-unaware.config`, on
+  every supported line like the other ephemeral jobs, D62).
+  `uninstall_package` refuses every call while awareness is on (D51), and a
+  fresh 9.5.4 stack has it on, so its package-policy listing, the Fleet
+  Server guards (the default Fleet Server policy, any policy carrying a
+  `fleet_server` package policy), the `elastic_agent` monitoring guard and
+  the forced delete reporting `deleted_package_policies` ran on no gate
+  stack before; the off path was checked only against hand-written mocks.
+  The managed-policy guard still runs only on fakes
+  (`test_uninstall_package_refuses_a_guarded_agent_policy_even_with_force`):
+  the tier creates no managed agent policy (not probed; a live case when a
+  fix touches that branch).
+  The owner chose (2026-10-25): a 9.5.4 switch if one exists, else unit
+  tests only; never an 8.19 → 9.5.4 upgrade. A switch exists: Fleet's
+  experimental feature `useSpaceAwareness` (default `true`, set through
+  `xpack.fleet.experimentalFeatures`). `isSpaceAwarenessEnabled()` returns
+  false while it is off, and Fleet's default settings get
+  `use_space_awareness_migration_status: 'success'` only while it is on
+  (Kibana v9.5.4 `fleet/server/services/spaces/helpers.ts` and
+  `fleet/common/experimental_features.ts`; the 9.5.4 image's
+  `fleet-plugin/server/services/settings.js` lines 151-153; v9.4.7's
+  `settings.ts` lines 197-198 and `experimental_features.ts` read the same,
+  not booted here). The image's env-var allow-list has no entry for it, so
+  `elastic-start-local/docker-compose.fleet-unaware.yml` puts
+  `--xpack.fleet.experimentalFeatures.useSpaceAwareness=false` on
+  `kibana-docker`'s command line, which passes it to `bin/kibana`. It is a
+  fresh-install mode, the same Fleet state as a deployment upgraded from 8.x
+  that never ran the migration (no migration status in the settings); the
+  upgrade itself is not booted. `scripts/fleet_unaware_ephemeral.sh` boots an
+  isolated stack with it (project `mcp-for-kibana-fleet-unaware`, the
+  `.env.ephemeral.example` pin or `ES_LOCAL_VERSION`, the proxy-CA overlay
+  where the CA exists, since the tests install packages from the Elastic
+  Package Registry), sets Fleet up with `fleet_ephemeral.sh`'s fixed Fleet
+  Server policy and no agents (the guards read policies), fails before the
+  tests if Fleet reports a migration status, and runs
+  `pytest -m fleet_unaware` with `KIBANA_MCP_FLEET_UNAWARE=1`. The four
+  tests marked `fleet_unaware` are contract tests too
+  (`test_package_install_uninstall_live`,
+  `test_uninstall_fleet_server_package_refused_live`,
+  `test_uninstall_elastic_agent_refused_while_monitoring_live`,
+  `test_uninstall_package_under_each_key`, 6 cases), so each mode has a
+  tier: their branch helper (`tests/_fleet_awareness.py`) fails a stack in
+  the other mode naming the fix — awareness off on the contract tier names
+  the re-provision and this tier, awareness on here names the overlay — so
+  neither branch is skipped or quietly not run (the restricted-key test,
+  contract only, now fails instead of skipping on an awareness-off stack).
+  `tests/unit/test_fleet_unaware_selection.py` collects `-m fleet_unaware`
+  and requires exactly those 6 cases, so a test that loses its mark fails
+  `unit_green` instead of leaving the tier GO without it. The three
+  ephemeral harnesses share container names and ports, so each now refuses
+  a sibling's leaked stack naming its clean target
+  (`scripts/ephemeral-siblings.sh`; `make streams-ephemeral-clean`,
+  `fleet-ephemeral-clean` or `fleet-unaware-ephemeral-clean`), and the new
+  harness fails naming the fix on unreadable Fleet settings and on a line
+  that reports a migration status despite the flag.
+  The privilege matrix's `default-only-all` row now asserts the uninstall
+  succeeds with awareness off. Needs the dev stack stopped, like
+  `fleet_ephemeral` (`KIBANA_MCP_DOD_CYCLE_STACK=1`).
+  Evidence (2026-10-27, throwaway stacks on 9.5.4): booted with the flag
+  off, `POST /api/fleet/setup` answered `{"isInitialized":true,
+  "nonFatalErrors":[]}` and `GET /api/fleet/settings` returned
+  `{"item":{"id":"fleet-default-settings","version":"WzEsMV0=",
+  "prerelease_integrations_enabled":false,"preconfigured_fields":[],
+  "integration_knowledge_enabled":true}}` (no migration status), and an
+  agent policy created in 'default' was listed from another space with no
+  `space_ids`; booted with the flag on, the harness read `'success'`. The
+  tier ran 6 passed in about 3 minutes; a first run without the proxy CA
+  failed on the registry (`[tcp] package not installed or found in
+  registry`), hence the overlay. Bite proofs (the H10 commit message has the
+  lines): with the guarded-policy refusal bypassed (the `if guarded:`
+  block, which the Fleet Server reasons reach), or the package-policy
+  refusal bypassed, the criterion is NO-GO on the failing test; booted with the flag on, it is NO-GO naming the overlay at the
+  harness check and, with that check disabled, at every test.
 
 ## Scope and licensing (probed on Basic)
 

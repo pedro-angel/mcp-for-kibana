@@ -78,6 +78,9 @@ teardown() {
 trap teardown EXIT INT TERM
 
 compose down -v --remove-orphans >/dev/null 2>&1 || true   # pre-clean a stale run
+# A sibling harness's leaked stack would clash on names and ports: name its clean target.
+. scripts/ephemeral-siblings.sh
+refuse_leaked_siblings "$PROJECT"
 # --wait-timeout so a resource-starved boot fails fast+clear instead of hanging:
 # the ephemeral Kibana needs ~3GB free — stop other Elastic stacks if this times
 # out on a memory-constrained Docker VM.

@@ -32,3 +32,14 @@ def test_the_key_leak_is_asserted_before_the_cleanup_failure():
     leak = re.search(r'assert record\.get\("key_in_transcript"\)', source)
     cleanup = re.search(r'assert not record\.get\("cleanup_error"\)', source)
     assert leak and cleanup and leak.start() < cleanup.start()
+
+
+def test_a_block_committed_with_its_records_is_not_called_pre_registered():
+    text = report.render([_run("r1")], "counted-2026-10-27-toolboxes")
+    assert "**Not pre-registered**" in text and "the pre-registration is" not in text
+    assert "the pre-registration is `scripts/experiment/CLAUDE_E2E.md`" in report.render([_run("r1")], "b")
+
+
+def test_the_toolboxes_summary_is_the_generator_output():
+    block = _ROOT / "scripts" / "experiment" / "runs" / "claude-e2e" / "counted-2026-10-27-toolboxes"
+    assert (block / "SUMMARY.md").read_text() == report.render(report.load(block), block.name)

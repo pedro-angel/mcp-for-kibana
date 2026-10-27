@@ -142,7 +142,9 @@ proves a key reads every space (the package `stats` and
 listing is provably complete; the refusal names Kibana's Integrations UI, as
 a user whose role grants Fleet and Integrations in all spaces. The checks
 above therefore run with awareness off, where one listing holds every
-space's policies. The
+space's policies; the `fleet_unaware_ephemeral` tier runs them live on a
+9.5.4 stack booted with Fleet's `useSpaceAwareness` feature off (D63), all
+but the managed-agent-policy guard, which runs on fakes only. The
 managed `logs-*`/`metrics-*` data views an install may add to every space are
 kept (probed with `nginx`). The result lists the package policies read before the call; one created between
 that read and the uninstall is deleted unreported (the route has no

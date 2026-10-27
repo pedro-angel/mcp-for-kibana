@@ -36,7 +36,7 @@ from pathlib import Path
 
 MCP_SERVER = "mcp-for-kibana"
 DEFAULT_MODEL = "haiku"
-DEFAULT_RUNS = 5  # the pre-registered N per task (scripts/experiment/CLAUDE_E2E.md)
+DEFAULT_RUNS = 5  # the N per task in scripts/experiment/CLAUDE_E2E.md
 DEFAULT_BUDGET_USD = 5.0  # cumulative stop for one pytest session
 RUN_BUDGET_USD = 0.75  # --max-budget-usd per run: a runaway turn ends there
 TIMEOUT_S = 900

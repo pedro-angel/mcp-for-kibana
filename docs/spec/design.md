@@ -215,6 +215,12 @@ mode enables host/origin protection on loopback binds.
   exemption (checked per tool, not per input);
   every toolbox at every tier and every profile is coherent but for reviewed
   cross-toolbox gaps.
+- Each Fleet space-awareness mode has a tier (D63): the contract tier runs
+  `uninstall_package`'s awareness-on refusal on the seeded stack, and
+  `fleet_unaware_ephemeral` runs its awareness-off path (package-policy
+  listing, Fleet Server and monitoring guards, forced delete) on an isolated
+  stack booted with Fleet's `useSpaceAwareness` feature off; a test that
+  branches on the mode fails on a stack in the other one.
 - Every change carries a CHANGELOG entry: `changelog_entry` and a `checks.yml`
   PR step run `scripts/checks/changelog-entry.sh`, which requires a new entry
   under `## [Unreleased]` when non-exempt paths changed since the merge-base

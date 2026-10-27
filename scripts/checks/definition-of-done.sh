@@ -29,7 +29,7 @@
 # It never starts or restarts the stack: start and seed it before the run, and
 # after the run it stays stopped (bring it back with scripts/stack.sh up &&
 # scripts/stack.sh seed). Without the flag the run is honest but two-pass:
-# fleet_ephemeral NO-GOs while the dev stack is up.
+# fleet_ephemeral and fleet_unaware_ephemeral NO-GO while the dev stack is up.
 #
 # The suites run as declared (D56): the gate clears the variables that change
 # what pytest selects, loads or enforces (PYTEST_ADDOPTS, PYTEST_PLUGINS,
@@ -76,7 +76,7 @@ cfg="${1:-dod.config}"
 # single-`=` grammar below. Keep `known` in sync with the criteria dispatched.
 known="unit_green ruff_clean types_clean import_contracts hygiene_hooks docs_strict \
 audit_clean sast_clean vocabulary_conformant image_smoke contract_green e2e_replay_green wheel_replay_green \
-image_replay_green e2e_green streams_ephemeral fleet_ephemeral changelog_entry"
+image_replay_green e2e_green streams_ephemeral fleet_ephemeral fleet_unaware_ephemeral changelog_entry"
 seen=" "
 while IFS= read -r line || [ -n "$line" ]; do            # tolerate a missing final newline
   line=$(printf '%s' "$line" | tr -d '\r')               # CRLF-safe
@@ -328,8 +328,9 @@ if req e2e_green; then
   # The live-model criterion, n/a in every config since D61 (the live model
   # runs on demand: `make test-e2e`), kept so a config can still require it.
   # From D42: headless Claude Code (`claude -p`) with only
-  # this server's tools runs the pre-registered tasks (scripts/experiment/
-  # CLAUDE_E2E.md; eleven tasks, CLAUDE_E2E_RUNS each, default 5) and Kibana's
+  # this server's tools runs the tasks in scripts/experiment/CLAUDE_E2E.md
+  # (eleven tasks, the seven of block "toolboxes" not pre-registered;
+  # CLAUDE_E2E_RUNS each, default 5) and Kibana's
   # state is scored afterwards. The model is CLAUDE_E2E_MODEL (default the
   # `haiku` alias, D38). This is `make test-e2e`'s pytest selection, mirrored
   # rather than nested (like image_smoke) and without its stack up+seed: the
@@ -368,7 +369,7 @@ if req e2e_green; then
   fi
 fi
 
-# The two ephemeral tiers below need the shared dev stack DOWN: their harnesses
+# The ephemeral tiers below need the shared dev stack DOWN: their harnesses
 # stand up isolated stacks, and the Docker VM cannot hold both (measured
 # 2026-08-09: dev stack 4.9GB of a 11.7GB VM, and the VM is shared with whatever
 # else the developer is running). But contract/e2e/e2e_replay above need that
@@ -386,7 +387,7 @@ fi
 # Which line the ephemeral tiers run (D62): their scripts write an exported
 # ES_LOCAL_VERSION over the .env.ephemeral.example pin (scripts/stack-version.sh),
 # which CI's matrix relies on. Locally the gate certifies the newest line (D30,
-# D53), so a shell override that differs from the pin is NO-GO on both tiers,
+# D53), so a shell override that differs from the pin is NO-GO on every ephemeral tier,
 # naming `unset ES_LOCAL_VERSION`, before anything is stopped or started; their
 # GO lines name the line they ran.
 eph_state=        # '' unchecked | ok | bad
@@ -421,7 +422,7 @@ ephemeral_line() {
   [ "$eph_state" = ok ]
 }
 
-if [ "${KIBANA_MCP_DOD_CYCLE_STACK:-0}" = "1" ] && { req streams_ephemeral || req fleet_ephemeral; } && ephemeral_line; then
+if [ "${KIBANA_MCP_DOD_CYCLE_STACK:-0}" = "1" ] && { req streams_ephemeral || req fleet_ephemeral || req fleet_unaware_ephemeral; } && ephemeral_line; then
   if [ -n "$(docker compose -p mcp-for-kibana-stack ps -q 2>/dev/null)" ]; then
     echo "  ...   stopping the dev stack for the ephemeral tiers (KIBANA_MCP_DOD_CYCLE_STACK=1)"
     if ! scripts/stack.sh stop >"$logdir/cycle_stack.log" 2>&1; then
@@ -455,6 +456,21 @@ if req fleet_ephemeral; then
     suite_note=
   else
     echo "  NO-GO fleet_ephemeral  ($eph_reason)"; record fleet_ephemeral NO-GO; nogo=1
+  fi
+fi
+
+if req fleet_unaware_ephemeral; then
+  # Fleet with space awareness OFF (D63): the only mode where uninstall_package
+  # lists package policies, runs its Fleet Server and monitoring guards and
+  # deletes. The harness boots its own isolated stack with the awareness flag
+  # off, refuses to run the tests if Fleet still reports a migration status, and
+  # the tests fail (never skip) on a stack in the other mode.
+  if ephemeral_line; then
+    suite_note="Kibana $eph_version"
+    run_suite fleet_unaware_ephemeral scripts/fleet_unaware_ephemeral.sh
+    suite_note=
+  else
+    echo "  NO-GO fleet_unaware_ephemeral  ($eph_reason)"; record fleet_unaware_ephemeral NO-GO; nogo=1
   fi
 fi
 

@@ -31,9 +31,10 @@ KIBANA_MCP_DOD_CYCLE_STACK=1 make dod          # full Definition-of-Done → VER
 Live-model tests run on demand, outside `make dod` (D61, superseding D42):
 `e2e_green` is `n/a` in every config. **Run `make test-e2e` when a change
 touches tool names, descriptions or schemas** — headless Claude Code (`claude
--p`) with only this server's tools through the pre-registered tasks
-(`scripts/experiment/CLAUDE_E2E.md`: eleven tasks, one or more per toolbox and
-one at the destructive tier), about 12 minutes; it needs a seeded stack and a
+-p`) with only this server's tools through the tasks in
+`scripts/experiment/CLAUDE_E2E.md` (eleven tasks, one or more per toolbox and
+one at the destructive tier; the seven of block "toolboxes" were not
+pre-registered), about 12 minutes; it needs a seeded stack and a
 signed-in `claude` CLI, no API key (`claude auth status`), and the model is
 `CLAUDE_E2E_MODEL`, default `haiku` (D38). New live tasks go to `make
 test-e2e` only. What every gate run and CI run is the replay: recorded
@@ -55,8 +56,9 @@ another line — a study's 9.5.5, or 9.4.7 after `ES_LOCAL_VERSION=9.4.7 make
 test-contract` — is NO-GO on each of them, naming
 `scripts/stack.sh down && scripts/stack.sh up && scripts/stack.sh seed`; every
 GO line names the version it certified. The ephemeral tiers (`streams_ephemeral`,
-`fleet_ephemeral`) run the `elastic-start-local/.env.ephemeral.example` pin
-locally: a shell `ES_LOCAL_VERSION` that differs from it is NO-GO on both,
+`fleet_ephemeral`, `fleet_unaware_ephemeral`) run the
+`elastic-start-local/.env.ephemeral.example` pin locally: a shell
+`ES_LOCAL_VERSION` that differs from it is NO-GO on each of them,
 naming `unset ES_LOCAL_VERSION` (in CI they run the matrix's version, D62), and
 their GO lines name the line they ran.
 
@@ -85,6 +87,14 @@ either. So is a `KIBANA_API_KEY`, `KIBANA_PUBLIC_URL` or
 server would read ahead of the seed, and a `UV_*`, `PYTHON*`, `LD_*`,
 `KIBANA_MCP_SERVER_BIN` or `KIBANA_MCP_SERVER_IMAGE` line in `.env.local`, which the suites merge back in
 after the gate clears the shell.
+
+Fleet space awareness has a tier per mode (D63): the contract tier runs the
+awareness-on branches on the seeded stack, and `fleet_unaware_ephemeral`
+(`scripts/fleet_unaware_ephemeral.sh`) boots an isolated 9.5.4 stack with
+`elastic-start-local/docker-compose.fleet-unaware.yml` and runs the tests
+marked `fleet_unaware`. A test that branches on the mode asks
+`tests/_fleet_awareness.py` first, so a stack in the other mode fails it
+naming the fix instead of skipping.
 
 `KIBANA_MCP_DOD_CYCLE_STACK=1` only lets the gate **stop** the dev stack between
 the seeded-stack criteria and the ephemeral tiers (`scripts/stack.sh stop`:

@@ -9,8 +9,10 @@ with the same prompts and the same scoring; `fix_rule_threshold`, a
 maintenance task for the in-place update tools; and the "toolboxes" block
 (D61): one task per toolbox no model had been offered, each on a server that
 loads only that toolbox, and `delete_one_dashboard`, the one task at the
-`destructive` tier. Tasks, pass criteria and N=5 runs per task were
-pre-registered in scripts/experiment/CLAUDE_E2E.md before any counted run.
+`destructive` tier. Tasks, pass criteria and N=5 runs per task are fixed in
+scripts/experiment/CLAUDE_E2E.md: the first four were pre-registered before
+any counted run; the "toolboxes" block was committed with its runs, so it is
+not a pre-registration.
 
 Needs Claude sign-in for `claude -p` (no API key is required) and a seeded
 stack. On demand (D61): outside `make check` and outside every
@@ -18,7 +20,7 @@ Definition-of-Done config (`e2e_green` is `n/a`); run it when a change
 touches tool names, descriptions or schemas.
 
     CLAUDE_E2E_MODEL       model or alias passed to --model (default: haiku)
-    CLAUDE_E2E_RUNS        runs per task (default: 5, the pre-registered N)
+    CLAUDE_E2E_RUNS        runs per task (default: 5, the N in CLAUDE_E2E.md)
     CLAUDE_E2E_BUDGET_USD  stop for the session's cumulative cost (default: 5)
     CLAUDE_E2E_OUT         run-record directory
                            (default: scripts/experiment/runs/claude-e2e/adhoc)

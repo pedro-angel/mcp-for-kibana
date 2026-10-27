@@ -9,7 +9,8 @@ name: integration
 # suite reads NO-GO, not green). Tier coverage here, on every supported Kibana
 # line (the matrix reads kibana-py's set): contract_green, e2e_replay_green,
 # wheel_replay_green and image_replay_green (the built image over HTTP, D62)
-# in the contract job; streams_ephemeral and fleet_ephemeral in their own jobs
+# in the contract job; streams_ephemeral, fleet_ephemeral and
+# fleet_unaware_ephemeral (Fleet with space awareness off, D63) in their own jobs
 # (their scripts honour ES_LOCAL_VERSION through scripts/stack-version.sh). The
 # fast criteria run in checks.yml via the make leaves.
 #
@@ -184,13 +185,44 @@ jobs:
         if: failure()
         run: cat "/tmp/dod-$(basename "$PWD")"/*.log 2>/dev/null || true
 
+  fleet-unaware-ephemeral:
+    needs: versions
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    name: fleet-unaware-ephemeral (${{ matrix.kibana }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        kibana: ${{ fromJSON(needs.versions.outputs.kibana) }}
+    env:
+      ES_LOCAL_VERSION: ${{ matrix.kibana }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install uv
+        run: curl -LsSf https://astral.sh/uv/install.sh | sh
+
+      # scripts/fleet_unaware_ephemeral.sh owns its own isolated Fleet stack with
+      # space awareness OFF (up -> pytest -m fleet_unaware -> down; D63).
+      - name: DoD gate — fleet-unaware-ephemeral tier
+        run: |
+          uv sync --group dev
+          scripts/checks/definition-of-done.sh .github/dod/ci-fleet-unaware.config
+
+      - name: Diagnostics on failure
+        if: failure()
+        run: cat "/tmp/dod-$(basename "$PWD")"/*.log 2>/dev/null || true
+
   # Fan-in: the single status that says "CI's live tiers are GO". This is the
   # check to require in branch protection (and to gate the ghcr publish on)
   # when the workflow is promoted per the staged-rollout note above.
   dod-live:
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: [contract, streams-ephemeral, fleet-ephemeral]
+    needs: [contract, streams-ephemeral, fleet-ephemeral, fleet-unaware-ephemeral]
     if: always()
     steps:
       - name: Verdict

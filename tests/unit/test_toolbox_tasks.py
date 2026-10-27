@@ -1,7 +1,8 @@
 """Unit coverage for the per-toolbox live-model tasks (tests/_toolbox_tasks.py).
 
-The prompts are pre-registered (scripts/experiment/CLAUDE_E2E.md, block
-"toolboxes", D61), so their bytes are pinned here. The scorers run only in the
+The prompts are fixed by scripts/experiment/CLAUDE_E2E.md (block "toolboxes",
+D61; not pre-registered, committed with its runs), so their bytes are pinned
+here. The scorers run only in the
 live and replay tiers, where a broken branch would silently mis-classify a
 run, so every rung is pinned against stubs: each one passing, each one
 failing, and the replay mode (`run=None`) that scores state rungs only.

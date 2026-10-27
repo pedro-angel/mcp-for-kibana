@@ -1,9 +1,10 @@
 """The per-toolbox live-model tasks: one task for each toolbox no model had
 been offered before 2026-10-27, and one destructive-tier precision task.
 
-Pre-registered in scripts/experiment/CLAUDE_E2E.md (block "toolboxes",
-2026-10-27, D61) before any counted run, beside the four tasks in
-tests/_live_tasks.py. They run in `make test-e2e` only (the live-model tier is
+Defined in scripts/experiment/CLAUDE_E2E.md (block "toolboxes", 2026-10-27,
+D61), beside the four tasks in tests/_live_tasks.py; not pre-registered: the
+block was committed with its runs' records, which are the provenance of the
+replay transcripts, not a pre-registered result. They run in `make test-e2e` only (the live-model tier is
 on demand since D61, outside the Definition-of-Done gate). A passing run of
 each write-tier task was converted into a replay transcript
 (tests/e2e_replay/record_claude_turn.py), and the replay tier scores the
@@ -53,7 +54,7 @@ def _calls(run):
 
 
 class ToolboxTask:
-    """One pre-registered task. Subclasses fill in the class attributes and
+    """One per-toolbox task. Subclasses fill in the class attributes and
     the prompt, score and cleanup methods."""
 
     name = ""

@@ -253,13 +253,15 @@ version section.
   superseding D42). `e2e_green` is `n/a` in `dod.config` again: `make
   test-e2e` (Claude via `claude -p`) is run when a change touches tool names,
   descriptions or schemas, and new live tasks go there only. It gains seven
-  pre-registered tasks (`tests/_toolbox_tasks.py`, block "toolboxes" of
-  `scripts/experiment/CLAUDE_E2E.md`): one for each toolbox no model had been
+  tasks (`tests/_toolbox_tasks.py`, block "toolboxes" of
+  `scripts/experiment/CLAUDE_E2E.md`, not pre-registered: it was committed
+  with its runs' records): one for each toolbox no model had been
   offered — cases, security-detections, observability, streams, fleet,
   platform-health — and `delete_one_dashboard`, the first task at the
   `destructive` tier (delete only the named one of two seeded dashboards, by
-  its id; run records now carry each call's input). The counted block passed
-  35 of 35. A passing run of each write-tier task is now a replay transcript
+  its id; run records now carry each call's input). The block's runs passed
+  35 of 35; they are the provenance of the replay transcripts, not a
+  pre-registered result. A passing run of each write-tier task is now a replay transcript
   (`tests/e2e_replay/record_claude_turn.py`), so every gate run and CI replay
   all ten toolboxes, scored with the live task's own ladder (the
   platform-health read leaves no state, so its transcript pins the version
@@ -283,6 +285,23 @@ version section.
   `scripts/stack-version.sh`; sourcing the copied template had reset an
   exported override to the pin), and integration.yml's streams and fleet
   ephemeral jobs fan out over kibana-py's supported set.
+- **Fleet with space awareness off is a gate tier** (D63): new required
+  criterion `fleet_unaware_ephemeral` and CI job `fleet-unaware-ephemeral`
+  (every supported line). `uninstall_package` refuses every call under Fleet
+  space awareness, which a fresh 9.5.4 stack has on, so its package-policy
+  listing, Fleet Server and monitoring guards and forced delete ran in no
+  live tier. `scripts/fleet_unaware_ephemeral.sh`
+  (`make fleet-unaware-ephemeral`) boots an isolated stack with
+  `--xpack.fleet.experimentalFeatures.useSpaceAwareness=false`
+  (`elastic-start-local/docker-compose.fleet-unaware.yml`), checks Fleet
+  reports no migration status, and runs the tests marked `fleet_unaware`;
+  those tests fail, never skip, on a stack in the other mode, on this tier
+  and on the contract tier alike (`tests/_fleet_awareness.py`). The
+  privilege matrix's uninstall row now requires the `default`-space key's
+  uninstall to succeed with awareness off, and a unit test pins the six cases
+  the tier runs. The three ephemeral harnesses, which share container names
+  and ports, now refuse a sibling's leaked stack naming its `make
+  …-ephemeral-clean` target (`scripts/ephemeral-siblings.sh`).
 - **The DoD gate certifies only the newest supported Kibana version** (D53).
   Before `contract_green`, `e2e_replay_green`, `wheel_replay_green` and
   `e2e_green` it reads the running Kibana's version from `/api/status` with
@@ -502,8 +521,10 @@ version section.
   virtualenv 21.14.13 (with yarl, packaging and openapi-pydantic as resolved).
   `make check`'s audit step fails without them.
 - Locked transitive dependencies moved past nine advisories `pip-audit`
-  reported on 2026-10-27: authlib 1.9.1 (from fastmcp), dnspython 2.9.0 (from
-  email-validator) and msgpack 1.2.4 (from pip-audit's cache).
+  reported on 2026-10-27: authlib 1.9.1 (from fastmcp; CVE-2026-96760,
+  CVE-2026-114614 to CVE-2026-114618 and CVE-2026-114620), dnspython 2.9.0
+  (from email-validator; CVE-2026-114605) and msgpack 1.2.4 (from pip-audit's
+  cache; CVE-2026-114613).
 
 ## [0.4.0] - 2026-10-17
 

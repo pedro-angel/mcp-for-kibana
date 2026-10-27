@@ -89,6 +89,7 @@ make test-e2e          # e2e — drives the server through Claude (`claude -p`; 
 make test-e2e-local    # e2e — the same server through a small local model in LM Studio
 make streams-ephemeral # destructive streams path on an isolated ephemeral stack
 make fleet-ephemeral   # fleet agent-lifecycle on an isolated 2-agent stack
+make fleet-unaware-ephemeral # uninstall_package's guards on Fleet with space awareness off (D63)
 ```
 
 The destructive `*-ephemeral` tiers spin up an isolated stack and tear it down,
