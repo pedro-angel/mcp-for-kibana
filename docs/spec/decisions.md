@@ -1736,7 +1736,8 @@ this ledger stands without them.
   `update_output` (write tier) on the canary output, whose read-modify-write
   carries the raw `service_token` and must keep it (it did not: a PUT that
   carried the unchanged `type` left the canary's `service_token` null, so
-  the gateway now sends `type` only when it changes, and `update_output`'s
+  the gateway now sends the stored token back with an unchanged `type`
+  through kibana-py's `fields`, and `update_output`'s
   description says a type change resets some fields); `list_uninstall_tokens` runs too but is not credential
   coverage (Kibana's list returns metadata only; no tool fetches a token
   value); the fleet contract tests call the gateway, not a
@@ -1760,7 +1761,13 @@ this ledger stands without them.
   H7 commit message has the lines). `update_output` probes (same stack): a
   PUT of the canary output with `name` only kept its `service_token`; with
   `name`, `type` (unchanged) and `hosts` it read back `null`; the gateway's
-  read-modify-write body without `type` kept it; a change from
+  read-modify-write body without `type` kept it, and so did a PUT with
+  `type` plus the token through kibana-py's `fields` (the shipped fix). On
+  the `fleet_ephemeral` stack a promotion PUT without `type` took 68 s
+  against 3 s with it (both orders; `test_output_promotion` timed out at the
+  client's 10 s), which is why `type` stays (the H7 fix commit's message has
+  the probe lines and the post-fix runs: `fleet_ephemeral` 4 passed,
+  `test_secret_canaries.py` 8 passed); on the dev stack a change from
   `remote_elasticsearch` to `elasticsearch` through the gateway was
   accepted and read back `service_token` and `preset` `null`,
   `config_yaml` kept. `test_update_output_preserves_the_canary_service_token`

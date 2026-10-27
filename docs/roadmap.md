@@ -65,8 +65,10 @@ As of this page:
   PUT that carries `type` made Fleet reset the output's `service_token`, and
   the read-modify-write sent the stored `type` back, so a
   rename of the canary output left Kibana holding `service_token: null`
-  (dev stack, 9.5.4). The gateway now sends `type` only when it changes;
-  probed: a rename then keeps the token.
+  (dev stack, 9.5.4). The gateway now sends the stored token back with the
+  unchanged `type` (kibana-py's `fields`); probed: a rename then keeps it.
+  Leaving `type` out kept it too but made a promotion take 68 s, past the
+  client's 10 s timeout (`fleet_ephemeral`'s `test_output_promotion`).
   `test_update_output_preserves_the_canary_service_token`
   (`tests/contract/test_secret_canaries.py`) holds it live.
 - feat: `update_alert_rule` returns the rule's detail — **open (left open by

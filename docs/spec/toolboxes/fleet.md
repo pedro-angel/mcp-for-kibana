@@ -173,8 +173,9 @@ object's body.
   preserved, never reset — except around `type`: a PUT carrying the
   unchanged `type` made Fleet null a `remote_elasticsearch` output's
   `service_token` (the gateway's body holds only kibana-py's named
-  parameters, so the token is not in it), so `update_output` sends `type`
-  only when it changes; a type change resets fields too (probed:
+  parameters, so the token is not in it), so `update_output` sends the
+  stored token back with an unchanged `type`; a type change resets fields
+  (probed:
   `service_token` and `preset`), and the tool's description says so (D59).
 - `update_agent_policy` refuses a managed policy (it takes no `force`
   parameter); `delete_agent_policy` refuses a managed policy and the

@@ -451,12 +451,12 @@ def test_update_output_default_requires_confirm():
 
 def _rmw_output_gw(raw_item, sent):
     def _update(*, output_id, name=None, type=None, hosts=None, is_default=None,
-                is_default_monitoring=None, config_yaml=None, preset=None):
+                is_default_monitoring=None, config_yaml=None, preset=None, fields=None):
         sent.update({k: v for k, v in dict(
             output_id=output_id, name=name, type=type, hosts=hosts, is_default=is_default,
             is_default_monitoring=is_default_monitoring, config_yaml=config_yaml,
-            preset=preset).items() if v is not None})
-        return FakeResponse({"item": {**raw_item, **sent, "id": output_id}})
+            preset=preset, fields=fields).items() if v is not None})
+        return FakeResponse({"item": {**raw_item, "id": output_id}})
 
     return _gw(fleet_outputs=SimpleNamespace(
         get_output=lambda **k: FakeResponse({"item": raw_item}), update_output=_update))
@@ -467,24 +467,34 @@ _REMOTE_ES = {"id": "r", "name": "Remote", "type": "remote_elasticsearch",
               "is_default": False, "is_default_monitoring": False}
 
 
-def test_update_output_leaves_an_unchanged_type_out_of_the_put():
-    # A rename of a remote_elasticsearch output whose PUT sent its unchanged
-    # type back left Kibana holding service_token: null (9.5.4, D59).
+def test_update_output_sends_the_stored_service_token_back():
+    # A PUT carrying `type` made Fleet null a remote_elasticsearch output's
+    # service_token, which is no kibana-py parameter; leaving `type` out made a
+    # promotion take 68 s instead of 3 (9.5.4, D59). So both go back.
     sent = {}
     _rmw_output_gw(_REMOTE_ES, sent).update_output(output_id="r", changes={"name": "x"})
-    assert "type" not in sent
+    assert sent["type"] == "remote_elasticsearch"
+    assert sent["fields"] == {"service_token": "tok"}
     assert sent["name"] == "x" and sent["hosts"] == ["https://r:9200"]
-    sent.clear()
-    _rmw_output_gw(_REMOTE_ES, sent).update_output(
-        output_id="r", changes={"type": "remote_elasticsearch"})
-    assert "type" not in sent  # naming the type it already has changes nothing
 
 
-def test_update_output_sends_a_changed_type():
+def test_update_output_type_change_carries_no_service_token():
     sent = {}
     _rmw_output_gw(_REMOTE_ES, sent).update_output(
         output_id="r", changes={"type": "elasticsearch"})
-    assert sent["type"] == "elasticsearch"
+    assert sent["type"] == "elasticsearch" and "fields" not in sent
+
+
+@pytest.mark.parametrize("token", ["absent", None])
+def test_update_output_without_a_token_sends_no_fields(token):
+    # Fleet reads back service_token: null on an output a type change reset.
+    raw = {k: v for k, v in _REMOTE_ES.items() if k != "service_token"}
+    raw["type"] = "elasticsearch"
+    if token != "absent":
+        raw["service_token"] = token
+    sent = {}
+    _rmw_output_gw(raw, sent).update_output(output_id="r", changes={"name": "x"})
+    assert sent["type"] == "elasticsearch" and "fields" not in sent
 
 
 # --- fleet writes: agent lifecycle, single + bulk (#81) ---

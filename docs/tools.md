@@ -1688,10 +1688,10 @@ Notes:
   re-send only the fields Kibana's update API actually accepts (plus the caller's
   changes) — read-only fields (`revision`, `updated_at`, `status`, …) are dropped
   automatically rather than round-tripped, and omitted fields are preserved rather
-  than reset to their default. `update_output` sends `type` only when it changes:
-  a request carrying `type` made Fleet null a remote output's service token,
-  and a type change resets fields too (probed: the service token and `preset`;
-  D59).
+  than reset to their default. A request carrying `type` made Fleet null a remote
+  output's service token, so `update_output` sends the stored token back with an
+  unchanged type; a type change resets fields (probed: the service token and
+  `preset`; D59).
 - **Reserved/default guards.** `delete_agent_policy` and `reassign_agent`/
   `bulk_reassign` refuse a managed or default-Fleet-Server policy; `delete_output`
   and editing a currently-default output are similarly guarded — promote a

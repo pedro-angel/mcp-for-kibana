@@ -165,7 +165,7 @@ async def test_update_output_on_the_canary_returns_no_secret():
 async def test_update_output_preserves_the_canary_service_token():
     """fleet.md: an omitted field is preserved. A rename of the canary output
     must leave its service_token as seeded (a PUT that carries `type` made
-    Fleet reset it to null; the gateway sends `type` only to change it)."""
+    Fleet reset it to null; the gateway sends the stored token back)."""
     body = _CANARIES["fleet-output"]
     with contextlib.closing(kibana.Kibana(
             os.environ["KIBANA_URL"], api_key=os.environ["KIBANA_TEST_API_KEY"])) as kb:
@@ -177,8 +177,8 @@ async def test_update_output_preserves_the_canary_service_token():
                 "GET", f"{_API['fleet-output']}/{body['id']}").body["item"]
             assert item.get("service_token") == body["service_token"], (
                 "update_output dropped the output's service_token (Kibana now holds "
-                f"{item.get('service_token')!r}) — leave `type` out of the PUT unless it "
-                "changes (KibanaPyGateway.update_output; docs/spec/toolboxes/fleet.md)")
+                f"{item.get('service_token')!r}) — send the stored token back "
+                "on the PUT (fields=, KibanaPyGateway.update_output; docs/spec/toolboxes/fleet.md)")
         finally:
             _reseed(kb, "fleet-output")
 

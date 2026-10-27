@@ -367,8 +367,8 @@ version section.
 - **`update_output` keeps a remote Elasticsearch output's service token.**
   A rename (or any edit that leaves `type` as it is) sent the output's type
   back to Fleet, which then reset the output's `service_token` (a
-  `remote_elasticsearch` output's credential, which the update cannot send
-  back). The type is now sent only when it changes, and the tool's
+  `remote_elasticsearch` output's credential, missing from the update's
+  body). The stored token now goes back with an unchanged type, and the tool's
   description says a type change resets some fields (D59).
 - **A space the API key cannot see is no longer reported as missing.** Copy,
   overwrite and share into an existing space the key has no privilege in
