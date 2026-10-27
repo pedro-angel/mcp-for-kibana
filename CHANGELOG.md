@@ -501,6 +501,9 @@ version section.
   aiohttp 3.14.5, certifi 2026.10.23, fastmcp 4.1.3, filelock 4.2.4 and
   virtualenv 21.14.13 (with yarl, packaging and openapi-pydantic as resolved).
   `make check`'s audit step fails without them.
+- Locked transitive dependencies moved past nine advisories `pip-audit`
+  reported on 2026-10-27: authlib 1.9.1 (from fastmcp), dnspython 2.9.0 (from
+  email-validator) and msgpack 1.2.4 (from pip-audit's cache).
 
 ## [0.4.0] - 2026-10-17
 
