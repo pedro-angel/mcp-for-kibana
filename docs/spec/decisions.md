@@ -1421,7 +1421,8 @@ this ledger stands without them.
 - **D53 (2026-10-25, owner: the DoD runs on the newest supported version)** —
   The DoD gate checks the running stack's Kibana version before the
   seeded-stack criteria (`contract_green`, `e2e_replay_green`,
-  `wheel_replay_green`, `e2e_green`), inside them rather than as a criterion of
+  `wheel_replay_green`, `e2e_green`, and `image_replay_green` since D62),
+  inside them rather than as a criterion of
   its own, so no config can declare it away. `tests/_stack_version.py` reads
   `version.number` from `/api/status` with the credentials the suites use
   (shell env, else `elastic-start-local/.env.seed`; since D56 a shell value
@@ -2170,6 +2171,11 @@ this ledger stands without them.
   again (2026-10-27: `e2e_green = n/a` locally, `make test-e2e` on demand).
   `e2e_green = n/a` stands in every `.github/dod` config.
 
+- ~~D42 (2026-10-17): the local `dod.config` requires `e2e_green` (a live
+  Claude run in every gate run)~~ — superseded by D61: the live model runs on
+  demand (`make test-e2e`), and every toolbox is replayed in every gate run
+  instead. D42's criterion runner and NO-GO messages stand for a config
+  that requires `e2e_green`.
 - ~~D29 (2026-09-21): track the newest 9.4 patch and defer Kibana 9.5~~ —
   deferred 9.5 until kibana-py released its supported-set module, and on the
   premise that the `streams` toolbox wraps `streams.upsert`, whose body 9.4

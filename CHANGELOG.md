@@ -249,63 +249,14 @@ version section.
 
 ### Changed
 
-- **Every toolbox is replayed; the live model runs on demand** (D61,
-  superseding D42). `e2e_green` is `n/a` in `dod.config` again: `make
-  test-e2e` (Claude via `claude -p`) is run when a change touches tool names,
-  descriptions or schemas, and new live tasks go there only. It gains seven
-  tasks (`tests/_toolbox_tasks.py`, block "toolboxes" of
-  `scripts/experiment/CLAUDE_E2E.md`, not pre-registered: it was committed
-  with its runs' records): one for each toolbox no model had been
-  offered — cases, security-detections, observability, streams, fleet,
-  platform-health — and `delete_one_dashboard`, the first task at the
-  `destructive` tier (delete only the named one of two seeded dashboards, by
-  its id; run records now carry each call's input). The block's runs passed
-  35 of 35; they are the provenance of the replay transcripts, not a
-  pre-registered result. A passing run of each write-tier task is now a replay transcript
-  (`tests/e2e_replay/record_claude_turn.py`), so every gate run and CI replay
-  all ten toolboxes, scored with the live task's own ladder (the
-  platform-health read leaves no state, so its transcript pins the version
-  Kibana itself reports this run, `live_tokens`);
-  `tests/unit/test_replay_coverage.py` fails `unit_green` for a toolbox no
-  transcript reaches, or a stateless task whose transcript pins no live value.
-  A replay whose recorded call no longer matches the server (a renamed tool,
-  a tightened schema) now names the fix: restore the surface, or re-record
-  that transcript with the recorder its `recorded.by` names.
-- **The Docker image is replayed over HTTP** (D62): a new criterion,
-  `image_replay_green`, required locally and in CI's contract job, builds the
-  image and replays every transcript into its own container over streamable
-  HTTP with the key in an `Authorization: ApiKey` header and none in the
-  container (`scripts/checks/image-replay.sh`), and checks that a call
-  without the header, or with another scheme, is refused naming the fix even
-  when the container holds a `KIBANA_API_KEY`. The gate clears a shell
-  `KIBANA_MCP_SERVER_IMAGE` and refuses one in `.env.local`.
-- **The ephemeral tiers run on every supported Kibana line in CI** (D62):
-  `scripts/ephemeral_stack.sh` and `scripts/fleet_ephemeral.sh` honour
-  `ES_LOCAL_VERSION` like `scripts/stack.sh` (one helper,
-  `scripts/stack-version.sh`; sourcing the copied template had reset an
-  exported override to the pin), and integration.yml's streams and fleet
-  ephemeral jobs fan out over kibana-py's supported set.
-- **Fleet with space awareness off is a gate tier** (D63): new required
-  criterion `fleet_unaware_ephemeral` and CI job `fleet-unaware-ephemeral`
-  (every supported line). `uninstall_package` refuses every call under Fleet
-  space awareness, which a fresh 9.5.4 stack has on, so its package-policy
-  listing, Fleet Server and monitoring guards and forced delete ran in no
-  live tier. `scripts/fleet_unaware_ephemeral.sh`
-  (`make fleet-unaware-ephemeral`) boots an isolated stack with
-  `--xpack.fleet.experimentalFeatures.useSpaceAwareness=false`
-  (`elastic-start-local/docker-compose.fleet-unaware.yml`), checks Fleet
-  reports no migration status, and runs the tests marked `fleet_unaware`;
-  those tests fail, never skip, on a stack in the other mode, on this tier
-  and on the contract tier alike (`tests/_fleet_awareness.py`). The
-  privilege matrix's uninstall row now requires the `default`-space key's
-  uninstall to succeed with awareness off, and a unit test pins the six cases
-  the tier runs. The three ephemeral harnesses, which share container names
-  and ports, now refuse a sibling's leaked stack naming its `make
-  …-ephemeral-clean` target (`scripts/ephemeral-siblings.sh`).
+- **The Definition-of-Done gate is hardened** (D53–D63). A review of the
+  gate found 18 ways it could read GO over a defect; the entries below close
+  them. Each check is a required criterion or runs inside one, and each was
+  shown to fail on a reproduced instance of its defect before it shipped.
 - **The DoD gate certifies only the newest supported Kibana version** (D53).
-  Before `contract_green`, `e2e_replay_green`, `wheel_replay_green` and
-  `e2e_green` it reads the running Kibana's version from `/api/status` with
-  the seed key and requires the `ES_LOCAL_VERSION` pin in
+  Before `contract_green`, `e2e_replay_green`, `wheel_replay_green`,
+  `image_replay_green` (D62) and `e2e_green` it reads the running Kibana's
+  version from `/api/status` with the seed key and requires the `ES_LOCAL_VERSION` pin in
   `elastic-start-local/.env.example` (9.5.4; in CI, the contract matrix's
   version). A stack on any other line — a study's 9.5.5, or 9.4.7 left over
   from `ES_LOCAL_VERSION=9.4.7 make test-contract` — is NO-GO on each of them,
@@ -387,6 +338,33 @@ version section.
   unit test pins 17 tools, not 11; platform-health.md cites
   `test_read_only_explorer_profile_is_fourteen_read_tools` (renamed). design.md
   now says `docs://tools` is deliberately not tier-gated.
+- **Privilege-dependent tools run under restricted keys** (D58), inside
+  `contract_green`. One shared `restricted_key` fixture
+  (`tests/contract/conftest.py`: a throwaway role, user and the API key that
+  user mints, all removed afterwards; no Elasticsearch admin password)
+  replaces the two ad hoc ones. `tests/contract/test_privilege_matrix.py`
+  calls every tool that takes `space`, `source_space`, `target_spaces` or
+  `spaces`, plus `list_spaces` and `uninstall_package`, through the MCP tool
+  layer under three keys (`all` in 'default' only, `read` everywhere, no
+  Kibana privilege) and fails on a crash, masked text, a write tool
+  succeeding under the read-only key, a hidden space reported as missing, or
+  a key that is secretly the superuser test key.
+  `tests/unit/test_privilege_matrix_rows.py` fails when a row's arguments
+  stop before the space is read or before a request to Kibana.
+- **No tool result carries a credential** (D59), inside `contract_green`
+  and both replay criteria. Every tool result the contract and replay tiers
+  receive through a fastmcp `Client` is scanned (`tests/_secret_scan.py`)
+  for the seeded secret canaries, the test key and secret-bearing keys with
+  a value, and a hit fails the test naming the fix. `scripts/stack.sh seed`
+  now also creates the canaries from `scripts/canaries/*.json`: a Fleet
+  output with a dummy `service_token` and `config_yaml` password, and a
+  Fleet proxy with a dummy `certificate_key` and proxy header.
+  `tests/contract/test_secret_canaries.py` runs the read tools that reach
+  them at the `read` tier, the Fleet tools that read credentials
+  (`list_enrollment_keys`, `get_enrollment_key`) and `update_output` on the
+  canary output, which must keep the output's `service_token`. The seed's canary loop takes
+  `<canary>:<Kibana API path>` entries for APIs that take the `id` in the
+  POST body and return the secret on GET; its FAIL text names the path.
 - **Every read tool runs through the tool layer against Kibana; the surface
   has a budget; every id has a source** (D60), inside `unit_green`,
   `contract_green` and the two ephemeral criteria. A contract read-tool sweep
@@ -407,58 +385,76 @@ version section.
   where the id comes from (68 descriptions gained one sentence or clause, e.g. "`case_id` comes
   from list_cases."); unit tests hold both and run the coherence check over
   every toolbox, tier and profile.
-- **No tool result carries a credential** (D59), inside `contract_green`
-  and both replay criteria. Every tool result the contract and replay tiers
-  receive through a fastmcp `Client` is scanned (`tests/_secret_scan.py`)
-  for the seeded secret canaries, the test key and secret-bearing keys with
-  a value, and a hit fails the test naming the fix. `scripts/stack.sh seed`
-  now also creates the canaries from `scripts/canaries/*.json`: a Fleet
-  output with a dummy `service_token` and `config_yaml` password, and a
-  Fleet proxy with a dummy `certificate_key` and proxy header.
-  `tests/contract/test_secret_canaries.py` runs the read tools that reach
-  them at the `read` tier, the Fleet tools that read credentials
-  (`list_enrollment_keys`, `get_enrollment_key`) and `update_output` on the
-  canary output, which must keep the output's `service_token`. The seed's canary loop takes
-  `<canary>:<Kibana API path>` entries for APIs that take the `id` in the
-  POST body and return the secret on GET; its FAIL text names the path.
-- **Privilege-dependent tools run under restricted keys** (D58), inside
-  `contract_green`. One shared `restricted_key` fixture
-  (`tests/contract/conftest.py`: a throwaway role, user and the API key that
-  user mints, all removed afterwards; no Elasticsearch admin password)
-  replaces the two ad hoc ones. `tests/contract/test_privilege_matrix.py`
-  calls every tool that takes `space`, `source_space`, `target_spaces` or
-  `spaces`, plus `list_spaces` and `uninstall_package`, through the MCP tool
-  layer under three keys (`all` in 'default' only, `read` everywhere, no
-  Kibana privilege) and fails on a crash, masked text, a write tool
-  succeeding under the read-only key, a hidden space reported as missing, or
-  a key that is secretly the superuser test key.
-  `tests/unit/test_privilege_matrix_rows.py` fails when a row's arguments
-  stop before the space is read or before a request to Kibana.
+- **Every toolbox is replayed; the live model runs on demand** (D61,
+  superseding D42). `e2e_green` is `n/a` in `dod.config` again: `make
+  test-e2e` (Claude via `claude -p`) is run when a change touches tool names,
+  descriptions or schemas, and new live tasks go there only. It gains seven
+  tasks (`tests/_toolbox_tasks.py`, block "toolboxes" of
+  `scripts/experiment/CLAUDE_E2E.md`, not pre-registered: it was committed
+  with its runs' records): one for each toolbox no model had been
+  offered — cases, security-detections, observability, streams, fleet,
+  platform-health — and `delete_one_dashboard`, the first task at the
+  `destructive` tier (delete only the named one of two seeded dashboards, by
+  its id; run records now carry each call's input). The block's runs passed
+  35 of 35; they are the provenance of the replay transcripts, not a
+  pre-registered result. A passing run of each write-tier task is now a replay transcript
+  (`tests/e2e_replay/record_claude_turn.py`), so every gate run and CI replay
+  all ten toolboxes, scored with the live task's own ladder (the
+  platform-health read leaves no state, so its transcript pins the version
+  Kibana itself reports this run, `live_tokens`);
+  `tests/unit/test_replay_coverage.py` fails `unit_green` for a toolbox no
+  transcript reaches, or a stateless task whose transcript pins no live value.
+  A replay whose recorded call no longer matches the server (a renamed tool,
+  a tightened schema) now names the fix: restore the surface, or re-record
+  that transcript with the recorder its `recorded.by` names.
+  The `delete_one_dashboard` task (superuser key at `destructive` in the
+  default space) records the dashboards already on the stack; its cleanup
+  reinstalls the flights sample if the run deleted one and repairs a
+  pre-existing dashboard that lost panels or a deleted visualization,
+  raising with the ids and the fix if any is still missing. A live run
+  whose cleanup raised fails with that message (after the API key leak
+  check, which it never hides), and `SUMMARY.md` lists it under "Cleanup
+  failures" while the run's pass and validity stay as scored.
+- **The Docker image is replayed over HTTP** (D62): a new criterion,
+  `image_replay_green`, required locally and in CI's contract job, builds the
+  image and replays every transcript into its own container over streamable
+  HTTP with the key in an `Authorization: ApiKey` header and none in the
+  container (`scripts/checks/image-replay.sh`), and checks that a call
+  without the header, or with another scheme, is refused naming the fix even
+  when the container holds a `KIBANA_API_KEY`. The gate clears a shell
+  `KIBANA_MCP_SERVER_IMAGE` and refuses one in `.env.local`.
+- **The ephemeral tiers run on every supported Kibana line in CI** (D62):
+  `scripts/ephemeral_stack.sh` and `scripts/fleet_ephemeral.sh` honour
+  `ES_LOCAL_VERSION` like `scripts/stack.sh` (one helper,
+  `scripts/stack-version.sh`; sourcing the copied template had reset an
+  exported override to the pin), and integration.yml's streams and fleet
+  ephemeral jobs fan out over kibana-py's supported set.
+  The local gate stays on the newest line: outside CI a shell
+  `ES_LOCAL_VERSION` that differs from the `.env.ephemeral.example` pin is
+  NO-GO on `streams_ephemeral` and `fleet_ephemeral`, naming `unset
+  ES_LOCAL_VERSION`, and their GO lines name the line they ran; in CI a
+  matrix line outside `kibana.SUPPORTED_VERSIONS` is NO-GO on both, and
+  `scripts/stack-version.sh` accepts only three dot-separated numbers.
+- **Fleet with space awareness off is a gate tier** (D63): new required
+  criterion `fleet_unaware_ephemeral` and CI job `fleet-unaware-ephemeral`
+  (every supported line). `uninstall_package` refuses every call under Fleet
+  space awareness, which a fresh 9.5.4 stack has on, so its package-policy
+  listing, Fleet Server and monitoring guards and forced delete ran in no
+  live tier. `scripts/fleet_unaware_ephemeral.sh`
+  (`make fleet-unaware-ephemeral`) boots an isolated stack with
+  `--xpack.fleet.experimentalFeatures.useSpaceAwareness=false`
+  (`elastic-start-local/docker-compose.fleet-unaware.yml`), checks Fleet
+  reports no migration status, and runs the tests marked `fleet_unaware`;
+  those tests fail, never skip, on a stack in the other mode, on this tier
+  and on the contract tier alike (`tests/_fleet_awareness.py`). The
+  privilege matrix's uninstall row now requires the `default`-space key's
+  uninstall to succeed with awareness off, and a unit test pins the six cases
+  the tier runs. The three ephemeral harnesses, which share container names
+  and ports, now refuse a sibling's leaked stack naming its `make
+  …-ephemeral-clean` target (`scripts/ephemeral-siblings.sh`).
 
 ### Fixed
 
-- **The local DoD gate's ephemeral tiers stay on the newest line** (D62, H9
-  review): `streams_ephemeral` and `fleet_ephemeral` had run whatever
-  `ES_LOCAL_VERSION` the shell exported, since their scripts honour it, and
-  read GO with no version. Outside CI an override that differs from the
-  `.env.ephemeral.example` pin is now NO-GO on both, naming `unset
-  ES_LOCAL_VERSION`, and their GO lines name the line they ran. The
-  `delete_one_dashboard` live task (superuser key at `destructive` in the
-  default space) now records the dashboards already on the stack and its
-  cleanup reinstalls the flights sample if the run deleted one, raising with
-  the ids and the fix if any is still missing — and any live run whose
-  cleanup raised now fails with that message (after the API key leak check,
-  which it never hides) instead of keeping it only in `record.json`, and
-  `SUMMARY.md` lists it under "Cleanup failures" while the run's pass and
-  validity stay as scored (`CLAUDE_E2E.md` says so); the precision task's
-  cleanup also repairs a pre-existing dashboard that lost panels or a deleted
-  visualization (its server offers `delete_panel` and `delete_visualization`);
-  `scripts/stack-version.sh` accepts only three dot-separated numbers, and in
-  CI the gate's ephemeral tiers are NO-GO on a matrix line outside
-  `kibana.SUPPORTED_VERSIONS`; `image_replay_green` joins the
-  unit test that holds every seeded criterion to the version check; and the
-  "toolboxes" block of `CLAUDE_E2E.md` says it was committed with its
-  results, not before them.
 - **`update_output` keeps a remote Elasticsearch output's service token.**
   A rename (or any edit that leaves `type` as it is) sent the output's type
   back to Fleet, which then reset the output's `service_token` (a

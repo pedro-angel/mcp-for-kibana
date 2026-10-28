@@ -49,22 +49,19 @@ NO-GO (D56). Unit tests hold the docs to the registry: the tool counts in the
 prose, each `docs/tools.md` row's section and tier, and every cited test (D57).
 The contract and replay tiers scan every tool result for credentials: the
 seeded canaries (a Fleet output and proxy), the test key and secret-bearing
-keys (D59); the scan reaches only the tools those tiers call through a
-client, and no connector canary exists (Basic has no connector with a secret).
+keys (D59).
 The contract tier's read-tool sweep calls every read tool once through a
 client, and the ephemeral suites drive their destructive calls through one,
 confirm gates refused first; unit tests cap the model-facing surface
 (`docs/spec/surface-budget.toml`, raised only by a decision saying why) and
-require every id input to have a stated source tool (D60). Not yet run on
-9.4.7 locally (CI's other contract line runs the sweep).
+require every id-taking tool to have a stated source tool (D60).
 Every toolbox has a recorded real-model turn in the replay tier (a unit test
 fails a toolbox without one), and the gate replays them from the checkout, the
 wheel and the Docker image over HTTP with the key in the `Authorization`
 header (D61, D62); the live model runs on demand (`make test-e2e`, eleven
 tasks, one at the `destructive` tier; the seven of block "toolboxes" were
 committed with their runs, so not pre-registered). CI runs the ephemeral
-tiers on every supported line (D62, D63); none has been run on 9.4.7 locally,
-so CI's first 9.4.7 run of them is their first.
+tiers on every supported line (D62, D63).
 The flag only stops the stack; afterwards it stays stopped, so
 start and seed it again before the next live tier.
 
@@ -75,30 +72,39 @@ release claim, `make help` for the rest.
 
 As of this page:
 
-- gate: Fleet with space awareness OFF ran in no live tier — **DONE
-  2026-10-27** (D63). `uninstall_package`'s awareness-off path (package-policy
-  listing, Fleet Server and monitoring guards, forced delete) was checked
-  only against mocks, since every gate stack has awareness on. Kibana 9.5.4
-  boots with it off when Fleet's experimental feature `useSpaceAwareness` is
-  `false` (`elastic-start-local/docker-compose.fleet-unaware.yml`), so the new
-  `fleet_unaware_ephemeral` criterion and CI job run those tests on such a
-  stack, where they fail, never skip, if awareness is on. Not covered: a
-  deployment upgraded from 8.x that never ran the migration is the same
-  Fleet state (no migration status) but was not booted here (owner: no 8.19
-  upgrade path), and 9.4.7 has the same switch in its source
-  (`experimental_features.ts`, `settings.ts`) but runs this tier only in CI's
-  matrix, as the other ephemeral tiers do.
-- fix: `update_output` clears a `remote_elasticsearch` output's
-  `service_token` — **DONE 2026-10-26** (D59; found by H7's review fix). A
-  PUT that carries `type` made Fleet reset the output's `service_token`, and
-  the read-modify-write sent the stored `type` back, so a
-  rename of the canary output left Kibana holding `service_token: null`
-  (dev stack, 9.5.4). The gateway now sends the stored token back with the
-  unchanged `type` (kibana-py's `fields`); probed: a rename then keeps it.
-  Leaving `type` out kept it too but made a promotion take 68 s, past the
-  client's 10 s timeout (`fleet_ephemeral`'s `test_output_promotion`).
-  `test_update_output_preserves_the_canary_service_token`
-  (`tests/contract/test_secret_canaries.py`) holds it live.
+- gate: what the 2026-10 DoD hardening (D53–D63) left open — **open**.
+  - **Kibana 9.5.5 waits on kibana-py.** The gate certifies the newest line
+    kibana-py supports (D30, D53): kibana-py 0.6.0, the newest on PyPI
+    (checked 2026-10-28), lists 9.5.4 and 9.4.7. Moving the pin
+    (`elastic-start-local/.env.example`, `.env.ephemeral.example`) needs a kibana-py release that lists 9.5.5;
+    run records made at 9.5.5 (the savings study) are outside the supported
+    set until then.
+  - **The managed-policy guard of `uninstall_package` runs on fakes only**
+    (D63): `fleet_unaware_ephemeral` creates no managed agent policy, so
+    `test_uninstall_package_refuses_a_guarded_agent_policy_even_with_force`
+    is its only check; add a live case when a fix touches that branch.
+  - **The id-source check is per tool, not per input** (D60): a tool with
+    two id inputs passes with one edge named, the check reads top-level
+    parameter names only, and `mute_alert`'s `alert_id` has no listing tool.
+  - **Seven read tools return no rows on the seeded stack** (D60), so their
+    row shaping is checked on fakes only: `search_apm_annotations`,
+    `list_apm_sourcemaps` (no APM data), `find_timelines`,
+    `search_detection_alerts` (the sweep's rule is disabled),
+    `list_agent_tags` (tagging would edit the demo agents),
+    `list_fleet_server_hosts` and `list_agent_diagnostics` (none requested);
+    `list_uninstall_tokens` returns metadata only (D59).
+  - **Kibana 9.4.7 is covered by CI only.** The privilege matrix, the secret
+    canaries, the read sweep, the six new replay transcripts and the three
+    ephemeral tiers have run locally on 9.5.4 only; CI's contract and
+    ephemeral matrices run them on 9.4.7.
+  - **The secret scan sees only what a `Client` receives** (D59): tools the
+    contract and replay tiers call directly on the gateway are outside it,
+    and no connector canary exists (Basic has no connector type that takes a
+    secret).
+  - **Fleet awareness off is booted fresh, not upgraded** (D63): a
+    deployment upgraded from 8.x that never ran the space-awareness
+    migration is the same Fleet state, but the upgrade itself is not booted
+    (owner: no 8.19 upgrade path).
 - feat: `update_alert_rule` returns the rule's detail — **open (left open by
   D40)**. Its result is still the summary, so a model confirms an edit with a
   second call to `get_alert_rule`; returning `get_alert_rule`'s shape instead
