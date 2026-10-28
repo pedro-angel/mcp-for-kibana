@@ -32,14 +32,16 @@ implementation is **evidence, not authority** — read it last, if at all.
 1. **The behavior contracts and invariants** (this corpus).
 2. **The transcript-driven tiers**: `tests/e2e_replay/` and `tests/e2e/`
    exercise the server the way a deployment does — a real MCP client over
-   stdio, the server as a subprocess — so their *driving* half is
+   stdio with the server as a subprocess, and (`image_replay_green`, D62)
+   over streamable HTTP into the built Docker image — so their *driving* half is
    implementation-blind. Honesty note: their harnesses are not import-free
    — final-state assertions and fixtures import the gateway adapter — so
    they are portable with modest harness edits, not zero. The transcript
-   *format* is specified by its producer and consumer
-   (`tests/e2e_replay/record_model_turn.py` and
-   `tests/e2e_replay/test_replay.py`, whose docstrings are the schema);
-   treat those two files as spec the way the port file is.
+   *format* is specified by its producers and consumer
+   (`tests/e2e_replay/record_model_turn.py`,
+   `tests/e2e_replay/record_claude_turn.py`, which converts a live Claude
+   run, D61, and `tests/e2e_replay/test_replay.py`, whose docstrings are
+   the schema); treat those files as spec the way the port file is.
 3. **The implementation-coupled tiers**: `tests/unit/` and
    `tests/contract/` import the package's module layout — including a few
    private symbols (the env-key fallback, the dashboards pre-flight

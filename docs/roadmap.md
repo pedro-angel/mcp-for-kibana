@@ -21,7 +21,7 @@ under *Open work*; everything else still open is gated on infrastructure this
 project does not run, or on a decision that has not been taken. Subscription-gated
 work is not open work at all — it is out of scope (below).
 
-Seven test tiers back that claim: unit (fakes), contract (live stack), e2e-replay
+Eight test tiers back that claim: unit (fakes), contract (live stack), e2e-replay
 (recorded model turns for every toolbox through a real MCP client, from the
 checkout, the wheel and the Docker image over HTTP), two live-model tiers — e2e
 (Claude via `claude -p`, D38) and e2e-local (a local model in LM Studio) —
@@ -101,6 +101,9 @@ As of this page:
     contract and replay tiers call directly on the gateway are outside it,
     and no connector canary exists (Basic has no connector type that takes a
     secret).
+  - **The destructive tier is not replayed** (D61): the replay tier stays at
+    `write`, so `delete_one_dashboard`, the one task above `write`, runs only
+    in the on-demand `make test-e2e`.
   - **Fleet awareness off is booted fresh, not upgraded** (D63): a
     deployment upgraded from 8.x that never ran the space-awareness
     migration is the same Fleet state, but the upgrade itself is not booted

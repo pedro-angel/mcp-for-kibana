@@ -285,9 +285,10 @@ object's body.
   tier exercising `reassign_agent`/`upgrade_agent`/`unenroll_agent` and
   their bulk equivalents against real enrolled agents, on an isolated
   throwaway stack; also proves output-promotion auto-un-defaulting.
-- Not covered by the e2e-replay recorded-transcript tier
-  (`tests/e2e_replay/`): its four transcripts cover dashboards and
-  alerting only. `tests/unit/toolboxes/test_space_threading.py` excludes
+- e2e-replay (`tests/e2e_replay/`): `agent-policy-fleet.json` replays a
+  recorded Claude turn that creates and edits an agent policy, in
+  `e2e_replay_green`, `wheel_replay_green` and `image_replay_green` (D61,
+  D62). `tests/unit/toolboxes/test_space_threading.py` excludes
   fleet, consistent with "no space parameter" above.
 - `tests/unit/test_server_assembly.py` — the tier-visibility invariant for
   this toolbox specifically: the advertised tool set at read/write/

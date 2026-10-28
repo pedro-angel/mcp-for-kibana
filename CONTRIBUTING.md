@@ -136,7 +136,10 @@ make docs-serve  # live-reload preview
 ```
 
 Every change adds a `CHANGELOG.md` entry under `[Unreleased]` — the DoD gate
-requires one unconditionally (`changelog_entry = required` in `dod.config`).
+requires a new one whenever anything outside the exempt paths
+(`scripts/experiment/runs/`, `.claude/plans/`, `CHANGELOG.md` itself) changed
+since the merge-base with `origin/main` (`changelog_entry = required` in
+`dod.config`, D54; run `git fetch origin main` first).
 If your change alters the tool surface, also update `docs/tools.md` and the
 relevant narrative page.
 

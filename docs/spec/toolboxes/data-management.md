@@ -376,6 +376,7 @@ and docs/tools.md#saved-objects-exportimport-data-management.
   (and its gemma variant) pin `create_data_view`'s space echo through a real
   MCP client and server; `flights-dashboard.json` pins the data-view
   not-found guidance recovery as a real recorded model turn.
-- **DoD.** `unit_green`, `contract_green`, and `e2e_replay_green`
+- **DoD.** `unit_green`, `contract_green`, and the three replay criteria
+  (`e2e_replay_green`, `wheel_replay_green`, `image_replay_green`)
   (`dod.config`) cover this toolbox as part of the whole-server gate; no
   criterion is scoped to `data-management` alone.

@@ -125,9 +125,11 @@ Behavioral guarantees).
 - `tests/contract/test_gateway_contract.py` — `test_kibana_status_live`,
   `test_kibana_stats_live`, `test_task_manager_health_live` pin all three
   gateway methods against a real, seeded Kibana stack on each supported line (9.4.7 and 9.5.4).
-- No e2e-replay or live-model e2e transcript is pinned to this toolbox — it
-  has no error-guidance strings and no multi-step flow to
-  regression-protect at that tier; coverage is the unit and contract tiers
-  above, certified through the DoD gate's `unit_green` and `contract_green`
-  criteria (`dod.config`). No ephemeral-stack gate applies (unlike
+- e2e-replay: `kibana-status-platform-health.json` replays a recorded
+  Claude turn that reads Kibana's status; the transcript pins the version
+  Kibana reports on each run (`live_tokens`, D61), in `e2e_replay_green`,
+  `wheel_replay_green` and `image_replay_green` (D62). The live-model task
+  `kibana_status` runs on demand (`make test-e2e`). The unit and contract
+  tiers above are certified through `unit_green` and `contract_green`
+  (`dod.config`). No ephemeral-stack gate applies (unlike
   `streams_ephemeral` / `fleet_ephemeral`) since nothing here is destructive.

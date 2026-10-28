@@ -129,6 +129,8 @@ guidance, not a masking of the auth cause.
   asserting `total_comments` survives the update) and
   `::test_case_scoped_lifecycle_live` (a case created in a temporary
   non-default space is invisible to `list_cases` in the default space).
-- No e2e-replay transcript and no ephemeral destructive-tier harness cover
-  this toolbox; `delete_case`'s only live destructive proof is the contract
+- e2e-replay: `case-comment-cases.json` replays a recorded Claude turn
+  that creates a case and comments on it (D61), in the three replay
+  criteria (D62). No ephemeral destructive-tier harness covers this
+  toolbox; `delete_case`'s only live destructive proof is the contract
   test's teardown call.

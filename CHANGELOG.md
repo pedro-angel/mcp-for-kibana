@@ -251,7 +251,8 @@ version section.
 
 - **The Definition-of-Done gate is hardened** (D53–D63). A review of the
   gate found 18 ways it could read GO over a defect; the entries below close
-  them. Each check is a required criterion or runs inside one, and each was
+  them. Each check is a required criterion, runs inside one, or is part of
+  the gate itself (`tree_stable`), and each was
   shown to fail on a reproduced instance of its defect before it shipped.
 - **The DoD gate certifies only the newest supported Kibana version** (D53).
   Before `contract_green`, `e2e_replay_green`, `wheel_replay_green`,
@@ -262,7 +263,7 @@ version section.
   from `ES_LOCAL_VERSION=9.4.7 make test-contract` — is NO-GO on each of them,
   naming `scripts/stack.sh down && scripts/stack.sh up && scripts/stack.sh
   seed`; before, any seeded stack read GO. Each of their GO lines now names the
-  version (`GO    contract_green  (Kibana 9.5.4)`). `test_stack_pin.py` also
+  version (`GO    contract_green  (N passed / M collected; Kibana 9.5.4)`). `test_stack_pin.py` also
   checks `scripts/cloud-setup.sh`'s fallback version, and the study notes
   (`WRAP_UP.md`, `LOCAL_STUDY.md`) say the 9.5.5 study stack is outside the
   supported set.
@@ -271,7 +272,8 @@ version section.
   heading, which it always has, so it read GO on every tree. Now
   `scripts/checks/changelog-entry.sh` diffs the tree (untracked files included)
   against the merge-base with `origin/main` (fallback: the latest `v*` tag) and,
-  when anything outside `scripts/experiment/runs/` and `.claude/plans/`
+  when anything outside `scripts/experiment/runs/`, `.claude/plans/` and
+  `CHANGELOG.md` itself
   changed (`uv.lock` included), requires a new entry under `## [Unreleased]` —
   a reworded, re-spaced or moved line, an amended old heading or an empty
   sub-heading is not one; otherwise NO-GO naming the fix. Without a base, or
@@ -352,7 +354,7 @@ version section.
   `tests/unit/test_privilege_matrix_rows.py` fails when a row's arguments
   stop before the space is read or before a request to Kibana.
 - **No tool result carries a credential** (D59), inside `contract_green`
-  and both replay criteria. Every tool result the contract and replay tiers
+  and the three replay criteria (`image_replay_green` since D62). Every tool result the contract and replay tiers
   receive through a fastmcp `Client` is scanned (`tests/_secret_scan.py`)
   for the seeded secret canaries, the test key and secret-bearing keys with
   a value, and a hit fails the test naming the fix. `scripts/stack.sh seed`
@@ -451,7 +453,10 @@ version section.
   uninstall to succeed with awareness off, and a unit test pins the six cases
   the tier runs. The three ephemeral harnesses, which share container names
   and ports, now refuse a sibling's leaked stack naming its `make
-  …-ephemeral-clean` target (`scripts/ephemeral-siblings.sh`).
+  …-ephemeral-clean` target (`scripts/ephemeral-siblings.sh`). Like the other
+  two ephemeral criteria, it is NO-GO outside CI on a shell `ES_LOCAL_VERSION`
+  off the `.env.ephemeral.example` pin, naming `unset ES_LOCAL_VERSION`, and
+  its GO line names the line it ran.
 
 ### Fixed
 

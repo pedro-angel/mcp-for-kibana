@@ -204,7 +204,8 @@ at call time. Full per-tool arguments and return shapes:
   and its recorded response shape is replayed and asserted like every other pinned call.
 - **Docs drift guard** — `tests/unit/test_docs_tool_reference.py` asserts every one of these 14
   registered tool names appears in `docs/tools.md`.
-- **DoD gates** (`dod.config`) — `unit_green`, `contract_green`, `e2e_replay_green` all cover this
+- **DoD gates** (`dod.config`) — `unit_green`, `contract_green` and the three replay criteria
+  (`e2e_replay_green`, `wheel_replay_green`, `image_replay_green`) all cover this
   toolbox; no dedicated ephemeral-stack criterion — destructive paths (`delete_space`,
   `delete_role`, `overwrite_saved_objects_in_spaces`, `unshare_saved_objects_from_spaces`) are
   proven against uuid-suffixed, self-cleaned objects and spaces on the shared dev stack.

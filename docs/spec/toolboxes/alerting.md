@@ -355,7 +355,8 @@ docs/tools.md#alerting-toolbox.
   sub-statuses to the worst (and to `unknown` when absent),
   `list_alert_rules` paginating to exhaustion across pages, and
   `execute_connector` surfacing a non-`ok` `service_message`.
-- `tests/e2e/test_lmstudio_alerting_space.py` — live-model gate
+- `tests/e2e/test_lmstudio_alerting_space.py` — live-model tier (on demand,
+  `make test-e2e-local`; outside every gate)
   (Study L-alerting): a local model must create a space and an enabled
   `.es-query` rule inside it using only this toolbox plus `platform-admin`,
   scored against a frozen pass/fail ladder and swept afterward for

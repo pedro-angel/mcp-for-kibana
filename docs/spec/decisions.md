@@ -1454,7 +1454,7 @@ this ledger stands without them.
   origin/main`, else the latest `v*` tag — in the working tree, plus untracked
   files that are not ignored. If any of them is outside the exemption list
   (`scripts/experiment/runs/` run records, the working plans under
-  `.claude/plans/`; renames are off, so a file moved into an exempt path counts
+  `.claude/plans/`, `CHANGELOG.md` itself; renames are off, so a file moved into an exempt path counts
   at its old one), CHANGELOG.md must gain an entry under `## [Unreleased]`: more
   entry lines (non-blank, not a heading) there than at the base, at least one
   with text the base changelog does not hold — or a `## [x.y.z]` heading whose
@@ -1705,8 +1705,8 @@ this ledger stands without them.
   the lines).
 - **D59 (2026-10-26, probes on 9.5.4, Basic)** — No tool result carries a
   credential, checked across the contract and replay tiers (inside
-  `contract_green`, `e2e_replay_green` and `wheel_replay_green`; no new
-  criterion). An autouse `secret_scan` fixture in
+  `contract_green`, `e2e_replay_green` and `wheel_replay_green`, and
+  `image_replay_green` since D62; no new criterion). An autouse `secret_scan` fixture in
   `tests/contract/conftest.py` and `tests/e2e_replay/conftest.py` patches
   `fastmcp.Client.call_tool_mcp` (which `call_tool` uses) and scans every
   result, its text blocks and structured content, with
@@ -2170,6 +2170,11 @@ this ledger stands without them.
   local gate require the Claude run from 2026-10-17 until D61 took it out
   again (2026-10-27: `e2e_green = n/a` locally, `make test-e2e` on demand).
   `e2e_green = n/a` stands in every `.github/dod` config.
+
+- ~~D53's credentials for the version check ("the credentials the suites use:
+  shell env, else `elastic-start-local/.env.seed`")~~ — superseded by D56: a
+  shell value that differs from the seed is refused, so the check reads the
+  seed's.
 
 - ~~D42 (2026-10-17): the local `dod.config` requires `e2e_green` (a live
   Claude run in every gate run)~~ — superseded by D61: the live model runs on

@@ -90,7 +90,8 @@ after the gate clears the shell.
 
 Fleet space awareness has a tier per mode (D63): the contract tier runs the
 awareness-on branches on the seeded stack, and `fleet_unaware_ephemeral`
-(`scripts/fleet_unaware_ephemeral.sh`) boots an isolated 9.5.4 stack with
+(`scripts/fleet_unaware_ephemeral.sh`) boots an isolated stack at the
+`.env.ephemeral.example` pin (9.5.4; every supported line in CI) with
 `elastic-start-local/docker-compose.fleet-unaware.yml` and runs the tests
 marked `fleet_unaware`. A test that branches on the mode asks
 `tests/_fleet_awareness.py` first, so a stack in the other mode fails it
@@ -108,8 +109,8 @@ with `scripts/stack.sh up && scripts/stack.sh seed` before the next live tier.
   claim without `VERDICT: GO` at that exact tree; every change carries a
   CHANGELOG entry — `changelog_entry` (and a `checks.yml` step on PRs) requires
   a new entry under `## [Unreleased]` (a reworded, re-spaced or moved line is
-  not one) when anything outside `scripts/experiment/runs/` and
-  `.claude/plans/` changed since the merge-base with `origin/main` (run `git fetch origin main` first; D54).
+  not one) when anything outside `scripts/experiment/runs/`,
+  `.claude/plans/` and `CHANGELOG.md` itself changed since the merge-base with `origin/main` (run `git fetch origin main` first; D54).
 - **Never bypass hooks** (`--no-verify` is prohibited); commits are
   Conventional Commits with a provenance trailer (hooks enforce both).
 - **Additive is default-off**; error text must name the fix; specs are

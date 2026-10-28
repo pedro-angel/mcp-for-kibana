@@ -181,7 +181,9 @@ mode enables host/origin protection on loopback binds.
   in `/tmp/dod-<repo>/verdict.json`, and a "GO at `<sha>`" claim holds only when
   `git rev-parse <sha>^{tree}` equals the recorded tree id (D55). The suites
   run as declared: the gate clears the pytest and coverage variables that
-  reshape them, prints `N passed / M collected` on every suite line, and
+  reshape them and `KIBANA_MCP_SERVER_BIN`/`KIBANA_MCP_SERVER_IMAGE` (which
+  would replay another server), refuses `UV_*`, `PYTHON*`, `LD_*` and those
+  two names in `.env.local`, prints `N passed / M collected` on every suite line, and
   refuses shell Kibana credentials that differ from `.env.seed`, and server
   credentials in the shell or `.env.local` that the replayed server would read
   ahead of the seed (D56).
