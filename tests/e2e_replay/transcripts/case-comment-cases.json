@@ -1,0 +1,78 @@
+{
+ "recorded": {
+  "at": "2026-10-27",
+  "by": "tests/e2e_replay/record_claude_turn.py",
+  "model": "claude-haiku-5-5",
+  "runtime": "claude -p (Claude Code 2.1.311 (Claude Code)) -> uv run mcp-for-kibana (KIBANA_MCP_TIER=write, KIBANA_MCP_TOOLBOXES=cases)",
+  "stack": "elastic-start-local, Kibana 9.5.4",
+  "source": "scripts/experiment/runs/claude-e2e/counted-2026-10-27-toolboxes/20261027T054121Z-case_comment-1-49cdc3 (committed run record, git e9b0090)",
+  "note": "REAL model turn from a committed run record: call order and arguments are the model's own, observed_output the server's verbatim answer. Authored by construction: the needles (verified present in the recorded body), the bindings and the schema_rejected entry."
+ },
+ "task": "case_comment",
+ "toolboxes": "cases",
+ "prompt": "Using the kibana tools, open a new case titled 'E2E 15604e44 delayed flights' with the description 'Flights in the sample data are arriving late.', then add the comment 'Checked the flight delay dashboard.' to that case.",
+ "marker_token": "E2E 15604e44",
+ "hex_token": "15604e44",
+ "bindings": [
+  {
+   "value": "b23d385f-fc0f-47c1-a604-eda307404920",
+   "step": 0,
+   "path": [
+    "id"
+   ]
+  }
+ ],
+ "schema_rejected": {
+  "tool": "create_case",
+  "arguments": {
+   "description": "Flights in the sample data are arriving late."
+  },
+  "runtime_reason": "authored: step 0's recorded arguments with the required 'title' removed"
+ },
+ "steps": [
+  {
+   "tool": "create_case",
+   "arguments": {
+    "title": "E2E 15604e44 delayed flights",
+    "description": "Flights in the sample data are arriving late."
+   },
+   "observed_output": "{\"id\":\"b23d385f-fc0f-47c1-a604-eda307404920\",\"title\":\"E2E 15604e44 delayed flights\",\"status\":\"open\",\"severity\":\"low\",\"owner\":\"cases\",\"tags\":[],\"total_comments\":0}",
+   "expect": {
+    "is_error": false,
+    "contains": [
+     "E2E 15604e44 delayed flights",
+     "\"id\":",
+     "\"title\":",
+     "\"status\":",
+     "\"severity\":",
+     "\"owner\":",
+     "\"tags\":",
+     "\"total_comments\":"
+    ],
+    "gates": "step 0 of a passing case_comment run: it still succeeds and echoes what the model passed"
+   }
+  },
+  {
+   "tool": "add_case_comment",
+   "arguments": {
+    "case_id": "b23d385f-fc0f-47c1-a604-eda307404920",
+    "comment": "Checked the flight delay dashboard."
+   },
+   "observed_output": "{\"id\":\"b23d385f-fc0f-47c1-a604-eda307404920\",\"title\":\"E2E 15604e44 delayed flights\",\"status\":\"open\",\"severity\":\"low\",\"owner\":\"cases\",\"tags\":[],\"total_comments\":1}",
+   "expect": {
+    "is_error": false,
+    "contains": [
+     "b23d385f-fc0f-47c1-a604-eda307404920",
+     "\"id\":",
+     "\"title\":",
+     "\"status\":",
+     "\"severity\":",
+     "\"owner\":",
+     "\"tags\":",
+     "\"total_comments\":"
+    ],
+    "gates": "step 1 of a passing case_comment run: it still succeeds and echoes what the model passed"
+   }
+  }
+ ]
+}

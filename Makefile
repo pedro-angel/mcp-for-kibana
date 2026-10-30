@@ -58,7 +58,7 @@ test-contract-ci: ## Contract tests against an ALREADY-provisioned stack (no sta
 	uv run pytest -m contract -q
 
 .PHONY: test-e2e
-test-e2e: ## Live-model tier: Claude via `claude -p`, only this server's tools, runs the pre-registered tasks (needs Claude sign-in; model/runs/budget via CLAUDE_E2E_* — see docs/e2e-setup.md)
+test-e2e: ## Live-model tier: Claude via `claude -p`, only this server's tools, runs the tasks in scripts/experiment/CLAUDE_E2E.md (needs Claude sign-in; model/runs/budget via CLAUDE_E2E_* — see docs/e2e-setup.md)
 	scripts/stack.sh up && scripts/stack.sh seed && uv run pytest -m e2e_claude -q
 
 .PHONY: test-e2e-local
@@ -66,7 +66,7 @@ test-e2e-local: ## Live-model tier on a small local model in LM Studio (LMSTUDIO
 	scripts/stack.sh up && scripts/stack.sh seed && uv run pytest -m e2e -q
 
 .PHONY: test-e2e-replay
-test-e2e-replay: ## Replay a RECORDED real-model turn through a real MCP client (stack only — no LLM, so this one runs in CI)
+test-e2e-replay: ## Replay the RECORDED real-model turns (every toolbox) through a real MCP client (stack only — no LLM, so this one runs in CI)
 	scripts/stack.sh up && scripts/stack.sh seed && uv run pytest -m e2e_replay -q
 
 .PHONY: streams-ephemeral
@@ -84,6 +84,14 @@ fleet-ephemeral: ## Battle-test fleet agent-lifecycle tools on an isolated 2-age
 .PHONY: fleet-ephemeral-clean
 fleet-ephemeral-clean: ## Force-remove a leaked fleet-ephemeral stack (project mcp-for-kibana-fleet-ephemeral)
 	cd elastic-start-local && docker compose -p mcp-for-kibana-fleet-ephemeral down -v --remove-orphans || true
+
+.PHONY: fleet-unaware-ephemeral
+fleet-unaware-ephemeral: ## Certify uninstall_package's awareness-off guards on an isolated Fleet stack with space awareness OFF (up -> pytest -m fleet_unaware -> down); stop the dev stack first
+	scripts/fleet_unaware_ephemeral.sh
+
+.PHONY: fleet-unaware-ephemeral-clean
+fleet-unaware-ephemeral-clean: ## Force-remove a leaked fleet-unaware stack (project mcp-for-kibana-fleet-unaware)
+	cd elastic-start-local && docker compose -p mcp-for-kibana-fleet-unaware down -v --remove-orphans || true
 
 # --- Code quality ----------------------------------------------------------
 

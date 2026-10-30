@@ -8,10 +8,15 @@ and `isMissing` for an object the source space does not hold;
 from types import SimpleNamespace
 
 import pytest
-from kibana.exceptions import NotFoundError
+from kibana.exceptions import AuthorizationException, NotFoundError
 
 from kibana_mcp.adapters.kibana.gateway import KibanaPyGateway, is_space_pinned, pinned_space
-from kibana_mcp.core.errors import KibanaNotFound, KibanaRejected, KibanaSpaceNotFound
+from kibana_mcp.core.errors import (
+    KibanaAuthError,
+    KibanaNotFound,
+    KibanaRejected,
+    KibanaSpaceNotFound,
+)
 from tests.unit.adapters.test_kibana_gateway import FakeResponse, make_fake_client
 
 _SPACES = [{"id": "default", "name": "Default", "_reserved": True},
@@ -23,13 +28,26 @@ _DASH = {"type": "dashboard", "id": "dash-1"}
 class _Spaces:
     """Records every call; answers with the bodies it was given."""
 
-    def __init__(self, copy=None, refs=None, update=None, copy_error=None):
+    def __init__(self, copy=None, refs=None, update=None, copy_error=None, hidden=()):
         self.calls: list[tuple[str, dict]] = []
         self._copy, self._refs, self._update, self._copy_error = copy, refs, update, copy_error
+        # Spaces this key has no privilege in: get_all leaves them out and get
+        # answers 403, as Kibana 9.5.4 does (also for an id no space has).
+        self._hidden = frozenset(hidden)
 
     def get_all(self, **kw):
         self.calls.append(("get_all", kw))
-        return FakeResponse(_SPACES)
+        return FakeResponse([s for s in _SPACES if s["id"] not in self._hidden])
+
+    def get(self, **kw):
+        self.calls.append(("get", kw))
+        if kw["id"] in self._hidden:
+            raise AuthorizationException(
+                f"Unauthorized to get {kw['id']} space", SimpleNamespace(status=403), None)
+        for s in _SPACES:
+            if s["id"] == kw["id"]:
+                return FakeResponse(s)
+        raise NotFoundError("Not Found", SimpleNamespace(status=404), None)
 
     def copy_saved_objects(self, **kw):
         self.calls.append(("copy", kw))
@@ -178,9 +196,36 @@ def test_copy_refuses_a_target_space_that_does_not_exist_before_copying():
     spaces = _Spaces(copy=_COPIED)
     with pytest.raises(KibanaSpaceNotFound) as exc:
         _gw(spaces).copy_saved_objects_to_spaces([_DV], ["team-a", "nope", "gone"], True, False)
-    assert _names(spaces) == ["get_all"]  # nothing copied
+    assert _names(spaces) == ["get_all", "get", "get"]  # nothing copied
     assert "spaces 'nope', 'gone' not found" in exc.value.message
     assert "list_spaces" in exc.value.message and "create_space" in exc.value.message
+
+
+@pytest.mark.parametrize("method", ["copy", "share"])
+def test_a_target_space_the_key_cannot_read_is_a_privilege_problem_not_a_missing_space(method):
+    # privilege-2: get_all lists only what the key can view, so an existing
+    # space the key has no privilege in used to read as "not found, create it".
+    spaces = _Spaces(copy=_COPIED, hidden={"team-b"})
+    with pytest.raises(KibanaAuthError) as exc:
+        if method == "copy":
+            _gw(spaces).copy_saved_objects_to_spaces([_DV], ["team-a", "team-b"], True, False)
+        else:
+            _gw(spaces).share_saved_objects([_DV], ["team-a", "team-b"])
+    assert _names(spaces) == ["get_all", "get"]  # nothing written
+    text = exc.value.message
+    assert text.startswith("cannot write into space 'team-b': this API key has no privilege")
+    assert "create_space" not in text and "not found" not in text
+    assert "list_spaces shows the spaces this key can view" in text
+    assert "'Authorization: ApiKey <key>'" in text and "KIBANA_API_KEY" in text
+    assert text.endswith("nothing was changed")
+
+
+def test_hidden_and_missing_target_spaces_are_both_named():
+    spaces = _Spaces(copy=_COPIED, hidden={"team-b"})
+    with pytest.raises(KibanaAuthError) as exc:
+        _gw(spaces).copy_saved_objects_to_spaces([_DV], ["team-b", "nope"], True, False)
+    assert "no privilege in 'team-b'" in exc.value.message
+    assert "also space 'nope' not found" in exc.value.message
 
 
 @pytest.mark.parametrize(("space", "pinned", "target"), [
@@ -278,7 +323,7 @@ def test_share_refuses_a_space_that_does_not_exist():
     spaces = _Spaces()
     with pytest.raises(KibanaSpaceNotFound, match="space 'ghost' not found"):
         _gw(spaces).share_saved_objects([_DV], ["ghost"])
-    assert _names(spaces) == ["get_all"]
+    assert _names(spaces) == ["get_all", "get"]
 
 
 def test_share_refuses_a_missing_object_and_a_one_space_type_before_writing():

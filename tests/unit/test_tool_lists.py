@@ -7,6 +7,8 @@ so the published set is still listed ∩ tier (D34). When the list is set, one
 stderr line names every tool the published ones rely on that it left out.
 """
 
+import asyncio
+import json
 import logging
 import re
 from pathlib import Path
@@ -19,13 +21,16 @@ from kibana_mcp.server import _tool_catalog, build_server, load_tool_lists
 from kibana_mcp.tool_lists import (
     BUILTIN_LISTS,
     DEPENDENCIES,
+    ID_INPUTS_WITHOUT_SOURCE,
     ToolListError,
     available_lists,
     expand,
     load_list_file,
     missing_dependencies,
 )
+from kibana_mcp.toolboxes import TOOLBOXES
 from kibana_mcp.toolboxes.base import ToolboxDeps
+from tests._registry import PROFILES, TIERS, registry
 from tests.fakes import FakeGateway
 
 _TIER_RANK = {"read": 0, "write": 1, "destructive": 2}
@@ -108,6 +113,143 @@ def test_dependencies_point_at_the_same_or_a_lower_tier(catalog):
             assert _TIER_RANK[_tier(catalog, other)] <= _TIER_RANK[_tier(catalog, tool)], (
                 tool, other,
             )
+
+
+# --- completeness: every id a tool takes has a stated source ---------------------
+
+# An input the model must fill with an existing object's id (or an export handle).
+_ID_INPUT = re.compile(r"(^|_)ids?$|^handle$")
+_EDGE_FIX = (
+    "add a DEPENDENCIES edge to the tool that shows the id in src/kibana_mcp/tool_lists.py "
+    "and name that tool in the description (e.g. '`case_id` comes from list_cases.'), or, "
+    "when every id-like input is chosen by the caller or a documented constant, add the "
+    "tool to ID_INPUTS_WITHOUT_SOURCE there with a reason"
+)
+
+
+@pytest.fixture(scope="module")
+def listed():
+    """Every tool as the server lists it (all toolboxes at `destructive`): name -> Tool."""
+    async def _list():
+        settings = Settings(toolboxes=list(TOOLBOXES), tier=Tier.DESTRUCTIVE)
+        async with Client(build_server(settings, lambda space=None: FakeGateway())) as client:
+            return await client.list_tools()
+
+    return {t.name: t for t in asyncio.run(_list())}
+
+
+def _id_inputs(tool):
+    return sorted(p for p in tool.input_schema.get("properties", {}) if _ID_INPUT.search(p))
+
+
+def test_every_id_taking_tool_has_an_edge_or_an_exemption(listed):
+    unsourced = {
+        name: _id_inputs(tool) for name, tool in sorted(listed.items())
+        if _id_inputs(tool) and name not in DEPENDENCIES and name not in ID_INPUTS_WITHOUT_SOURCE
+    }
+    assert unsourced == {}, f"id-like inputs with no stated source: {unsourced}; {_EDGE_FIX}"
+
+
+def test_id_taking_tool_descriptions_name_a_source(listed):
+    unnamed = {
+        name: list(DEPENDENCIES[name]) for name, tool in sorted(listed.items())
+        if _id_inputs(tool) and name in DEPENDENCIES
+        and not any(re.search(rf"\b{dep}\b", tool.description or "") for dep in DEPENDENCIES[name])
+    }
+    assert unnamed == {}, (
+        f"descriptions that name none of their DEPENDENCIES edges: {unnamed}; add one short "
+        "sentence naming the source tool (e.g. '`case_id` comes from list_cases.') to the "
+        "tool's docstring in src/kibana_mcp/toolboxes/<toolbox>/toolbox.py"
+    )
+
+
+def test_id_exemptions_are_not_stale(listed):
+    stale = {
+        name: ("not a tool" if name not in listed else "has a DEPENDENCIES edge"
+               if name in DEPENDENCIES else "takes no id-like input")
+        for name in sorted(ID_INPUTS_WITHOUT_SOURCE)
+        if name not in listed or name in DEPENDENCIES or not _id_inputs(listed[name])
+    }
+    assert stale == {}, (
+        f"stale ID_INPUTS_WITHOUT_SOURCE entries: {stale}; remove them from "
+        "src/kibana_mcp/tool_lists.py"
+    )
+    assert all(reason.strip() for reason in ID_INPUTS_WITHOUT_SOURCE.values())
+
+
+# --- coherence of every toolbox selection and every shipped profile ---------------
+
+# Reviewed gaps: a toolbox at a tier that relies on another toolbox's tools.
+# Exact: a gap that closes (or a new one) fails until this table is updated.
+_DASHBOARDS_GAP = {
+    "describe_data_view": [
+        "add_panel", "create_dashboard", "create_visualization", "update_panel",
+        "update_visualization",
+    ],
+    "find_saved_objects": ["update_dashboard"],
+    "list_data_views": ["describe_data_view"],
+}
+_SYNTHETICS_GAP = {"list_agent_policies": ["create_synthetic_private_location"]}
+ACCEPTED_GAPS = {
+    # VizSpec fields and tag ids come from data-management
+    "dashboards@write": _DASHBOARDS_GAP,
+    "dashboards@destructive": _DASHBOARDS_GAP,
+    # a private location runs on a fleet agent policy
+    "observability@write": _SYNTHETICS_GAP,
+    "observability@destructive": _SYNTHETICS_GAP,
+    # the objects to copy or share come from data-management's find
+    "platform-admin@write": {
+        "find_saved_objects": ["copy_saved_objects_to_spaces", "share_saved_objects_to_spaces"],
+    },
+    "platform-admin@destructive": {
+        "find_saved_objects": [
+            "copy_saved_objects_to_spaces", "overwrite_saved_objects_in_spaces",
+            "share_saved_objects_to_spaces", "unshare_saved_objects_from_spaces",
+        ],
+    },
+}
+
+
+def _published(toolboxes, tier):
+    allowed = TIERS[: TIERS.index(tier) + 1]
+    return [t.name for t in registry().values() if t.toolbox in toolboxes and t.tier in allowed]
+
+
+def _profile_selections():
+    selections = {}
+    for path in sorted(PROFILES.glob("*.mcp.json")):
+        env = json.loads(path.read_text())["mcpServers"]["mcp-for-kibana"]["env"]
+        chosen = {"toolboxes": env["KIBANA_MCP_TOOLBOXES"]} if "KIBANA_MCP_TOOLBOXES" in env else {}
+        settings = Settings(**chosen, tier=Tier(env["KIBANA_MCP_TIER"]))
+        name = f"profile:{path.name.removesuffix('.mcp.json')}"
+        selections[name] = (tuple(settings.toolboxes), env["KIBANA_MCP_TIER"])
+    return selections
+
+
+_SELECTIONS = {
+    **{f"{box}@{tier}": ((box,), tier) for box in TOOLBOXES for tier in TIERS},
+    **_profile_selections(),
+}
+
+
+@pytest.mark.parametrize("selection", sorted(_SELECTIONS))
+def test_toolbox_and_profile_selections_are_coherent(selection):
+    toolboxes, tier = _SELECTIONS[selection]
+    missing = missing_dependencies(_published(toolboxes, tier))
+    accepted = ACCEPTED_GAPS.get(selection, {})
+    assert missing == accepted, (
+        f"{selection} publishes tools whose dependencies it leaves out: {missing} "
+        f"(accepted: {accepted}); move the edge's target into the same toolbox, drop the edge "
+        "in src/kibana_mcp/tool_lists.py if the description no longer sends the model there, "
+        "or (a reviewed cross-toolbox gap) set ACCEPTED_GAPS in tests/unit/test_tool_lists.py "
+        "to exactly what is missing"
+    )
+
+
+def test_accepted_gaps_name_real_selections():
+    assert sorted(set(ACCEPTED_GAPS) - set(_SELECTIONS)) == [], (
+        "ACCEPTED_GAPS keys must be '<toolbox>@<tier>' or 'profile:<name>' selections"
+    )
 
 
 # --- expansion ---------------------------------------------------------------

@@ -89,6 +89,7 @@ make test-e2e          # e2e — drives the server through Claude (`claude -p`; 
 make test-e2e-local    # e2e — the same server through a small local model in LM Studio
 make streams-ephemeral # destructive streams path on an isolated ephemeral stack
 make fleet-ephemeral   # fleet agent-lifecycle on an isolated 2-agent stack
+make fleet-unaware-ephemeral # uninstall_package's guards on Fleet with space awareness off (D63)
 ```
 
 The destructive `*-ephemeral` tiers spin up an isolated stack and tear it down,
@@ -103,6 +104,10 @@ data), then pass the version:
 make stack-destroy
 ES_LOCAL_VERSION=9.4.7 make test-contract
 ```
+
+`make dod` certifies only the pinned version: on a stack left on another line
+its seeded-stack criteria are NO-GO until you re-provision with
+`scripts/stack.sh down && scripts/stack.sh up && scripts/stack.sh seed` (D53).
 
 ## Code Quality & Gates
 
@@ -131,7 +136,10 @@ make docs-serve  # live-reload preview
 ```
 
 Every change adds a `CHANGELOG.md` entry under `[Unreleased]` — the DoD gate
-requires one unconditionally (`changelog_entry = required` in `dod.config`).
+requires a new one whenever anything outside the exempt paths
+(`scripts/experiment/runs/`, `.claude/plans/`, `CHANGELOG.md` itself) changed
+since the merge-base with `origin/main` (`changelog_entry = required` in
+`dod.config`, D54; run `git fetch origin main` first).
 If your change alters the tool surface, also update `docs/tools.md` and the
 relevant narrative page.
 

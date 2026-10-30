@@ -80,6 +80,28 @@ protected exactly like the flights transcript's dashboard guidance. Its
 `end_state: "alerting_rule"` selects the final assertion: the same
 `score_alerting_space_run` scorer the live alerting gate uses, so the two
 tiers cannot drift in what "built it correctly" means.
+
+The per-toolbox transcripts (D61) — `case-comment-cases.json`,
+`exception-item-security-detections.json`, `synthetic-param-observability.json`,
+`stream-fork-streams.json`, `agent-policy-fleet.json`,
+`kibana-status-platform-health.json` — are REAL Claude turns: passing runs
+of the tasks in tests/_toolbox_tasks.py (block "toolboxes", not
+pre-registered: its runs are these transcripts' provenance), converted by
+record_claude_turn.py (each `recorded.source` names the committed run record).
+They carry a `task` (the final assertion is that task's own ladder, state
+rungs only, and the cleanup is the task's), the `toolboxes` their server loads,
+`live_tokens` (a recorded value replaced by what Kibana itself reports this
+run — the platform-health read has no state rung, so its version needle is
+its assertion), a `hex_token` (the marker's 8 hex digits, substituted everywhere, so the
+marker, a stream name and a parameter key are fresh per run) and `bindings`:
+an id a later step passes, bound to the value THIS run's earlier step returned
+at the recorded JSON path. The list of transcripts and their server selection
+is tests/e2e_replay/_transcripts.py; tests/unit/test_replay_coverage.py holds
+it to the registry (every toolbox reached).
+
+KIBANA_MCP_SERVER_IMAGE (scripts/checks/image-replay.sh, D62) replays every
+transcript against the built Docker image over HTTP instead of stdio; see
+`mcp_client`.
 """
 
 import contextlib
@@ -90,7 +112,7 @@ from pathlib import Path
 
 import pytest
 from fastmcp import Client
-from fastmcp.client.transports import StdioTransport
+from fastmcp.client.transports import StdioTransport, StreamableHttpTransport
 from jsonschema import Draft7Validator
 
 from kibana_mcp.adapters.kibana.gateway import KibanaPyGateway
@@ -101,10 +123,12 @@ from tests._alerting_space_ladder import (
     sweep_default_space_marker_rules,
 )
 from tests._dashboard_assertion import assert_model_built_dashboard
+from tests._toolbox_tasks import TOOLBOX_TASKS
+from tests.e2e_replay._image import image_server
+from tests.e2e_replay._transcripts import TRANSCRIPT_DIR, TRANSCRIPTS
 
 pytestmark = pytest.mark.e2e_replay
 
-_TRANSCRIPT_DIR = Path(__file__).parent / "transcripts"
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 
 # The settings that pick the published tool surface (config.Settings:
@@ -112,34 +136,43 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 # it would silently replace the surface the transcript was recorded against
 # (KIBANA_MCP_TOOLS alone decides the surface, D34). Matched case-insensitively,
 # as pydantic-settings reads environment names.
+# The fix a surface mismatch names (house rule: error text names the fix),
+# per transcript: each is re-recorded by the script its `recorded.by` names.
+_RERECORD_BY = {
+    "tests/e2e_replay/record_claude_turn.py": (
+        "`make test-e2e`, then `uv run python tests/e2e_replay/record_claude_turn.py "
+        "<passing run dir>` (D61)"
+    ),
+    "tests/e2e_replay/record_model_turn.py": (
+        "`KIBANA_MCP_E2E_DUMP=<dir> uv run pytest tests/e2e/test_lmstudio_space.py "
+        "(or test_lmstudio_alerting_space.py) -m e2e`, then "
+        "`uv run python tests/e2e_replay/record_model_turn.py <dump>`"
+    ),
+    "tests/e2e_replay/record_space_transcript.py": (
+        "`uv run python tests/e2e_replay/record_space_transcript.py`"
+    ),
+}
+
+
+def _rerecord(transcript) -> str:
+    how = _RERECORD_BY.get(transcript["recorded"].get("by", ""))
+    if how is None:
+        # flights-dashboard.json: a 2026-08-09 LM Studio capture with no recorder
+        how = (
+            "no recorder exists for it: edit its recorded arguments to the new "
+            "surface by hand and say so in its `recorded` block, or remove it from "
+            "tests/e2e_replay/_transcripts.py if another transcript covers its toolbox"
+        )
+    return (
+        "If the change is unintended, restore the tool's name or schema; if it is "
+        f"deliberate, re-record this transcript: {how}."
+    )
+
+
 _SELECTION_VARS = frozenset({"KIBANA_MCP_TOOLBOXES", "KIBANA_MCP_TOOLS", "KIBANA_MCP_TIER"})
 
-# (transcript file, extra server env that transcript needs). The space
-# transcript's server must expose `create_space`, which lives in the
-# platform-admin toolbox — off in the default set, so without this env the
-# transcript's first step would fail on a tool that is not even registered.
-_TRANSCRIPTS = [
-    ("flights-dashboard.json", {}),
-    (
-        "space-dashboard.json",
-        {"KIBANA_MCP_TOOLBOXES": "dashboards,data-management,platform-admin"},
-    ),
-    (
-        # A REAL model turn (call order chosen by the model in a live run) —
-        # see the transcript's `recorded` block for provenance.
-        "space-dashboard-gemma-4-12b-qat.json",
-        {"KIBANA_MCP_TOOLBOXES": "dashboards,data-management,platform-admin"},
-    ),
-    (
-        # A REAL model turn on the alerting-space surface, including the
-        # REJECTED first create (error guidance certified) — see docstring.
-        "alerting-space-recovery-gemma-4-12b-qat.json",
-        {"KIBANA_MCP_TOOLBOXES": "alerting,platform-admin"},
-    ),
-]
 
-
-@pytest.fixture(scope="module", params=_TRANSCRIPTS, ids=lambda case: case[0])
+@pytest.fixture(scope="module", params=TRANSCRIPTS, ids=lambda case: case[0])
 def transcript(request) -> dict:
     """One recorded turn, plus the extra server env its replay needs.
 
@@ -148,7 +181,7 @@ def transcript(request) -> dict:
     parametrized fixture and still launch the server the case requires.
     """
     name, extra_env = request.param
-    return {**json.loads((_TRANSCRIPT_DIR / name).read_text()), "extra_env": extra_env}
+    return {**json.loads((TRANSCRIPT_DIR / name).read_text()), "extra_env": extra_env}
 
 
 @pytest.fixture
@@ -203,7 +236,24 @@ def mcp_client(transcript):
     (scripts/checks/wheel-replay.sh): the server is that executable, started
     from its own venv directory, so no file in the repo can stand in for one
     the package fails to ship.
+
+    KIBANA_MCP_SERVER_IMAGE swaps it for the built Docker image over HTTP
+    (scripts/checks/image-replay.sh, D62): one container per transcript with
+    the same toolboxes and tier, the seed's Kibana URL and no API key, and a
+    client that sends `Authorization: ApiKey <seed key>` on every request.
     """
+    image = os.environ.get("KIBANA_MCP_SERVER_IMAGE")
+    if image:
+        env = {
+            "KIBANA_URL": os.environ["KIBANA_URL"],
+            **transcript["extra_env"],
+            "KIBANA_MCP_TIER": "write",
+        }
+        with image_server(image, env) as url:
+            yield Client(StreamableHttpTransport(
+                url, headers={"Authorization": f"ApiKey {os.environ['KIBANA_TEST_API_KEY']}"}
+            ))
+        return
     server_bin = os.environ.get("KIBANA_MCP_SERVER_BIN")
     if server_bin:
         command, args = server_bin, []
@@ -212,7 +262,7 @@ def mcp_client(transcript):
         command, args = "uv", ["--directory", str(_REPO_ROOT), "run", "mcp-for-kibana"]
         cwd = None
     inherited = {k: v for k, v in os.environ.items() if k.upper() not in _SELECTION_VARS}
-    return Client(
+    yield Client(
         StdioTransport(
             command=command,
             args=args,
@@ -249,7 +299,16 @@ def _substitute(value, tokens: dict[str, str]):
 async def test_recorded_turn_replays_end_to_end(
     transcript, marker, run_space, gateway, mcp_client
 ):
-    tokens = {transcript["marker_token"]: marker}
+    task = TOOLBOX_TASKS.get(transcript.get("task", ""))
+    seeded = {}
+    if recorded_hex := transcript.get("hex_token"):
+        # A per-toolbox Claude turn (D61): the marker's 8 hex digits are the
+        # one fresh-per-run token, and every name the prompt derived from them
+        # (the marker, a stream, a parameter key) is fresh with them.
+        tokens = {recorded_hex: marker.rsplit(" ", 1)[-1]}
+        marker = _substitute(transcript["marker_token"], tokens)
+    else:
+        tokens = {transcript["marker_token"]: marker}
     recorded_space = transcript.get("space_token")
     if recorded_space:
         tokens[recorded_space] = run_space
@@ -258,7 +317,17 @@ async def test_recorded_turn_replays_end_to_end(
         # title yields a fresh id, so the recorded one is re-derived per run
         fresh_title = _substitute(transcript["dashboard_title"], tokens)
         tokens[recorded_id] = derive_dashboard_id(fresh_title)
+    for recorded, source in transcript.get("live_tokens", {}).items():
+        # A value read from Kibana's own /api/status over raw HTTP, not through
+        # the adapter the server under test uses (a read-only task leaves no
+        # state, so its needle is the assertion).
+        assert source == "kibana_version", f"unknown live_tokens source {source!r}"
+        tokens[recorded] = gateway._client.perform_request(
+            "GET", "/api/status", headers={"accept": "application/json"}
+        ).body["version"]["number"]
     try:
+        if task is not None:
+            seeded = task.seed(gateway, marker)
         async with mcp_client as client:
             tools = {t.name: t for t in await client.list_tools()}
 
@@ -269,7 +338,8 @@ async def test_recorded_turn_replays_end_to_end(
             missing = sorted(reached - tools.keys())
             assert not missing, (
                 f"tools the recorded turn used no longer exist: {missing}. "
-                "Renaming a tool breaks every prompt and transcript in the wild."
+                "Renaming a tool breaks every prompt and transcript in the wild. "
+                f"{_rerecord(transcript)}"
             )
 
             # (3) the arguments the recording runtime rejected must STILL be
@@ -298,7 +368,8 @@ async def test_recorded_turn_replays_end_to_end(
                 assert not errors, (
                     f"step {index} ({tool_name}): recorded arguments no "
                     f"longer satisfy the live inputSchema — "
-                    f"{[f'{list(e.path)}: {e.message}' for e in errors]}"
+                    f"{[f'{list(e.path)}: {e.message}' for e in errors]}. "
+                    f"{_rerecord(transcript)}"
                 )
 
                 result = await client.call_tool(tool_name, args, raise_on_error=False)
@@ -319,6 +390,24 @@ async def test_recorded_turn_replays_end_to_end(
                         f"gates: {expect['gates']}. Full body: {body[:800]}"
                     )
 
+                # A server-generated id a later step passes (a case, a policy, a
+                # parameter) is bound to the value THIS run's step returned, at
+                # the JSON path the recorded step returned it.
+                for binding in transcript.get("bindings", []):
+                    if binding["step"] != index:
+                        continue
+                    live = json.loads(body)
+                    try:
+                        for key in binding["path"]:
+                            live = live[key]
+                    except (KeyError, IndexError, TypeError):
+                        pytest.fail(
+                            f"step {index} ({tool_name}): the response no longer has "
+                            f"{binding['path']}, where the recorded turn's later step "
+                            f"took its id — the output shape changed; full body: {body[:800]}"
+                        )
+                    tokens[binding["value"]] = live
+
                 # Rule ids are server-generated UUIDs — unlike dashboard ids
                 # they cannot be re-derived, so the recorded id is bound to
                 # this run's id from the successful create's live response,
@@ -336,7 +425,15 @@ async def test_recorded_turn_replays_end_to_end(
         # is verified through a SPACE-SCOPED gateway, built here and not as a
         # fixture: connect(space=…) validates the space fail-closed, so a
         # fixture-time connect would raise before the create_space step ran.
-        if transcript.get("end_state") == "alerting_rule":
+        if task is not None:
+            # The live tier's own ladder (tests/_toolbox_tasks.py), state rungs
+            # only: the two tiers cannot drift in what "done" means.
+            ladder = task.score(gateway, marker, seeded, run=None)
+            assert ladder["passed"], (
+                f"the replayed {task.name} turn did not leave the state the task "
+                f"requires: first missing rung {ladder['first_missing']}; {ladder}"
+            )
+        elif transcript.get("end_state") == "alerting_rule":
             # Same scorer as the live alerting gate (test_lmstudio_alerting_space)
             # — the two tiers cannot drift in what "built it correctly" means.
             with KibanaPyGateway.connect(
@@ -365,11 +462,17 @@ async def test_recorded_turn_replays_end_to_end(
         else:
             assert_model_built_dashboard(gateway, marker)
     finally:
+        if task is not None:
+            # Marker-bound objects and the seed only: the marker is fresh.
+            task.cleanup(gateway, marker, seeded)
         # Unconditional sweep on every path: tools execute server-side, so a
         # dashboard can exist even when a later assertion fails. The marker is a
-        # fresh UUID, so this can only touch what this run created.
+        # fresh UUID, so this can only touch what this run created (the title
+        # filter: the search is a token query, and the per-toolbox markers
+        # share the 'E2E' token with live-tier runs).
         for dashboard in gateway.search_dashboards(marker):
-            gateway.delete_dashboard(dashboard.id)
+            if marker in dashboard.title:
+                gateway.delete_dashboard(dashboard.id)
         if transcript.get("end_state") == "alerting_rule":
             # Contamination path: a marker rule in the DEFAULT space (the
             # in-space rules die with the space below). Marker-scoped, so this

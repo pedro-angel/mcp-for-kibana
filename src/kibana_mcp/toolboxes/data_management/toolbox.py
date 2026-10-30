@@ -242,9 +242,9 @@ class DataManagementToolbox:
             on the server, and return a summary + an opaque `handle` — NOT the
             content — that you pass to import_saved_objects. Select EITHER `types`
             (e.g. ["dashboard"], or ["*"] for the whole space) OR `objects`
-            (a list of {"type":…, "id":…}), not both. This is a sensitive export
-            surface; what can actually be read is bounded by the API key's
-            privileges, not by this tool.
+            (a list of {"type":…, "id":…}, from find_saved_objects), not both.
+            This is a sensitive export surface; what can actually be read is
+            bounded by the API key's privileges, not by this tool.
 
             `space` targets a Kibana space by id (default: the default space)."""
             if bool(types) == bool(objects):
@@ -465,6 +465,7 @@ class DataManagementToolbox:
             space: Annotated[str, Field(pattern=SPACE_ID_PATTERN)] | None = None,
         ) -> dict[str, Any]:
             """Permanently delete a data view by id. This cannot be recovered.
+            `view_id` comes from list_data_views.
 
             `space` targets a Kibana space by id (default: the default space)."""
             with gateway_errors(), deps.gateway_factory(space) as gw:
@@ -499,7 +500,7 @@ class DataManagementToolbox:
             short_url_id: str,
             space: Annotated[str, Field(pattern=SPACE_ID_PATTERN)] | None = None,
         ) -> dict[str, Any]:
-            """Permanently delete a short URL by id.
+            """Permanently delete a short URL by id. `short_url_id` comes from resolve_short_url.
 
             `space` targets a Kibana space by id (default: the default space)."""
             with gateway_errors(), deps.gateway_factory(space) as gw:

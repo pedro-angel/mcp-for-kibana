@@ -1,0 +1,86 @@
+{
+ "recorded": {
+  "at": "2026-10-27",
+  "by": "tests/e2e_replay/record_claude_turn.py",
+  "model": "claude-haiku-5-5",
+  "runtime": "claude -p (Claude Code 2.1.311 (Claude Code)) -> uv run mcp-for-kibana (KIBANA_MCP_TIER=write, KIBANA_MCP_TOOLBOXES=security-detections)",
+  "stack": "elastic-start-local, Kibana 9.5.4",
+  "source": "scripts/experiment/runs/claude-e2e/counted-2026-10-27-toolboxes/20261027T054213Z-exception_item-1-fed9c8 (committed run record, git e9b0090)",
+  "note": "REAL model turn from a committed run record: call order and arguments are the model's own, observed_output the server's verbatim answer. Authored by construction: the needles (verified present in the recorded body), the bindings and the schema_rejected entry."
+ },
+ "task": "exception_item",
+ "toolboxes": "security-detections",
+ "prompt": "Using the kibana tools, create a detection exception list named 'E2E a2b3ff84 trusted hosts' with the description 'Hosts the e2e test trusts.', then add an exception item named 'E2E a2b3ff84 build server' with the description 'The CI build host.' to that list, matching when the field 'host.name' is 'build-01'.",
+ "marker_token": "E2E a2b3ff84",
+ "hex_token": "a2b3ff84",
+ "bindings": [
+  {
+   "value": "0e169776-bcab-4a8b-b549-252e9598d405",
+   "step": 0,
+   "path": [
+    "list_id"
+   ]
+  }
+ ],
+ "schema_rejected": {
+  "tool": "create_exception_list",
+  "arguments": {
+   "description": "Hosts the e2e test trusts."
+  },
+  "runtime_reason": "authored: step 0's recorded arguments with the required 'name' removed"
+ },
+ "steps": [
+  {
+   "tool": "create_exception_list",
+   "arguments": {
+    "name": "E2E a2b3ff84 trusted hosts",
+    "description": "Hosts the e2e test trusts."
+   },
+   "observed_output": "{\"id\":\"a50a6ce2-49d1-4e2b-be36-54d4d8fb6d08\",\"list_id\":\"0e169776-bcab-4a8b-b549-252e9598d405\",\"name\":\"E2E a2b3ff84 trusted hosts\",\"type\":\"detection\",\"namespace_type\":\"single\",\"tags\":[],\"os_types\":[],\"description\":\"Hosts the e2e test trusts.\"}",
+   "expect": {
+    "is_error": false,
+    "contains": [
+     "E2E a2b3ff84 trusted hosts",
+     "Hosts the e2e test trusts.",
+     "\"id\":",
+     "\"list_id\":",
+     "\"name\":",
+     "\"type\":",
+     "\"namespace_type\":",
+     "\"tags\":",
+     "\"os_types\":",
+     "\"description\":"
+    ],
+    "gates": "step 0 of a passing exception_item run: it still succeeds and echoes what the model passed"
+   }
+  },
+  {
+   "tool": "create_exception_item",
+   "arguments": {
+    "list_id": "0e169776-bcab-4a8b-b549-252e9598d405",
+    "name": "E2E a2b3ff84 build server",
+    "description": "The CI build host.",
+    "entries": [
+     {
+      "field": "host.name",
+      "operator": "included",
+      "value": "build-01"
+     }
+    ]
+   },
+   "observed_output": "{\"id\":\"6cdba150-185c-4ecf-b71c-124dad6f7ae3\",\"item_id\":\"7962c0d1-23ba-4c72-8efd-cc90b6e91606\",\"name\":\"E2E a2b3ff84 build server\",\"list_id\":\"0e169776-bcab-4a8b-b549-252e9598d405\"}",
+   "expect": {
+    "is_error": false,
+    "contains": [
+     "0e169776-bcab-4a8b-b549-252e9598d405",
+     "E2E a2b3ff84 build server",
+     "\"id\":",
+     "\"item_id\":",
+     "\"name\":",
+     "\"list_id\":"
+    ],
+    "gates": "step 1 of a passing exception_item run: it still succeeds and echoes what the model passed"
+   }
+  }
+ ]
+}

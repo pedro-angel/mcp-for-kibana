@@ -145,9 +145,10 @@ class PlatformAdminToolbox:
     def _register_read(self, mcp: FastMCP, deps: ToolboxDeps) -> None:
         @mcp.tool(tags={self.name, "read"}, annotations=_READ)
         def list_spaces() -> list[dict[str, Any]]:
-            """List all Kibana spaces: id, name, description, solution
-            ('es'/'classic'/'oblt'/'security'), the features disabled in the
-            space, and whether it is a reserved system space."""
+            """List the Kibana spaces this API key can view (Kibana leaves out
+            a space the key has no privilege in): id, name, description,
+            solution ('es'/'classic'/'oblt'/'security'), the features disabled
+            in the space, and whether it is a reserved system space."""
             with gateway_errors(), deps.gateway_factory() as gw:
                 return [asdict(s) for s in gw.list_spaces()]
 
@@ -219,7 +220,7 @@ class PlatformAdminToolbox:
             """Update a Kibana space's fields (read-modify-write — omitted fields are
             preserved). The `id` cannot change. `solution` reshapes the space's
             features. Pass `description=""` to clear the description. Returns the
-            updated space."""
+            updated space. `space_id` comes from list_spaces."""
             with gateway_errors(), deps.gateway_factory() as gw:
                 return asdict(
                     gw.update_space(
@@ -326,7 +327,7 @@ class PlatformAdminToolbox:
             """Delete a Kibana space. DESTRUCTIVE: permanently removes EVERY saved
             object in the space (dashboards, rules, data views, …). Requires
             force=True (the whole-space wipe is not reversible); refuses the default
-            + reserved system spaces regardless of force."""
+            + reserved system spaces regardless of force. `space_id` comes from list_spaces."""
             with gateway_errors(), deps.gateway_factory() as gw:
                 gw.delete_space(space_id, force)
             return {"deleted": True, "space_id": space_id}

@@ -239,8 +239,15 @@ an input that only B shows the model — an index or field name, the current
 state an in-place edit merges into, an export handle, or an existing
 object's id that A's not-found error tells the model to look up with B. An
 edge always points at a tool of the same or a lower tier, so the warning's
-fix is always "list it". A unit test checks that every name in the map is a
-real tool.
+fix is always "list it". Unit tests check that every name in the map is a
+real tool, that every tool whose inputs include an id-named parameter (`id`,
+`ids`, `*_id`, `*_ids`, `handle`) has an edge and names its source in its
+description (or is in `ID_INPUTS_WITHOUT_SOURCE` beside the map, when every
+such input is chosen by the caller or is a constant the description
+documents), and that each toolbox at each tier and each shipped profile
+leaves nothing out but a short reviewed list of cross-toolbox gaps (for
+example, the dashboards toolbox relies on data-management's
+`describe_data_view`).
 
 ## Server instructions
 

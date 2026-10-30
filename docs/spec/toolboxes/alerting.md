@@ -37,7 +37,7 @@ docs/tools.md#alerting-toolbox.
 
 ## Behavioral guarantees
 
-- **Space targeting follows the shared 86-tool contract**
+- **Space targeting follows the shared 92-tool contract**
   (docs/tools.md#space-targeting): optional `space` on every tool; omitted
   means the default space, byte-identical to before the parameter existed;
   a nonexistent `space` fails closed before any other work; every
@@ -338,7 +338,7 @@ docs/tools.md#alerting-toolbox.
   distinct destructive/non-idempotent/open-world triple; space threading
   and echo for a representative call; the no-`space` call keeping the
   pre-space result shape byte-identical.
-- `tests/unit/toolboxes/test_space_threading.py` — the shared 86-tool space
+- `tests/unit/toolboxes/test_space_threading.py` — the shared 92-tool space
   contract (factory threading, schema shape, echo-only-when-set, scoped
   not-found suffix) parametrized over all 22 alerting tools alongside the
   other space-aware toolboxes.
@@ -355,7 +355,8 @@ docs/tools.md#alerting-toolbox.
   sub-statuses to the worst (and to `unknown` when absent),
   `list_alert_rules` paginating to exhaustion across pages, and
   `execute_connector` surfacing a non-`ok` `service_message`.
-- `tests/e2e/test_lmstudio_alerting_space.py` — live-model gate
+- `tests/e2e/test_lmstudio_alerting_space.py` — live-model tier (on demand,
+  `make test-e2e-local`; outside every gate)
   (Study L-alerting): a local model must create a space and an enabled
   `.es-query` rule inside it using only this toolbox plus `platform-admin`,
   scored against a frozen pass/fail ladder and swept afterward for

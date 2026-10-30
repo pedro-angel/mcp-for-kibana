@@ -247,8 +247,248 @@ version section.
   [docs/e2e-setup.md](docs/e2e-setup.md#exporting-the-servers-spans-from-the-claude-tier-default-off);
   decision D44.
 
+### Changed
+
+- **The Definition-of-Done gate is hardened** (D53–D63). A review of the
+  gate found 18 ways it could read GO over a defect; the entries below close
+  them. Each check is a required criterion, runs inside one, or is part of
+  the gate itself (`tree_stable`), and each was
+  shown to fail on a reproduced instance of its defect before it shipped.
+- **The DoD gate certifies only the newest supported Kibana version** (D53).
+  Before `contract_green`, `e2e_replay_green`, `wheel_replay_green`,
+  `image_replay_green` (D62) and `e2e_green` it reads the running Kibana's
+  version from `/api/status` with the seed key and requires the `ES_LOCAL_VERSION` pin in
+  `elastic-start-local/.env.example` (9.5.4; in CI, the contract matrix's
+  version). A stack on any other line — a study's 9.5.5, or 9.4.7 left over
+  from `ES_LOCAL_VERSION=9.4.7 make test-contract` — is NO-GO on each of them,
+  naming `scripts/stack.sh down && scripts/stack.sh up && scripts/stack.sh
+  seed`; before, any seeded stack read GO. Each of their GO lines now names the
+  version (`GO    contract_green  (N passed / M collected; Kibana 9.5.4)`). `test_stack_pin.py` also
+  checks `scripts/cloud-setup.sh`'s fallback version, and the study notes
+  (`WRAP_UP.md`, `LOCAL_STUDY.md`) say the 9.5.5 study stack is outside the
+  supported set.
+- **The DoD's `changelog_entry` checks that this change added an entry**
+  (D54). It used to check only that CHANGELOG.md had a `## [Unreleased]`
+  heading, which it always has, so it read GO on every tree. Now
+  `scripts/checks/changelog-entry.sh` diffs the tree (untracked files included)
+  against the merge-base with `origin/main` (fallback: the latest `v*` tag) and,
+  when anything outside `scripts/experiment/runs/`, `.claude/plans/` and
+  `CHANGELOG.md` itself
+  changed (`uv.lock` included), requires a new entry under `## [Unreleased]` —
+  a reworded, re-spaced or moved line, an amended old heading or an empty
+  sub-heading is not one; otherwise NO-GO naming the fix. Without a base, or
+  when git fails, it fails closed naming `git fetch origin main`. `checks.yml` runs the same script on every non-Dependabot PR.
+- **The DoD verdict is bound to a tree** (D55). The gate's header and its
+  `VERDICT:` line now name HEAD, the content tree id of the working tree
+  (uncommitted and untracked files included, computed in a temporary index so
+  the real one is untouched; racily clean edits and files marked
+  skip-worktree or assume-unchanged included; an assume-unchanged file deleted
+  from disk counts as deleted, an absent skip-worktree entry counts as
+  deleted unless `core.sparseCheckout` is on, and paths outside the sparse
+  cone are included; a submodule counts by its checked-out commit) and `clean` or `dirty`. A tree that changed while
+  the criteria ran — an edit saved mid-gate, a `hygiene_hooks` fixer rewriting
+  a file — is NO-GO `tree_stable`, naming the fix; before, the gate printed one
+  GO over criteria that had certified two trees. `/tmp/dod-<repo>/` is cleared
+  at the start of each run, so no earlier log sits beside the new ones, and
+  ends with `verdict.json` (HEAD, tree id at start and end, dirty, config and
+  its sha256, every criterion's result, Kibana version, Claude model,
+  timestamps). A "GO at `<sha>`" claim is checked with `git rev-parse
+  <sha>^{tree}` against the recorded tree id (AGENTS.md).
+- **The DoD suites run as declared** (D56). The gate now clears
+  `PYTEST_ADDOPTS`, `PYTEST_PLUGINS`, `PYTEST_DEBUG`,
+  `PYTEST_DISABLE_PLUGIN_AUTOLOAD` and `COVERAGE_RCFILE` along with `MAKEFLAGS`
+  and names the ones it cleared in its header; before, a leftover
+  `PYTEST_ADDOPTS='-k test_stack_pin --no-cov'` ran 3 unit tests with no
+  coverage floor and read `GO unit_green`. Every suite line shows `N passed /
+  M collected` (deselected tests counted in M). A shell `KIBANA_URL` or
+  `KIBANA_TEST_API_KEY` that differs from `elastic-start-local/.env.seed` is
+  now NO-GO on the seeded-stack criteria naming `unset KIBANA_URL
+  KIBANA_TEST_API_KEY`; before, the suites certified (and mutated) whatever
+  Kibana the shell pointed at, with only a warning in a log. Both names
+  count in any letter case and may not be set in `.env.local` in any case (a
+  lowercase `kibana_url` beside the seed's `KIBANA_URL` sent the seed key to
+  another Kibana). A
+  `KIBANA_API_KEY`, `KIBANA_PUBLIC_URL` or `KIBANA_MCP_PUBLIC_KIBANA_URL` in the
+  shell or `.env.local`, in any letter case, is refused the same way (the
+  replayed server read `KIBANA_API_KEY` ahead of the seed's key; `Settings`
+  reads names case-insensitively, so `kibana_public_url` re-linked it too), the gate also clears `KIBANA_MCP_SERVER_BIN` (a
+  leftover one replayed an installed server instead of the checkout), a
+  `UV_*`, `PYTHON*`, `LD_*` or `KIBANA_MCP_SERVER_BIN` line in `.env.local` is refused
+  (merged back in after the clearing, a `UV_ENV_FILE` there loaded another key
+  into the replayed server), and the
+  suites' shadowing warning no longer prints the shell value. AGENTS.md and the
+  gate header now say that `KIBANA_MCP_DOD_CYCLE_STACK=1` only stops the dev
+  stack between the halves, never starts or restarts it, and leaves it stopped.
+- **The docs are held to the registry** (D57), inside `unit_green`.
+  `tests/unit/test_docs_counts.py` computes the tool counts from the registry
+  and fails on any "N tools", "N-tool", "(R / W / D)", "N read/write/destructive"
+  or "N edges from M tools" (also when wrapped across a line break, a
+  Markdown hard break, trailing spaces or a backslash, included) in README,
+  `profiles/README.md`, `docs/` or the specs (not `decisions.md`, which records
+  past figures) that the registry does not give in that place (a toolbox's
+  spec may state only its own figures, the total and the space contract),
+  naming the file, the line and each figure the registry gives there with what
+  it counts; past figures sit in its `HISTORICAL` table, each exempting only
+  its own figure. `test_docs_tool_reference.py`
+  now requires one row per tool in its own toolbox's table with the registry's
+  tier, the dashboards annotation table to match the real hints, and each
+  "N reads + M writes" sentence to match; before, it only checked that each
+  name appeared somewhere on the page served to models as `docs://tools`.
+  `tests/unit/test_docs_test_citations.py` requires every test the docs cite
+  to exist. Fixed what they found: the shared space contract is 92 tools, not
+  86, in the alerting, cases and data-management specs; data-management's
+  unit test pins 17 tools, not 11; platform-health.md cites
+  `test_read_only_explorer_profile_is_fourteen_read_tools` (renamed). design.md
+  now says `docs://tools` is deliberately not tier-gated.
+- **Privilege-dependent tools run under restricted keys** (D58), inside
+  `contract_green`. One shared `restricted_key` fixture
+  (`tests/contract/conftest.py`: a throwaway role, user and the API key that
+  user mints, all removed afterwards; no Elasticsearch admin password)
+  replaces the two ad hoc ones. `tests/contract/test_privilege_matrix.py`
+  calls every tool that takes `space`, `source_space`, `target_spaces` or
+  `spaces`, plus `list_spaces` and `uninstall_package`, through the MCP tool
+  layer under three keys (`all` in 'default' only, `read` everywhere, no
+  Kibana privilege) and fails on a crash, masked text, a write tool
+  succeeding under the read-only key, a hidden space reported as missing, or
+  a key that is secretly the superuser test key.
+  `tests/unit/test_privilege_matrix_rows.py` fails when a row's arguments
+  stop before the space is read or before a request to Kibana.
+- **No tool result carries a credential** (D59), inside `contract_green`
+  and the three replay criteria (`image_replay_green` since D62). Every tool result the contract and replay tiers
+  receive through a fastmcp `Client` is scanned (`tests/_secret_scan.py`)
+  for the seeded secret canaries, the test key and secret-bearing keys with
+  a value, and a hit fails the test naming the fix. `scripts/stack.sh seed`
+  now also creates the canaries from `scripts/canaries/*.json`: a Fleet
+  output with a dummy `service_token` and `config_yaml` password, and a
+  Fleet proxy with a dummy `certificate_key` and proxy header.
+  `tests/contract/test_secret_canaries.py` runs the read tools that reach
+  them at the `read` tier, the Fleet tools that read credentials
+  (`list_enrollment_keys`, `get_enrollment_key`) and `update_output` on the
+  canary output, which must keep the output's `service_token`. The seed's canary loop takes
+  `<canary>:<Kibana API path>` entries for APIs that take the `id` in the
+  POST body and return the secret on GET; its FAIL text names the path.
+- **Every read tool runs through the tool layer against Kibana; the surface
+  has a budget; every id has a source** (D60), inside `unit_green`,
+  `contract_green` and the two ephemeral criteria. A contract read-tool sweep
+  (`tests/contract/test_read_tool_sweep.py`) calls each of the 74 read tools
+  once through a fastmcp `Client` on the full server and requires no
+  `isError`, structured content (checked against the output schema, which
+  for most read tools only says "an object") and, for the list tools the
+  stack or the sweep fills, rows; its throwaway objects are created and
+  deleted through the write tools, and a killed run's are removed by the
+  next. The
+  streams and fleet ephemeral suites call the tools through a `Client`,
+  each confirm gate refused first. `docs/spec/surface-budget.toml` caps the
+  default selection, the profiles, each toolbox and each tool (today's values
+  plus 5 %); `tests/unit/test_surface_budget.py` fails a surface over its cap
+  and a cap raised without a new decision that states the numbers and why.
+  Every tool with an id-named input now has a dependency edge (46 added: 125
+  edges from 109 tools) or a reasoned exemption, and its description names
+  where the id comes from (68 descriptions gained one sentence or clause, e.g. "`case_id` comes
+  from list_cases."); unit tests hold both and run the coherence check over
+  every toolbox, tier and profile.
+- **Every toolbox is replayed; the live model runs on demand** (D61,
+  superseding D42). `e2e_green` is `n/a` in `dod.config` again: `make
+  test-e2e` (Claude via `claude -p`) is run when a change touches tool names,
+  descriptions or schemas, and new live tasks go there only. It gains seven
+  tasks (`tests/_toolbox_tasks.py`, block "toolboxes" of
+  `scripts/experiment/CLAUDE_E2E.md`, not pre-registered: it was committed
+  with its runs' records): one for each toolbox no model had been
+  offered — cases, security-detections, observability, streams, fleet,
+  platform-health — and `delete_one_dashboard`, the first task at the
+  `destructive` tier (delete only the named one of two seeded dashboards, by
+  its id; run records now carry each call's input). The block's runs passed
+  35 of 35; they are the provenance of the replay transcripts, not a
+  pre-registered result. A passing run of each write-tier task is now a replay transcript
+  (`tests/e2e_replay/record_claude_turn.py`), so every gate run and CI replay
+  all ten toolboxes, scored with the live task's own ladder (the
+  platform-health read leaves no state, so its transcript pins the version
+  Kibana itself reports this run, `live_tokens`);
+  `tests/unit/test_replay_coverage.py` fails `unit_green` for a toolbox no
+  transcript reaches, or a stateless task whose transcript pins no live value.
+  A replay whose recorded call no longer matches the server (a renamed tool,
+  a tightened schema) now names the fix: restore the surface, or re-record
+  that transcript with the recorder its `recorded.by` names.
+  The `delete_one_dashboard` task (superuser key at `destructive` in the
+  default space) records the dashboards already on the stack; its cleanup
+  reinstalls the flights sample if the run deleted one and repairs a
+  pre-existing dashboard that lost panels or a deleted visualization,
+  raising with the ids and the fix if any is still missing. A live run
+  whose cleanup raised fails with that message (after the API key leak
+  check, which it never hides), and `SUMMARY.md` lists it under "Cleanup
+  failures" while the run's pass and validity stay as scored.
+- **The Docker image is replayed over HTTP** (D62): a new criterion,
+  `image_replay_green`, required locally and in CI's contract job, builds the
+  image and replays every transcript into its own container over streamable
+  HTTP with the key in an `Authorization: ApiKey` header and none in the
+  container (`scripts/checks/image-replay.sh`), and checks that a call
+  without the header, or with another scheme, is refused naming the fix even
+  when the container holds a `KIBANA_API_KEY`. The gate clears a shell
+  `KIBANA_MCP_SERVER_IMAGE` and refuses one in `.env.local`.
+- **The ephemeral tiers run on every supported Kibana line in CI** (D62):
+  `scripts/ephemeral_stack.sh` and `scripts/fleet_ephemeral.sh` honour
+  `ES_LOCAL_VERSION` like `scripts/stack.sh` (one helper,
+  `scripts/stack-version.sh`; sourcing the copied template had reset an
+  exported override to the pin), and integration.yml's streams and fleet
+  ephemeral jobs fan out over kibana-py's supported set.
+  The local gate stays on the newest line: outside CI a shell
+  `ES_LOCAL_VERSION` that differs from the `.env.ephemeral.example` pin is
+  NO-GO on `streams_ephemeral` and `fleet_ephemeral`, naming `unset
+  ES_LOCAL_VERSION`, and their GO lines name the line they ran; in CI a
+  matrix line outside `kibana.SUPPORTED_VERSIONS` is NO-GO on both, and
+  `scripts/stack-version.sh` accepts only three dot-separated numbers.
+- **Fleet with space awareness off is a gate tier** (D63): new required
+  criterion `fleet_unaware_ephemeral` and CI job `fleet-unaware-ephemeral`
+  (every supported line). `uninstall_package` refuses every call under Fleet
+  space awareness, which a fresh 9.5.4 stack has on, so its package-policy
+  listing, Fleet Server and monitoring guards and forced delete ran in no
+  live tier. `scripts/fleet_unaware_ephemeral.sh`
+  (`make fleet-unaware-ephemeral`) boots an isolated stack with
+  `--xpack.fleet.experimentalFeatures.useSpaceAwareness=false`
+  (`elastic-start-local/docker-compose.fleet-unaware.yml`), checks Fleet
+  reports no migration status, and runs the tests marked `fleet_unaware`;
+  those tests fail, never skip, on a stack in the other mode, on this tier
+  and on the contract tier alike (`tests/_fleet_awareness.py`). The
+  privilege matrix's uninstall row now requires the `default`-space key's
+  uninstall to succeed with awareness off, and a unit test pins the six cases
+  the tier runs. The three ephemeral harnesses, which share container names
+  and ports, now refuse a sibling's leaked stack naming its `make
+  …-ephemeral-clean` target (`scripts/ephemeral-siblings.sh`). Like the other
+  two ephemeral criteria, it is NO-GO outside CI on a shell `ES_LOCAL_VERSION`
+  off the `.env.ephemeral.example` pin, naming `unset ES_LOCAL_VERSION`, and
+  its GO line names the line it ran.
+
 ### Fixed
 
+- **`update_output` keeps a remote Elasticsearch output's service token.**
+  A rename (or any edit that leaves `type` as it is) sent the output's type
+  back to Fleet, which then reset the output's `service_token` (a
+  `remote_elasticsearch` output's credential, missing from the update's
+  body). The stored token now goes back with an unchanged type, and the tool's
+  description says a type change resets some fields (D59).
+- **A space the API key cannot see is no longer reported as missing.** Copy,
+  overwrite and share into an existing space the key has no privilege in
+  said "space not found … create the space with create_space first"; Kibana's
+  space listing leaves such a space out and answers 403 for it. They now
+  refuse it as the key's missing privilege, naming `list_spaces` (the spaces
+  this key can view) and a key whose role grants that space, sent as
+  `Authorization: ApiKey <key>` or `KIBANA_API_KEY`; a space that really does
+  not exist is still named as missing. The same fix now follows the 403 that
+  `space`/`source_space` validation raises, every other 401/403 from Kibana
+  names what to do, and `list_spaces` says it lists the spaces this key can
+  view.
+- **`create_value_list` and `create_value_list_item` name the missing
+  privilege.** For a key without the lists privilege Kibana answers the
+  lists index status with a bare 500, which reached the caller as "Kibana
+  returned an unexpected error"; the tools now report Kibana's 403 naming
+  `[lists-all]`.
+
+- **A lowercase `kibana_url` in the shell no longer fails the unit tests.**
+  `Settings` reads env names in any letter case, but the unit tests cleared
+  only the uppercase ones, so a shell `kibana_url` or `kibana_api_key` failed
+  5 of them and made `unit_green` NO-GO (never a false GO). An autouse
+  fixture in `tests/unit/conftest.py` now drops every `KIBANA*` name not
+  spelled in ASCII uppercase.
 - **OpenTelemetry export no longer loses the last spans of a stdio session.**
   The server now exports 500 ms after a span ends instead of the SDK's 5 s
   (`OTEL_BSP_SCHEDULE_DELAY` still wins), and flushes its queue on SIGTERM as
@@ -268,6 +508,12 @@ version section.
   `scripts/stack.sh` decides); the Dockerfile's sync step reads it from
   `/run/secrets` and no image layer keeps it. Elsewhere the build is
   unchanged.
+- **A resumed Claude Code cloud session starts Docker again.** The session
+  hook removed the snapshot's stale `/var/run/docker.pid` but not the
+  containerd pidfile beside it, so when a reused PID sat behind it dockerd
+  failed with "failed to start containerd: ... process with PID N is still
+  running" and every stack command failed. The hook now removes both when no
+  dockerd runs.
 
 ### Security
 
@@ -275,6 +521,11 @@ version section.
   aiohttp 3.14.5, certifi 2026.10.23, fastmcp 4.1.3, filelock 4.2.4 and
   virtualenv 21.14.13 (with yarl, packaging and openapi-pydantic as resolved).
   `make check`'s audit step fails without them.
+- Locked transitive dependencies moved past nine advisories `pip-audit`
+  reported on 2026-10-27: authlib 1.9.1 (from fastmcp; CVE-2026-96760,
+  CVE-2026-114614 to CVE-2026-114618 and CVE-2026-114620), dnspython 2.9.0
+  (from email-validator; CVE-2026-114605) and msgpack 1.2.4 (from pip-audit's
+  cache; CVE-2026-114613).
 
 ## [0.4.0] - 2026-10-17
 

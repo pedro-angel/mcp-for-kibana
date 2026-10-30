@@ -140,6 +140,7 @@ class DashboardsToolbox:
             space: Annotated[str, Field(pattern=SPACE_ID_PATTERN)] | None = None,
         ) -> dict[str, Any]:
             """Get a dashboard summary: title, description, and its panels.
+            `dashboard_id` comes from search_dashboards.
 
             `space` targets a Kibana space by id (default: the default space)."""
             with gateway_errors(), deps.gateway_factory(space) as gw:
@@ -163,7 +164,7 @@ class DashboardsToolbox:
             space: Annotated[str, Field(pattern=SPACE_ID_PATTERN)] | None = None,
         ) -> dict[str, Any]:
             """Get a library visualization: title, chart type, data view, metrics,
-            group_by and filter query.
+            group_by and filter query. `visualization_id` comes from search_visualizations.
 
             `space` targets a Kibana space by id (default: the default space)."""
             with gateway_errors(), deps.gateway_factory(space) as gw:
@@ -249,6 +250,7 @@ class DashboardsToolbox:
             """Replace a library visualization with a new spec; its id stays the same.
             Dashboards that show it through add_library_panel change too; panels
             added with add_panel or create_dashboard are separate copies and do not.
+            `visualization_id` comes from search_visualizations.
 
             `space` targets a Kibana space by id (default: the default space)."""
             with gateway_errors(), deps.gateway_factory(space) as gw:
@@ -264,6 +266,8 @@ class DashboardsToolbox:
         ) -> dict[str, Any]:
             """Show a library visualization on an existing dashboard. The panel is
             linked, not copied: update_visualization changes it on every dashboard.
+            `dashboard_id` comes from search_dashboards,
+            `visualization_id` from search_visualizations.
 
             `space` targets a Kibana space by id (default: the default space)."""
             with gateway_errors(), deps.gateway_factory(space) as gw:
@@ -285,6 +289,7 @@ class DashboardsToolbox:
             space: Annotated[str, Field(pattern=SPACE_ID_PATTERN)] | None = None,
         ) -> dict[str, Any]:
             """Add a visualization panel to an existing dashboard.
+            `dashboard_id` comes from search_dashboards.
 
             `space` targets a Kibana space by id (default: the default space)."""
             with gateway_errors(), deps.gateway_factory(space) as gw:
@@ -306,7 +311,7 @@ class DashboardsToolbox:
             `column` names the output column to display (e.g. 'total'). For
             field-based charts use add_panel with a VizSpec instead. The query is
             NOT validated server-side — a wrong query or column yields an empty
-            panel, so write both carefully.
+            panel, so write both carefully. `dashboard_id` comes from search_dashboards.
 
             `space` targets a Kibana space by id (default: the default space)."""
             with gateway_errors(), deps.gateway_factory(space) as gw:
@@ -331,6 +336,7 @@ class DashboardsToolbox:
             ["count"]). `esql` is the query. It is NOT validated server-side — a
             wrong query or column name yields an empty panel, so write them
             carefully. For field-based charts use add_panel with a VizSpec.
+            `dashboard_id` comes from search_dashboards.
 
             `space` targets a Kibana space by id (default: the default space)."""
             with gateway_errors(), deps.gateway_factory(space) as gw:
@@ -355,6 +361,7 @@ class DashboardsToolbox:
             optional `breakdown_column` to split each series. `esql` is the query.
             It is NOT validated server-side — a wrong query or column name yields
             an empty panel. For field-based charts use add_panel with a VizSpec.
+            `dashboard_id` comes from search_dashboards.
 
             `space` targets a Kibana space by id (default: the default space)."""
             with gateway_errors(), deps.gateway_factory(space) as gw:
@@ -542,6 +549,7 @@ class DashboardsToolbox:
             """Permanently delete a library visualization. Kibana does not check
             dashboards first: a panel added with add_library_panel stays behind,
             broken; remove it with delete_panel.
+            `visualization_id` comes from search_visualizations.
 
             `space` targets a Kibana space by id (default: the default space)."""
             with gateway_errors(), deps.gateway_factory(space) as gw:
@@ -553,7 +561,7 @@ class DashboardsToolbox:
             dashboard_id: Annotated[str, Field(min_length=1)],
             space: Annotated[str, Field(pattern=SPACE_ID_PATTERN)] | None = None,
         ) -> dict[str, Any]:
-            """Permanently delete a dashboard.
+            """Permanently delete a dashboard. `dashboard_id` comes from search_dashboards.
 
             `space` targets a Kibana space by id (default: the default space)."""
             with gateway_errors(), deps.gateway_factory(space) as gw:
@@ -567,6 +575,7 @@ class DashboardsToolbox:
             space: Annotated[str, Field(pattern=SPACE_ID_PATTERN)] | None = None,
         ) -> dict[str, Any]:
             """Permanently remove one panel from a dashboard.
+            `panel_index` comes from get_dashboard.
 
             `space` targets a Kibana space by id (default: the default space)."""
             with gateway_errors(), deps.gateway_factory(space) as gw:

@@ -42,6 +42,32 @@ def missing_spaces_message(missing: Sequence[str]) -> str:
     )
 
 
+def unreadable_space_fix(spaces: Sequence[str]) -> str:
+    """The fix when this API key cannot read a space. Kibana answers 403 for
+    an id the key has no privilege in whether or not a space has that id
+    (probed on 9.5.4), so the text never says the space is missing and
+    never offers create_space."""
+    names = ", ".join(f"'{s}'" for s in spaces)
+    return (
+        f"this API key has no privilege in {names}; Kibana answers that whether or not "
+        "a space with that id exists. list_spaces shows the spaces this key can view; to "
+        "work in another space, use an API key created by a user whose role grants a "
+        "privilege there (a key keeps the privileges its owner had when it was created) "
+        "— send it as 'Authorization: ApiKey <key>' or set KIBANA_API_KEY"
+    )
+
+
+def unreadable_spaces_message(hidden: Sequence[str], absent: Sequence[str] = ()) -> str:
+    """Target spaces the key cannot read (`hidden`), plus any that are
+    genuinely missing (`absent`), refused before anything is written."""
+    noun = "space" if len(hidden) == 1 else "spaces"
+    names = ", ".join(f"'{s}'" for s in hidden)
+    text = f"cannot write into {noun} {names}: {unreadable_space_fix(hidden)}"
+    if absent:
+        text += f"; also {missing_spaces_message(absent)}"
+    return text + "; nothing was changed"
+
+
 def source_fixed_reason(kibana_url_pinned: bool, public_url_pinned: bool) -> str | None:
     """Why this deployment refuses source_space (D8), naming the URL that
     does it: a '/s/<id>' KIBANA_URL fixes the source to that space (it wins

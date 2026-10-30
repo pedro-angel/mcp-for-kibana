@@ -72,12 +72,17 @@ Authentication and credentials:
 Tiering and destruction:
 
 - Every tool is registered under exactly one of read / write / destructive.
-  This exactly-one rule is currently unenforced by any test (an open gap a
-  rewrite should close) — but it is load-bearing: the tier mechanism
-  disables by tag, so an untagged tool would be visible at every tier.
+  The rule is load-bearing: the tier mechanism disables by tag, so an
+  untagged tool would be visible at every tier. `tests/_registry.py` enforces
+  it — `registry()` unpacks each tool's tags against the three tiers and fails
+  on none or two — and every test that reads the registry runs it (among them
+  `test_every_figure_in_the_prose_matches_the_registry`).
 - Write safety is a **registration-time** tier: tools above the deployment
   cap are disabled at registration and never appear in the advertised list
-  — the point is that destructive tools never enter the model's context.
+  — the point is that destructive tools never enter the model's tool list.
+  The `docs://tools` reference resource is deliberately not tier-gated (it
+  documents every tool; a hidden one still fails as unknown), so its tier
+  cells must be right: `test_docs_tool_reference.py` pins them (D57).
   A call naming a hidden tool fails as unknown (observed; the pinned
   assertions cover list-time visibility).
 - Surface selection only ever hides. The per-tool allow list
@@ -114,6 +119,12 @@ Space targeting:
   is already `/s/<id>`-pinned refuses the parameter with guidance.
 - Tool-level argument guards run **before** the factory call, so a guard
   failure performs no space validation.
+- A space the API key has no privilege in is a privilege problem, never a
+  missing space: Kibana answers 403 for such an id whether or not a space has
+  it, and its space listing leaves it out, so `space`/`source_space`
+  validation and the copy/share target check name the key's privileges and
+  `list_spaces` ("spaces this key can view"), never `create_space`; only a
+  404 from a key that can read spaces means the space does not exist (D58).
 
 Error guidance:
 
@@ -151,7 +162,73 @@ mode enables host/origin protection on loopback binds.
 - Layering and purity: import-linter contracts (`pyproject.toml`), CI job.
 - Invariants: `tests/unit/` (fakes; auth, tiers, space threading, guards),
   `tests/contract/` (live Kibana), `tests/e2e_replay/` (recorded turns,
-  guidance strings, schema-rejection pins), `tests/e2e/` (live models:
-  Claude via `claude -p`, and a local model in LM Studio),
-  `tests/ephemeral/` (destructive paths on throwaway stacks).
-- The whole: `make dod` → `VERDICT: GO` (see [brief.md](brief.md)).
+  guidance strings, schema-rejection pins), `tests/e2e/` (live models, on
+  demand since D61: Claude via `claude -p`, and a local model in LM Studio),
+  `tests/ephemeral/` (destructive paths on throwaway stacks, on every
+  supported Kibana line in CI, D62).
+- Every toolbox's model-facing surface is replayed (D61): each has at least
+  one recorded real-model turn in `tests/e2e_replay/transcripts/`
+  (`tests/unit/test_replay_coverage.py` fails a toolbox without one), and
+  the gate replays them from the checkout, the built wheel and the built
+  Docker image over HTTP with the key in an `Authorization: ApiKey` header,
+  where a call without the header is refused naming the fix (D62).
+- The whole: `make dod` → `VERDICT: GO` (see [brief.md](brief.md)), on the
+  newest supported Kibana version: the gate checks the running stack's version
+  against the pin before the seeded-stack criteria and names it on their GO
+  lines (D30, D53). The verdict is bound to a tree: header and VERDICT line
+  name HEAD, the content tree id (uncommitted and untracked work included) and
+  clean/dirty; a tree that changes during the run is NO-GO; the run is recorded
+  in `/tmp/dod-<repo>/verdict.json`, and a "GO at `<sha>`" claim holds only when
+  `git rev-parse <sha>^{tree}` equals the recorded tree id (D55). The suites
+  run as declared: the gate clears the pytest and coverage variables that
+  reshape them and `KIBANA_MCP_SERVER_BIN`/`KIBANA_MCP_SERVER_IMAGE` (which
+  would replay another server), refuses `UV_*`, `PYTHON*`, `LD_*` and those
+  two names in `.env.local`, prints `N passed / M collected` on every suite line, and
+  refuses shell Kibana credentials that differ from `.env.seed`, and server
+  credentials in the shell or `.env.local` that the replayed server would read
+  ahead of the seed (D56).
+- Privilege-dependent behaviour runs under restricted keys (D58): the
+  contract tier's privilege matrix calls every tool that takes `space`,
+  `source_space`, `target_spaces` or `spaces`, and every listing guard,
+  through the MCP tool layer under three keys from the shared
+  `restricted_key` fixture (default-space `all`, `read` everywhere, no Kibana
+  privilege) and fails on a crash, masked text, a write tool succeeding under
+  the read-only key or a hidden space reported as missing; a unit test holds
+  its rows to the registry and to reaching Kibana, so a new space-taking tool
+  has a working row by construction.
+- No tool result carries a credential (D59): every result the contract and
+  replay tiers receive through a fastmcp `Client` is scanned for the seeded
+  canaries (a Fleet output and a Fleet proxy with dummy `service_token`,
+  `config_yaml`, `certificate_key` and proxy-header values, created by
+  `scripts/stack.sh seed` from `scripts/canaries/`), the test key, and
+  secret-bearing keys with a value; a hit fails the test naming the fix.
+- Every read tool runs through the MCP tool layer against real Kibana (D60):
+  the contract tier's read-tool sweep calls each read-tier tool once through
+  a fastmcp `Client` on the full server and requires no `isError`,
+  structured content, and rows from the list tools the stack or the sweep
+  fills; its rows equal the registry's read tools. The ephemeral suites drive their destructive calls
+  through a `Client` too, each confirm gate refused first.
+- The model-facing surface is budgeted (D60): `docs/spec/surface-budget.toml`
+  caps the default selection, every profile, every toolbox and every tool by
+  tool count, description and input-schema size; a cap is raised only by a
+  new decision that states the new numbers and why the growth is worth it.
+- Every tool that takes an id has a stated source (D60): a `DEPENDENCIES`
+  edge to a tool that shows it, named in the description, or a reasoned
+  exemption (checked per tool, not per input);
+  every toolbox at every tier and every profile is coherent but for reviewed
+  cross-toolbox gaps.
+- Each Fleet space-awareness mode has a tier (D63): the contract tier runs
+  `uninstall_package`'s awareness-on refusal on the seeded stack, and
+  `fleet_unaware_ephemeral` runs its awareness-off path (package-policy
+  listing, Fleet Server and monitoring guards, forced delete) on an isolated
+  stack booted with Fleet's `useSpaceAwareness` feature off; a test that
+  branches on the mode fails on a stack in the other one.
+- Every change carries a CHANGELOG entry: `changelog_entry` and a `checks.yml`
+  PR step run `scripts/checks/changelog-entry.sh`, which requires a new entry
+  under `## [Unreleased]` when non-exempt paths changed since the merge-base
+  with `origin/main` (D54).
+- The docs state the registry's figures (D57): unit tests compare the tool
+  counts in the prose (README, `docs/*.md`, the specs but `decisions.md`,
+  `profiles/README.md`) with the registry, each `docs/tools.md` table row's
+  section and tier with the tool's toolbox and tier, the annotation table with
+  the real hints, and every test the docs cite with `tests/`.

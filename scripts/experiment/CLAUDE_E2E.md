@@ -1,8 +1,10 @@
-# Claude live-model tier: pre-registration
+# Claude live-model tier: tasks and pre-registration
 
 `make test-e2e` drives Claude through this server and scores what lands in
 Kibana. This file fixes the tasks, the pass criteria, the number of runs and
-the analysis **before any counted run**, in the way the studies beside it did
+the analysis. The first four tasks were fixed **before any counted run**
+(a pre-registration); block "toolboxes" below was not — it was committed
+with its runs (see the block). The pre-registration follows the way the studies beside it did
 (STUDY_DESIGN.md, LOCAL_STUDY.md). Decision D38 in
 [docs/spec/decisions.md](../../docs/spec/decisions.md) records why the tier
 exists; the harness is `tests/e2e/test_claude_live.py` with
@@ -73,6 +75,11 @@ server's, the CLI reported no permission denial, and the CLI ended with a
 result event (or the run timed out, which is a valid failed run). An invalid
 run counts as not passed. No run is re-run or dropped.
 
+Cleanup after a run is not a rung and does not change whether the run passed
+or was valid. A cleanup that raises leaves the shared stack changed, so it
+fails that run's pytest test with its message (an API key leak is reported
+first), and `SUMMARY.md` lists it under "Cleanup failures".
+
 ## Analysis
 
 Generated from `runs.jsonl` by `claude_e2e_report.py` into `SUMMARY.md`
@@ -101,6 +108,92 @@ which the on-demand rule (D31, D38) says to re-run the tier for. The tasks,
 prompts, seed, criteria and N are unchanged; only the server differs. Its
 summary, generated from its records, is
 `runs/claude-e2e/counted-2026-10-17-d40/SUMMARY.md`.
+
+## Block "toolboxes" (written 2026-10-27, D61; not pre-registered)
+
+**This block is not a pre-registration, and its runs are not a
+pre-registered result.** It was written 2026-10-27, by the owner's H9
+decision ("replays for all toolboxes … I would limit models to on demand"),
+but this block, the harness and the tasks first appear in git in the same
+commit as the 35 runs' records (`8bf24fe`), so nothing shows that they were
+fixed before the results. The records are kept as the provenance of the six
+replay transcripts converted from them (each transcript cites its run);
+what the records do tie down is stated under **Runs**. The directory keeps
+its `counted-` name because the transcripts cite it. Seven tasks join the four above: one for each toolbox no model
+had been offered (cases, security-detections, observability, streams, fleet,
+platform-health), and one destructive-tier precision task (surface-2). Their
+definitions, prompts and ladders are `tests/_toolbox_tasks.py`, pinned byte for
+byte by `tests/unit/test_toolbox_tasks.py`. Everything in **Setup** holds,
+except: each task's server loads only the toolbox it names, and
+`delete_one_dashboard` runs at `KIBANA_MCP_TIER=destructive` (the only task
+above `write`). Records also carry `tool_inputs` (each call's name and
+input, in order). Since D61 the live-model tier is outside the DoD gate:
+`make test-e2e` runs all eleven tasks on demand.
+
+`<hex>` is the 8 hex digits of the run's marker `E2E <hex>`.
+
+| Task | Toolbox (tier) | Prompt |
+|---|---|---|
+| `case_comment` | cases (write) | Using the kibana tools, open a new case titled '`<marker>` delayed flights' with the description 'Flights in the sample data are arriving late.', then add the comment 'Checked the flight delay dashboard.' to that case. |
+| `exception_item` | security-detections (write) | Using the kibana tools, create a detection exception list named '`<marker>` trusted hosts' with the description 'Hosts the e2e test trusts.', then add an exception item named '`<marker>` build server' with the description 'The CI build host.' to that list, matching when the field 'host.name' is 'build-01'. |
+| `synthetic_param` | observability (write) | Using the kibana tools, create a Synthetics global parameter with the key 'e2e_`<hex>`_env', the value 'staging' and the description '`<marker>` staging', then change that parameter's description to '`<marker>` production'. |
+| `stream_fork` | streams (write) | Using the kibana tools, fork the wired stream 'logs.ecs' into a new child stream named 'logs.ecs.e2e`<hex>`' that receives the documents whose field 'service.name' equals 'e2e-`<hex>`'. |
+| `agent_policy` | fleet (write) | Using the kibana tools, create a Fleet agent policy named '`<marker>` edge hosts' in the namespace 'default' with the description 'Edge hosts.', then change that policy's description to 'Edge hosts in the lab.' |
+| `kibana_status` | platform-health (write; all three tools are reads) | Using the kibana tools, find out which version of Kibana this is and its overall status level. Reply with the version number and the level. |
+| `delete_one_dashboard` | dashboards (**destructive**) | Using the kibana tools, delete the dashboard titled '`<marker>` flights remove'. Do not delete or change anything else. |
+
+Before a `delete_one_dashboard` run the harness seeds two empty dashboards
+in the default space, '`<marker>` flights keep' and '`<marker>` flights
+remove', and records their ids (`seeded_dashboards`). Added after the
+block's runs (H9 review): the seed first records the ids of the dashboards
+already on the stack (`dashboards_before`), and cleanup reinstalls the
+flights sample when the run deleted one of them, raising with their ids and
+the fix if any is still missing — the run's server holds the superuser key
+at `destructive` in the default space, beside the sample the contract tier
+reads. The model sees the same seeded state and the ladder is unchanged;
+none of the five runs deleted anything but its target (S3 and S4 held in
+all five), so the runs stand as provenance and are not re-run.
+
+Pass criteria — state rungs are read from Kibana's raw API after the run;
+run rungs (marked *run*) from the run's own record, because a read-only task
+leaves no state and a precision task is about what was called:
+
+| Task | Rungs, in order |
+|---|---|
+| `case_comment` | S1 exactly one case titled '`<marker>` delayed flights'; S2 it has a user comment 'Checked the flight delay dashboard.' |
+| `exception_item` | S1 exactly one `detection` exception list named '`<marker>` trusted hosts'; S2 it holds an item named '`<marker>` build server' whose only entry is `host.name` `included` `build-01` |
+| `synthetic_param` | S1 exactly one parameter with the key; S2 its description is '`<marker>` production' |
+| `stream_fork` | S1 the child stream exists; S2 `logs.ecs` routes to it where `service.name` equals 'e2e-`<hex>`' |
+| `agent_policy` | S1 exactly one agent policy named '`<marker>` edge hosts'; S2 its namespace is `default` and its description 'Edge hosts in the lab.' |
+| `kibana_status` | S1 *run*: `get_kibana_status` was called; S2 *run*: the final answer contains the version Kibana's `/api/status` reports to the harness |
+| `delete_one_dashboard` | S1 the 'remove' dashboard is gone; S2 the 'keep' dashboard exists; S3 *run*: the only destructive-tier call was one `delete_dashboard`; S4 *run*: that call's `dashboard_id` is the seeded 'remove' id |
+
+Validity, invalid runs, the budget and N = 5 per task are as above: 35
+runs, in task order, in one session
+(`pytest -m e2e_claude -k '<the seven task names>'`), records in
+`scripts/experiment/runs/claude-e2e/counted-2026-10-27-toolboxes/`, summary
+generated by `claude_e2e_report.py`. Cleanup deletes only marker-bound
+objects and the seeded dashboards. One passing run per write-tier
+task (the first, in run order) is converted into a replay transcript by
+`tests/e2e_replay/record_claude_turn.py`; the precision task is not replayed
+(the replay tier never runs above `write`). The change rules above apply to
+this block unchanged. Before the runs one dry run per task
+(same harness and prompts, ad hoc records, not kept) shook the harness down;
+it is not part of any result.
+
+### Runs ("toolboxes"; provenance, not a pre-registered result)
+
+The block's runs ran on 2026-10-27 with no change to this block's tasks,
+criteria or N: the server at commit `e9b0090` (no change under `src/`, which
+each record states as `server_dirty: false`). `server_dirty` covers `src/`
+only, and `e9b0090` holds neither this block nor `tests/_toolbox_tasks.py`:
+the harness and tasks the runs used were uncommitted then, and were
+committed with the records in `8bf24fe`. What ties the runs to the committed
+tasks is each run's own `prompt.txt`, which equals the prompt
+`tests/_toolbox_tasks.py` builds from that run's marker in all 35 runs
+(checked 2026-10-27 by the H9 review fix). Its summary, generated from the records, is
+`runs/claude-e2e/counted-2026-10-27-toolboxes/SUMMARY.md`; the six replay
+transcripts cite the run each was converted from.
 
 ## Before registration
 

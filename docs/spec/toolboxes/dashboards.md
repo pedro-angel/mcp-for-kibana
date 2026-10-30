@@ -374,7 +374,8 @@ but are owned and registered once by data-management, not here.
   authored space-scoped `create_dashboard` sequence;
   `space-dashboard-gemma-4-12b-qat.json` replays a REAL model-chosen turn
   over the same surface — together pinning space-echo and URL-prefix
-  behavior through a real client/server.
+  behavior through a real client/server. All three run in
+  `e2e_replay_green`, `wheel_replay_green` and `image_replay_green` (D62).
 - `tests/unit/adapters/test_id_guidance.py` — the empty-id and unknown-id
   guidance for dashboards, visualizations and alert rules, and that a
   missing space still reports the space.

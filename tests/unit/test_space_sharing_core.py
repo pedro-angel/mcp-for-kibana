@@ -12,6 +12,8 @@ from kibana_mcp.core.space_sharing import (
     sharing_refusal,
     source_fixed_reason,
     space_failure_fix,
+    unreadable_space_fix,
+    unreadable_spaces_message,
     unshare_refusal,
 )
 
@@ -26,6 +28,18 @@ def test_missing_spaces_message_names_every_space_and_the_fix():
     assert one.startswith("space 'ghost' not found")
     assert "without an error" in one and "list_spaces" in one and "create_space" in one
     assert missing_spaces_message(["a", "b"]).startswith("spaces 'a', 'b' not found")
+
+
+def test_unreadable_spaces_never_say_missing_or_create():
+    # Kibana answers 403 for an id the key has no privilege in, existing or not.
+    one = unreadable_spaces_message(["ops"])
+    assert one.startswith("cannot write into space 'ops': this API key has no privilege in 'ops'")
+    assert "create_space" not in one and "not found" not in one
+    assert "list_spaces shows the spaces this key can view" in one
+    assert unreadable_spaces_message(["a", "b"]).startswith("cannot write into spaces 'a', 'b'")
+    both = unreadable_spaces_message(["ops"], ["ghost"])
+    assert "also space 'ghost' not found" in both and both.endswith("nothing was changed")
+    assert "KIBANA_API_KEY" in unreadable_space_fix(["ops"])
 
 
 @pytest.mark.parametrize(("error", "overwrite", "needle"), [

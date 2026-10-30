@@ -97,13 +97,18 @@ at call time. Full per-tool arguments and return shapes:
 - **`get_upgrade_status` is a live, non-deterministic snapshot.** The ES deprecation-log count
   varies with cluster usage and each raw entry's message embeds a live timestamp, dropped; only
   the stable `title`/`level`/`type` triple is surfaced per deprecated API.
-- **Bare arrays, no pagination.** `list_spaces`/`list_roles` return the complete set in one call.
+- **Bare arrays, no pagination.** `list_spaces`/`list_roles` return the complete set in one call;
+  for `list_spaces` that is the set the API key can view — Kibana leaves out a space the key has
+  no privilege in (its description says so).
 
 ## Invariants
 
 - MUST NOT accept a `space` parameter on any of the 14 tools; the saved-objects tools take
   `source_space`/`target_spaces`/`spaces` instead.
-- MUST check every space a copy, overwrite or share writes into exists (except `*`), before writing.
+- MUST check every space a copy, overwrite or share writes into exists (except `*`), before writing;
+  a target the key's space listing leaves out is read with `spaces.get`: a 404 is a missing space
+  (the fix names `list_spaces` and `create_space`), a 403 is a space the key has no privilege in
+  (the fix names `list_spaces` and a key whose role grants that space, never `create_space`) (D58).
 - MUST NOT make `copy_saved_objects_to_spaces` overwrite anything: it always creates new copies.
 - MUST refuse, before any write, an unshare that would leave an object in no space unless
   `force=True`, an unshare that removes nothing, and a share or unshare of a missing object or of
@@ -185,6 +190,13 @@ at call time. Full per-tool arguments and return shapes:
   share's repeat, an overwrite onto a shared object (`unchanged`), the one-space-type, missing-space
   and missing-object refusals, a removal that removes nothing, the last-space refusal and the
   forced delete (the object gone).
+- **Privilege matrix** (D58) — `tests/contract/test_privilege_matrix.py`, under keys from the
+  shared `restricted_key` fixture: `list_spaces` shows only 'default' to a key with `all` there
+  only, the throwaway space to a key with `read` everywhere, and an auth error naming the fix to a
+  key with no Kibana privilege; the four saved-object tools with `source_space` set to a space the
+  key cannot read refuse it naming the key's privileges; copy, overwrite and share into an existing
+  space the key cannot see are refused as a privilege problem, never "create it", with nothing
+  written, and a genuinely missing space is still named as missing.
 - **e2e-replay** — `create_space` is the enabling call three transcripts depend on
   (`space-dashboard.json`, `space-dashboard-gemma-4-12b-qat.json`,
   `alerting-space-recovery-gemma-4-12b-qat.json`); each supplies `platform-admin` in
@@ -192,7 +204,8 @@ at call time. Full per-tool arguments and return shapes:
   and its recorded response shape is replayed and asserted like every other pinned call.
 - **Docs drift guard** — `tests/unit/test_docs_tool_reference.py` asserts every one of these 14
   registered tool names appears in `docs/tools.md`.
-- **DoD gates** (`dod.config`) — `unit_green`, `contract_green`, `e2e_replay_green` all cover this
+- **DoD gates** (`dod.config`) — `unit_green`, `contract_green` and the three replay criteria
+  (`e2e_replay_green`, `wheel_replay_green`, `image_replay_green`) all cover this
   toolbox; no dedicated ephemeral-stack criterion — destructive paths (`delete_space`,
   `delete_role`, `overwrite_saved_objects_in_spaces`, `unshare_saved_objects_from_spaces`) are
   proven against uuid-suffixed, self-cleaned objects and spaces on the shared dev stack.

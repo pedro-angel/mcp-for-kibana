@@ -1,0 +1,8 @@
+{
+  "id": "mcp-for-kibana-canary-output",
+  "name": "mcp-for-kibana canary output (secret scan, D59)",
+  "type": "remote_elasticsearch",
+  "hosts": ["https://canary.invalid:9200"],
+  "service_token": "mcp-for-kibana-canary-secret-service-token-5b2e8f61",
+  "config_yaml": "password: mcp-for-kibana-canary-secret-config-yaml-5b2e8f61\n"
+}

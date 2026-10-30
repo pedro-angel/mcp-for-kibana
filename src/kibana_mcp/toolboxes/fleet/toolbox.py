@@ -85,7 +85,7 @@ class FleetToolbox:
         def get_agent(agent_id: Annotated[str, Field(min_length=1)]) -> dict[str, Any]:
             """Get one Elastic Agent by its id: status, assigned policy_id,
             hostname, version, enrolled-at, last check-in and tags. Errors if no
-            agent with that id exists."""
+            agent with that id exists. `agent_id` comes from list_agents."""
             with gateway_errors(), deps.gateway_factory() as gw:
                 return asdict(gw.get_agent(agent_id))
 
@@ -142,7 +142,7 @@ class FleetToolbox:
         ) -> dict[str, Any]:
             """Get one agent policy by id: name, namespace, description, assigned
             agent_count, status, managed flag, and enabled monitoring. Errors if
-            no policy with that id exists."""
+            no policy with that id exists. `agent_policy_id` comes from list_agent_policies."""
             with gateway_errors(), deps.gateway_factory() as gw:
                 return asdict(gw.get_agent_policy(agent_policy_id))
 
@@ -160,7 +160,8 @@ class FleetToolbox:
         ) -> dict[str, Any]:
             """Get one package (integration) policy by id: name, namespace, its
             integration package (name/title/version), parent agent_policy_id, and
-            enabled flag. Errors if no package policy with that id exists."""
+            enabled flag. Errors if no package policy with that id exists.
+            `package_policy_id` comes from list_package_policies."""
             with gateway_errors(), deps.gateway_factory() as gw:
                 return asdict(gw.get_package_policy(package_policy_id))
 
@@ -177,7 +178,7 @@ class FleetToolbox:
         def get_enrollment_key(key_id: Annotated[str, Field(min_length=1)]) -> dict[str, Any]:
             """Get one enrollment API key by id — METADATA ONLY (name, policy_id,
             active, created-at); the secret key value is never returned. Errors if
-            no key with that id exists."""
+            no key with that id exists. `key_id` comes from list_enrollment_keys."""
             with gateway_errors(), deps.gateway_factory() as gw:
                 return asdict(gw.get_enrollment_key(key_id))
 
@@ -234,7 +235,8 @@ class FleetToolbox:
         @mcp.tool(tags={self.name, "read"}, annotations=_READ)
         def get_output_health(output_id: Annotated[str, Field(min_length=1)]) -> dict[str, Any]:
             """Get the latest health of one output by id: state
-            (HEALTHY/DEGRADED/UNKNOWN), a message, and the timestamp."""
+            (HEALTHY/DEGRADED/UNKNOWN), a message, and the timestamp.
+            `output_id` comes from list_outputs."""
             with gateway_errors(), deps.gateway_factory() as gw:
                 return asdict(gw.get_output_health(output_id))
 
@@ -277,7 +279,8 @@ class FleetToolbox:
             """Update an agent policy's fields (read-modify-write — omitted
             fields are preserved). Pass description="" to clear the
             description; monitoring_enabled=[] turns monitoring off. Refuses a
-            managed policy. Returns the updated policy."""
+            managed policy. Returns the updated policy.
+            `agent_policy_id` comes from list_agent_policies."""
             changes = {k: v for k, v in {
                 "name": name, "namespace": namespace, "description": description,
                 "monitoring_enabled": monitoring_enabled,
@@ -298,7 +301,8 @@ class FleetToolbox:
             the integration (e.g. {'name': 'system', 'version': '1.62.0'} — see
             get_package); `inputs` optionally overrides the integration's
             default input config (Kibana fills sensible defaults when
-            omitted). Returns the created package policy."""
+            omitted). Returns the created package policy.
+            `agent_policy_id` comes from list_agent_policies."""
             with gateway_errors(), deps.gateway_factory() as gw:
                 return asdict(gw.create_package_policy(
                     name=name, package=package, agent_policy_id=agent_policy_id, inputs=inputs))
@@ -319,7 +323,9 @@ class FleetToolbox:
             the policy to a different agent policy; `package` changes the
             integration/version (e.g. {'name': 'system', 'version': '1.63.0'}
             — see get_package); `inputs` overrides the integration's input
-            config. Returns the updated package policy."""
+            config. Returns the updated package policy.
+            `package_policy_id` comes from list_package_policies,
+            `agent_policy_id` from list_agent_policies."""
             changes = {k: v for k, v in {
                 "name": name, "namespace": namespace, "description": description,
                 "enabled": enabled, "agent_policy_id": agent_policy_id,
@@ -435,11 +441,12 @@ class FleetToolbox:
             confirm: bool = False,
         ) -> dict[str, Any]:
             """Update a Fleet output (read-modify-write — omitted fields are
-            preserved). Setting is_default/is_default_monitoring=True PROMOTES
+            preserved; changing `type` makes Fleet reset some fields, such
+            as a remote output's service token and its preset). Setting is_default/is_default_monitoring=True PROMOTES
             this output (Fleet auto-un-defaults the prior one, which then
             becomes deletable). Editing a CURRENTLY-default output requires
             confirm=True (protects live agent traffic). Returns the updated
-            output."""
+            output. `output_id` comes from list_outputs."""
             changes = {k: v for k, v in {
                 "name": name, "type": type, "hosts": hosts,
                 "is_default": is_default, "is_default_monitoring": is_default_monitoring,
@@ -457,7 +464,7 @@ class FleetToolbox:
             """Delete an agent policy. DESTRUCTIVE: removes the policy and its
             package policies. Refuses a managed policy and the default Fleet
             Server policy regardless of force. force=True bypasses Kibana's
-            assigned-agent check."""
+            assigned-agent check. `agent_policy_id` comes from list_agent_policies."""
             with gateway_errors(), deps.gateway_factory() as gw:
                 gw.delete_agent_policy(agent_policy_id=agent_policy_id, force=force)
             return {"deleted": True, "agent_policy_id": agent_policy_id}
@@ -468,7 +475,8 @@ class FleetToolbox:
         ) -> dict[str, Any]:
             """Delete a package (integration) policy. DESTRUCTIVE: detaches
             the integration from its agent policy; agents stop collecting
-            that data. force=True bypasses Kibana's in-use checks."""
+            that data. force=True bypasses Kibana's in-use checks.
+            `package_policy_id` comes from list_package_policies."""
             with gateway_errors(), deps.gateway_factory() as gw:
                 gw.delete_package_policy(package_policy_id=package_policy_id, force=force)
             return {"deleted": True, "package_policy_id": package_policy_id}
@@ -478,7 +486,7 @@ class FleetToolbox:
             """Delete a Fleet output. DESTRUCTIVE: agents shipping through it
             need a working output. Refuses the default output(s) — promote a
             replacement first (update_output is_default=True), then delete
-            the old one. No force escape."""
+            the old one. No force escape. `output_id` comes from list_outputs."""
             with gateway_errors(), deps.gateway_factory() as gw:
                 gw.delete_output(output_id=output_id)
             return {"deleted": True, "output_id": output_id}
@@ -520,7 +528,8 @@ class FleetToolbox:
         ) -> dict[str, Any]:
             """Reassign one enrolled agent to a different agent policy.
             DESTRUCTIVE: changes what the live agent collects/ships. Refuses a
-            managed or default Fleet Server target policy."""
+            managed or default Fleet Server target policy.
+            `agent_id` comes from list_agents, `policy_id` from list_agent_policies."""
             with gateway_errors(), deps.gateway_factory() as gw:
                 gw.reassign_agent(agent_id=agent_id, policy_id=policy_id)
             return {"ok": True, "agent_id": agent_id}
@@ -534,7 +543,8 @@ class FleetToolbox:
             """Upgrade one enrolled agent to `version` (must be one of
             list_agent_versions). DESTRUCTIVE: commands a live agent binary
             swap; async — the agent applies it on its own schedule.
-            `source_uri` overrides the default download source."""
+            `source_uri` overrides the default download source.
+            `agent_id` comes from list_agents."""
             with gateway_errors(), deps.gateway_factory() as gw:
                 gw.upgrade_agent(agent_id=agent_id, version=version, source_uri=source_uri)
             return {"ok": True, "agent_id": agent_id}
@@ -549,7 +559,7 @@ class FleetToolbox:
             shipping data (only uninstalls if it later checks in with an
             uninstall command). force=True unenrolls an already-unenrolled/
             offline agent; revoke=True also invalidates its API key
-            immediately."""
+            immediately. `agent_id` comes from list_agents."""
             with gateway_errors(), deps.gateway_factory() as gw:
                 gw.unenroll_agent(agent_id=agent_id, force=force, revoke=revoke)
             return {"ok": True, "agent_id": agent_id}
@@ -566,7 +576,7 @@ class FleetToolbox:
             on the exact agent_ids given (never a fleet-wide sweep), requires
             confirm=True. Refuses a managed or default Fleet Server target
             policy. Async — returns an action_id, not the immediate per-agent
-            result."""
+            result. `agent_ids` come from list_agents, `policy_id` from list_agent_policies."""
             if not agent_ids:
                 raise ToolError("agent_ids must be non-empty")
             if not confirm:
@@ -583,7 +593,8 @@ class FleetToolbox:
         ) -> dict[str, Any]:
             """Upgrade agents to `version`. DESTRUCTIVE: acts on the exact
             agent_ids given (never a fleet-wide sweep), requires confirm=True.
-            Async — queues the upgrade per-agent and returns an action_id."""
+            Async — queues the upgrade per-agent and returns an action_id.
+            `agent_ids` come from list_agents."""
             if not agent_ids:
                 raise ToolError("agent_ids must be non-empty")
             if not confirm:
@@ -601,7 +612,7 @@ class FleetToolbox:
         ) -> dict[str, Any]:
             """Unenroll agents. DESTRUCTIVE: acts on the exact agent_ids given
             (never a fleet-wide sweep), requires confirm=True. Async —
-            returns an action_id."""
+            returns an action_id. `agent_ids` come from list_agents."""
             if not agent_ids:
                 raise ToolError("agent_ids must be non-empty")
             if not confirm:

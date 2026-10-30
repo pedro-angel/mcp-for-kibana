@@ -7,6 +7,7 @@ tests/e2e_replay/test_replay.py for what that does and does not certify.
 
 import pytest
 
+from tests import _secret_scan
 from tests._stack_env import require_stack_env
 
 
@@ -18,3 +19,14 @@ def _stack_env():
     loudly rather than skipping green.
     """
     require_stack_env()
+
+
+@pytest.fixture(autouse=True)
+def secret_scan(monkeypatch):
+    """Every replayed tool result is scanned for credentials (D59,
+    tests/_secret_scan.py): a hit raises at the call and fails the test here
+    too, whatever the test did with the raise."""
+    leaks = _secret_scan.install(monkeypatch)
+    yield leaks
+    if leaks:
+        pytest.fail("\n".join(leaks), pytrace=False)

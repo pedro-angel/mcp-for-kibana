@@ -224,18 +224,19 @@ Seven tiers, from fastest/most-isolated to slowest/most-real:
 ```bash
 make test              # unit — fakes only, no network; the default selection
 make test-contract     # starts + seeds the docker Kibana stack itself, then -m contract
-make test-e2e-replay   # replays a RECORDED model turn through a real MCP client
+make test-e2e-replay   # replays RECORDED model turns (every toolbox) through a real MCP client
 make test-e2e          # REAL Claude (claude -p, default haiku) with only this server's tools
 make test-e2e-local    # a REAL local model in LM Studio — see docs/e2e-setup.md
 make streams-ephemeral # destructive streams path on its own throwaway stack
 make fleet-ephemeral   # agent lifecycle on a throwaway 2-agent fleet stack
+make fleet-unaware-ephemeral # uninstall_package's guards on Fleet with space awareness off
 ```
 
 Everything except the two live-model tiers (`test-e2e`, `test-e2e-local`)
-runs in CI. The two ephemeral tiers own their
-stack's whole lifecycle (up → test → down) because their paths are destructive:
-they delete every wired stream, or mutate real enrolled agents, so they cannot
-share the dev stack. They also cannot run *beside* it — see
+runs in CI. The three ephemeral tiers own their
+stack's whole lifecycle (up → test → down): their paths are destructive (they
+delete every wired stream, or mutate real enrolled agents), or need a Fleet
+booted with space awareness off, so they cannot share the dev stack. They also cannot run *beside* it — see
 `scripts/fleet_ephemeral.sh` for the measured memory headroom.
 
 **On the two e2e tiers.** They are not redundant, and one is not a substitute
@@ -245,7 +246,7 @@ for the other:
 |---|---|---|
 | Who picks the tool calls | a real LLM (Claude / a local model) | a recorded transcript |
 | Server, MCP transport, Kibana, ES | real | real |
-| Runs in CI | no — needs a Claude sign-in / a GPU + loaded model | **yes** |
+| Runs in CI and in `make dod` | no — on demand (D61): needs a Claude sign-in / a GPU + loaded model | **yes** |
 | Proves a model can *reason* to the calls | **yes** | no |
 | Proves the model-facing surface still works | yes | **yes, per-PR** |
 
@@ -258,6 +259,12 @@ survives**. That guidance is load-bearing: a model has no other way to learn
 your data's field names, and degrading `"field 'price' does not exist … did you
 mean 'Carrier'?"` to a bare 400 breaks self-correction for every LLM using this
 server. Four mutation tests confirm the tier fails when each guard is broken.
+Since D61 every toolbox has at least one recorded turn — Claude runs of the
+per-toolbox tasks (not pre-registered) for cases, security-detections,
+observability, streams, fleet and platform-health — and a toolbox without one
+fails the unit tier. The gate replays them three ways: from the checkout, from
+the built wheel, and from the built Docker image over HTTP with the key in an
+`Authorization: ApiKey` header (`image_replay_green`, D62).
 
 (Raw commands underneath: `uv run pytest [-m contract|-m e2e_claude|-m e2e|-m e2e_replay]` —
 the suites load `elastic-start-local/.env.seed` + `.env.local` in-process; the
@@ -283,7 +290,13 @@ audit, SAST, unit across Python 3.12–3.14, docs, image build+smoke), and
 through *this same gate script* with per-tier configs in `.github/dod/` — so CI
 verdicts and `make dod` cannot drift.
 
-`make dod` needs the dev stack up for `contract`/`e2e_replay`/`wheel_replay`/`e2e_green` and down for
+Each verdict names what it certified: the header and the `VERDICT:` line give
+HEAD, the content tree id (uncommitted and untracked files included) and
+`clean`/`dirty`, a tree edited during the run is NO-GO, and the run is recorded
+in `/tmp/dod-<repo>/verdict.json`. A "GO at `<sha>`" claim checks out when
+`git rev-parse <sha>^{tree}` equals the recorded tree id.
+
+`make dod` needs the dev stack up for `contract`/`e2e_replay`/`wheel_replay`/`image_replay` and down for
 the ephemeral tiers, so a plain run cannot satisfy both halves. To get a
 one-shot GO, let the gate cycle the stack for you (default-off, so it never
 touches infrastructure unasked):
@@ -293,16 +306,13 @@ scripts/stack.sh up && scripts/stack.sh seed
 KIBANA_MCP_DOD_CYCLE_STACK=1 make dod
 ```
 
-`e2e_green` — a real model choosing the calls — is required in `dod.config`
-(D42): the gate runs the Claude tier (`make test-e2e`'s tasks via `claude -p`,
-model `CLAUDE_E2E_MODEL`, default `haiku`, D38), which needs a signed-in
-`claude` CLI and takes about 5–6 minutes; a missing CLI or sign-in is NO-GO
-and names the fix. It stays `n/a` in every `.github/dod` tier, since CI has no
-Claude sign-in, and a pass certifies only the model that ran. Run
-`make test-e2e` on its own when a change touches tool names, descriptions or
-schemas; `make test-e2e-local` runs three of those four tasks (all but
-`fix_rule_threshold`) as LM Studio tests on a small local model, outside every
-gate.
+`e2e_green` — a real model choosing the calls — is `n/a` in every config
+since D61 (superseding D42): the live model runs on demand. Run
+`make test-e2e` (Claude via `claude -p`, model `CLAUDE_E2E_MODEL`, default
+`haiku`, D38; needs a signed-in `claude` CLI) when a change touches tool
+names, descriptions or schemas; a pass certifies only the model that ran.
+`make test-e2e-local` runs three of its tasks (the flights, space and
+alerting ones) as LM Studio tests on a small local model.
 
 ## License
 

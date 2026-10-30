@@ -1,0 +1,87 @@
+{
+ "recorded": {
+  "at": "2026-10-27",
+  "by": "tests/e2e_replay/record_claude_turn.py",
+  "model": "claude-haiku-5-5",
+  "runtime": "claude -p (Claude Code 2.1.311 (Claude Code)) -> uv run mcp-for-kibana (KIBANA_MCP_TIER=write, KIBANA_MCP_TOOLBOXES=fleet)",
+  "stack": "elastic-start-local, Kibana 9.5.4",
+  "source": "scripts/experiment/runs/claude-e2e/counted-2026-10-27-toolboxes/20261027T054458Z-agent_policy-1-9c8dd3 (committed run record, git e9b0090)",
+  "note": "REAL model turn from a committed run record: call order and arguments are the model's own, observed_output the server's verbatim answer. Authored by construction: the needles (verified present in the recorded body), the bindings and the schema_rejected entry."
+ },
+ "task": "agent_policy",
+ "toolboxes": "fleet",
+ "prompt": "Using the kibana tools, create a Fleet agent policy named 'E2E 9099dbc7 edge hosts' in the namespace 'default' with the description 'Edge hosts.', then change that policy's description to 'Edge hosts in the lab.'",
+ "marker_token": "E2E 9099dbc7",
+ "hex_token": "9099dbc7",
+ "bindings": [
+  {
+   "value": "1114b237-8d21-4529-9504-d461b6270dfc",
+   "step": 0,
+   "path": [
+    "id"
+   ]
+  }
+ ],
+ "schema_rejected": {
+  "tool": "create_agent_policy",
+  "arguments": {
+   "namespace": "default",
+   "description": "Edge hosts."
+  },
+  "runtime_reason": "authored: step 0's recorded arguments with the required 'name' removed"
+ },
+ "steps": [
+  {
+   "tool": "create_agent_policy",
+   "arguments": {
+    "name": "E2E 9099dbc7 edge hosts",
+    "namespace": "default",
+    "description": "Edge hosts."
+   },
+   "observed_output": "{\"id\":\"1114b237-8d21-4529-9504-d461b6270dfc\",\"name\":\"E2E 9099dbc7 edge hosts\",\"namespace\":\"default\",\"description\":\"Edge hosts.\",\"agent_count\":0,\"status\":\"active\",\"is_managed\":false,\"updated_at\":\"2026-10-27T05:45:02.299Z\",\"monitoring_enabled\":[]}",
+   "expect": {
+    "is_error": false,
+    "contains": [
+     "E2E 9099dbc7 edge hosts",
+     "default",
+     "Edge hosts.",
+     "\"id\":",
+     "\"name\":",
+     "\"namespace\":",
+     "\"description\":",
+     "\"agent_count\":",
+     "\"status\":",
+     "\"is_managed\":",
+     "\"updated_at\":",
+     "\"monitoring_enabled\":"
+    ],
+    "gates": "step 0 of a passing agent_policy run: it still succeeds and echoes what the model passed"
+   }
+  },
+  {
+   "tool": "update_agent_policy",
+   "arguments": {
+    "agent_policy_id": "1114b237-8d21-4529-9504-d461b6270dfc",
+    "description": "Edge hosts in the lab."
+   },
+   "observed_output": "{\"id\":\"1114b237-8d21-4529-9504-d461b6270dfc\",\"name\":\"E2E 9099dbc7 edge hosts\",\"namespace\":\"default\",\"description\":\"Edge hosts in the lab.\",\"agent_count\":0,\"status\":\"active\",\"is_managed\":false,\"updated_at\":\"2026-10-27T05:45:08.079Z\",\"monitoring_enabled\":[]}",
+   "expect": {
+    "is_error": false,
+    "contains": [
+     "1114b237-8d21-4529-9504-d461b6270dfc",
+     "Edge hosts in the lab.",
+     "\"id\":",
+     "\"name\":",
+     "\"namespace\":",
+     "\"description\":",
+     "\"agent_count\":",
+     "\"status\":",
+     "\"is_managed\":",
+     "\"updated_at\":",
+     "\"monitoring_enabled\":"
+    ],
+    "gates": "step 1 of a passing agent_policy run: it still succeeds and echoes what the model passed"
+   }
+  }
+ ]
+}

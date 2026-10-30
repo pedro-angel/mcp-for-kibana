@@ -108,14 +108,16 @@ packages = ["src/kibana_mcp"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
-addopts = "-m 'not contract and not e2e and not e2e_claude and not e2e_replay and not ephemeral and not fleet_ephemeral'"
+addopts = "-m 'not contract and not e2e and not e2e_claude and not e2e_replay and not image_replay and not ephemeral and not fleet_ephemeral and not fleet_unaware'"
 markers = [
     "contract: needs the docker Kibana stack (scripts/stack.sh up)",
     "e2e: needs LM Studio running with the mcp-for-kibana entry in mcp.json (make test-e2e-local)",
     "e2e_claude: needs the docker Kibana stack and a signed-in `claude` CLI; drives Claude via claude -p (make test-e2e)",
     "e2e_replay: needs the docker Kibana stack only — replays a RECORDED model turn through a real MCP client (no LLM, so it runs in CI)",
+    "image_replay: needs the docker Kibana stack and the built image; runs only under scripts/checks/image-replay.sh (the image's HTTP credential path)",
     "ephemeral: needs an isolated ephemeral stack (scripts/ephemeral_stack.sh); excluded from default + contract",
     "fleet_ephemeral: needs the isolated fleet 2-agent ephemeral stack (scripts/fleet_ephemeral.sh); excluded from default + contract",
+    "fleet_unaware: also runs on the isolated Fleet stack with space awareness OFF (scripts/fleet_unaware_ephemeral.sh, D63); its tests carry `contract` too and take the awareness-on branch there",
 ]
 
 # Coverage config is the SINGLE SOURCE for the threshold: both `make test` and

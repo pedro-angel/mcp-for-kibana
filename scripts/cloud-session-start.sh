@@ -41,8 +41,11 @@ start_docker() {
   # meaningless on a freshly booted VM, but low PIDs are reused early in boot, so
   # dockerd can find an unrelated live process behind it and refuse to start. No
   # dockerd is running here -- docker info just failed -- so a pidfile is stale.
+  # The containerd dockerd supervises leaves its own pidfile in the snapshot too,
+  # and a reused PID behind it makes dockerd fail "failed to start containerd:
+  # ... process with PID N is still running" (seen on a resumed session).
   if ! pgrep -x dockerd >/dev/null 2>&1; then
-    rm -f /var/run/docker.pid
+    rm -f /var/run/docker.pid /var/run/docker/containerd/containerd.pid
   fi
 
   local log=/var/log/mcp-for-kibana-dockerd.log

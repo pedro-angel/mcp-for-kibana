@@ -301,7 +301,7 @@ and docs/tools.md#saved-objects-exportimport-data-management.
 ## Enforcement
 
 - **Unit — `tests/unit/toolboxes/test_data_management.py`.** The exact
-  11-tool surface; data-view create/delete and optional `time_field`;
+  17-tool surface; data-view create/delete and optional `time_field`;
   `create_data_view`'s time-field refusal (nothing created) and its
   description stating the check;
   `update_data_view`'s partial update, guards before the factory, schema
@@ -343,7 +343,7 @@ and docs/tools.md#saved-objects-exportimport-data-management.
   distinct references, miss and the type refusal before Kibana, and
   `previous_exists`. `tests/unit/test_saved_objects_core.py`: the attribute cap.
 - **Unit — `tests/unit/toolboxes/test_space_threading.py`.** All 17 tools
-  inside the shared 86-tool cross-toolbox matrix: threading (the factory
+  inside the shared 92-tool cross-toolbox matrix: threading (the factory
   sees exactly the caller's space), schema (space present, optional,
   correctly patterned), echo (dict rows only, only when set), and the two
   shared error-path cases (space-not-found guidance, auth-error passthrough).
@@ -376,6 +376,7 @@ and docs/tools.md#saved-objects-exportimport-data-management.
   (and its gemma variant) pin `create_data_view`'s space echo through a real
   MCP client and server; `flights-dashboard.json` pins the data-view
   not-found guidance recovery as a real recorded model turn.
-- **DoD.** `unit_green`, `contract_green`, and `e2e_replay_green`
+- **DoD.** `unit_green`, `contract_green`, and the three replay criteria
+  (`e2e_replay_green`, `wheel_replay_green`, `image_replay_green`)
   (`dod.config`) cover this toolbox as part of the whole-server gate; no
   criterion is scoped to `data-management` alone.

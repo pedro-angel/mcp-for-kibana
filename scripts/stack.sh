@@ -25,6 +25,7 @@
 # does NOT load this overlay, so it stays lean.
 set -eu
 cd "$(dirname "$0")/.."
+. scripts/stack-version.sh
 STACK_DIR=elastic-start-local
 PROJECT=mcp-for-kibana-stack
 ENVFILE="$STACK_DIR/.env.seed"
@@ -44,18 +45,12 @@ stack_url() {
 case "${1:?$USAGE}" in
   up)
     # Regenerate stack config from the single source (lossless: constants).
-    cp "$STACK_DIR/.env.example" "$STACK_DIR/.env"
     # Either supported Kibana line from one script: an ES_LOCAL_VERSION already in
     # the environment (the CI contract matrix sets it) replaces the .env.example
-    # pin in the regenerated .env, which start.sh and every compose file read.
+    # pin in the regenerated .env, which start.sh and every compose file read
+    # (scripts/stack-version.sh, the rule the ephemeral stacks share).
     # Unset, the pin stands and nothing is logged.
-    if [ -n "${ES_LOCAL_VERSION:-}" ]; then
-      case "$ES_LOCAL_VERSION" in
-        *[!0-9.]*) echo "FAIL: ES_LOCAL_VERSION='$ES_LOCAL_VERSION' is not a version like 9.5.4" >&2; exit 1 ;;
-      esac
-      sed "s/^ES_LOCAL_VERSION=.*/ES_LOCAL_VERSION=$ES_LOCAL_VERSION/" "$STACK_DIR/.env.example" > "$STACK_DIR/.env"
-      echo "ES_LOCAL_VERSION=$ES_LOCAL_VERSION (environment override of the .env.example pin)"
-    fi
+    env_with_version "$STACK_DIR/.env.example" "$STACK_DIR/.env"
     # Inside a TLS-intercepting sandbox (Claude Code cloud session) the containers do
     # not trust the proxy CA the VM trusts, so Kibana's outbound HTTPS fails. Compose
     # the overlay only when that CA exists — a no-op on a laptop or a GitHub runner.
@@ -123,6 +118,32 @@ case "${1:?$USAGE}" in
     curl -fsSu "elastic:${ESPW}" -X POST "$KB/api/sample_data/flights" \
       -H 'kbn-xsrf: true' -H 'x-elastic-internal-origin: Kibana'
     echo ""
+    # Secret canaries (D59): one Fleet output and one Fleet proxy whose secret
+    # fields hold known dummy values (scripts/canaries/*.json), so the contract
+    # and replay tiers' secret scan (tests/_secret_scan.py) has a real secret
+    # on the stack to catch. Deleted and created again on every seed, so the
+    # stack always holds the files' values. Neither is a default or used.
+    # Each entry is <canary>:<Kibana API path>: scripts/canaries/<canary>.json
+    # is POSTed to $KB/api/<path> and DELETEd at $KB/api/<path>/<id>. That fits
+    # an API that takes a caller-chosen top-level "id" in the POST body and
+    # hands the secret back on GET <path>/<id> (Fleet outputs and proxies). A
+    # type that does not (a connector: id in the path, secrets never returned;
+    # a private location: server-generated id) needs its own seed step (D59).
+    echo "seeding secret canaries..."
+    for kind in fleet-output:fleet/outputs fleet-proxy:fleet/proxies; do
+      file="scripts/canaries/${kind%%:*}.json"
+      api="$KB/api/${kind#*:}"
+      id=$(sed -n 's/^ *"id": *"\([^"]*\)".*/\1/p' "$file")
+      code=$(curl -s -o /dev/null -w '%{http_code}' -u "elastic:${ESPW}" -X DELETE \
+        "$api/$id" -H 'kbn-xsrf: true' || true)
+      case "$code" in
+        200|404) ;;
+        *) echo "FAIL: could not remove the old canary ${kind%%:*} '$id' at $api/$id (HTTP $code) — check Kibana serves that API (Fleet set up: scripts/stack.sh down && scripts/stack.sh up && scripts/stack.sh seed)" >&2; exit 1 ;;
+      esac
+      curl -fsS -o /dev/null -u "elastic:${ESPW}" -X POST "$api" -H 'kbn-xsrf: true' \
+        -H 'Content-Type: application/json' --data-binary "@$file" \
+        || { echo "FAIL: could not create the canary ${kind%%:*} from $file at $api — check $file fits that API (a top-level \"id\" it accepts in the body: D59) and Kibana serves it (Fleet set up: scripts/stack.sh down && scripts/stack.sh up && scripts/stack.sh seed)" >&2; exit 1; }
+    done
     # Keep the existing key when it still authenticates (/api/features because
     # /api/status is auth-blind); any non-200 routes to mint (benign re-mint).
     KEY=$(grep '^KIBANA_TEST_API_KEY=' "$ENVFILE" 2>/dev/null | cut -d= -f2- || true)

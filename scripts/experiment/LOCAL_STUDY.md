@@ -111,6 +111,12 @@ ES_LOCAL_VERSION=9.5.5 scripts/stack.sh up && scripts/stack.sh seed
 uv run python scripts/experiment/local_run.py install-sample
 ```
 
+Kibana 9.5.5 is outside kibana-py's supported set (9.5.4, 9.4.7), so this
+study's records are not evidence for a supported version, and the DoD gate
+refuses a 9.5.5 stack (D53): re-provision at the pin
+(`scripts/stack.sh down && scripts/stack.sh up && scripts/stack.sh seed`)
+before `make dod`.
+
 Seed after every start of the stack. The seed loads only the flights sample
 data, so `install-sample` installs web logs once. It checks
 `GET /api/sample_data` first and does nothing when web logs is already

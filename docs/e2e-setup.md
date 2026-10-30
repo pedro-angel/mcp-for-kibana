@@ -4,31 +4,41 @@ Two live-model tiers drive a REAL model that uses mcp-for-kibana over MCP
 against the docker Kibana stack: a plain-English request, through a real
 model, through our server, into real Kibana objects. Both send the same task
 prompts and score Kibana's state afterwards, never the model's text
-(`tests/_live_tasks.py`).
+(`tests/_live_tasks.py`; the Claude tier's per-toolbox tasks are in
+`tests/_toolbox_tasks.py`).
 
 | Target | Model | Needs |
 |---|---|---|
 | `make test-e2e` | Claude via headless Claude Code (`claude -p`); `CLAUDE_E2E_MODEL`, default `haiku` | a Claude sign-in for the `claude` CLI (no API key) |
 | `make test-e2e-local` | a small local model in LM Studio; `LMSTUDIO_MODEL`, required | LM Studio with the one-time setup below |
 
-`make dod` runs the Claude tier: `e2e_green` is `required` in `dod.config`
-(D42) and runs the same `pytest -m e2e_claude` against the seeded stack, with
-its records in the gate's log directory (`/tmp/dod-<repo>/e2e_green-runs/`). A
-missing `claude` CLI or sign-in makes the criterion NO-GO with the fix named.
-CI's `.github/dod` configs keep `e2e_green` `n/a` (no Claude sign-in there).
-The LM Studio tier is outside every gate. Run `make test-e2e` on its own when
-a change touches tool names, descriptions or schemas (D38).
+Both tiers run on demand, outside every gate (D61, superseding D42):
+`e2e_green` is `n/a` in `dod.config` and in every `.github/dod` config. Run
+`make test-e2e` when a change touches tool names, descriptions or schemas
+(D38). What `make dod` and CI run instead is [the replay
+tier](#the-replay-tier-e2e_replay): recorded real-model turns for every
+toolbox. A config that marks `e2e_green` `required` still gets the old
+criterion: the same `pytest -m e2e_claude`, records in the gate's log
+directory (`/tmp/dod-<repo>/e2e_green-runs/`), and a NO-GO naming the fix for
+a missing `claude` CLI or sign-in.
 
 ## The Claude tier (`make test-e2e`)
 
-`tests/e2e/test_claude_live.py` runs four tasks, five runs each by default:
+`tests/e2e/test_claude_live.py` runs eleven tasks, five runs each by default:
 the three LM Studio tasks below (flights dashboard, dashboard in a new space,
-alert rule in a new space) and `fix_rule_threshold`, where the harness seeds a
-disabled alert rule with a wrong threshold and the model must fix it in place.
-Tasks, pass criteria and N are pre-registered in
-`scripts/experiment/CLAUDE_E2E.md`.
+alert rule in a new space); `fix_rule_threshold`, where the harness seeds a
+disabled alert rule with a wrong threshold and the model must fix it in place;
+one task for each toolbox no model had been offered before (cases,
+security-detections, observability, streams, fleet, platform-health), each
+with a server that loads only that toolbox; and `delete_one_dashboard`, the
+one task at the `destructive` tier, where the harness seeds two marker
+dashboards and the model must delete exactly the one it is told to, by its id.
+Tasks, pass criteria and N are fixed in
+`scripts/experiment/CLAUDE_E2E.md` (the first four tasks pre-registered; the
+seven of block "toolboxes" committed with their runs, so not
+pre-registered).
 
-One-time setup — the fixes the gate's `e2e_green` NO-GO lines point to:
+One-time setup — the fixes the `e2e_green` NO-GO lines point to:
 
 ```bash
 npm install -g @anthropic-ai/claude-code   # installs the `claude` CLI (Claude Code)
@@ -43,9 +53,10 @@ Then:
 make test-e2e                      # starts + seeds the stack, then pytest -m e2e_claude
 ```
 
-In `make dod`, the `e2e_green` GO line names the model and runs per task it
-ran with (`CLAUDE_E2E_MODEL` / `CLAUDE_E2E_RUNS`), so a GO from an override —
-say a single run per task — is visible in the verdict.
+Where a config requires `e2e_green`, its GO line names the model and runs per
+task it ran with (`CLAUDE_E2E_MODEL` / `CLAUDE_E2E_RUNS`), so a GO from an
+override — say a single run per task — is visible in the verdict, and the
+gate's `verdict.json` records the model (D55).
 
 The model gets this server's tools and nothing else: `--tools ""` removes
 every built-in tool (no shell, files or web), `--strict-mcp-config` loads only
@@ -346,9 +357,19 @@ guidance strings survive — see [the replay tier](#the-replay-tier-e2e_replay).
 ## The replay tier (`e2e_replay`)
 
 `make test-e2e-replay` runs the same MCP surface with **no model in the loop**:
-a real `fastmcp.Client` over real stdio replays the recorded turn above against
-the real server and real Kibana. It needs only the docker stack, so unlike this
-page's live harness it runs on every PR (`e2e_replay_green`).
+a real `fastmcp.Client` over real stdio replays the recorded turn above — and
+the other recorded turns in `tests/e2e_replay/transcripts/`, one or more per
+toolbox (D61) — against the real server and real Kibana. It needs only the
+docker stack, so unlike this page's live harness it runs in every gate run
+and on every PR (`e2e_replay_green`).
+
+The per-toolbox turns are Claude runs of the tasks (not pre-registered) in
+`tests/_toolbox_tasks.py`, converted from their committed run records by
+`tests/e2e_replay/record_claude_turn.py` (call order and arguments are the
+model's own; the needles, the id bindings and the `schema_rejected` entry are
+authored and say so). The replay scores them with the live tier's own ladder,
+state rungs only. `tests/unit/test_replay_coverage.py` fails `unit_green` for
+a toolbox no transcript reaches, naming the steps to record one.
 
 `wheel_replay_green` runs the same replay against the **installed package**
 rather than the checkout: `scripts/checks/wheel-replay.sh` builds the wheel,
@@ -356,6 +377,17 @@ installs it into a fresh venv with `pip` (dependencies resolved from the
 `pyproject.toml` ranges, as a PyPI install resolves them), and points the suite
 at that venv's `mcp-for-kibana` through `KIBANA_MCP_SERVER_BIN`. It is the only
 live tier that exercises what `pip install mcp-for-kibana` delivers.
+
+`image_replay_green` runs it once more against the **built Docker image over
+HTTP** (D62): `scripts/checks/image-replay.sh` points the suite at the image
+through `KIBANA_MCP_SERVER_IMAGE`, and each transcript runs in its own
+container (`--network host`, the seed's Kibana URL, no API key), its client
+sending `Authorization: ApiKey <seed key>` on every request.
+`tests/e2e_replay/test_image_http.py` adds the other half: a call without the
+header, or with another scheme, is refused naming the fix, even with a
+`KIBANA_API_KEY` in the container. It is the only tier that runs the image's
+Python, its `--no-dev` venv and the per-request credential path HTTP users
+rely on.
 
 It certifies that the tools still exist under the same names, that arguments a
 real model produced still validate against the live input schemas, that

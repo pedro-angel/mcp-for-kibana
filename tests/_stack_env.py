@@ -108,7 +108,7 @@ def require_stack_env() -> None:
     local = local or {}
     _merge_into_environ(machine, local)
 
-    forbidden = [k for k in _MACHINE_KEYS if k in local]
+    forbidden = [k for k in local if k.upper() in _MACHINE_KEYS]  # any case: Settings reads it so
     if forbidden:
         pytest.fail(
             "machine-owned keys belong to elastic-start-local/.env.seed — remove "
@@ -121,7 +121,8 @@ def require_stack_env() -> None:
         if machine_value and shell_value and shell_value != machine_value:
             warnings.warn(
                 f"shell {key} overrides elastic-start-local/.env.seed "
-                f"({os.environ[key]!r} wins — shell env has precedence by design)",
+                "(the shell value wins — shell env has precedence by design; "
+                "value not shown: one of these is a key)",
                 stacklevel=2,
             )
 

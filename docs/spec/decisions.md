@@ -1,6 +1,6 @@
 # Decisions ledger
 
-Status: Draft v1.16 (2026-10-25) — regeneration corpus. Consumes
+Status: Draft v1.17 (2026-10-25) — regeneration corpus. Consumes
 [brief.md](brief.md); read alongside [design.md](design.md).
 
 Each entry is a decision a rewrite must not silently re-litigate: what was
@@ -144,7 +144,8 @@ this ledger stands without them.
   may get the input elsewhere, e.g. an id the user pastes). Dependencies are
   followed transitively; tools hidden by the tier are not checked; toolbox
   selections are not checked. **Dependency map**: one owner, data —
-  `DEPENDENCIES` in `src/kibana_mcp/tool_lists.py`, 79 edges from 69 tools.
+  `DEPENDENCIES` in `src/kibana_mcp/tool_lists.py`, 79 edges from 69 tools
+  (125 from 109 since D60, which gave every id-taking tool a source).
   An edge A → B means A takes an input only B shows the model and A's own
   description or error guidance sends the model there: an index or field name
   (`update_panel`/`delete_panel` → `get_dashboard`; every VizSpec tool →
@@ -861,6 +862,9 @@ this ledger stands without them.
   fix names both ways a key reaches the server, `Authorization: ApiKey
   <key>` and `KIBANA_API_KEY` (as `adapters/mcp/auth.py` does), because in
   HTTP mode the env key is ignored unless `KIBANA_MCP_ALLOW_ENV_KEY_HTTP`.
+  Amended by D58: a target the space listing leaves out is read with
+  `spaces.get`, and a 403 there is reported as the key's missing privilege,
+  not as a space to create.
 - **D50 (2026-10-25, probes on 9.5.4, Basic)** — The security-detections
   toolbox gains exception-list edit, copy, export and import:
   `update_exception_list`, `duplicate_exception_list` and
@@ -1233,9 +1237,10 @@ this ledger stands without them.
   recorded wire bytes — its order carries no evidence about model behavior
   and each transcript's `recorded` block says which kind it is.
 - **D31 (2026-10-04)** — *The on-demand rule below now runs `make test-e2e`,
-  the Claude tier, superseded by D38; the gate decision is superseded for the
-  local `dod.config` by D42 (`e2e_green = required` there) and stands for
-  every `.github/dod` config.* The
+  the Claude tier, superseded by D38; the gate decision was superseded for the
+  local `dod.config` by D42 (`e2e_green = required` there, 2026-10-17) until
+  D61 restored `n/a` (2026-10-27), and it stands for every `.github/dod`
+  config.* The
   Definition of Done needs no LLM: `e2e_green` is
   `n/a` in `dod.config` as in every `.github/dod` config. Why: the gate must
   reach GO wherever the project is worked on — CI runners and Claude Code
@@ -1320,7 +1325,10 @@ this ledger stands without them.
   `KIBANA_MCP_TOOLS` (D34). Evidence: the count is checked against a live
   listing by `tests/unit/test_profiles.py` (the `dashboards-analyst` profile,
   which is the default selection at `write`, listed 21 then; 26 since D48, which records that growth).
-- **D42 (2026-10-17, owner: Q16)** — The local Definition-of-Done gate
+- **D42 (2026-10-17, owner: Q16)** — *Superseded by D61: `e2e_green` is
+  `n/a` in `dod.config` again, and the live model runs on demand; the
+  criterion's runner and NO-GO messages below stand for any config that
+  requires it.* The local Definition-of-Done gate
   requires the Claude live-model run: `e2e_green = required` in `dod.config`
   (the gate a cloud session or the owner's laptop runs), and the criterion runs
   `make test-e2e`'s selection — `pytest -m e2e_claude`, headless Claude Code
@@ -1410,6 +1418,667 @@ this ledger stands without them.
   e2e tier needs only the server's spans. Telemetry is never a DoD criterion.
   Docs: [e2e-setup](../e2e-setup.md#exporting-the-servers-spans-from-the-claude-tier-default-off).
 
+- **D53 (2026-10-25, owner: the DoD runs on the newest supported version)** —
+  The DoD gate checks the running stack's Kibana version before the
+  seeded-stack criteria (`contract_green`, `e2e_replay_green`,
+  `wheel_replay_green`, `e2e_green`, and `image_replay_green` since D62),
+  inside them rather than as a criterion of
+  its own, so no config can declare it away. `tests/_stack_version.py` reads
+  `version.number` from `/api/status` with the credentials the suites use
+  (shell env, else `elastic-start-local/.env.seed`; since D56 a shell value
+  that differs from the seed is refused, so it reads the seed's) and requires the
+  `ES_LOCAL_VERSION` pin in `elastic-start-local/.env.example` — the newest
+  version kibana-py supports (D30, `tests/unit/test_stack_pin.py`) — or, in CI
+  (`GITHUB_ACTIONS=true`), the matrix's `ES_LOCAL_VERSION`, which must be in
+  `kibana.SUPPORTED_VERSIONS`. A shell `ES_LOCAL_VERSION` does not move the
+  local target. A missing seed, an unreachable Kibana or another version is
+  NO-GO on each of those criteria with one line naming the fix (`scripts/stack.sh
+  down && scripts/stack.sh up && scripts/stack.sh seed`, prefixed by `unset
+  ES_LOCAL_VERSION` when the shell exports one); each GO line names the version
+  it certified (`GO    contract_green  (Kibana 9.5.4)`). One HTTP call, about
+  1 s per gate run. `test_stack_pin.py` also covers `scripts/cloud-setup.sh`'s
+  pre-pull fallback version. Why: the gate checked only that `.env.seed`
+  existed, so a stack left on a study's 9.5.5 (outside the supported set; 516
+  committed files under `scripts/experiment/runs/` record `"kibana_version":
+  "9.5.5"`) or on
+  9.4.7 after `ES_LOCAL_VERSION=9.4.7 make test-contract` read `VERDICT: GO`
+  without saying which Kibana it certified. Evidence (2026-10-25, dev stack on
+  9.5.4): with a fake `/api/status` reporting 9.5.5 the gate printed `NO-GO
+  e2e_replay_green (the seeded stack runs Kibana 9.5.5, but the gate certifies
+  9.5.4 ...)`; with the pin doctored to 9.4.7, and in CI mode with a 9.4.7
+  matrix version, the same NO-GO; on the real tree `GO e2e_replay_green
+  (Kibana 9.5.4)`. Extends D30.
+- **D54 (2026-10-25)** — `changelog_entry` is diff-based. The DoD gate and a
+  `checks.yml` step on pull requests run `scripts/checks/changelog-entry.sh`:
+  the change is every path that differs from the base — `git merge-base HEAD
+  origin/main`, else the latest `v*` tag — in the working tree, plus untracked
+  files that are not ignored. If any of them is outside the exemption list
+  (`scripts/experiment/runs/` run records, the working plans under
+  `.claude/plans/`, `CHANGELOG.md` itself; renames are off, so a file moved into an exempt path counts
+  at its old one), CHANGELOG.md must gain an entry under `## [Unreleased]`: more
+  entry lines (non-blank, not a heading) there than at the base, at least one
+  with text the base changelog does not hold — or a `## [x.y.z]` heading whose
+  version the base lacks (a release cut moves entries there). A line under an
+  older release, above the first section, an amended old heading, an empty
+  sub-heading, or a reworded, re-spaced or moved entry does not count.
+  `uv.lock` is not exempt: the image installs from it, and lock-file-only CVE
+  fixes get a `### Security` entry. A git failure while listing the paths or
+  reading the base changelog is NO-GO naming `git fsck; git fetch origin main`,
+  never an empty passing list. With neither `origin/main` nor a `v*` tag the check is NO-GO naming
+  `git fetch origin main`; a shallow clone without the merge-base names `git
+  fetch --unshallow origin main`; a missing entry names `add an entry under ##
+  [Unreleased] in CHANGELOG.md` and lists up to five of the paths. The GO line
+  names the base. The CI step fetches `main` itself and skips Dependabot PRs
+  (trusted bumps, as in the commit-msg step); the `.github/dod/*.config` tiers
+  keep the criterion `n/a` because `checks.yml` runs it. Why: the criterion
+  grepped for a `## [Unreleased]` or release heading, and CHANGELOG.md always
+  has one, so it read GO on every tree while `dod.config` said it "refuses any
+  completion claim that leaves the changelog untouched"; 10 of the last 60
+  non-merge commits before the review did not touch CHANGELOG.md (chores, a
+  test-timing fix, Dependabot bumps). Evidence (2026-10-25): on a code change
+  with no entry the old gate printed `GO    changelog_entry` and the new one
+  NO-GO naming the fix; on the real tree GO (the H2 commit message has the
+  lines). An adversarial review then found 8 ways through the first version
+  (the `uv.lock` exemption, amended headings, edited or moved lines, empty
+  sub-headings, renames, quoted non-ASCII paths, a swallowed git failure and a
+  `docs/plans/` exemption for a directory that does not exist); each has a
+  unit test in `tests/unit/test_changelog_entry.py`.
+- **D55 (2026-10-26)** — The DoD verdict is bound to a tree. At start and at
+  end the gate computes the content tree id of the working tree: a copy of the
+  index in a temporary file, `git add -A --sparse` (git 2.34+), `git
+  write-tree` (tracked edits and
+  untracked, non-ignored files included; the real index is never touched;
+  under a second on this repo). The copy keeps the index file's mtime (`cp
+  -p`), so git's racy-clean check still rehashes a same-size edit made in the
+  second of the last index write, and it drops every assume-unchanged bit
+  and the skip-worktree bit of every entry whose file is present (C-quoted
+  names unquoted for that check), since `git add -A` never rehashes an entry
+  carrying either (an absent skip-worktree entry keeps its bit and is not
+  recorded as deleted only when `core.sparseCheckout` is on; anywhere else,
+  like an absent assume-unchanged file, it is a deletion). `--sparse` also
+  takes edits and untracked files outside the sparse-checkout cone, which
+  plain `git add -A` skips or fails on. Known limits, left as is: a
+  submodule counts by its checked-out commit only (its uncommitted work is
+  not in the id; the repo has no submodules), and in a sparse checkout a
+  file inside the cone that someone marked skip-worktree by hand and deleted
+  reads clean, as it does in `git status` (telling it apart means matching
+  every entry against the sparse patterns, more code than the case is
+  worth). The header line and the `VERDICT:` line name
+  HEAD, that tree id and `clean` (tree id equals `HEAD^{tree}`) or `dirty`. If
+  the id at end differs from the one at start the gate prints `NO-GO
+  tree_stable` naming both ids and the fix (commit or stash, leave the tree
+  alone until the gate finishes, re-run `make dod`; the `hygiene_hooks` log
+  when that criterion ran, since its fixers rewrite files). `tree_stable` is
+  part of the gate, not a criterion: no config row, so no config can declare
+  it away, and it applies to the CI tiers too. A dirty tree is reported, not
+  refused: the GO certifies the recorded tree, and a claim "GO at `<sha>`"
+  holds only when `git rev-parse <sha>^{tree}` equals it (AGENTS.md says how to
+  check). The log dir `/tmp/dod-<repo>/` is cleared at the start of each run
+  and ends with `verdict.json`: verdict, HEAD, tree id at start and end, dirty,
+  config path and sha256, each known criterion's result (`GO`, `NO-GO`, `n/a`)
+  plus `tree_stable` (and `cycle_stack` when it failed), Kibana version and
+  Claude model when those tiers ran, UTC start and finish times. A git failure
+  while computing the id is a FAIL (exit 2) at start and NO-GO at end, naming
+  `git status && git fsck`. Why: the gate called git only for `rev-parse
+  --show-toplevel` and printed a bare `VERDICT: GO`, so a GO over untracked
+  helpers or uncommitted fixes read as a GO for whatever was committed later;
+  an edit saved during the 30-plus-minute run split the criteria across two
+  trees under one GO; and logs of earlier runs stayed in the log dir
+  (`scripts/experiment/runs/claude-e2e/baseline-2026-10-24-otel-flush/runs.jsonl`
+  has 20/20 records with `"server_dirty": true`). Evidence (2026-10-26): on a
+  fixture repo whose only required criterion writes a file, the old gate
+  printed `GO changelog_entry` and `VERDICT: GO`; the new one `NO-GO
+  tree_stable (the tree changed during the run: ... — commit or stash your
+  edits ...)` (the H3 commit message has the lines); on the real tree GO with
+  the tree id. `tests/unit/test_dod_verdict.py` runs the gate on fixtures.
+- **D56 (2026-10-26)** — The DoD suites run as declared, and their lines show
+  how much ran. (a) The gate clears `PYTEST_ADDOPTS`, `PYTEST_PLUGINS`,
+  `PYTEST_DEBUG`, `PYTEST_DISABLE_PLUGIN_AUTOLOAD`, `COVERAGE_RCFILE` and
+  `KIBANA_MCP_SERVER_BIN` (which makes `e2e_replay_green` replay an installed
+  executable instead of the checkout; `wheel-replay.sh` sets it on its own
+  command line) with `MAKEFLAGS`/`MFLAGS` before any criterion (the suites
+  merge `.env.local` back in after that, so (c) refuses a `UV_*`, `PYTHON*`, `LD_*` or
+  `KIBANA_MCP_SERVER_BIN` line there: measured, a `UV_ENV_FILE` made the
+  replay's `uv run` load another `KIBANA_API_KEY` into the server), and its header names the ones that
+  were set (`note: cleared PYTEST_ADDOPTS ...`). Cleared, not refused: the
+  gate's own command lines and `pyproject.toml` (committed, in the tree id)
+  declare what runs, so a stale export is not an error to fix first.
+  `COVERAGE_RCFILE` is on the list because it replaces the config pytest-cov
+  reads `fail_under = 90` from (measured: with an rc file that sets
+  `fail_under = 0`, `pytest --cov` over three tests no longer fails the floor).
+  (b) `run_suite` parses every outcome of the pytest summary and prints `N
+  passed / M collected` on the GO and NO-GO lines (M = passed + failed +
+  skipped + deselected + xfailed + xpassed + errors), before the Kibana
+  version on the seeded-stack lines (`GO    contract_green  (N passed / M
+  collected; Kibana 9.5.4)`). Deselected tests are shown, not refused: the
+  default addopts deselect the live tiers from `unit_green`, and each live tier
+  deselects the units. (c) `tests/_stack_version.py`, the seeded-stack
+  precondition (D53), refuses a shell `KIBANA_URL` or `KIBANA_TEST_API_KEY`
+  that differs from `elastic-start-local/.env.seed` (an empty one included)
+  before any HTTP call, naming the variables (never their values) and `unset
+  KIBANA_URL KIBANA_TEST_API_KEY`: the gate certifies the seeded local stack.
+  Those two count in any letter case and in `.env.local` too: `Settings`
+  lowercases env names and the later one wins, so a `kibana_url` beside the
+  seed's `KIBANA_URL` aimed the replayed server at another Kibana with the
+  seed's key (measured with `Settings.load`); a differing shell spelling joins
+  the `unset`, and `.env.local` may hold neither name in any case
+  (`tests/_stack_env.py` fails on it too). It also refuses a `KIBANA_API_KEY`, `KIBANA_PUBLIC_URL` or
+  `KIBANA_MCP_PUBLIC_KIBANA_URL` set in the shell or `.env.local`, in any
+  letter case (`Settings` reads names case-insensitively, so a
+  `kibana_public_url` re-links the server too: measured; a lowercase
+  `kibana_api_key` does not win, because `Settings.load` sets the uppercase
+  name from the seed after it, but it is refused anyway, as one rule for every
+  spelling is simpler than one measured case each): the replay
+  servers inherit the suite's environment and `Settings.load` fills the seed's
+  key in only by `setdefault`, so these would re-credential (or re-link) the
+  server under test; the fix adds them to the `unset` (or names the
+  `.env.local` line to remove). `KIBANA_MCP_API_KEY` and
+  `KIBANA_MCP_KIBANA_URL` are not refused: the seed-filled first alias wins
+  over them (measured). Outside the gate the suites keep shell-wins precedence
+  with a warning that names the variable, not its value
+  (`tests/_stack_env.py`), so `make test-contract` against another stack still
+  works; the refusal is the gate's. This supersedes D53's "credentials the
+  suites use (shell env, else .env.seed)" and its `unset KIBANA_URL ...`
+  prefix on a version mismatch, which the refusal makes unreachable. (d) The
+  gate header and AGENTS.md say that `KIBANA_MCP_DOD_CYCLE_STACK=1` only stops
+  the dev stack between the halves, never starts or restarts it, and leaves it
+  stopped (integrity-6 of the 2026-10-25 review, dropped as a gate gap, tripped
+  the review's verifier). Why: the gate cleared only `MAKEFLAGS`, counted only
+  `passed` and `skipped`, and the suites let shell credentials win with a
+  `warnings.warn` in a `-q` log, so a shell export could shrink every suite,
+  drop the coverage floor, or aim the mutating suites at another Kibana, and
+  still read `VERDICT: GO`. Evidence (2026-10-26, dev stack on 9.5.4): with
+  `PYTEST_ADDOPTS='-k test_stack_pin --no-cov'` the old gate printed `GO
+  unit_green` over `3 passed, 2261 deselected` and the new one runs the whole
+  suite and prints its counts; with `KIBANA_URL=http://127.0.0.1:15601` (the
+  seed says `localhost`) the old gate printed `GO e2e_replay_green (Kibana
+  9.5.4)` and the new one NO-GO naming the unset (the H4 commit message has
+  the lines). `tests/unit/test_dod_suite_env.py` runs the gate on fixtures;
+  `tests/unit/test_stack_version.py` covers the refusal.
+- **D57 (2026-10-26)** — The docs' figures, tool tables and test citations
+  are checked against the code, inside `unit_green` (no new criterion).
+  `tests/unit/test_docs_counts.py` computes the figures from the registry
+  (`tests/_registry.py`: every toolbox at `destructive` on a FakeGateway) and
+  scans `README.md`, `profiles/README.md`, `docs/*.md` and the specs except
+  `decisions.md` (it records figures as they were; so does CHANGELOG.md) for
+  "N tools", "N-tool", a "(R / W / D)" tier triple, "N read/write/destructive"
+  and "N edges from M tools", a figure wrapped across a line break (a
+  Markdown hard break too, trailing spaces or a backslash) included.
+  A toolbox's spec, and its section of `docs/tools.md`, may state that
+  toolbox's size, tiers and read + write, plus the cross-cutting figures (the
+  total, the space-aware count and its tiers); every other line may state any
+  whole-surface figure (those, the tier totals, the built-in list and profile
+  sizes, the dependency map) and any toolbox's size. A figure that records a
+  past state goes in the test's `HISTORICAL` table with the words around it,
+  which exempt that figure only, not the rest of its line; an entry that
+  matches no figure fails. A failure names the file, the line and every figure
+  the registry gives there, each labelled with what it counts, and the fix. `test_docs_tool_reference.py` now
+  also requires exactly one `| Tool | Tier |` row per tool in its own
+  toolbox's section (the dashboards table borrows the two data-view reads on
+  purpose), the tier cell equal to the registry's tier (`(upsert)` only on an
+  idempotent tool), the dashboards annotation table to list the dashboards
+  table's tools in rows whose hints are theirs, and each "shows the N reads +
+  M writes" sentence to match. `test_docs_test_citations.py` requires every
+  `test_<name>` and `tests/....py` cited in README, AGENTS.md, `docs/` and the
+  specs to exist under `tests/` (a Synthetics field `test_run_id` excepted),
+  naming the closest existing test. design.md's tier invariant now says
+  `docs://tools` is deliberately not tier-gated. Why: the counts were typed by
+  hand in a dozen files and only review caught drift (d1a09c6 found 162/80/21
+  left after 5da1b18 passed the gate); the space contract read "86 tools" in
+  four spec lines and data-management's Enforcement "11-tool surface" while
+  the registry had 92 and 17; the reference page served to models was checked
+  only for each name somewhere on it, so 094e102's three add_esql_* tools
+  missing from the dashboards and annotation tables passed; and
+  platform-health.md cited the read-only-explorer profile test by the name it
+  had before afe9b17 renamed it. Evidence (2026-10-26): on the tree before the fix the
+  counts test failed on exactly those five figures (each naming 92 or 13 as
+  the registry's figure; data-management's Enforcement says 17 now, its test
+  asserts the 17-tool set) and the citations test on the stale name (naming
+  `test_read_only_explorer_profile_is_fourteen_read_tools`); a doctored
+  tools.md (`delete_alert_rule` as write, `add_esql_metric_panel` dropped from
+  the annotation table) failed the table tests while the name test passed; all
+  pass on the fixed tree (the H5 commit message has the lines).
+- **D58 (2026-10-26, probes on 9.5.4, Basic)** — Privilege-dependent
+  behaviour is tested under restricted keys, inside `contract_green` (no new
+  criterion). One shared fixture, `restricted_key` in
+  `tests/contract/conftest.py`, makes every restricted credential the
+  contract tier uses: a throwaway role (its `kibana` privileges as given,
+  plus `manage_own_api_key`), a user with it, and an API key that user mints
+  for itself through Kibana's security routes (a key the superuser test key
+  makes carries no privileges; no Elasticsearch admin credentials needed);
+  the key is invalidated, then the user and role deleted. It replaces the
+  two ad hoc fixtures (the copy test's role+user+key and the Fleet
+  uninstall test's Elasticsearch `role_descriptors` key, which needed the
+  `elastic` password and skipped without it).
+  `tests/contract/test_privilege_matrix.py` runs every tool that takes
+  `space`, `source_space`, `target_spaces` or `spaces`, plus the listing
+  guards `list_spaces` and `uninstall_package`, through the MCP tool layer
+  of the full server under three keys — `all` in 'default' only, `read` in
+  every space, no Kibana privilege — and accepts a complete result, a
+  curated refusal or an auth error naming the fix, never a crash, masked
+  text, a success of a write tool under the read-only key, or a hidden space
+  reported as missing (the arguments name nothing real: of the write and
+  destructive rows under that key, those that reach the write get Kibana's
+  403 naming the fix, the rest a not-found or payload refusal the superuser
+  key would get too, so that row proves "no write", not "Kibana refused it");
+  its first rows prove each key is the restricted one (not the test key;
+  Kibana's `/internal/security/me` names the throwaway user). The rows'
+  arguments come from each tool's schema plus `OVERRIDES` in
+  `tests/_privilege_matrix.py`; `tests/unit/test_privilege_matrix_rows.py`
+  runs each row twice — against a factory that refuses every space, and
+  against the real adapter over a client whose every call raises — and fails
+  unless the call reaches the space check and then a request to Kibana, so a
+  schema or guard change (in the tool or the adapter) cannot turn a row into
+  a validation error that tests nothing, and every space-taking tool in the
+  registry has a row by construction (a listing guard is added to
+  `LISTING_GUARDS` by hand). The verifier's preference over a
+  "nonzero `-m restricted_key`" count (the finding's option c) was taken:
+  the registry decides the rows, so no marker is needed.
+  **Product fixes the matrix and privilege-2 brought.** Kibana answers 403
+  for a space the key has no privilege in whether or not a space has that id
+  (probed with all three keys: `Unauthorized to get <id> space` for an
+  existing hidden space and for a made-up id alike; a key with `read`
+  everywhere gets 404 for the made-up id), and its listing leaves such a
+  space out. So the copy, overwrite and share target check now reads each
+  id the listing lacks with `spaces.get`: 404 keeps D49's "not found …
+  create_space" text, 403 raises an auth error, "cannot write into space
+  '<id>': this API key has no privilege in '<id>' … list_spaces shows the
+  spaces this key can view … use an API key created by a user whose role
+  grants a privilege there … 'Authorization: ApiKey <key>' or
+  KIBANA_API_KEY; nothing was changed". The same fix is appended to the 403
+  `connect()` raises while validating `space` or `source_space`, and every
+  401/403 Kibana returns now names its fix (an invalid key: use a valid one;
+  a missing privilege: a key from a user whose role grants it), where before
+  it was only "Kibana rejected the API key or permissions: <Kibana's text>".
+  `list_spaces` says it lists the spaces this key can view. The matrix's
+  first run found one more: `create_value_list` and `create_value_list_item`
+  under the `read` key answered "Kibana returned an unexpected error",
+  because Kibana answers the lists index status with a bare 500 for a key
+  without the lists privilege (probed); a 500 there now falls through to
+  `create_index`, whose 403 names `[lists-all]`. Evidence (2026-10-26): with
+  `restricted_key` doctored to yield `KIBANA_TEST_API_KEY` the matrix failed
+  naming the fixture fix (each key "is KIBANA_TEST_API_KEY", `list_spaces`
+  under the default-only key showing the throwaway space); with the
+  pre-change target check, copy, overwrite and share into the hidden space
+  failed naming "never as missing" against D49's "create the space with
+  create_space" text; both pass on the real tree (the H6 commit message has
+  the lines).
+- **D59 (2026-10-26, probes on 9.5.4, Basic)** — No tool result carries a
+  credential, checked across the contract and replay tiers (inside
+  `contract_green`, `e2e_replay_green` and `wheel_replay_green`, and
+  `image_replay_green` since D62; no new criterion). An autouse `secret_scan` fixture in
+  `tests/contract/conftest.py` and `tests/e2e_replay/conftest.py` patches
+  `fastmcp.Client.call_tool_mcp` (which `call_tool` uses) and scans every
+  result, its text blocks and structured content, with
+  `tests/_secret_scan.py`; a hit raises at the call and fails the test at
+  teardown too, so a test that swallows the raise still fails. A hit is a
+  seeded canary value, the test key (`KIBANA_TEST_API_KEY` encoded, or its
+  secret half), or a secret-bearing key with a value (`password`,
+  `secrets`, `api_key`, `kibana_api_key`, `service_token`,
+  `certificate_key`, `proxy_headers`, `ssl.key`, … and every key a canary
+  is seeded under), or `config_yaml`/`otel_exporter_config_yaml` text that
+  names a credential; the message names the tool, where and what, and the
+  fix (drop the field in the adapter's summary or refuse the type). The
+  canaries are one source, `scripts/canaries/*.json`: `scripts/stack.sh
+  seed` deletes and creates each (a `remote_elasticsearch` Fleet output
+  with a dummy `service_token` and a `config_yaml` password, a Fleet proxy
+  with a dummy `certificate_key` and `Proxy-Authorization` header; neither
+  default nor used), and the scan reads its values and key names from the
+  same files; the seed's loop takes `<canary>:<Kibana API path>` entries
+  (POST `/api/<path>`, DELETE `/api/<path>/<id>`), and a unit test holds the
+  files to the loop. An entry fits an API that takes a caller-chosen
+  top-level `id` in the POST body and returns the secret on GET
+  `<path>/<id>` (Fleet outputs and proxies); a type that does not — a
+  connector (id in the path, `secrets` never returned) or a synthetics
+  private location (server-generated id) — needs its own seed step.
+  `tests/contract/test_secret_canaries.py` proves Kibana hands the canaries
+  out in plain text to the test key (so the scan has a real secret to
+  catch; NO-GO names `scripts/stack.sh seed`), proves the hook is on, and
+  runs the read tools that reach the canaries (`list_outputs`,
+  `get_output_health`, `list_fleet_server_hosts`, `find_saved_objects` and
+  `get_saved_object` on both saved-object types) at the `read` tier of the
+  full server, and the Fleet tools that read credentials Kibana hands out —
+  `list_enrollment_keys` and `get_enrollment_key` (`api_key`) — plus
+  `update_output` (write tier) on the canary output, whose read-modify-write
+  carries the raw `service_token` and must keep it (it did not: a PUT that
+  carried the unchanged `type` left the canary's `service_token` null, so
+  the gateway now sends the stored token back with an unchanged `type`
+  through kibana-py's `fields`, and `update_output`'s
+  description says a type change resets some fields); `list_uninstall_tokens` runs too but is not credential
+  coverage (Kibana's list returns metadata only; no tool fetches a token
+  value); the fleet contract tests call the gateway, not a
+  `Client`, so these ran past the scan before. How far the scan reaches is how far the tiers call tools
+  through a `Client`; the H8 tool-layer sweep widens that. **Dropped from
+  the proposal: a canary connector.** On Basic only `.index` and
+  `.server-log` connectors can be created and neither has a secrets schema
+  (Kibana answers 400 "Unrecognized key: \"password\"" for one; probed), so
+  a connector canary would hold no secret; the connector tools are covered
+  by the key and test-key checks. Why: under the superuser-snapshot test
+  key a tool that passes a credential on is seen by every live tier and
+  nothing looked — 5da1b18's `get_saved_object` returned Fleet output
+  `service_token`/`config_yaml` and proxy attributes in plain text through
+  `make check`, contract and replay, and only review found it (d1a09c6).
+  Evidence (2026-10-26, dev stack on 9.5.4): with `list_outputs` doctored to
+  return Fleet's raw items, the pre-H7 contract fleet tests and the canary
+  test without the hook passed (25 passed; 3 passed), and with the hook the
+  call failed naming the canaries, `service_token`, `config_yaml` and the
+  fix; with `get_saved_object`'s type allowlist removed, the
+  `ingest-outputs` read failed the same way; all pass on the real tree (the
+  H7 commit message has the lines). `update_output` probes (same stack): a
+  PUT of the canary output with `name` only kept its `service_token`; with
+  `name`, `type` (unchanged) and `hosts` it read back `null`; the gateway's
+  read-modify-write body without `type` kept it, and so did a PUT with
+  `type` plus the token through kibana-py's `fields` (the shipped fix). On
+  the `fleet_ephemeral` stack a promotion PUT without `type` took 68 s
+  against 3 s with it (both orders; `test_output_promotion` timed out at the
+  client's 10 s), which is why `type` stays (the H7 fix commit's message has
+  the probe lines and the post-fix runs: `fleet_ephemeral` 4 passed,
+  `test_secret_canaries.py` 8 passed); on the dev stack a change from
+  `remote_elasticsearch` to `elasticsearch` through the gateway was
+  accepted and read back `service_token` and `preset` `null`,
+  `config_yaml` kept. `test_update_output_preserves_the_canary_service_token`
+  failed on the old gateway naming the fix and passes now;
+  `test_update_output_changes_a_type_live` holds the type change.
+
+- **D60 (2026-10-27, probes on 9.5.4, Basic; owner: the surface budget)** —
+  The tool layer meets real Kibana for every read tool, the surface a model
+  is handed is budgeted, and every tool that takes an id has a stated source
+  (inside `unit_green`, `contract_green`, `streams_ephemeral` and
+  `fleet_ephemeral`; no new criterion).
+  **Read-tool sweep.** `tests/contract/test_read_tool_sweep.py` builds the
+  full server (every toolbox at `destructive`) against the seeded stack and
+  calls each read-tier tool once through a fastmcp `Client` with the
+  arguments in `tests/_read_sweep.py` (one row per read tool; ids from the
+  matching list tool, or from throwaway objects — a case, a connector, a
+  disabled `.es-query` rule, a visualization, a short URL, an exception
+  list, a value list, a disabled, tagged detection rule, an APM agent
+  configuration, a synthetics parameter, and a disabled HTTP monitor on a private location on its
+  own agent policy — created through the write tools and deleted after the
+  module; each list gets one item). Each call must return without
+  `isError` and with structured content (validated against the tool's
+  output schema, which for 71 of the 74 says only "an object" or "a list of
+  objects": they return `dict[str, Any]`, so the check is the call and the
+  shaping, not the field set), and the list tools in `NON_EMPTY` must
+  return rows, so their shaping meets real data. Seven reads still return
+  no rows on the seeded stack, so their row shaping is checked on fakes
+  only: `search_apm_annotations` and `list_apm_sourcemaps` (no APM data),
+  `find_timelines`, `search_detection_alerts` (the sweep's rule is
+  disabled), `list_agent_tags` (tagging would edit the demo agents),
+  `list_fleet_server_hosts`, `list_agent_diagnostics` (none requested) —
+  and `list_uninstall_tokens`' rows are metadata only (D59). The D59 scan sees every result, the sweep's own
+  setup and teardown calls included. The rows must equal the registry's read tools, checked in the
+  contract module and in `tests/unit/test_read_sweep_coverage.py`, so a new
+  read tool fails `unit_green` until it has a row. A delete that fails
+  fails the run naming the object; a run killed before its teardown is
+  cleaned up by the next (caller-chosen ids first, then the `mcp-sweep-`
+  name prefix, and the short URL by the marker path its locator holds). One effect outlives it, as for the contract tier's own
+  synthetics test: Kibana installs the `synthetics` package for the first
+  private location. The two ephemeral suites drive their actions through
+  the same server and a `Client` (the `call_tool` fixture in
+  `tests/ephemeral/conftest.py`): each confirm-gated call (`bulk_*`,
+  `update_output` on the default output, `disable_streams`) is made first
+  without `confirm=True` and must be refused, and a Kibana refusal
+  (`upgrade_agent` to an invalid version) must reach the caller as a
+  `ToolError`; the gateway only observes.
+  **Surface budget.** `docs/spec/surface-budget.toml` caps the default
+  selection, every shipped profile, every toolbox at `destructive` and all
+  of them together by tool count, total description characters and total
+  input-schema characters (compact JSON), and every tool by description and
+  input-schema size; `tests/unit/test_surface_budget.py` measures them from
+  a FakeGateway build. The owner's rule (H8): caps at today's values plus
+  modest headroom, and "the growth should be pondered, not just adding
+  because of new tools" — so a cap is raised only by a new decision that
+  states the new numbers in the form below and says why the growth is
+  worth it; a new tool alone is not a reason. The test fails a surface or
+  tool over its cap naming that fix, a cap whose cited decision does not
+  state it or has no `Why:`, a cap citing an older decision than the newest
+  that states it, a new cap or one above these founding numbers that
+  cites this entry, and any decision's budget lines that differ from the
+  test's `LEDGER` (this entry's numbers, and each later raise's), so a
+  decision edited in place, or one before this one cited, fails unless the
+  test's `LEDGER` is edited in the same change — a diff a reviewer sees; the
+  test is not an anchor against that. The
+  surfaces are measured with every `KIBANA_MCP_*` variable unset, so a
+  shell selection cannot shrink them. Measured 2026-10-27 (after this entry's description
+  sentences): default 27 tools, 12470 description and 20458 input-schema
+  characters; all toolboxes 184 / 65689 / 63868; read-only-explorer 14 /
+  4308 / 3083; fleet-admin 41 / 11312 / 8131; the longest description
+  `uninstall_package` 1167, the largest schema `create_dashboard` 2806. Caps
+  are those plus 5 % (characters rounded up to the next 100; tool counts
+  +5 %, at least one):
+  - `budget all-toolboxes: 193 tools, 69000 description_chars, 67100 input_schema_chars`
+  - `budget default: 28 tools, 13100 description_chars, 21500 input_schema_chars`
+  - `budget profile:dashboards-analyst: 28 tools, 13100 description_chars, 21500 input_schema_chars`
+  - `budget profile:fleet-admin: 43 tools, 11900 description_chars, 8600 input_schema_chars`
+  - `budget profile:read-only-explorer: 15 tools, 4600 description_chars, 3300 input_schema_chars`
+  - `budget toolbox:alerting: 23 tools, 10900 description_chars, 6900 input_schema_chars`
+  - `budget toolbox:cases: 7 tools, 1100 description_chars, 2100 input_schema_chars`
+  - `budget toolbox:dashboards: 18 tools, 5800 description_chars, 18000 input_schema_chars`
+  - `budget toolbox:data-management: 18 tools, 9600 description_chars, 5300 input_schema_chars`
+  - `budget toolbox:fleet: 43 tools, 11900 description_chars, 8600 input_schema_chars`
+  - `budget toolbox:observability: 23 tools, 7900 description_chars, 5600 input_schema_chars`
+  - `budget toolbox:platform-admin: 15 tools, 6300 description_chars, 6300 input_schema_chars`
+  - `budget toolbox:platform-health: 4 tools, 400 description_chars, 200 input_schema_chars`
+  - `budget toolbox:security-detections: 31 tools, 11800 description_chars, 12500 input_schema_chars`
+  - `budget toolbox:streams: 13 tools, 3700 description_chars, 2000 input_schema_chars`
+  - `budget per-tool: 1300 description_chars, 3000 input_schema_chars`
+  **Dependency completeness.** Every tool with an id-like input (`id`,
+  `ids`, `*_id`, `*_ids`, `handle`) has a `DEPENDENCIES` edge to the tool
+  that shows it, or sits in `ID_INPUTS_WITHOUT_SOURCE`
+  (`src/kibana_mcp/tool_lists.py`) with a reason — a caller-chosen id
+  (`create_space`, `create_value_list`, `create_exception_list`,
+  `create_detection_rule`) or a documented constant (`create_connector`,
+  `create_short_url`); every such tool's description names one of its edge
+  targets ("`case_id` comes from list_cases."); and the coherence check runs
+  over every toolbox at every tier and every shipped profile, which must
+  leave out nothing but the reviewed cross-toolbox gaps in
+  `tests/unit/test_tool_lists.py` (`ACCEPTED_GAPS`, exact). The map grew from
+  79 edges from 69 tools to 125 from 109 (cases → `list_cases`, fleet agents
+  and bulk actions → `list_agents`/`list_agent_policies`, detection rules →
+  `find_detection_rules`, value lists → `find_value_lists`,
+  `export_saved_objects` → `find_saved_objects` for its nested `objects`
+  ids, …); the check reads top-level parameter names, so a nested id is
+  covered only where an edge like that one was added by hand; and the check
+  is per tool, not per input (a tool with two id inputs passes with one
+  edge named; `mute_alert`'s `alert_id` has no listing tool at all);
+  `create_alert_rule` → `list_rule_types` is an edge, not an exemption
+  (rule types vary by licence and version). The server still logs no
+  coherence warning for a toolbox-only selection (D41); the check is the
+  test's. Why: 108 of 184 tools never ran through the tool layer against
+  Kibana, so a real shape the fake does not model reached users with GO
+  (surface-3); the default selection grew 16 → 27 tools with only a README
+  digit to bump (usability-2); and 35 id-taking tools had no edge, so a
+  narrow `KIBANA_MCP_TOOLS` selection got no warning and `get_case` gave no
+  hint where a case id comes from (usability-3). Evidence: the sweep, 75
+  passed on 9.5.4 (no false positive; a planted `mcp-sweep-` case, the
+  sweep's value list and a marked short URL were removed by the next run);
+  the bite proofs are in the H8 commit message.
+
+- **D61 (2026-10-27, owner: H9, "replays for all toolboxes … I would limit
+  models to on demand")** — Every toolbox is replayed in every gate run and
+  in CI, and the live model leaves the gate. **Supersedes D42**:
+  `e2e_green = n/a` in `dod.config` as in every `.github/dod` config; `make
+  test-e2e` is the on-demand live tier, run when a change touches tool names,
+  descriptions or schemas (D31's rule, restated in AGENTS.md); new live tasks
+  go there only. The criterion stays in the gate (its runner and NO-GO
+  messages unchanged), so a config can still require it.
+  **Per-toolbox tasks.** Seven tasks join the four of D38 (block "toolboxes"
+  of `scripts/experiment/CLAUDE_E2E.md`, committed with the runs' records,
+  so it is not a pre-registration and its runs are not a pre-registered
+  result: they are kept as the provenance of the replay transcripts (the
+  block and its SUMMARY say so; every run's `prompt.txt` equals the
+  committed prompt);
+  `tests/_toolbox_tasks.py`, prompts pinned by
+  `tests/unit/test_toolbox_tasks.py`): `case_comment` (cases),
+  `exception_item` (security-detections), `synthetic_param` (observability),
+  `stream_fork` (streams), `agent_policy` (fleet), `kibana_status`
+  (platform-health) — each server loads only its toolbox, at `write` — and
+  `delete_one_dashboard`, the first task above `write`: the harness seeds two
+  marker dashboards, the server runs at `destructive` with the dashboards
+  toolbox, and the model must delete only the named one (cleanup reinstalls
+  the flights sample if the run deleted a dashboard that was there before,
+  and raises naming any still missing) (scored: the target
+  gone, its sibling kept, one destructive call, and that call's
+  `dashboard_id` the seeded target's; records now carry each call's
+  `tool_inputs`). State rungs read Kibana's raw API; `kibana_status` leaves no
+  state, so its rungs read the run (the status tool was called; the answer
+  names the version Kibana reports to the harness). The block's runs passed
+  35 of 35, every run valid, $0.0341 (not a pre-registered result)
+  (`scripts/experiment/runs/claude-e2e/counted-2026-10-27-toolboxes/SUMMARY.md`).
+  **Replay for every toolbox.** The first passing run of each
+  write-tier task is converted by `tests/e2e_replay/record_claude_turn.py`
+  into a transcript (call order, arguments and outputs are the model's run;
+  needles, id bindings and `schema_rejected` are authored and say so), so
+  the replay tier has ten transcripts and reaches all ten toolboxes. The
+  marker's 8 hex digits are the one fresh-per-run token; an id a later step
+  passes is bound to the value the live step returns at the recorded JSON
+  path; the final assertion is the task's own ladder, state rungs only, and
+  cleanup is the task's. A task with no state rung (`kibana_status`, a read)
+  would pass any successful call that way, so its transcript carries
+  `live_tokens`: the recorded version is replaced by the one Kibana's own
+  `/api/status` reports this run (read over raw HTTP, not through the
+  adapter the server uses), and a needle holds the tool's answer to it. `tests/e2e_replay/_transcripts.py` lists them, and
+  `tests/unit/test_replay_coverage.py` fails `unit_green` when a toolbox has
+  no transcript reaching one of its tools on a server that loads it, when a
+  transcript file is unlisted, or when a per-toolbox transcript does not cite
+  a committed run record. The precision task is not replayed: the replay
+  tier stays at `write` (`test_replay.py` pins the tier, so a replay never deletes). Why: 114
+  of 184 tools, in six toolboxes, had never been shown to a model and 128
+  were offered in no gate tier (surface-1), and no model had seen the
+  destructive tier (surface-2); the owner chose cheap deterministic replays
+  in every run over a live model in every run. Evidence: on the tree before
+  this change the coverage test fails naming the six toolboxes and the fix;
+  with `update_agent_policy`'s `agent_policy_id` tightened to a pattern the
+  fleet replay fails at step 1 naming the schema while the four older
+  transcripts pass; a seeded precision run that deletes both dashboards
+  scores `first_missing: s2_kept`.
+
+- **D62 (2026-10-27)** — The built Docker image is replayed over HTTP with
+  the key in the `Authorization` header (`image_replay_green`, a new
+  criterion, required in `dod.config` and in CI's contract job), and both
+  ephemeral tiers run on every supported Kibana line in CI.
+  **Image replay.** `scripts/checks/image-replay.sh <image>` (after
+  `scripts/checks/image-build.sh`, the `image_smoke` recipe) sets
+  `KIBANA_MCP_SERVER_IMAGE`, and `tests/e2e_replay/test_replay.py` then starts
+  one container per transcript (`--network host`, bound to 127.0.0.1 on a free
+  port, the transcript's toolboxes, `write`, the seed's Kibana URL and no API
+  key) and replays through `StreamableHttpTransport` with `Authorization:
+  ApiKey <seed key>`. `tests/e2e_replay/test_image_http.py` (marker
+  `image_replay`, outside the default selection and `-m e2e_replay`) adds the
+  other half on a container that holds a `KIBANA_API_KEY`: a call without
+  the header is refused with "no Kibana credentials: send 'Authorization:
+  ApiKey <key>' …", a Bearer header with the scheme error, and the header
+  authenticates the same call. The gate clears `KIBANA_MCP_SERVER_IMAGE` with
+  the other suite variables and refuses it in `.env.local` (D56's rule for
+  `KIBANA_MCP_SERVER_BIN`). Why: every live tier ran stdio with an
+  environment key on CPython 3.12/3.13, while the image runs Python 3.14 over
+  HTTP with a per-request key, and `image_smoke` asserts only that some HTTP
+  status comes back (environment-3). Evidence: an image built with
+  `resolve_api_key` reading headers without `authorization` passes
+  `image-smoke.sh` and fails `image-replay.sh` (all ten transcripts and two
+  of the three HTTP tests, the header test naming
+  `adapters/mcp/auth.py resolve_api_key`); the real image must pass them
+  all, which is what `image_replay_green` certifies on each gate run.
+  **Every line for the ephemeral tiers.** `scripts/stack-version.sh`
+  (`env_with_version <template> <env file>`) is the one rule for which line a
+  stack runs: an `ES_LOCAL_VERSION` in the environment replaces the
+  template's pin in the written env file. `scripts/stack.sh`,
+  `scripts/ephemeral_stack.sh` and `scripts/fleet_ephemeral.sh` all use it —
+  the two ephemeral scripts copied `.env.ephemeral.example` and sourced it,
+  which reset an exported override to the pin — and integration.yml's
+  `streams-ephemeral` and `fleet-ephemeral` jobs fan out over kibana-py's
+  supported set like the contract job. The local gate stays on the newest
+  line (D30, D53): outside CI a shell `ES_LOCAL_VERSION` that differs from
+  the `.env.ephemeral.example` pin is NO-GO on `streams_ephemeral` and
+  `fleet_ephemeral`, naming `unset ES_LOCAL_VERSION`, before either runs,
+  and both GO lines name the line they ran (in CI, the matrix's, which must
+  be in `kibana.SUPPORTED_VERSIONS` or both are NO-GO naming the versions
+  job). The helper takes only three dot-separated numbers.
+  `tests/unit/test_stack_version_override.py` runs the
+  helper as the scripts do and fails any script that copies a stack template
+  with `cp` (on the old scripts: `ephemeral_stack.sh:20`,
+  `fleet_ephemeral.sh:49`). Why: a Kibana 9.4 difference in a destructive
+  path (the `updated_at` rejection the streams writes work around) would
+  pass every tier (environment-4). Not yet run on 9.4.7 locally: CI's first
+  9.4.7 run of either ephemeral tier is its first.
+
+- **D63 (2026-10-27, probes on 9.5.4, Basic; owner: H10)** — Fleet with
+  space awareness OFF is a gate tier: the required criterion
+  `fleet_unaware_ephemeral` (local `dod.config`; CI job
+  `fleet-unaware-ephemeral` over `.github/dod/ci-fleet-unaware.config`, on
+  every supported line like the other ephemeral jobs, D62).
+  `uninstall_package` refuses every call while awareness is on (D51), and a
+  fresh 9.5.4 stack has it on, so its package-policy listing, the Fleet
+  Server guards (the default Fleet Server policy, any policy carrying a
+  `fleet_server` package policy), the `elastic_agent` monitoring guard and
+  the forced delete reporting `deleted_package_policies` ran on no gate
+  stack before; the off path was checked only against hand-written mocks.
+  The managed-policy guard still runs only on fakes
+  (`test_uninstall_package_refuses_a_guarded_agent_policy_even_with_force`):
+  the tier creates no managed agent policy (not probed; a live case when a
+  fix touches that branch).
+  The owner chose (2026-10-25): a 9.5.4 switch if one exists, else unit
+  tests only; never an 8.19 → 9.5.4 upgrade. A switch exists: Fleet's
+  experimental feature `useSpaceAwareness` (default `true`, set through
+  `xpack.fleet.experimentalFeatures`). `isSpaceAwarenessEnabled()` returns
+  false while it is off, and Fleet's default settings get
+  `use_space_awareness_migration_status: 'success'` only while it is on
+  (Kibana v9.5.4 `fleet/server/services/spaces/helpers.ts` and
+  `fleet/common/experimental_features.ts`; the 9.5.4 image's
+  `fleet-plugin/server/services/settings.js` lines 151-153; v9.4.7's
+  `settings.ts` lines 197-198 and `experimental_features.ts` read the same,
+  not booted here). The image's env-var allow-list has no entry for it, so
+  `elastic-start-local/docker-compose.fleet-unaware.yml` puts
+  `--xpack.fleet.experimentalFeatures.useSpaceAwareness=false` on
+  `kibana-docker`'s command line, which passes it to `bin/kibana`. It is a
+  fresh-install mode, the same Fleet state as a deployment upgraded from 8.x
+  that never ran the migration (no migration status in the settings); the
+  upgrade itself is not booted. `scripts/fleet_unaware_ephemeral.sh` boots an
+  isolated stack with it (project `mcp-for-kibana-fleet-unaware`, the
+  `.env.ephemeral.example` pin or `ES_LOCAL_VERSION`, the proxy-CA overlay
+  where the CA exists, since the tests install packages from the Elastic
+  Package Registry), sets Fleet up with `fleet_ephemeral.sh`'s fixed Fleet
+  Server policy and no agents (the guards read policies), fails before the
+  tests if Fleet reports a migration status, and runs
+  `pytest -m fleet_unaware` with `KIBANA_MCP_FLEET_UNAWARE=1`. The four
+  tests marked `fleet_unaware` are contract tests too
+  (`test_package_install_uninstall_live`,
+  `test_uninstall_fleet_server_package_refused_live`,
+  `test_uninstall_elastic_agent_refused_while_monitoring_live`,
+  `test_uninstall_package_under_each_key`, 6 cases), so each mode has a
+  tier: their branch helper (`tests/_fleet_awareness.py`) fails a stack in
+  the other mode naming the fix — awareness off on the contract tier names
+  the re-provision and this tier, awareness on here names the overlay — so
+  neither branch is skipped or quietly not run (the restricted-key test,
+  contract only, now fails instead of skipping on an awareness-off stack).
+  `tests/unit/test_fleet_unaware_selection.py` collects `-m fleet_unaware`
+  and requires exactly those 6 cases, so a test that loses its mark fails
+  `unit_green` instead of leaving the tier GO without it. The three
+  ephemeral harnesses share container names and ports, so each now refuses
+  a sibling's leaked stack naming its clean target
+  (`scripts/ephemeral-siblings.sh`; `make streams-ephemeral-clean`,
+  `fleet-ephemeral-clean` or `fleet-unaware-ephemeral-clean`), and the new
+  harness fails naming the fix on unreadable Fleet settings and on a line
+  that reports a migration status despite the flag.
+  The privilege matrix's `default-only-all` row now asserts the uninstall
+  succeeds with awareness off. Needs the dev stack stopped, like
+  `fleet_ephemeral` (`KIBANA_MCP_DOD_CYCLE_STACK=1`).
+  Evidence (2026-10-27, throwaway stacks on 9.5.4): booted with the flag
+  off, `POST /api/fleet/setup` answered `{"isInitialized":true,
+  "nonFatalErrors":[]}` and `GET /api/fleet/settings` returned
+  `{"item":{"id":"fleet-default-settings","version":"WzEsMV0=",
+  "prerelease_integrations_enabled":false,"preconfigured_fields":[],
+  "integration_knowledge_enabled":true}}` (no migration status), and an
+  agent policy created in 'default' was listed from another space with no
+  `space_ids`; booted with the flag on, the harness read `'success'`. The
+  tier ran 6 passed in about 3 minutes; a first run without the proxy CA
+  failed on the registry (`[tcp] package not installed or found in
+  registry`), hence the overlay. Bite proofs (the H10 commit message has the
+  lines): with the guarded-policy refusal bypassed (the `if guarded:`
+  block, which the Fleet Server reasons reach), or the package-policy
+  refusal bypassed, the criterion is NO-GO on the failing test; booted with the flag on, it is NO-GO naming the overlay at the
+  harness check and, with that check disabled, at every test.
+
 ## Scope and licensing (probed on Basic)
 
 - **D20 (2026-07-16 / 2026-08-19)** — License gates are probed live, never
@@ -1497,10 +2166,21 @@ this ledger stands without them.
   Claude tier and the LM Studio tests are `make test-e2e-local`.
 
 - ~~D31's gate decision for the local `dod.config` (`e2e_green = n/a`, the
-  Definition of Done needs no LLM)~~ — superseded by D42: the local gate
-  requires the Claude run. `e2e_green = n/a` stands in every `.github/dod`
-  config.
+  Definition of Done needs no LLM)~~ — superseded by D42, which made the
+  local gate require the Claude run from 2026-10-17 until D61 took it out
+  again (2026-10-27: `e2e_green = n/a` locally, `make test-e2e` on demand).
+  `e2e_green = n/a` stands in every `.github/dod` config.
 
+- ~~D53's credentials for the version check ("the credentials the suites use:
+  shell env, else `elastic-start-local/.env.seed`")~~ — superseded by D56: a
+  shell value that differs from the seed is refused, so the check reads the
+  seed's.
+
+- ~~D42 (2026-10-17): the local `dod.config` requires `e2e_green` (a live
+  Claude run in every gate run)~~ — superseded by D61: the live model runs on
+  demand (`make test-e2e`), and every toolbox is replayed in every gate run
+  instead. D42's criterion runner and NO-GO messages stand for a config
+  that requires `e2e_green`.
 - ~~D29 (2026-09-21): track the newest 9.4 patch and defer Kibana 9.5~~ —
   deferred 9.5 until kibana-py released its supported-set module, and on the
   premise that the `streams` toolbox wraps `streams.upsert`, whose body 9.4

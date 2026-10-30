@@ -1,0 +1,1 @@
+Using the kibana tools, create a Fleet agent policy named 'E2E bb81dbb6 edge hosts' in the namespace 'default' with the description 'Edge hosts.', then change that policy's description to 'Edge hosts in the lab.'

@@ -120,7 +120,7 @@ guidance, not a masking of the auth cause.
   guard-before-gateway ordering for `update_case`.
 - **Unit, cross-cutting** — `tests/unit/toolboxes/test_space_threading.py`,
   the 6 `cases` rows: threading to the gateway factory with/without a value;
-  schema shape as part of the shared 86-tool assertion; dict-vs-list echo;
+  schema shape as part of the shared 92-tool assertion; dict-vs-list echo;
   not-found-surfaces-as-guidance and auth-error-passthrough on the shared
   error path.
 - **Contract, live Kibana** —
@@ -129,6 +129,8 @@ guidance, not a masking of the auth cause.
   asserting `total_comments` survives the update) and
   `::test_case_scoped_lifecycle_live` (a case created in a temporary
   non-default space is invisible to `list_cases` in the default space).
-- No e2e-replay transcript and no ephemeral destructive-tier harness cover
-  this toolbox; `delete_case`'s only live destructive proof is the contract
+- e2e-replay: `case-comment-cases.json` replays a recorded Claude turn
+  that creates a case and comments on it (D61), in the three replay
+  criteria (D62). No ephemeral destructive-tier harness covers this
+  toolbox; `delete_case`'s only live destructive proof is the contract
   test's teardown call.

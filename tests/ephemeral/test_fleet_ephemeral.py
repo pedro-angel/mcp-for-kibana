@@ -19,16 +19,18 @@ agent id (acted on first), agent2 := the largest. Picking the extremes (not the
 first two) keeps agent2's identity stable even after agent1 has been unenrolled
 and dropped out of the fleet listing.
 
-These call the KibanaPyGateway directly (the `gateway` fixture), so a rejected
-call surfaces as KibanaRejected — not the toolbox's ToolError wrapper.
+Every action goes through the MCP tool layer (the `call_tool` fixture: the full
+server and a fastmcp Client, D60), so the confirm gates, the argument schemas
+and the ToolError text of a Kibana refusal run live; each gated call is first
+made without confirm=True and must be refused. The `gateway` fixture only
+observes (agent listings, polling).
 """
 
 import time
 import uuid
 
 import pytest
-
-from kibana_mcp.core.errors import KibanaRejected
+from fastmcp.exceptions import ToolError
 
 pytestmark = pytest.mark.fleet_ephemeral
 
@@ -84,13 +86,21 @@ def _poll_until(predicate, *, what):
     pytest.fail(f"timed out waiting for {what}")
 
 
-def _new_target_policy(gateway, name):
+async def _new_target_policy(call_tool, name):
     # Throwaway agent policy used only as a reassign target. Left behind on teardown
     # (the whole stack is disposable) — deleting it while a just-unenrolled agent
     # still references it could 400, so we don't.
-    return gateway.create_agent_policy(
-        name=name, namespace="default", monitoring_enabled=[],
-        description=None, inactivity_timeout=None).id
+    created = await call_tool("create_agent_policy", {
+        "name": name, "namespace": "default", "monitoring_enabled": []})
+    return created["id"]
+
+
+async def _refused_without_confirm(call_tool, tool, args):
+    # The confirm gate first: the same call without confirm=True must be refused,
+    # naming the fix, and change nothing (the bulk gates refuse in the tool; the
+    # default-output gate in the gateway, after it reads the output).
+    with pytest.raises(ToolError, match="confirm=True"):
+        await call_tool(tool, args)
 
 
 # --- tests (file order is the execution order) ------------------------------
@@ -108,16 +118,16 @@ def test_two_agents_online(gateway):
         pytest.fail("two sacrificial agents never reached online")
 
 
-def test_agent1_lifecycle(gateway):
+async def test_agent1_lifecycle(gateway, call_tool):
     # Ordered single-agent path; the terminal unenroll runs last.
     uniq = uuid.uuid4().hex[:8]
     sac = _sacrificial_ids(gateway)
     assert len(sac) >= 2, f"expected >=2 sacrificial agents, saw {sac}"
     agent1 = sac[0]
-    target = _new_target_policy(gateway, f"eph-target-{uniq}")
+    target = await _new_target_policy(call_tool, f"eph-target-{uniq}")
 
     # 1) reassign -> the agent's policy_id must actually change to the target.
-    gateway.reassign_agent(agent_id=agent1, policy_id=target)
+    await call_tool("reassign_agent", {"agent_id": agent1, "policy_id": target})
     _poll_until(
         lambda: _agent_policy_id(gateway, agent1) == target,
         what=f"agent1 {agent1} to land on policy {target}",
@@ -125,14 +135,14 @@ def test_agent1_lifecycle(gateway):
     assert _agent_policy_id(gateway, agent1) == target
 
     # 2) upgrade to an invalid version. The agent exists, so Kibana validates the
-    #    version against its available_versions and rejects it — the gateway maps
-    #    that 400 to KibanaRejected (confirmed live). A completed upgrade (real
-    #    binary download) is not verified offline; the rejection path is.
-    with pytest.raises(KibanaRejected):
-        gateway.upgrade_agent(agent_id=agent1, version="0.0.0-invalid")
+    #    version against its available_versions and rejects it (400, confirmed
+    #    live); the tool hands the refusal back as a ToolError. A completed upgrade
+    #    (real binary download) is not verified offline; the rejection path is.
+    with pytest.raises(ToolError, match="Kibana rejected"):
+        await call_tool("upgrade_agent", {"agent_id": agent1, "version": "0.0.0-invalid"})
 
     # 3) terminal: force+revoke unenroll -> agent1 leaves the fleet.
-    gateway.unenroll_agent(agent_id=agent1, force=True, revoke=True)
+    await call_tool("unenroll_agent", {"agent_id": agent1, "force": True, "revoke": True})
     _poll_until(
         lambda: _agent_removed(gateway, agent1),
         what=f"agent1 {agent1} to unenroll (removed/inactive)",
@@ -140,17 +150,19 @@ def test_agent1_lifecycle(gateway):
     assert _agent_removed(gateway, agent1)
 
 
-def test_agent2_lifecycle(gateway):
-    # Ordered bulk path; each bulk call is async and returns an action-id string.
+async def test_agent2_lifecycle(gateway, call_tool):
+    # Ordered bulk path; each bulk call is async and returns an action id.
     uniq = uuid.uuid4().hex[:8]
     sac = _sacrificial_ids(gateway)
     assert sac, f"expected >=1 sacrificial agent for agent2, saw {sac}"
     agent2 = sac[-1]  # largest id — stable even once agent1 has dropped out
-    target = _new_target_policy(gateway, f"eph-target2-{uniq}")
+    target = await _new_target_policy(call_tool, f"eph-target2-{uniq}")
 
-    # 1) bulk_reassign returns an action-id string; agent2 lands on the target.
-    r = gateway.bulk_reassign(agent_ids=[agent2], policy_id=target)
-    assert isinstance(r, str) and r, f"bulk_reassign returned {r!r}"
+    # 1) bulk_reassign returns an action id; agent2 lands on the target.
+    args = {"agent_ids": [agent2], "policy_id": target}
+    await _refused_without_confirm(call_tool, "bulk_reassign", args)
+    r = await call_tool("bulk_reassign", {**args, "confirm": True})
+    assert r["action_id"], f"bulk_reassign returned {r!r}"
     _poll_until(
         lambda: _agent_policy_id(gateway, agent2) == target,
         what=f"agent2 {agent2} to land on policy {target}",
@@ -158,13 +170,17 @@ def test_agent2_lifecycle(gateway):
     assert _agent_policy_id(gateway, agent2) == target
 
     # 2) bulk_upgrade QUEUES the action (live-probed: bulk does NOT sync-reject an
-    #    invalid version the way the single upgrade does) — just an action-id back.
-    r = gateway.bulk_upgrade(agent_ids=[agent2], version="0.0.0-invalid")
-    assert isinstance(r, str) and r, f"bulk_upgrade returned {r!r}"
+    #    invalid version the way the single upgrade does) — just an action id back.
+    args = {"agent_ids": [agent2], "version": "0.0.0-invalid"}
+    await _refused_without_confirm(call_tool, "bulk_upgrade", args)
+    r = await call_tool("bulk_upgrade", {**args, "confirm": True})
+    assert r["action_id"], f"bulk_upgrade returned {r!r}"
 
-    # 3) terminal: bulk_unenroll returns an action-id; agent2 leaves the fleet.
-    r = gateway.bulk_unenroll(agent_ids=[agent2], force=True, revoke=True)
-    assert isinstance(r, str) and r, f"bulk_unenroll returned {r!r}"
+    # 3) terminal: bulk_unenroll returns an action id; agent2 leaves the fleet.
+    args = {"agent_ids": [agent2], "force": True, "revoke": True}
+    await _refused_without_confirm(call_tool, "bulk_unenroll", args)
+    r = await call_tool("bulk_unenroll", {**args, "confirm": True})
+    assert r["action_id"], f"bulk_unenroll returned {r!r}"
     _poll_until(
         lambda: _agent_removed(gateway, agent2),
         what=f"agent2 {agent2} to unenroll (removed/inactive)",
@@ -172,29 +188,34 @@ def test_agent2_lifecycle(gateway):
     assert _agent_removed(gateway, agent2)
 
 
-def test_output_promotion(gateway):
+async def test_output_promotion(gateway, call_tool):
     # Promoting a non-default output auto-un-defaults the prior default (live-probed).
     # Isolated stack, so this is safe here (never run against a shared default).
     uniq = uuid.uuid4().hex[:8]
     original = next(o for o in gateway.list_outputs() if o.is_default)
     a = b = None
     try:
-        a = gateway.create_output(
-            name=f"eph-out-a-{uniq}", type="elasticsearch", hosts=["http://localhost:9200"])
-        b = gateway.create_output(
-            name=f"eph-out-b-{uniq}", type="elasticsearch", hosts=["http://localhost:9200"])
-        assert a.is_default is False and b.is_default is False
+        a = await call_tool("create_output", {
+            "name": f"eph-out-a-{uniq}", "type": "elasticsearch",
+            "hosts": ["http://localhost:9200"]})
+        b = await call_tool("create_output", {
+            "name": f"eph-out-b-{uniq}", "type": "elasticsearch",
+            "hosts": ["http://localhost:9200"]})
+        assert a["is_default"] is False and b["is_default"] is False
 
-        gateway.update_output(output_id=a.id, changes={"is_default": True})
+        await call_tool("update_output", {"output_id": a["id"], "is_default": True})
         refreshed = next(o for o in gateway.list_outputs() if o.id == original.id)
         assert refreshed.is_default is False  # Fleet flipped the prior default off
+        # A is the default now: editing it without confirm=True is refused.
+        await _refused_without_confirm(
+            call_tool, "update_output", {"output_id": a["id"], "name": f"eph-out-a2-{uniq}"})
     finally:
         # Restore the original default FIRST (idempotent; auto-un-defaults A) so the
         # delete-guard no longer refuses A, then remove both throwaways. The stack is
         # disposable, but leaving it clean keeps a re-seeded dev stack sane.
-        gateway.update_output(
-            output_id=original.id, changes={"is_default": True}, confirm=True)
+        await call_tool("update_output", {
+            "output_id": original.id, "is_default": True, "confirm": True})
         if a is not None:
-            gateway.delete_output(output_id=a.id)
+            await call_tool("delete_output", {"output_id": a["id"]})
         if b is not None:
-            gateway.delete_output(output_id=b.id)
+            await call_tool("delete_output", {"output_id": b["id"]})

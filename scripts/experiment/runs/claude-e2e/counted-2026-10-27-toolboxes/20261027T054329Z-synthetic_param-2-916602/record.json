@@ -1,0 +1,96 @@
+{
+  "block": "counted-2026-10-27-toolboxes",
+  "cache_creation_input_tokens": 2059,
+  "cache_read_input_tokens": 27250,
+  "claude_cli": "2.1.311 (Claude Code)",
+  "duration_api_ms": 4016,
+  "duration_ms": 5905,
+  "final_text": "I created the Synthetics global parameter `e2e_34c33036_env` with the value `staging` and the description \"E2E 34c33036 staging\". I then changed its description to \"E2E 34c33036 production\". Both calls succeeded, and the parameter ID is `3178b126-2f85-416b-8452-7aa121712fc9`.\n\nThe value is still `staging`, since you only asked to change the description.",
+  "first_missing": null,
+  "git_sha": "e9b0090",
+  "has_result": true,
+  "init_model": "claude-haiku-5-5",
+  "input_tokens": 6,
+  "is_error": false,
+  "key_in_transcript": false,
+  "kibana_version": "9.5.4",
+  "marker": "E2E 34c33036",
+  "mcp_servers": [
+    {
+      "name": "mcp-for-kibana",
+      "source": "dynamic",
+      "status": "connected"
+    }
+  ],
+  "model_requested": "haiku",
+  "models_reported": [
+    "claude-haiku-5-5"
+  ],
+  "n_tool_calls": 2,
+  "non_server_tools": [],
+  "num_turns": 3,
+  "offered_tools": [
+    "create_synthetic_monitor",
+    "create_synthetic_param",
+    "create_synthetic_private_location",
+    "get_apm_agent_config",
+    "get_synthetic_monitor",
+    "get_uptime_settings",
+    "list_apm_agent_configs",
+    "list_apm_environments",
+    "list_apm_sourcemaps",
+    "list_synthetic_monitors",
+    "list_synthetic_params",
+    "list_synthetic_private_locations",
+    "search_apm_annotations",
+    "test_synthetic_monitor",
+    "update_synthetic_monitor",
+    "update_synthetic_param",
+    "update_synthetic_private_location",
+    "upsert_apm_agent_config"
+  ],
+  "output_tokens": 379,
+  "passed": true,
+  "permission_denials": 0,
+  "permission_mode": "dontAsk",
+  "prompt": "Using the kibana tools, create a Synthetics global parameter with the key 'e2e_34c33036_env', the value 'staging' and the description 'E2E 34c33036 staging', then change that parameter's description to 'E2E 34c33036 production'.",
+  "run_id": "20261027T054329Z-synthetic_param-2-916602",
+  "run_index": 2,
+  "s1_param": true,
+  "s2_description": true,
+  "server_dirty": false,
+  "session_cost_usd": 0.013273,
+  "space": null,
+  "study": "claude-e2e",
+  "task": "synthetic_param",
+  "terminal_reason": "success",
+  "tier": "write",
+  "timed_out": false,
+  "tool_calls": [
+    "create_synthetic_param",
+    "update_synthetic_param"
+  ],
+  "tool_inputs": [
+    {
+      "input": {
+        "description": "E2E 34c33036 staging",
+        "key": "e2e_34c33036_env",
+        "value": "staging"
+      },
+      "name": "create_synthetic_param"
+    },
+    {
+      "input": {
+        "description": "E2E 34c33036 production",
+        "param_id": "3178b126-2f85-416b-8452-7aa121712fc9"
+      },
+      "name": "update_synthetic_param"
+    }
+  ],
+  "toolboxes": "observability",
+  "total_cost_usd": 0.0010131,
+  "ts_end": "2026-10-27T05:43:38.185481+00:00",
+  "ts_start": "2026-10-27T05:43:29.157408+00:00",
+  "valid": true,
+  "wall_s": 9.0
+}

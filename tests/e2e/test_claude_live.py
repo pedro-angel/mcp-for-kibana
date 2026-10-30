@@ -3,18 +3,24 @@
 Each run sends one task prompt to a headless Claude Code (`claude -p`) whose
 only tools are this server's MCP tools (tests/_claude_cli.py), then scores
 Kibana's state — never the model's text — with the ladder the task's
-definition names (tests/_live_tasks.py). Four tasks: the three the LM Studio
-tier (`make test-e2e-local`) has always run, with the same prompts and the
-same scoring, and `fix_rule_threshold`, a maintenance task for the in-place
-update tools. Tasks, pass criteria and N=5 runs per task were pre-registered in
-scripts/experiment/CLAUDE_E2E.md before any counted run.
+definition names (tests/_live_tasks.py, tests/_toolbox_tasks.py). Eleven
+tasks: the three the LM Studio tier (`make test-e2e-local`) has always run,
+with the same prompts and the same scoring; `fix_rule_threshold`, a
+maintenance task for the in-place update tools; and the "toolboxes" block
+(D61): one task per toolbox no model had been offered, each on a server that
+loads only that toolbox, and `delete_one_dashboard`, the one task at the
+`destructive` tier. Tasks, pass criteria and N=5 runs per task are fixed in
+scripts/experiment/CLAUDE_E2E.md: the first four were pre-registered before
+any counted run; the "toolboxes" block was committed with its runs, so it is
+not a pre-registration.
 
 Needs Claude sign-in for `claude -p` (no API key is required) and a seeded
-stack. Off by default in `make check`; the local Definition-of-Done gate's
-`e2e_green` criterion runs this selection (D42), CI's gate configs do not.
+stack. On demand (D61): outside `make check` and outside every
+Definition-of-Done config (`e2e_green` is `n/a`); run it when a change
+touches tool names, descriptions or schemas.
 
     CLAUDE_E2E_MODEL       model or alias passed to --model (default: haiku)
-    CLAUDE_E2E_RUNS        runs per task (default: 5, the pre-registered N)
+    CLAUDE_E2E_RUNS        runs per task (default: 5, the N in CLAUDE_E2E.md)
     CLAUDE_E2E_BUDGET_USD  stop for the session's cumulative cost (default: 5)
     CLAUDE_E2E_OUT         run-record directory
                            (default: scripts/experiment/runs/claude-e2e/adhoc)
@@ -45,6 +51,7 @@ from kibana_mcp.adapters.kibana.gateway import KibanaPyGateway
 from kibana_mcp.core.errors import KibanaNotFound
 from tests import _claude_cli as cli
 from tests import _live_tasks as tasks
+from tests import _toolbox_tasks as toolbox_tasks
 from tests._alerting_space_ladder import (
     _marker_rules,
     score_alerting_space_run,
@@ -61,7 +68,13 @@ pytestmark = pytest.mark.e2e_claude
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _DEFAULT_OUT = _REPO_ROOT / "scripts" / "experiment" / "runs" / "claude-e2e" / "adhoc"
-TASKS = ("flights_dashboard", "space_dashboard", "alerting_space", "fix_rule_threshold")
+# The 2026-10-17 block's four tasks, then the 2026-10-27 "toolboxes" block's
+# seven (tests/_toolbox_tasks.py, D61): one per toolbox no model had been
+# offered, and the destructive precision task.
+TASKS = (
+    "flights_dashboard", "space_dashboard", "alerting_space", "fix_rule_threshold",
+    *toolbox_tasks.TOOLBOX_TASKS,
+)
 
 _SPENT = {"usd": 0.0}
 
@@ -125,7 +138,14 @@ class _Task:
         self.space_id = None
         self.seed_before = None
         self.dv_before = set()
-        if name == "flights_dashboard":
+        self.tier = "write"
+        self.toolbox_task = toolbox_tasks.TOOLBOX_TASKS.get(name)
+        self.seeded = {}
+        if self.toolbox_task is not None:
+            self.toolboxes = self.toolbox_task.toolboxes
+            self.tier = self.toolbox_task.tier
+            self.prompt = self.toolbox_task.prompt(self.marker)
+        elif name == "flights_dashboard":
             self.toolboxes = tasks.DASHBOARDS_TOOLBOXES
             self.prompt = tasks.flights_dashboard_prompt(self.marker)
         elif name == "space_dashboard":
@@ -148,6 +168,9 @@ class _Task:
     def seed(self):
         """The broken state a maintenance task starts from, read back as Kibana
         stored it (Kibana adds defaults to a rule's params)."""
+        if self.toolbox_task is not None:
+            self.seeded = self.toolbox_task.seed(self.root, self.marker)
+            return self.seeded
         if self.name == "fix_rule_threshold":
             rule = self.root.create_alert_rule(**tasks.fix_rule_seed_args(self.marker))
             self.seed_before = tasks.rule_snapshot(self._rule_body(rule.id))
@@ -163,7 +186,9 @@ class _Task:
         # model reads: the scorer must not depend on the code under test.
         return self.root._client.alerting.rule.get(id=rule_id).body
 
-    def score(self):
+    def score(self, record):
+        if self.toolbox_task is not None:
+            return self.toolbox_task.score(self.root, self.marker, self.seeded, run=record)
         if self.name == "flights_dashboard":
             return tasks.score_flights_dashboard_run(self.root, self.marker)
         if self.name == "fix_rule_threshold":
@@ -191,6 +216,9 @@ class _Task:
     def cleanup(self):
         """Delete only what this run created or seeded: its space, and
         marker-bound objects in the default space."""
+        if self.toolbox_task is not None:
+            self.toolbox_task.cleanup(self.root, self.marker, self.seeded)
+            return
         if self.space_id:
             try:
                 self.root.delete_space(self.space_id, force=True)
@@ -225,7 +253,7 @@ def test_claude_completes_task(task, run_index, creds, root_gateway, session_inf
         "marker": t.marker,
         "space": t.space_id,
         "toolboxes": t.toolboxes,
-        "tier": "write",
+        "tier": t.tier,
         "prompt": t.prompt,
         "ts_start": datetime.now(UTC).isoformat(),
         **session_info,
@@ -240,7 +268,7 @@ def test_claude_completes_task(task, run_index, creds, root_gateway, session_inf
             workdir.mkdir()
             cfg = cli.write_mcp_config(
                 tmp / "mcp.json", _REPO_ROOT, kibana_url, api_key, t.toolboxes,
-                cli.server_telemetry_env(),
+                cli.server_telemetry_env(), tier=t.tier,
             )
             metrics, transcript, stderr, leaked, timed_out = cli.run_claude(
                 t.prompt, model, workdir, cfg, api_key
@@ -250,7 +278,7 @@ def test_claude_completes_task(task, run_index, creds, root_gateway, session_inf
         record["key_in_transcript"] = leaked
         _SPENT["usd"] += metrics.get("total_cost_usd") or 0.0
         record["session_cost_usd"] = round(_SPENT["usd"], 6)
-        record.update(t.score())
+        record.update(t.score(record))
     except Exception as e:  # a harness fault is data, never a lost record
         record["harness_error"] = repr(e)
         record.setdefault("passed", False)
@@ -285,9 +313,17 @@ def test_claude_completes_task(task, run_index, creds, root_gateway, session_inf
         "check that `claude` is on PATH and signed in (`claude auth status`) and that "
         "the stack is up and seeded (`scripts/stack.sh up && scripts/stack.sh seed`)"
     )
+    # The leak first: it outranks every other failure, a cleanup one too.
     assert record.get("key_in_transcript") is not True, (
         "the Kibana API key appeared in the run's output (redacted on disk); "
         "find how it reached the model before trusting any result"
+    )
+    # A failed cleanup leaves the shared stack changed for every later test;
+    # its message names what is missing and the fix, so it fails the test
+    # itself rather than surfacing only in record.json.
+    assert not record.get("cleanup_error"), (
+        f"cleanup after the run failed, the stack may be left changed: "
+        f"{record['cleanup_error']} (record: {run_dir}/record.json)"
     )
     assert not record.get("non_server_tools"), (
         f"the model was offered tools besides this server's: {record['non_server_tools']}"

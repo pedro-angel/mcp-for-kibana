@@ -261,5 +261,6 @@ exclusions, not repeated here.
   replaced and deleted beside the service's all-environments one, which stays, with a create under
   the literal name refused; and both names the sentinel, refused with "omit service_name and
   environment" while an all-services literal-environment configuration stays untouched.
-- No e2e-replay transcript exercises this toolbox: behavior is pinned at the unit, adapter, and
-  live-contract tiers above, not by a recorded model turn.
+- e2e-replay: `synthetic-param-observability.json` replays a recorded Claude turn that creates a
+  Synthetics global parameter and edits its description (D61), in the three replay criteria (D62); the rest of the behavior
+  is pinned at the unit, adapter, and live-contract tiers above.

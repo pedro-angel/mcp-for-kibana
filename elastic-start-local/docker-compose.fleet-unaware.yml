@@ -1,0 +1,12 @@
+# Overlay for the Fleet space-awareness-OFF ephemeral tier (fleet_unaware_ephemeral,
+# scripts/fleet_unaware_ephemeral.sh; D63). Kibana 9.5.4 writes
+# use_space_awareness_migration_status='success' into a fresh install's Fleet
+# settings only while the experimental feature useSpaceAwareness is on (its
+# default); booted with it off, Fleet is global from the first setup — the mode of
+# a deployment upgraded from 8.x that never ran the migration. The image's
+# env-var allow-list has no entry for xpack.fleet.experimentalFeatures, but
+# kibana-docker passes its arguments through to bin/kibana, so the setting goes
+# on the command line.
+services:
+  kibana:
+    command: ["/usr/local/bin/kibana-docker", "--xpack.fleet.experimentalFeatures.useSpaceAwareness=false"]

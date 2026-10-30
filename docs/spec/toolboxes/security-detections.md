@@ -256,6 +256,8 @@ wording, not incidental phrasing.
 - **Unit, core** — `tests/unit/test_exception_lists_core.py` (export
   parsing, the new-copy rewrite, error text) and the handle kinds in
   `tests/unit/test_saved_objects_core.py`.
-- No e2e-replay transcript and no ephemeral destructive-tier harness cover
-  this toolbox; every destructive tool's only live proof is the contract
+- e2e-replay: `exception-item-security-detections.json` replays a recorded
+  Claude turn that creates an exception list and adds an item to it (D61), in the three replay
+  criteria (D62). No ephemeral destructive-tier harness covers this
+  toolbox; every destructive tool's only live proof is the contract
   tests' own create/delete roundtrips and teardown calls.

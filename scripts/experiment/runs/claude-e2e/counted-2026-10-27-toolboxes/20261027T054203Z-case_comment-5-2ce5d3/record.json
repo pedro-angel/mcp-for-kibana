@@ -1,0 +1,82 @@
+{
+  "block": "counted-2026-10-27-toolboxes",
+  "cache_creation_input_tokens": 2081,
+  "cache_read_input_tokens": 15338,
+  "claude_cli": "2.1.311 (Claude Code)",
+  "duration_api_ms": 3824,
+  "duration_ms": 6317,
+  "final_text": "I created the case \"E2E f2e91a69 delayed flights\" with the description \"Flights in the sample data are arriving late.\" Then I added the comment \"Checked the flight delay dashboard.\" to it.\n\nThe case ID is `7a6ee487-0797-4ebf-ae70-06df8cbae151`. It is open with low severity (the default), and it now shows 1 comment.",
+  "first_missing": null,
+  "git_sha": "e9b0090",
+  "has_result": true,
+  "init_model": "claude-haiku-5-5",
+  "input_tokens": 6,
+  "is_error": false,
+  "key_in_transcript": false,
+  "kibana_version": "9.5.4",
+  "marker": "E2E f2e91a69",
+  "mcp_servers": [
+    {
+      "name": "mcp-for-kibana",
+      "source": "dynamic",
+      "status": "connected"
+    }
+  ],
+  "model_requested": "haiku",
+  "models_reported": [
+    "claude-haiku-5-5"
+  ],
+  "n_tool_calls": 2,
+  "non_server_tools": [],
+  "num_turns": 3,
+  "offered_tools": [
+    "add_case_comment",
+    "create_case",
+    "get_case",
+    "list_cases",
+    "update_case"
+  ],
+  "output_tokens": 356,
+  "passed": true,
+  "permission_denials": 0,
+  "permission_mode": "dontAsk",
+  "prompt": "Using the kibana tools, open a new case titled 'E2E f2e91a69 delayed flights' with the description 'Flights in the sample data are arriving late.', then add the comment 'Checked the flight delay dashboard.' to that case.",
+  "run_id": "20261027T054203Z-case_comment-5-2ce5d3",
+  "run_index": 5,
+  "s1_case": true,
+  "s2_comment": true,
+  "server_dirty": false,
+  "session_cost_usd": 0.004593,
+  "space": null,
+  "study": "claude-e2e",
+  "task": "case_comment",
+  "terminal_reason": "success",
+  "tier": "write",
+  "timed_out": false,
+  "tool_calls": [
+    "create_case",
+    "add_case_comment"
+  ],
+  "tool_inputs": [
+    {
+      "input": {
+        "description": "Flights in the sample data are arriving late.",
+        "title": "E2E f2e91a69 delayed flights"
+      },
+      "name": "create_case"
+    },
+    {
+      "input": {
+        "case_id": "7a6ee487-0797-4ebf-ae70-06df8cbae151",
+        "comment": "Checked the flight delay dashboard."
+      },
+      "name": "add_case_comment"
+    }
+  ],
+  "toolboxes": "cases",
+  "total_cost_usd": 0.0008868800000000002,
+  "ts_end": "2026-10-27T05:42:13.515034+00:00",
+  "ts_start": "2026-10-27T05:42:03.473076+00:00",
+  "valid": true,
+  "wall_s": 10.0
+}

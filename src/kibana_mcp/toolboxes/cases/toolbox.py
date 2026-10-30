@@ -55,7 +55,7 @@ class CasesToolbox:
             case_id: str,
             space: Annotated[str, Field(pattern=SPACE_ID_PATTERN)] | None = None,
         ) -> dict[str, Any]:
-            """Get one case's summary by id.
+            """Get one case's summary by id. `case_id` comes from list_cases.
 
             `space` targets a Kibana space by id (default: the default space)."""
             with gateway_errors(), deps.gateway_factory(space) as gw:
@@ -89,6 +89,7 @@ class CasesToolbox:
         ) -> dict[str, Any]:
             """Update a case's status, severity, tags, and/or title. The current
             version is handled for you. Provide at least one field to change.
+            `case_id` comes from list_cases.
 
             `space` targets a Kibana space by id (default: the default space)."""
             if status is None and severity is None and tags is None and title is None:
@@ -104,6 +105,7 @@ class CasesToolbox:
             space: Annotated[str, Field(pattern=SPACE_ID_PATTERN)] | None = None,
         ) -> dict[str, Any]:
             """Add a text comment to a case. Returns the updated case.
+            `case_id` comes from list_cases.
 
             `space` targets a Kibana space by id (default: the default space)."""
             with gateway_errors(), deps.gateway_factory(space) as gw:
@@ -115,7 +117,7 @@ class CasesToolbox:
             case_id: str,
             space: Annotated[str, Field(pattern=SPACE_ID_PATTERN)] | None = None,
         ) -> dict[str, Any]:
-            """Permanently delete a case. This cannot be undone.
+            """Permanently delete a case. This cannot be undone. `case_id` comes from list_cases.
 
             `space` targets a Kibana space by id (default: the default space)."""
             with gateway_errors(), deps.gateway_factory(space) as gw:

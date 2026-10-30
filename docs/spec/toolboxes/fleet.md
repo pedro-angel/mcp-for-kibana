@@ -142,7 +142,9 @@ proves a key reads every space (the package `stats` and
 listing is provably complete; the refusal names Kibana's Integrations UI, as
 a user whose role grants Fleet and Integrations in all spaces. The checks
 above therefore run with awareness off, where one listing holds every
-space's policies. The
+space's policies; the `fleet_unaware_ephemeral` tier runs them live on a
+9.5.4 stack booted with Fleet's `useSpaceAwareness` feature off (D63), all
+but the managed-agent-policy guard, which runs on fakes only. The
 managed `logs-*`/`metrics-*` data views an install may add to every space are
 kept (probed with `nginx`). The result lists the package policies read before the call; one created between
 that read and the uninstall is deleted unreported (the route has no
@@ -170,7 +172,13 @@ object's body.
   accepts or returns `ssl`/`secrets`/`config_yaml`.
 - `update_agent_policy`/`update_package_policy`/`update_output` are
   read-modify-write through one gateway operation each: an omitted field is
-  preserved, never reset.
+  preserved, never reset — except around `type`: a PUT carrying the
+  unchanged `type` made Fleet null a `remote_elasticsearch` output's
+  `service_token` (the gateway's body holds only kibana-py's named
+  parameters, so the token is not in it), so `update_output` sends the
+  stored token back with an unchanged `type`; a type change resets fields
+  (probed:
+  `service_token` and `preset`), and the tool's description says so (D59).
 - `update_agent_policy` refuses a managed policy (it takes no `force`
   parameter); `delete_agent_policy` refuses a managed policy and the
   default Fleet Server policy regardless of `force`.
@@ -277,9 +285,10 @@ object's body.
   tier exercising `reassign_agent`/`upgrade_agent`/`unenroll_agent` and
   their bulk equivalents against real enrolled agents, on an isolated
   throwaway stack; also proves output-promotion auto-un-defaulting.
-- Not covered by the e2e-replay recorded-transcript tier
-  (`tests/e2e_replay/`): its four transcripts cover dashboards and
-  alerting only. `tests/unit/toolboxes/test_space_threading.py` excludes
+- e2e-replay (`tests/e2e_replay/`): `agent-policy-fleet.json` replays a
+  recorded Claude turn that creates and edits an agent policy, in
+  `e2e_replay_green`, `wheel_replay_green` and `image_replay_green` (D61,
+  D62). `tests/unit/toolboxes/test_space_threading.py` excludes
   fleet, consistent with "no space parameter" above.
 - `tests/unit/test_server_assembly.py` — the tier-visibility invariant for
   this toolbox specifically: the advertised tool set at read/write/
