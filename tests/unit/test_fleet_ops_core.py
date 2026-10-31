@@ -2,11 +2,14 @@
 diagnostics and package tools share between the adapter and the fake."""
 
 from kibana_mcp.core.fleet_ops import (
+    checks_hidden_spaces,
     guard_reason,
     guarded_policy_refusal,
+    hidden_spaces_refusal,
     missing_agents_message,
     monitoring_refusal,
     package_policies_refusal,
+    pinned_space_refusal,
     space_awareness_refusal,
     tags_not_applied,
     unattached_guard_reason,
@@ -36,13 +39,43 @@ def test_missing_agents_message_singular():
 
 def test_package_policies_refusal_counts_policies_not_pairs_and_names_no_agent_policy():
     text = package_policies_refusal("tcp", [
-        ("pp-1", "a", "p1", 2), ("pp-1", "a", "p2", 1), ("pp-2", "b", "", 0)])
+        ("pp-1", "a", "", "p1", 2), ("pp-1", "a", "", "p2", 1), ("pp-2", "b", "", "", 0)],
+        [], "default")
     assert text.startswith(
-        "refusing to uninstall integration package 'tcp': it has 2 package policies — "
-        "'pp-1' ('a') on agent policy 'p1' (2 agents); 'pp-1' ('a') on agent policy 'p2' "
-        "(1 agent); 'pp-2' ('b') on no agent policy — ")
-    one = package_policies_refusal("tcp", [("pp-1", "a", "p1", 0)])
-    assert "it has 1 package policy — " in one
+        "refusing to uninstall integration package 'tcp': it is still used by 2 package "
+        "policies — 'pp-1' ('a') on agent policy 'p1' (2 agents); 'pp-1' ('a') on agent policy "
+        "'p2' (1 agent); 'pp-2' ('b') on no agent policy — ")
+    assert "Agent polic" not in text  # nothing would be left empty
+    one = package_policies_refusal("tcp", [("pp-1", "a", "", "p1", 0)], [], "default")
+    assert "it is still used by 1 package policy — " in one
+    assert "force" not in text + one  # D64: there is no forced uninstall
+
+
+def test_package_policies_refusal_names_the_space_and_the_emptied_agent_policies():
+    text = package_policies_refusal("tcp", [
+        ("pp-1", "a", "default", "p1", 0), ("pp-2", "b", "ops", "p2", 1)],
+        [("default", "p1"), ("ops", "p2")], "default")
+    assert "'pp-1' ('a') on agent policy 'p1' in space 'default' (0 agents)" in text
+    assert ("remove those in 'ops' in Kibana's Fleet UI in that space") in text
+    assert text.endswith(
+        "Agent policies 'p1' (space 'default'), 'p2' (space 'ops') would each be left with no "
+        "integration: delete_agent_policy removes it if it is no longer wanted.")
+
+
+def test_checks_hidden_spaces_from_9_4_8_and_9_5_5_on():
+    for version in ("9.4.8", "9.4.12", "9.5.5", "9.5.6", "9.6.0", "9.6.0-SNAPSHOT", "10.0.0"):
+        assert checks_hidden_spaces(version), version
+    for version in ("9.4.7", "9.5.4", "9.3.9", "8.19.5", "", "9.5", "x.y.z"):
+        assert not checks_hidden_spaces(version), version
+
+
+def test_hidden_space_and_pinned_refusals_name_the_fix():
+    hidden = hidden_spaces_refusal("tcp")
+    assert "Kibana answered 403" in hidden and "Nothing was changed." in hidden
+    assert "call uninstall_package again" in hidden
+    pinned = pinned_space_refusal("tcp", "ops", ["default"])
+    assert "pinned to space 'ops'" in pinned and "also access space 'default'" in pinned
+    assert "root URL (no '/s/<space>')" in pinned
 
 
 def test_guard_reason_guards_every_fleet_server_package_policy_and_only_lifecycles_otherwise():
@@ -56,7 +89,8 @@ def test_guard_reason_guards_every_fleet_server_package_policy_and_only_lifecycl
 
 def test_guarded_policy_refusal_names_delete_package_policy_only_where_it_applies():
     managed = guarded_policy_refusal("fleet_server", [("pp", "ap", "managed")])
-    assert managed.endswith("This is refused regardless of force.")
+    assert managed.endswith("never removes an integration from such an agent policy. Nothing "
+                            "was changed.")
     why = guard_reason("fleet_server", is_managed=False, is_default_fleet_server=False)
     plain = guarded_policy_refusal("fleet_server", [("pp", "ap", why or "")])
     assert plain.endswith("delete_package_policy once no Fleet Server is enrolled on that agent policy.")
@@ -76,14 +110,14 @@ def test_unattached_guard_reason_guards_only_fleet_server():
 
 
 def test_space_awareness_refusal_says_why_and_names_a_fix_outside_this_server():
-    text = space_awareness_refusal("tcp")
+    text = space_awareness_refusal("tcp", "9.5.4")
     assert text.startswith(
-        "refusing to uninstall integration package 'tcp': Fleet space awareness is on, so "
-        "Kibana's uninstall deletes the package's package policies in every space, and this "
-        "server cannot prove its API key reads every space")
-    assert "This is refused regardless of force; nothing was changed." in text
+        "refusing to uninstall integration package 'tcp': Fleet space awareness is on, and "
+        "Kibana 9.5.4 uninstalls a package's package policies in every space, including spaces "
+        "this API key cannot access")
+    assert "Nothing was changed. Upgrade Kibana to 9.5.5 or later (9.4.8 or later on 9.4)" in text
     assert text.endswith(
-        "Uninstall it in Kibana's Integrations UI ('tcp' → Settings) as a user whose role "
-        'grants Fleet and Integrations in all spaces (spaces ["*"]), after reviewing its '
-        "integration policies in each space.")
-    assert "/s/" not in text and "force=True" not in text  # no in-server way around it
+        "uninstall it in Kibana's Integrations UI ('tcp' → Settings) as a user whose role "
+        'grants Fleet and Integrations in all spaces (spaces ["*"]).')
+    assert "force" not in text
+    assert "(its version could not be read)" in space_awareness_refusal("tcp", "")

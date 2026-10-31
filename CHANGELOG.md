@@ -249,6 +249,20 @@ version section.
 
 ### Changed
 
+- **`uninstall_package` never removes an integration from agent policies**
+  (D64, owner). While any package policy uses the package, the call is
+  refused and nothing changes; the refusal names each package policy with
+  its agent policy, agent count and space, and each agent policy it would
+  leave with no integration, so the model can remove them with
+  `delete_package_policy` (and `delete_agent_policy` for an emptied one the
+  user no longer wants) and call again. **Breaking:** the `force` parameter
+  is gone, and the result no longer carries `deleted_package_policies` (it
+  is `{uninstalled, name, version}`). With Fleet space awareness on the tool
+  now works instead of refusing every call: it reads every space the API key
+  can access, and Kibana 9.5.5 / 9.4.8 refuse (403) a package used in a space
+  the key cannot access, which the tool reports with the fix. On an older
+  Kibana, or through a space-pinned `KIBANA_URL` while the key can access
+  another space, it is still refused with awareness on.
 - **The supported Kibana pins move to 9.5.5 and 9.4.8**, the latest patch on
   each line (D30). The set of lines is unchanged. The stack pin in
   `elastic-start-local/.env.example` and `.env.ephemeral.example` is 9.5.5,

@@ -271,8 +271,19 @@ async def test_diagnostics_unknown_agent_names_list_agents(mcp, tool):
 
 
 def _space_awareness_off(gateway):
-    """The fake reads 'success' as the dev stack does; uninstall_package refuses then."""
+    """The fake reads 'success' as the dev stack does (and Kibana 9.4.3, which
+    lacks the hidden-space check, so uninstall_package refuses then)."""
     gateway.fleet_settings = replace(gateway.fleet_settings, space_awareness_migration_status="")
+
+
+def _kibana(gateway, version):
+    gateway.kibana_status = replace(gateway.kibana_status, version=version)
+
+
+def _add_package(gateway, name, version):
+    gateway.fleet_packages.append(gateway.fleet_installed_packages[0].__class__(
+        name=name, title=name, version=version, status="installed",
+        description="", type="integration"))
 
 
 async def test_install_then_uninstall_package(mcp, gateway):
@@ -284,9 +295,15 @@ async def test_install_then_uninstall_package(mcp, gateway):
         again = await client.call_tool("install_package", {"name": "nginx"})
         assert again.data["already_installed"] is True
         gone = await client.call_tool("uninstall_package", {"name": "nginx"})
-    assert gone.data == {"uninstalled": True, "name": "nginx", "version": "1.0.0",
-                         "deleted_package_policies": []}
+    assert gone.data == {"uninstalled": True, "name": "nginx", "version": "1.0.0"}
     assert "nginx" not in {p.name for p in gateway.list_installed_packages()}
+
+
+async def test_uninstall_package_takes_no_force(mcp):
+    # D64 (owner): the uninstall never removes an integration from agent policies.
+    async with Client(mcp) as client:
+        tools = {t.name: t for t in await client.list_tools()}
+    assert set(tools["uninstall_package"].inputSchema["properties"]) == {"name"}
 
 
 async def test_install_package_refuses_a_version_change(mcp):
@@ -296,55 +313,65 @@ async def test_install_package_refuses_a_version_change(mcp):
             await client.call_tool("install_package", {"name": "system", "version": "2.0.0"})
 
 
-async def test_uninstall_package_with_package_policies_needs_force(mcp, gateway):
+async def test_uninstall_package_refuses_while_package_policies_use_it_then_succeeds(mcp, gateway):
+    # The owner's flow: the refusal names the package policies, the model removes
+    # them with delete_package_policy, then the uninstall goes through.
     _space_awareness_off(gateway)
-    gateway.create_package_policy(
+    pp = gateway.create_package_policy(
         name="sys-1", package={"name": "system", "version": "1.0.0"}, agent_policy_id="fleet-agent-policy")
     async with Client(mcp) as client:
         with pytest.raises(ToolError, match=(
-            r"^refusing to uninstall integration package 'system': it has 1 package policy — "
-            r"'fpp-\d+' \('sys-1'\) on agent policy 'fleet-agent-policy' \(1 agent\)")):
+            rf"^refusing to uninstall integration package 'system': it is still used by 1 package "
+            rf"policy — '{pp.id}' \('sys-1'\) on agent policy 'fleet-agent-policy' \(1 agent\) — "
+            r".*Nothing was changed\. .*delete_package_policy removes each one")):
             await client.call_tool("uninstall_package", {"name": "system"})
-        assert any(pp.package_name == "system" for pp in gateway.list_package_policies())
-        r = await client.call_tool("uninstall_package", {"name": "system", "force": True})
-    assert [pp["name"] for pp in r.data["deleted_package_policies"]] == ["sys-1"]
-    assert not any(pp.package_name == "system" for pp in gateway.list_package_policies())
+        assert pp in gateway.fleet_package_policies
+        await client.call_tool("delete_package_policy", {"package_policy_id": pp.id})
+        r = await client.call_tool("uninstall_package", {"name": "system"})
+    assert r.data == {"uninstalled": True, "name": "system", "version": "1.0.0"}
+    assert ("package", "system") in gateway.deleted
 
 
-async def test_uninstall_package_refuses_the_fleet_server_policy_even_forced(mcp, gateway):
+async def test_uninstall_package_names_an_agent_policy_it_would_leave_empty(mcp, gateway):
     _space_awareness_off(gateway)
-    gateway.fleet_packages.append(gateway.fleet_installed_packages[0].__class__(
-        name="fleet_server", title="Fleet Server", version="1.6.1", status="installed",
-        description="", type="integration"))
+    pol = gateway.create_agent_policy(name="only-system", namespace="default")
+    gateway.create_package_policy(
+        name="sys-2", package={"name": "system", "version": "1.0.0"}, agent_policy_id=pol.id)
     async with Client(mcp) as client:
-        with pytest.raises(ToolError, match=r"the default Fleet Server policy, .*regardless of force"):
-            await client.call_tool("uninstall_package", {"name": "fleet_server", "force": True})
+        with pytest.raises(ToolError, match=(
+            rf"Agent policy '{pol.id}' would be left with no integration: delete_agent_policy "
+            r"removes it if it is no longer wanted\.$")):
+            await client.call_tool("uninstall_package", {"name": "system"})
+
+
+async def test_uninstall_package_refuses_the_fleet_server_policy(mcp, gateway):
+    _space_awareness_off(gateway)
+    _add_package(gateway, "fleet_server", "1.6.1")
+    async with Client(mcp) as client:
+        with pytest.raises(ToolError, match=r"the default Fleet Server policy, .*Nothing was changed"):
+            await client.call_tool("uninstall_package", {"name": "fleet_server"})
     assert any(pp.package_name == "fleet_server" for pp in gateway.list_package_policies())
 
 
 async def test_uninstall_package_refuses_fleet_server_on_a_plain_fleet_server_policy(mcp, gateway):
     _space_awareness_off(gateway)
-    gateway.fleet_packages.append(gateway.fleet_installed_packages[0].__class__(
-        name="fleet_server", title="Fleet Server", version="1.6.1", status="installed",
-        description="", type="integration"))
+    _add_package(gateway, "fleet_server", "1.6.1")
     gateway.fleet_default_fleet_server_policy_ids = set()  # the only one is user-made
     async with Client(mcp) as client:
-        with pytest.raises(ToolError, match=r"which is a Fleet Server policy .*regardless of force"):
-            await client.call_tool("uninstall_package", {"name": "fleet_server", "force": True})
+        with pytest.raises(ToolError, match=r"which is a Fleet Server policy .*Nothing was changed"):
+            await client.call_tool("uninstall_package", {"name": "fleet_server"})
     assert any(pp.package_name == "fleet_server" for pp in gateway.list_package_policies())
 
 
 async def test_uninstall_package_refuses_elastic_agent_while_monitoring_is_on(mcp, gateway):
     _space_awareness_off(gateway)
-    gateway.fleet_packages.append(gateway.fleet_installed_packages[0].__class__(
-        name="elastic_agent", title="Elastic Agent", version="2.9.6", status="installed",
-        description="", type="integration"))
+    _add_package(gateway, "elastic_agent", "2.9.6")
     gateway.update_agent_policy(
         agent_policy_id="fleet-agent-policy", changes={"monitoring_enabled": ["logs"]})
     async with Client(mcp) as client:
         with pytest.raises(ToolError, match=(
-            r"agent monitoring is on in agent policy 'fleet-agent-policy', .*regardless of force")):
-            await client.call_tool("uninstall_package", {"name": "elastic_agent", "force": True})
+            r"agent monitoring is on in agent policy 'fleet-agent-policy', .*Nothing was changed")):
+            await client.call_tool("uninstall_package", {"name": "elastic_agent"})
     assert ("package", "elastic_agent") not in gateway.deleted
 
 
@@ -354,39 +381,51 @@ async def test_uninstall_package_not_installed(mcp):
             await client.call_tool("uninstall_package", {"name": "nginx"})
 
 
-async def test_uninstall_package_refuses_under_space_awareness_even_forced(mcp, gateway):
-    # The fake reads 'success', as the dev stack: no space listing proves complete.
+async def test_uninstall_package_refuses_under_space_awareness_on_an_older_kibana(mcp, gateway):
+    # The fake reads 'success' and Kibana 9.4.3, which deletes a hidden space's
+    # package policies (D64).
     async with Client(mcp) as client:
-        for force in (False, True):
-            with pytest.raises(ToolError, match=(
-                r"^refusing to uninstall integration package 'system': Fleet space awareness "
-                r"is on, .*cannot prove its API key reads every space .*regardless of force; "
-                r"nothing was changed\. Uninstall it in Kibana's Integrations UI .*spaces "
-                r"\[\"\*\"\]")):
-                await client.call_tool("uninstall_package", {"name": "system", "force": force})
+        with pytest.raises(ToolError, match=(
+            r"^refusing to uninstall integration package 'system': Fleet space awareness is "
+            r"on, and Kibana 9\.4\.3 uninstalls .*Nothing was changed\. Upgrade Kibana to "
+            r"9\.5\.5 or later .*spaces \[\"\*\"\]\)\.$")):
+            await client.call_tool("uninstall_package", {"name": "system"})
     assert ("package", "system") not in gateway.deleted
 
 
-@pytest.mark.parametrize("force", [False, True])
-async def test_uninstall_package_lists_a_package_policy_on_no_agent_policy(mcp, gateway, force):
+async def test_uninstall_package_under_space_awareness_on_9_5_5(mcp, gateway):
+    _kibana(gateway, "9.5.5")
+    pp = gateway.create_package_policy(
+        name="sys-3", package={"name": "system", "version": "1.0.0"}, agent_policy_id="fleet-agent-policy")
+    async with Client(mcp) as client:
+        with pytest.raises(ToolError, match=(
+            rf"'{pp.id}' \('sys-3'\) on agent policy 'fleet-agent-policy' in space 'default' "
+            r"\(1 agent\)")):
+            await client.call_tool("uninstall_package", {"name": "system"})
+        gateway.delete_package_policy(package_policy_id=pp.id)
+        gateway.fleet_hidden_space_packages.add("system")  # still used where the key cannot see
+        with pytest.raises(ToolError, match=r"Kibana answered 403 — it is still used in spaces"):
+            await client.call_tool("uninstall_package", {"name": "system"})
+        gateway.fleet_hidden_space_packages.clear()
+        r = await client.call_tool("uninstall_package", {"name": "system"})
+    assert r.data["uninstalled"] is True
+
+
+async def test_uninstall_package_lists_a_package_policy_on_no_agent_policy(mcp, gateway):
     _space_awareness_off(gateway)
     pp = gateway.create_package_policy(
         name="sys-loose", package={"name": "system", "version": "1.0.0"}, agent_policy_id=None)
     async with Client(mcp) as client:
-        if not force:
-            with pytest.raises(ToolError, match=(
-                rf"it has 1 package policy — '{pp.id}' \('sys-loose'\) on no agent policy — ")):
-                await client.call_tool("uninstall_package", {"name": "system"})
-            return
-        r = await client.call_tool("uninstall_package", {"name": "system", "force": True})
-    assert [p["id"] for p in r.data["deleted_package_policies"]] == [pp.id]
+        with pytest.raises(ToolError, match=(
+            rf"it is still used by 1 package policy — '{pp.id}' \('sys-loose'\) on no agent "
+            r"policy — ")):
+            await client.call_tool("uninstall_package", {"name": "system"})
+    assert pp in gateway.fleet_package_policies
 
 
 async def test_uninstall_package_guards_fleet_server_on_no_agent_policy(mcp, gateway):
     _space_awareness_off(gateway)
-    gateway.fleet_packages.append(gateway.fleet_installed_packages[0].__class__(
-        name="fleet_server", title="Fleet Server", version="1.6.1", status="installed",
-        description="", type="integration"))
+    _add_package(gateway, "fleet_server", "1.6.1")
     gateway.fleet_package_policies = [
         p for p in gateway.fleet_package_policies if p.package_name != "fleet_server"]
     pp = gateway.create_package_policy(
@@ -394,6 +433,6 @@ async def test_uninstall_package_guards_fleet_server_on_no_agent_policy(mcp, gat
     async with Client(mcp) as client:
         with pytest.raises(ToolError, match=(
             rf"its package policy '{pp.id}' is a fleet_server package policy on no agent "
-            r"policy, .*regardless of force")):
-            await client.call_tool("uninstall_package", {"name": "fleet_server", "force": True})
+            r"policy, .*Nothing was changed")):
+            await client.call_tool("uninstall_package", {"name": "fleet_server"})
     assert pp in gateway.fleet_package_policies

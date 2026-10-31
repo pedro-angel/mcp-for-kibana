@@ -218,9 +218,10 @@ mode enables host/origin protection on loopback binds.
   every toolbox at every tier and every profile is coherent but for reviewed
   cross-toolbox gaps.
 - Each Fleet space-awareness mode has a tier (D63): the contract tier runs
-  `uninstall_package`'s awareness-on refusal on the seeded stack, and
+  `uninstall_package`'s awareness-on path (every space the key can access,
+  Kibana's hidden-space 403) on the seeded stack, and
   `fleet_unaware_ephemeral` runs its awareness-off path (package-policy
-  listing, Fleet Server and monitoring guards, forced delete) on an isolated
+  refusal, Fleet Server and monitoring guards, uninstall once none is left) on an isolated
   stack booted with Fleet's `useSpaceAwareness` feature off; a test that
   branches on the mode fails on a stack in the other one.
 - Every change carries a CHANGELOG entry: `changelog_entry` and a `checks.yml`

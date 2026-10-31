@@ -122,14 +122,17 @@ from kibana_mcp.core.models import (
 from kibana_mcp.core.exception_lists import import_error_text
 from kibana_mcp.core.fleet_ops import (
     AGENT_MONITORING_PACKAGE,
+    checks_hidden_spaces,
     guard_reason,
     guarded_policy_refusal,
+    hidden_spaces_refusal,
     installed_version_refusal,
     missing_agents_message,
     monitoring_refusal,
     not_installed_message,
     outdated_version_message,
     package_policies_refusal,
+    pinned_space_refusal,
     space_awareness_refusal,
     tags_not_applied,
     unattached_guard_reason,
@@ -4082,61 +4085,93 @@ class KibanaPyGateway:
             name=name, version=str(after.get("version", "")),
             status=str(after.get("status", "")), already_installed=False)
 
+    def _fleet_space_clients(self, name: str) -> list[tuple[str, Any]]:
+        """(space, client) for every space whose Fleet objects an uninstall of `name`
+        can remove: one ("", client) with space awareness off (one listing holds
+        every space); with it on, each space the key can access (a space it cannot
+        is Kibana's 403 to refuse), refused on a Kibana without that check."""
+        settings = self._client.fleet.get_settings().body.get("item") or {}
+        if not settings.get("use_space_awareness_migration_status"):
+            return [("", self._client)]
+        try:
+            version = str(self._client.status.get_status().body["version"]["number"])
+        except (ApiError, KeyError, TypeError):
+            version = ""
+        if not checks_hidden_spaces(version):
+            raise KibanaRejected(space_awareness_refusal(name, version))
+        space_ids = [str(sp["id"]) for sp in self._client.spaces.get_all().body]
+        root = self._client
+        if isinstance(root, SpaceScopedKibana) or self._pinned_space is not None:
+            # One space only: a pinned base URL or a scoped client cannot reach another.
+            only = self._space or self._pinned_space or "default"
+            others = [sp for sp in space_ids if sp != only]
+            if others:
+                raise KibanaRejected(pinned_space_refusal(name, only, others))
+            return [(only, root)]
+        return [(sp, root if sp == "default" else root.space(sp, validate=False))
+                for sp in space_ids]
+
     @_translate_errors
-    def uninstall_package(self, *, name: str, force: bool = False) -> FleetPackageUninstall:
+    def uninstall_package(self, *, name: str) -> FleetPackageUninstall:
         item = self._read_package(name)
         if item.get("status") != "installed":
             raise KibanaNotFound(not_installed_message(name))
-        # With space awareness on, Kibana's uninstall deletes every space's package
-        # policies, while spaces.get_all leaves out each space the key cannot read
-        # (probed with a key restricted to 'default'): nothing listed is provably
-        # complete, so refuse before reading any policy, whatever force says.
-        settings = self._client.fleet.get_settings().body.get("item") or {}
-        if settings.get("use_space_awareness_migration_status"):
-            raise KibanaRejected(space_awareness_refusal(name))
-        policies = self._client.fleet_policies
 
         def every(list_page: Callable[..., Any]) -> list[dict[str, Any]]:
             return _fleet_all_items(lambda p: list_page(page=p, per_page=100).body)
 
-        if name == AGENT_MONITORING_PACKAGE:
-            # Kibana uninstalls it under a monitoring agent policy unchecked (probed).
-            monitoring = [ap["id"] for ap in every(policies.get_agent_policies)
-                          if ap.get("monitoring_enabled")]
-            if monitoring:
-                raise KibanaRejected(monitoring_refusal(name, monitoring))
-        package_policies = [pp for pp in every(policies.get_package_policies)
-                            if (pp.get("package") or {}).get("name") == name]
-        listed: list[tuple[str, str, str, int]] = []
+        listed: list[tuple[str, str, str, str, int]] = []
         guarded: list[tuple[str, str, str]] = []
-        agent_policies: dict[str, dict[str, Any]] = {}
-        for pp in package_policies:
-            ap_ids = [i for i in (pp.get("policy_ids") or [pp.get("policy_id")]) if i]
-            if not ap_ids:
-                unattached = unattached_guard_reason(name)
-                if unattached is not None:
-                    guarded.append((pp["id"], "", unattached))
-                listed.append((pp["id"], pp.get("name", ""), "", 0))
-            for ap_id in ap_ids:
-                if ap_id not in agent_policies:
-                    agent_policies[ap_id] = policies.get_agent_policy(
-                        agent_policy_id=ap_id).body["item"]
-                ap = agent_policies[ap_id]
-                why = guard_reason(name, is_managed=bool(ap.get("is_managed")),
-                                   is_default_fleet_server=bool(ap.get("is_default_fleet_server")))
-                if why is not None:
-                    guarded.append((pp["id"], ap_id, why))
-                listed.append((pp["id"], pp.get("name", ""), ap_id, int(ap.get("agents") or 0)))
+        emptied: list[tuple[str, str]] = []
+        monitoring: list[str] = []
+        for space, client in self._fleet_space_clients(name):
+            policies = client.fleet_policies
+            if name == AGENT_MONITORING_PACKAGE:
+                # Kibana uninstalls it under a monitoring agent policy unchecked (probed).
+                monitoring += [ap["id"] for ap in every(policies.get_agent_policies)
+                               if ap.get("monitoring_enabled")]
+            agent_policies: dict[str, dict[str, Any]] = {}  # read by id: it carries `agents`
+            all_package_policies = every(policies.get_package_policies)
+            used_by: dict[str, set[str]] = {}  # agent policy id -> packages on it
+            for pp in all_package_policies:
+                for ap_id in pp.get("policy_ids") or [pp.get("policy_id")]:
+                    if ap_id:
+                        used_by.setdefault(ap_id, set()).add((pp.get("package") or {}).get("name", ""))
+            for pp in all_package_policies:
+                if (pp.get("package") or {}).get("name") != name:
+                    continue
+                ap_ids = [i for i in (pp.get("policy_ids") or [pp.get("policy_id")]) if i]
+                if not ap_ids:
+                    unattached = unattached_guard_reason(name)
+                    if unattached is not None:
+                        guarded.append((pp["id"], "", unattached))
+                    listed.append((pp["id"], pp.get("name", ""), space, "", 0))
+                for ap_id in ap_ids:
+                    if ap_id not in agent_policies:
+                        agent_policies[ap_id] = policies.get_agent_policy(
+                            agent_policy_id=ap_id).body["item"]
+                    ap = agent_policies[ap_id]
+                    why = guard_reason(name, is_managed=bool(ap.get("is_managed")),
+                                       is_default_fleet_server=bool(ap.get("is_default_fleet_server")))
+                    if why is not None:
+                        guarded.append((pp["id"], ap_id, why))
+                    listed.append((pp["id"], pp.get("name", ""), space, ap_id,
+                                   int(ap.get("agents") or 0)))
+                    if used_by.get(ap_id) == {name} and (space, ap_id) not in emptied:
+                        emptied.append((space, ap_id))
+        if monitoring:
+            raise KibanaRejected(monitoring_refusal(name, monitoring))
         if guarded:
             raise KibanaRejected(guarded_policy_refusal(name, guarded))
-        if package_policies and not force:
-            raise KibanaRejected(package_policies_refusal(name, listed))
-        # force lets Kibana delete package policies agents use (400 without it);
-        # it is sent only then, so it can never reach Kibana for anything else.
-        self._client.fleet_epm.uninstall_package(
-            pkg_name=name, force=(True if force and package_policies else None))
-        return FleetPackageUninstall(
-            name=name, version=str(item.get("version", "")),
-            deleted_package_policies=tuple(
-                _to_fleet_package_policy(pp) for pp in package_policies),
-        )
+        if listed:
+            raise KibanaRejected(package_policies_refusal(
+                name, listed, emptied, self._space or self._pinned_space or "default"))
+        # Never forced: with a package policy left (one created since the read),
+        # Kibana refuses it (400) when agents use it and deletes it otherwise.
+        try:
+            self._client.fleet_epm.uninstall_package(pkg_name=name)
+        except AuthorizationException as e:
+            if "spaces you are not authorized to access" not in str(e.message):
+                raise
+            raise KibanaRejected(hidden_spaces_refusal(name)) from e
+        return FleetPackageUninstall(name=name, version=str(item.get("version", "")))
