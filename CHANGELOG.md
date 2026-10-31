@@ -267,8 +267,8 @@ version section.
   each line (D30). The set of lines is unchanged. The stack pin in
   `elastic-start-local/.env.example` and `.env.ephemeral.example` is 9.5.5,
   and the docs name 9.4.8 and 9.5.5 as the tested versions. The supported set
-  is kibana-py's, so this needs kibana-py 0.6.1, the first release that lists
-  9.5.5 and 9.4.8 (`kibana.SUPPORTED_VERSIONS`). One Kibana behavior changed
+  is kibana-py's, so the dependency is now `kibana-py[async]>=0.6.1`, the
+  first release that lists 9.5.5 and 9.4.8 (`kibana.SUPPORTED_VERSIONS`). One Kibana behavior changed
   on both lines: an uninstall of a package used in a space the API key cannot
   access now answers 403 instead of deleting that space's package policy
   (Fleet's `uninstall_authz.ts`, new in both). `uninstall_package` still
