@@ -120,4 +120,6 @@ def test_space_awareness_refusal_says_why_and_names_a_fix_outside_this_server():
         "uninstall it in Kibana's Integrations UI ('tcp' → Settings) as a user whose role "
         'grants Fleet and Integrations in all spaces (spaces ["*"]).')
     assert "force" not in text
-    assert "(its version could not be read)" in space_awareness_refusal("tcp", "")
+    unread = space_awareness_refusal("tcp", "")
+    assert "this API key cannot read Kibana's version" in unread
+    assert "Add the `monitor` cluster privilege to the API key's role" in unread

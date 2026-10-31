@@ -383,6 +383,12 @@ def _fleet_space(gateway):
         gateway.delete_space(space_id, force=True)
 
 
+def _kibana_line(gateway):
+    """(major, minor) of the stack's Kibana, read with the superuser test key."""
+    major, minor = gateway.get_kibana_status().version.split(".")[:2]
+    return int(major), int(minor)
+
+
 def _space_awareness_on(gateway):
     # The tier decides the mode it certifies (D63): a stack in the other mode
     # fails here naming the fix, so neither branch is ever quietly not run.
@@ -415,7 +421,8 @@ def test_uninstall_refused_for_a_space_the_key_cannot_list_live(gateway, restric
     assert _space_awareness_on(gateway)
     _ensure_uninstalled(gateway, "tcp")
     with _fleet_space(gateway) as (space_id, scoped), \
-            restricted_key(_DEFAULT_SPACE_FLEET) as (key, _):
+            restricted_key(_DEFAULT_SPACE_FLEET, cluster=["monitor"]) as (key, _), \
+            restricted_key(_DEFAULT_SPACE_FLEET) as (no_monitor_key, _):
         pol = scoped.fleet_policies.create_agent_policy(
             name=f"mcp-d51-sp-{space_id}", namespace="default", monitoring_enabled=[]).body["item"]
         try:
@@ -424,6 +431,14 @@ def test_uninstall_refused_for_a_space_the_key_cannot_list_live(gateway, restric
             pp = scoped.fleet_policies.create_package_policy(
                 name=f"mcp-d51-sp-tcp-{space_id}", namespace="default", policy_ids=[pol["id"]],
                 package={"name": "tcp", "version": version}).body["item"]
+            if _kibana_line(gateway) >= (9, 5):
+                # From 9.5.5 a key without `monitor` gets no version from
+                # /api/status (probed), so the server cannot tell the Kibana checks.
+                with KibanaPyGateway.connect(os.environ["KIBANA_URL"], no_monitor_key) as blind:
+                    with pytest.raises(KibanaRejected, match=(
+                            r"this API key cannot read Kibana's version .*Add the `monitor` "
+                            r"cluster privilege to the API key's role")):
+                        blind.uninstall_package(name="tcp")
             with KibanaPyGateway.connect(os.environ["KIBANA_URL"], key) as restricted:
                 assert [s.id for s in restricted.list_spaces()] == ["default"]
                 assert space_id in {s.id for s in gateway.list_spaces()}

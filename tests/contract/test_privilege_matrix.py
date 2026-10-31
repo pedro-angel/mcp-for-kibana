@@ -290,14 +290,21 @@ def tcp_installed(matrix):
 @pytest.mark.fleet_unaware
 @pytest.mark.parametrize("key_name", sorted(KEYS))
 async def test_uninstall_package_under_each_key(matrix, tcp_installed, key_name):
-    # The listing guard (D64): tcp has no package policy, so in either mode only
-    # a key that may uninstall in 'default' succeeds — with space awareness on
-    # it lists only 'default', and Kibana (9.5.5 / 9.4.8) finds no space the
-    # package is used in; the others lack the privilege and get the fix.
+    # The listing guard (D64): tcp has no package policy, so only a key that
+    # may uninstall in 'default' can succeed — with space awareness on it lists
+    # only 'default', and Kibana (9.5.5 / 9.4.8) finds no space the package is
+    # used in. From 9.5 Kibana's /api/status gives its version only to a key with
+    # the `monitor` cluster privilege, which these keys lack, so with awareness
+    # on even that key is refused, naming the privilege; the others lack Fleet.
     result, text = await _call(matrix, key_name, "uninstall_package", {"name": "tcp"})
     _assert_not_crashed("uninstall_package", key_name, text)
     _assert_names_the_fix("uninstall_package", key_name, text)
-    if key_name != "default-only-all":
+    with KibanaPyGateway.connect(os.environ["KIBANA_URL"], os.environ["KIBANA_TEST_API_KEY"]) as gw:
+        line = tuple(int(p) for p in gw.get_kibana_status().version.split(".")[:2])
+    blind = tcp_installed and line >= (9, 5)
+    if key_name != "default-only-all" or blind:
         assert result.is_error, f"uninstall_package under {key_name} succeeded: {text[:400]}"
     else:
         assert not result.is_error, f"uninstall_package under {key_name} failed: {text[:400]}"
+    if blind and key_name == "default-only-all":
+        assert "Add the `monitor` cluster privilege" in text, text[:400]

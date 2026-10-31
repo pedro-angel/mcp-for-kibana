@@ -845,7 +845,7 @@ def _ugw(*, migration_status="", spaces=("default",), pinned_space=None, version
     """A gateway for uninstall_package: Fleet settings with space awareness off
     unless `migration_status` says otherwise ('success' on the dev stack), a
     spaces listing of `spaces` (what the API key can access), Kibana `version`
-    (None: /api/status refuses), and `per_space`: {space: fleet_policies} for
+    (None: /api/status refuses; "": its redacted body, no version), and `per_space`: {space: fleet_policies} for
     the spaces other than 'default' (read through client.space(<id>))."""
     fleet = SimpleNamespace(get_settings=lambda: FakeResponse(
         {"item": {"id": "fleet-default-settings",
@@ -855,6 +855,8 @@ def _ugw(*, migration_status="", spaces=("default",), pinned_space=None, version
     def get_status():
         if version is None:
             raise AuthorizationException("forbidden", SimpleNamespace(status=403), None)
+        if version == "":  # 9.5.5 to a key without `monitor` (probed): no version at all
+            return FakeResponse({"status": {"overall": {"level": "available"}}})
         return FakeResponse({"version": {"number": version}})
 
     scoped = per_space or {}
@@ -1060,7 +1062,7 @@ def test_uninstall_package_turns_kibanas_hidden_space_403_into_a_refusal_naming_
     assert calls == [("uninstall", {"pkg_name": "tcp"})]
 
 
-@pytest.mark.parametrize("version", ["9.5.4", "9.4.7", "9.3.2", "8.19.0", None, "nonsense"])
+@pytest.mark.parametrize("version", ["9.5.4", "9.4.7", "9.3.2", "8.19.0", None, "", "nonsense"])
 @pytest.mark.parametrize("status", ["success", "pending", "error"])
 def test_uninstall_package_refuses_under_space_awareness_on_a_kibana_without_the_check(
         version, status):
@@ -1069,13 +1071,14 @@ def test_uninstall_package_refuses_under_space_awareness_on_a_kibana_without_the
     calls, reads = [], []
     gw = _ugw(fleet_epm=_epm(dict(_INSTALLED_TCP), calls), migration_status=status,
               version=version, fleet_policies=_recording_policies_ns([], {}, reads))
-    seen = (rf"Kibana {version}" if version in ("9.5.4", "9.4.7", "9.3.2", "8.19.0", "nonsense")
-            else r"this Kibana \(its version could not be read\)")
+    fix = (rf"Kibana {version} uninstalls a package's package policies in every space, .*"
+           rf"Nothing was changed\. Upgrade Kibana to 9\.5\.5 or later \(9\.4\.8 or later on "
+           rf"9\.4\), or" if version else
+           r"this API key cannot read Kibana's version .*Nothing was changed\. Add the "
+           r"`monitor` cluster privilege to the API key's role, or")
     with pytest.raises(KibanaRejected, match=(
         rf"^refusing to uninstall integration package 'tcp': Fleet space awareness is on, and "
-        rf"{seen} uninstalls a package's package policies in every space, .*Nothing was "
-        rf"changed\. Upgrade Kibana to 9\.5\.5 or later \(9\.4\.8 or later on 9\.4\), or "
-        rf"uninstall it in Kibana's Integrations UI \('tcp' → Settings\)")):
+        rf"{fix} uninstall it in Kibana's Integrations UI \('tcp' → Settings\)")):
         gw.uninstall_package(name="tcp")
     assert calls == [] and reads == []  # nothing read, nothing sent
 

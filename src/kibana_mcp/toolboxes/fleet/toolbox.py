@@ -511,8 +511,8 @@ class FleetToolbox:
             (get_fleet_settings space_awareness_migration_status set) every
             space the API key can access is checked, Kibana itself refuses a
             package used in a space the key cannot access, and a Kibana older
-            than 9.5.5 / 9.4.8 is refused. Returns {uninstalled, name,
-            version}."""
+            than 9.5.5 / 9.4.8, or a key without the 'monitor' cluster
+            privilege on 9.5, is refused. Returns {uninstalled, name, version}."""
             with gateway_errors(), deps.gateway_factory() as gw:
                 result = gw.uninstall_package(name=name)
             return {"uninstalled": True, **asdict(result)}

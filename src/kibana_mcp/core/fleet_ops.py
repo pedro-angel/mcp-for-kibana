@@ -188,16 +188,27 @@ def _integrations_ui(name: str) -> str:
 
 
 def space_awareness_refusal(name: str, version: str) -> str:
-    """Fleet space awareness on and a Kibana without the hidden-space check (or
-    whose version could not be read): its uninstall deletes the package's
-    package policies in spaces the key cannot see, so nothing listed is complete."""
-    seen = f"Kibana {version}" if version else "this Kibana (its version could not be read)"
+    """Fleet space awareness on and a Kibana without the hidden-space check, or
+    a version the key cannot read ("": from 9.5.5 GET /api/status gives it only
+    to a caller with the `monitor` cluster privilege, Kibana's
+    statusPageBypassMonitorPrivilege; probed): an older Kibana's uninstall
+    deletes the package's package policies in spaces the key cannot see."""
+    if not version:
+        return (
+            f"refusing to uninstall integration package '{name}': Fleet space awareness is on, "
+            "and this API key cannot read Kibana's version (from 9.5.5, GET /api/status gives "
+            "it only to a key with the Elasticsearch `monitor` cluster privilege), so the server "
+            "cannot tell whether this Kibana refuses an uninstall that would remove package "
+            "policies in spaces the key cannot access (before 9.5.5 / 9.4.8 it removes them "
+            "unseen). Nothing was changed. Add the `monitor` cluster privilege to the API key's "
+            f"role, or {_integrations_ui(name)}."
+        )
     return (
         f"refusing to uninstall integration package '{name}': Fleet space awareness is on, and "
-        f"{seen} uninstalls a package's package policies in every space, including spaces this "
-        "API key cannot access, which no listing shows; Kibana 9.5.5 and 9.4.8 refuse that "
-        "instead. Nothing was changed. Upgrade Kibana to 9.5.5 or later (9.4.8 or later on "
-        f"9.4), or {_integrations_ui(name)}."
+        f"Kibana {version} uninstalls a package's package policies in every space, including "
+        "spaces this API key cannot access, which no listing shows; Kibana 9.5.5 and 9.4.8 "
+        "refuse that instead. Nothing was changed. Upgrade Kibana to 9.5.5 or later (9.4.8 or "
+        f"later on 9.4), or {_integrations_ui(name)}."
     )
 
 

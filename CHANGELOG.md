@@ -262,7 +262,10 @@ version section.
   can access, and Kibana 9.5.5 / 9.4.8 refuse (403) a package used in a space
   the key cannot access, which the tool reports with the fix. On an older
   Kibana, or through a space-pinned `KIBANA_URL` while the key can access
-  another space, it is still refused with awareness on.
+  another space, it is still refused with awareness on. On Kibana 9.5 the API
+  key also needs the Elasticsearch `monitor` cluster privilege there: from
+  9.5.5 Kibana gives its version (which the check needs) only to such a key,
+  and the refusal says so.
 - **The supported Kibana pins move to 9.5.5 and 9.4.8**, the latest patch on
   each line (D30). The set of lines is unchanged. The stack pin in
   `elastic-start-local/.env.example` and `.env.ephemeral.example` is 9.5.5,

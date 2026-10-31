@@ -143,10 +143,12 @@ Fleet UI there, and leaves the spaces it cannot see to Kibana: from 9.5.5 and
 access" and keeps the package policies (probed on both; Fleet's
 `uninstall_authz.ts`, also on the 9.6 and main branches), which the tool
 turns into a refusal naming the fix. An older Kibana deleted them (probed on
-9.5.4), so under awareness a Kibana before 9.5.5 / 9.4.8, or one whose
-version `/api/status` does not give (any authenticated key reads it, probed
-on 9.4.8), is refused before any policy is read, naming the upgrade and
-Kibana's Integrations UI; so is a space-pinned `KIBANA_URL` while the key can
+9.5.4), so under awareness a Kibana before 9.5.5 / 9.4.8 is refused before
+any policy is read, naming the upgrade and Kibana's Integrations UI, and so
+is a key `/api/status` does not give the version to: any authenticated key
+read it on 9.4.8, but from 9.5.5 only one with the Elasticsearch `monitor`
+cluster privilege does (Kibana's `statusPageBypassMonitorPrivilege`; probed),
+so that refusal names the privilege; so is a space-pinned `KIBANA_URL` while the key can
 access another space (a pinned URL reads only its own). The awareness-off
 path runs live in the `fleet_unaware_ephemeral` tier (D63), all but the
 managed-agent-policy guard, which runs on fakes only. The managed

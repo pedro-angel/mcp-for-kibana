@@ -4094,6 +4094,8 @@ class KibanaPyGateway:
         if not settings.get("use_space_awareness_migration_status"):
             return [("", self._client)]
         try:
+            # From 9.5.5 a caller without the `monitor` cluster privilege gets
+            # {"status": {"overall": ...}} and no version (probed): refused, naming it.
             version = str(self._client.status.get_status().body["version"]["number"])
         except (ApiError, KeyError, TypeError):
             version = ""

@@ -72,6 +72,11 @@ release claim, `make help` for the rest.
 
 As of this page:
 
+- platform-health: `get_kibana_status` reads `version: "unknown"` for a key
+  without the `monitor` cluster privilege on Kibana 9.5.5 — **open**. From 9.5.5
+  `/api/status` gives the version and the per-service tree only to such a key
+  (probed, D64); the tool degrades without an error. Say so in its result (or
+  its description) when a task needs the version from a restricted key.
 - fleet: a `space` parameter for the fleet tools — **open**. `uninstall_package`
   names a package policy in another space as one to remove in Kibana's Fleet UI
   there (D64), since `delete_package_policy` acts in the default (or pinned)

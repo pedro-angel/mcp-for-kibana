@@ -1671,7 +1671,7 @@ agent-lifecycle commands) require `KIBANA_MCP_TIER=destructive`.
 | `delete_agent_policy` | destructive | Delete an agent policy — removes it and its package policies. Refuses a managed policy and the default Fleet Server policy regardless of `force`. `force=True` bypasses the assigned-agent check. |
 | `delete_package_policy` | destructive | Delete a package (integration) policy — detaches the integration; agents stop collecting that data. `force=True` bypasses Kibana's in-use checks. |
 | `delete_output` | destructive | Delete a Fleet output. Refuses the default output(s) — promote a replacement first (`update_output` `is_default=True`), then delete the old one. No force escape. |
-| `uninstall_package` | destructive | Uninstall an installed integration package once no package policy uses it — removes its assets (ingested data and the shared `logs-*`/`metrics-*` data views stay). Never removes the integration from agent policies: while any package policy uses it, refused, naming each one with its agent policy, agent count and space, and each agent policy it would leave with no integration (`delete_package_policy`, then `delete_agent_policy` for an emptied one). Also refused: a package policy on a managed or the default Fleet Server agent policy, `fleet_server` with any package policy, `elastic_agent` while an agent policy has monitoring on. With Fleet space awareness on, every space the key can access is checked, Kibana's 403 for a space it cannot access becomes a refusal naming the fix, and a Kibana before 9.5.5 / 9.4.8 is refused. Returns `uninstalled`, `name`, `version`. |
+| `uninstall_package` | destructive | Uninstall an installed integration package once no package policy uses it — removes its assets (ingested data and the shared `logs-*`/`metrics-*` data views stay). Never removes the integration from agent policies: while any package policy uses it, refused, naming each one with its agent policy, agent count and space, and each agent policy it would leave with no integration (`delete_package_policy`, then `delete_agent_policy` for an emptied one). Also refused: a package policy on a managed or the default Fleet Server agent policy, `fleet_server` with any package policy, `elastic_agent` while an agent policy has monitoring on. With Fleet space awareness on, every space the key can access is checked, Kibana's 403 for a space it cannot access becomes a refusal naming the fix, and a Kibana before 9.5.5 / 9.4.8, or (on 9.5) a key without the `monitor` cluster privilege, which Kibana needs to give its version, is refused. Returns `uninstalled`, `name`, `version`. |
 | `reassign_agent` | destructive | Reassign one enrolled agent to a different agent policy — changes what the live agent collects/ships. Refuses a managed or default Fleet Server target policy. |
 | `upgrade_agent` | destructive | Upgrade one enrolled agent to `version` (must be one of `list_agent_versions`). Commands a live binary swap; async — the agent applies it on its own schedule. |
 | `unenroll_agent` | destructive | Unenroll one Elastic Agent — it stops shipping data. `force=True` unenrolls an already-unenrolled/offline agent; `revoke=True` also invalidates its API key immediately. |
@@ -1747,7 +1747,10 @@ Notes:
   space it cannot see, Kibana 9.5.5 and 9.4.8 answer 403 and keep the package
   policies (probed), which the tool reports with the fix. Older Kibanas
   deleted them (probed on 9.5.4), so with awareness on a Kibana before 9.5.5 /
-  9.4.8 is refused, naming the upgrade and Kibana's Integrations UI. The other
+  9.4.8 is refused, naming the upgrade and Kibana's Integrations UI, as is a
+  key that cannot read Kibana's version: from 9.5.5 `/api/status` gives it
+  only to a key with the `monitor` cluster privilege (probed), which the error
+  names. The other
   fleet tools read the default (or pinned) space only.
 - **No enrollment-key mint/revoke.** See the note above — deliberately out of
   scope for this tier.

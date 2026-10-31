@@ -38,7 +38,7 @@ INTERNAL = {"x-elastic-internal-origin": "Kibana"}
 
 
 @contextlib.contextmanager
-def _restricted_key(kibana_privileges):
+def _restricted_key(kibana_privileges, cluster=()):
     """A throwaway role, user and API key the user creates for itself (the
     superuser test key cannot: Elasticsearch gives a key made by a key no
     privileges), so the key holds a snapshot of the role's privileges; yields
@@ -54,7 +54,7 @@ def _restricted_key(kibana_privileges):
     ) as admin:
         try:
             admin.security.create_or_update_role(
-                name=role, elasticsearch={"cluster": ["manage_own_api_key"]},
+                name=role, elasticsearch={"cluster": ["manage_own_api_key", *cluster]},
                 kibana=kibana_privileges)
             admin.perform_request("POST", f"/internal/security/users/{user}", headers=INTERNAL,
                                   body={"username": user, "password": password, "roles": [role]})
@@ -100,6 +100,7 @@ def restricted_key():
     `with restricted_key(kibana_privileges) as (key, role):`, where
     kibana_privileges is a Kibana role's `kibana` list, e.g.
     `[{"base": ["read"], "spaces": ["*"]}]` or
-    `[{"feature": {"fleetv2": ["all"]}, "spaces": ["default"]}]`."""
+    `[{"feature": {"fleetv2": ["all"]}, "spaces": ["default"]}]`; `cluster`
+    adds Elasticsearch cluster privileges, e.g. `cluster=["monitor"]`."""
     require_stack_env()
     return _restricted_key

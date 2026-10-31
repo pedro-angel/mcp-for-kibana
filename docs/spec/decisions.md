@@ -2113,10 +2113,18 @@ this ledger stands without them.
   `uninstall_authz.ts`, also on the 9.6 and main branches); the tool turns
   that 403 into a refusal naming the fix. A Kibana before 9.5.5 / 9.4.8
   deleted them (probed on 9.5.4), so with awareness on it is refused before
-  any policy is read, read from `/api/status` (any authenticated key reads the
-  version: a key with no privileges did, probed on 9.4.8); an unreadable
-  version refuses too, and so does a space-pinned `KIBANA_URL` while the key
-  can access another space (it reads only its own). A package policy in a
+  any policy is read, the version read from `/api/status`. An unreadable
+  version refuses too, naming the fix: on 9.4.8 any authenticated key reads it
+  (a key with no privileges did, probed), but from 9.5.5 Kibana gives it only
+  to a caller with the Elasticsearch `monitor` cluster privilege
+  (`statusPageBypassMonitorPrivilege` in its status route, absent at v9.4.8;
+  a Fleet-only key got `{"status": {"overall": ...}}`, probed on 9.5.5), so on
+  9.5 the uninstall needs a key with `monitor` — the refusal names it. Fleet
+  serves no reliable Kibana version (its agent `available_versions` is a
+  filtered list that allows newer patches), and inferring the check from the
+  redaction was rejected (two fixes that happen to share a patch). A
+  space-pinned `KIBANA_URL` is refused while the key can access another space
+  (it reads only its own). A package policy in a
   space other than the one the fleet tools act in is named with "remove it in
   Kibana's Fleet UI in that space" (the fleet tools take no `space`; roadmap).
   The result is `{uninstalled, name, version}` (`deleted_package_policies`
@@ -2124,12 +2132,17 @@ this ledger stands without them.
   deletes the listed package policies in one call (owner: the integration is
   removed from the policies explicitly); deleting emptied agent policies
   automatically (an agent policy may be wanted empty; the refusal names them
-  instead). Evidence (2026-10-31, kibana-py 0.6.0, Kibana 9.4.8 with
-  awareness on): the uninstall and privilege-matrix contract tests, 9
-  passed — the refusal naming the package policy and the emptied agent
-  policy, `delete_package_policy` then the uninstall, the restricted key's
-  403 turned into the refusal, the full key naming the other space's package
-  policy, and `default-only-all` uninstalling a package no space uses.
+  instead). Evidence (2026-10-31, awareness on): the uninstall and
+  privilege-matrix contract tests, 9 passed on Kibana 9.4.8 (kibana-py
+  0.6.0) and 9 passed on 9.5.5 (0.6.1) — the refusal naming the package
+  policy and the emptied agent policy, `delete_package_policy` then the
+  uninstall, the restricted key's 403 turned into the refusal, the full key
+  naming the other space's package policy, `default-only-all` uninstalling a
+  package no space uses on 9.4.8 and refused naming `monitor` on 9.5.5, and
+  a Fleet key without `monitor` refused naming it on 9.5.5. The first
+  `make dod` at 1d39e14f was NO-GO on exactly that (`contract_green`, 2
+  failed: the 9.4.8 probe did not hold on 9.5.5); `make test-e2e` 55 of 55
+  (`scripts/experiment/runs/claude-e2e/d64-uninstall-2026-10-31`).
   Supersedes D51's awareness-on refusal and `force`; D63's awareness-off tier
   stays. Contract: [fleet](toolboxes/fleet.md).
 
