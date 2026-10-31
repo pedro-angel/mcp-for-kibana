@@ -1098,7 +1098,7 @@ this ledger stands without them.
   under `force` with a warning that unreported package policies may be
   deleted (an uninstall the caller cannot review); an operator setting that
   vouches for the key (an assertion, not a proof). Contract:
-  [fleet](toolboxes/fleet.md). **Amended (2026-10-31, probe on 9.5.5):
+  [fleet](toolboxes/fleet.md). **Amended (2026-10-31, probes on 9.5.5 and 9.4.8):
   Kibana 9.5.5 and 9.4.8 refuse that uninstall themselves.** The same
   limited key's uninstall, no `force`, answered 403 "Insufficient privileges
   to uninstall package tcp: it is used in spaces you are not authorized to
