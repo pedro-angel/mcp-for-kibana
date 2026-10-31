@@ -7,7 +7,7 @@ Each entry is a decision a rewrite must not silently re-litigate: what was
 decided, when, and the evidence. Entries marked **probe** are live
 observations against a real stack — observed behavior, not documentation.
 Probes were taken on Kibana 9.4.3 unless noted; the stack pin is the newest
-supported Kibana (9.5.4 since 2026-10-04) and the contract tier runs on every
+supported Kibana (9.5.5 since 2026-10-31) and the contract tier runs on every
 supported line (D30). Raw probe records and the full process history
 leave the public tree at release and live on in the private development
 repository; every finding needed to rebuild is restated here in full, so
@@ -35,7 +35,7 @@ this ledger stands without them.
 
 - **D30 (2026-10-04)** — The supported Kibana set is kibana-py's, and the
   stack pin is its newest version. `kibana.SUPPORTED_VERSIONS` (kibana-py ≥
-  0.6.0; today 9.5.4 and 9.4.7) is the one declaration: the CI contract job fans
+  0.6.1; today 9.5.5 and 9.4.8) is the one declaration: the CI contract job fans
   out over it — contract tier and e2e replay on every line — and
   `scripts/stack.sh up` takes an `ES_LOCAL_VERSION` override, so one script
   provisions either line. The pin in `.env.example` and `.env.ephemeral.example`
@@ -48,7 +48,11 @@ this ledger stands without them.
   `dashboards`/`total` keys the gateway reads. Evidence (2026-10-04): contract
   tier 125 passed on 9.4.7 and 125 passed on 9.5.4; on 9.5.4 the e2e replay 4
   passed and the live-model gate (`gemma-4-12b-qat`) 1 passed — no gateway
-  change. Supersedes D29.
+  change. Supersedes D29. **Moved 2026-10-31 to 9.5.5 and 9.4.8** (kibana-py
+  0.6.1, released for it): with kibana-py 0.6.0 the contract tier passed 557
+  on a fresh 9.4.8 stack and 556 of 557 on 9.5.5, the one failure the Fleet
+  403 recorded in D51's amendment (that test passed alone once it pinned the
+  403), and the e2e replay passed 10 on each — no gateway change.
 - **D34 (2026-10-12)** — A per-tool allow list, `KIBANA_MCP_TOOLS` (owner
   spec), is the third selection axis beside toolbox and tier. Semantics:
   **published = listed ∩ tier**, nothing else. **The list alone decides**:
@@ -1098,7 +1102,16 @@ this ledger stands without them.
   under `force` with a warning that unreported package policies may be
   deleted (an uninstall the caller cannot review); an operator setting that
   vouches for the key (an assertion, not a proof). Contract:
-  [fleet](toolboxes/fleet.md).
+  [fleet](toolboxes/fleet.md). **Amended (2026-10-31, probes on 9.5.5 and 9.4.8):
+  Kibana 9.5.5 and 9.4.8 refuse that uninstall themselves.** The same
+  limited key's uninstall, no `force`, answered 403 "Insufficient privileges
+  to uninstall package tcp: it is used in spaces you are not authorized to
+  access" and the package policy was kept (Fleet's
+  `services/epm/packages/uninstall_authz.ts`, present at the v9.5.5 and
+  v9.4.8 tags, absent at v9.5.4 and v9.4.7). The guard stays as it is: it
+  refuses before Kibana is asked, and a 9.4 or 9.5 patch older than these
+  still deletes. Relaxing it on the patches that check is open (roadmap).
+  The contract test now pins the 403.
 
 - **D52 (2026-10-25, probes on 9.5.4, Basic)** — The dashboards toolbox
   gains `update_dashboard` (`write`, `idempotentHint=true`), over

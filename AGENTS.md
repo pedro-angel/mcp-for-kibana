@@ -52,7 +52,7 @@ Before the seeded-stack criteria (`contract_green`, `e2e_replay_green`,
 requires it) the gate reads the running Kibana's version
 from `/api/status` with the seed key and requires the `ES_LOCAL_VERSION` pin in
 `elastic-start-local/.env.example` (in CI: the matrix's version). A stack left on
-another line — a study's 9.5.5, or 9.4.7 after `ES_LOCAL_VERSION=9.4.7 make
+another version — an older patch such as 9.5.4, or 9.4.8 after `ES_LOCAL_VERSION=9.4.8 make
 test-contract` — is NO-GO on each of them, naming
 `scripts/stack.sh down && scripts/stack.sh up && scripts/stack.sh seed`; every
 GO line names the version it certified. The ephemeral tiers (`streams_ephemeral`,
@@ -91,7 +91,7 @@ after the gate clears the shell.
 Fleet space awareness has a tier per mode (D63): the contract tier runs the
 awareness-on branches on the seeded stack, and `fleet_unaware_ephemeral`
 (`scripts/fleet_unaware_ephemeral.sh`) boots an isolated stack at the
-`.env.ephemeral.example` pin (9.5.4; every supported line in CI) with
+`.env.ephemeral.example` pin (9.5.5; every supported line in CI) with
 `elastic-start-local/docker-compose.fleet-unaware.yml` and runs the tests
 marked `fleet_unaware`. A test that branches on the mode asks
 `tests/_fleet_awareness.py` first, so a stack in the other mode fails it

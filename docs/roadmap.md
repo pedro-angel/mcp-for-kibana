@@ -10,7 +10,7 @@ The server ships **10 toolboxes / 184 tools** (dashboards, data-management,
 alerting, cases, security-detections, fleet, streams, observability,
 platform-admin, platform-health) — see the [Tool reference](tools.md) for every
 one. Every tool is classified read / write / destructive and contract-tested
-against live Kibana 9.4.7 and 9.5.4.
+against live Kibana 9.4.8 and 9.5.5.
 
 **Toolbox-level Basic coverage is complete; method-level is not.** The 2026-07-16
 catalog audit was toolbox-granular, and its "no Basic functionality left" claim
@@ -72,13 +72,13 @@ release claim, `make help` for the rest.
 
 As of this page:
 
+- fleet: `uninstall_package` under space awareness on the patches that check
+  — **open**. Kibana 9.5.5 and 9.4.8 refuse an uninstall whose package is used
+  in a space the key cannot access (403, D51 amendment), the hazard the
+  server's fail-closed refusal was built for. Allowing the uninstall there
+  and relying on Kibana's 403 needs a way to tell those patches from older
+  ones that still delete; the guard stays until an owner decision.
 - gate: what the 2026-10 DoD hardening (D53–D63) left open — **open**.
-  - **Kibana 9.5.5 waits on kibana-py.** The gate certifies the newest line
-    kibana-py supports (D30, D53): kibana-py 0.6.0, the newest on PyPI
-    (checked 2026-10-28), lists 9.5.4 and 9.4.7. Moving the pin
-    (`elastic-start-local/.env.example`, `.env.ephemeral.example`) needs a kibana-py release that lists 9.5.5;
-    run records made at 9.5.5 (the savings study) are outside the supported
-    set until then.
   - **The managed-policy guard of `uninstall_package` runs on fakes only**
     (D63): `fleet_unaware_ephemeral` creates no managed agent policy, so
     `test_uninstall_package_refuses_a_guarded_agent_policy_even_with_force`

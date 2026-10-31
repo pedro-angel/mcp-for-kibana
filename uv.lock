@@ -1395,16 +1395,16 @@ wheels = [
 
 [[package]]
 name = "kibana-py"
-version = "0.6.0"
+version = "0.6.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "elastic-transport" },
     { name = "python-dateutil" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/77/14/0323a90bb318e408c9f65904754caa60c088a7ac74a3be76b1a7bb92102b/kibana_py-0.6.0.tar.gz", hash = "sha256:64b3203f7e6eccfd5ef18d14165b0f0bf066eaf0ac1b0104a40f7dd2d7b214f5", size = 549601, upload-time = "2026-09-21T05:52:41.905Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ab/d1/8eb60c8c4f9957e603bc9c69deb936d056012974757dc80e93cf05f74758/kibana_py-0.6.1.tar.gz", hash = "sha256:a0e4b5dfee6660af791e0ee1a84c65d9154e5722c3bbed862c9410aec9e9cb2b", size = 551484, upload-time = "2026-10-31T19:06:17.11Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ce/cf/8172a812e64bd6f233682beef9d54a2196235fd2631da7f60c188713deb9/kibana_py-0.6.0-py3-none-any.whl", hash = "sha256:93b8e778cb7e8b45614a5d3f286dc859a9e0e1a2459b28c331af325879d79dd7", size = 606376, upload-time = "2026-09-21T05:52:40.441Z" },
+    { url = "https://files.pythonhosted.org/packages/2f/81/cfe35a5a271a57f054d6e6fb1d71c8caaaa59f0892e5c02177fefc4e822e/kibana_py-0.6.1-py3-none-any.whl", hash = "sha256:7b3676b1ba65a357fabf5f1c1824eb7235560809f29f961090eac4c0a3920a1c", size = 606836, upload-time = "2026-10-31T19:06:13.92Z" },
 ]
 
 [package.optional-dependencies]
@@ -1676,7 +1676,7 @@ docs = [
 [package.metadata]
 requires-dist = [
     { name = "fastmcp", specifier = ">=3.4.7,<5" },
-    { name = "kibana-py", extras = ["async"], specifier = ">=0.6.0" },
+    { name = "kibana-py", extras = ["async"], specifier = ">=0.6.1" },
     { name = "opentelemetry-exporter-otlp-proto-grpc", marker = "extra == 'otel'", specifier = ">=1.30" },
     { name = "opentelemetry-exporter-otlp-proto-http", marker = "extra == 'otel'", specifier = ">=1.30" },
     { name = "opentelemetry-sdk", marker = "extra == 'otel'", specifier = ">=1.44.0" },

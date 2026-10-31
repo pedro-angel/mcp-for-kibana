@@ -204,10 +204,18 @@ def test_locally_a_shell_es_local_version_off_the_pin_is_no_go_naming_unset(repo
     assert not (repo / "ran").exists(), "the tier must not run on the wrong line"
 
 
+def _supported():
+    # The real set (CI mode reads it): newest first, as kibana-py declares it.
+    import kibana
+
+    return [v for _, v in kibana.SUPPORTED_VERSIONS]
+
+
 def test_in_ci_the_matrix_es_local_version_is_the_line(repo):
-    res = _gate(repo, ES_LOCAL_VERSION="9.4.7", GITHUB_ACTIONS="true")
+    older = _supported()[-1]  # a supported line that is not the fixture's pin
+    res = _gate(repo, ES_LOCAL_VERSION=older, GITHUB_ACTIONS="true")
     assert res.returncode == 0, res.stdout
-    assert "Kibana 9.4.7" in _line(res.stdout, "streams_ephemeral")
+    assert f"Kibana {older}" in _line(res.stdout, "streams_ephemeral")
 
 
 def test_in_ci_an_unsupported_matrix_line_is_no_go(repo):
@@ -216,7 +224,7 @@ def test_in_ci_an_unsupported_matrix_line_is_no_go(repo):
     assert res.returncode == 1, res.stdout
     line = _line(res.stdout, "streams_ephemeral")
     assert line.startswith("  NO-GO") and "kibana.SUPPORTED_VERSIONS" in line
-    assert "9.5.4" in line and "versions job" in line
+    assert _supported()[0] in line and "versions job" in line
     assert not (repo / "ran").exists(), "the tier must not run on the wrong line"
 
 

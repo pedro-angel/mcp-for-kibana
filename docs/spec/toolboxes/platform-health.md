@@ -124,7 +124,7 @@ Behavioral guarantees).
   composition with other toolboxes.
 - `tests/contract/test_gateway_contract.py` — `test_kibana_status_live`,
   `test_kibana_stats_live`, `test_task_manager_health_live` pin all three
-  gateway methods against a real, seeded Kibana stack on each supported line (9.4.7 and 9.5.4).
+  gateway methods against a real, seeded Kibana stack on each supported line (9.4.8 and 9.5.5).
 - e2e-replay: `kibana-status-platform-health.json` replays a recorded
   Claude turn that reads Kibana's status; the transcript pins the version
   Kibana reports on each run (`live_tokens`, D61), in `e2e_replay_green`,
