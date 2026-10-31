@@ -1,0 +1,144 @@
+{
+  "block": "adhoc",
+  "cache_creation_input_tokens": 24742,
+  "cache_read_input_tokens": 71210,
+  "claude_cli": "2.1.316 (Claude Code)",
+  "duration_api_ms": 7457,
+  "duration_ms": 9806,
+  "final_text": "I created the dashboard \"E2E 97ba0f83 flight prices\" with one bar chart. It's at http://localhost:15601/app/dashboards#/view/e2e-97ba0f83-flight-prices-1d4675029384.\n\nThe chart plots the average `AvgTicketPrice` by `Carrier` (top 10 terms) from the Kibana Sample Data Flights view, using `timestamp`. The dashboard opens with a last-7-days time range (now-7d to now). I made one `create_dashboard` call, as asked. Before it, I ran `list_data_views` and `describe_data_view` to confirm the field names; those are read-only.",
+  "first_missing": null,
+  "git_sha": "aea14c6e",
+  "has_result": true,
+  "init_model": "claude-haiku-5-5",
+  "input_tokens": 8,
+  "is_error": false,
+  "key_in_transcript": false,
+  "kibana_version": "9.5.5",
+  "marker": "E2E 97ba0f83",
+  "mcp_servers": [
+    {
+      "name": "mcp-for-kibana",
+      "source": "dynamic",
+      "status": "connected"
+    }
+  ],
+  "model_requested": "haiku",
+  "models_reported": [
+    "claude-haiku-5-5"
+  ],
+  "n_tool_calls": 3,
+  "non_server_tools": [],
+  "num_turns": 4,
+  "offered_tools": [
+    "add_esql_metric_panel",
+    "add_esql_table_panel",
+    "add_esql_xy_panel",
+    "add_library_panel",
+    "add_panel",
+    "copy_saved_objects_to_spaces",
+    "create_dashboard",
+    "create_data_view",
+    "create_or_update_role",
+    "create_short_url",
+    "create_space",
+    "create_visualization",
+    "describe_data_view",
+    "export_saved_objects",
+    "find_saved_objects",
+    "get_dashboard",
+    "get_default_data_view",
+    "get_role",
+    "get_saved_object",
+    "get_space",
+    "get_upgrade_status",
+    "get_visualization",
+    "import_saved_objects",
+    "list_data_views",
+    "list_roles",
+    "list_spaces",
+    "resolve_short_url",
+    "search_dashboards",
+    "search_visualizations",
+    "set_default_data_view",
+    "share_saved_objects_to_spaces",
+    "update_dashboard",
+    "update_data_view",
+    "update_panel",
+    "update_space",
+    "update_visualization",
+    "upsert_runtime_field"
+  ],
+  "output_tokens": 858,
+  "passed": true,
+  "permission_denials": 0,
+  "permission_mode": "dontAsk",
+  "prompt": "Using the kibana tools, create a dashboard titled 'E2E 97ba0f83 flight prices' with a bar chart of the average ticket price by carrier over the last 7 days, using the flights sample data. Make exactly one create-dashboard call, then stop.",
+  "run_id": "20261031T193525Z-flights_dashboard-1-782d67",
+  "run_index": 1,
+  "s1_dashboard": true,
+  "s2_panel": true,
+  "server_dirty": false,
+  "session_cost_usd": 0.006226,
+  "space": null,
+  "study": "claude-e2e",
+  "task": "flights_dashboard",
+  "terminal_reason": "success",
+  "tier": "write",
+  "timed_out": false,
+  "tool_calls": [
+    "list_data_views",
+    "describe_data_view",
+    "create_dashboard"
+  ],
+  "tool_inputs": [
+    {
+      "input": {},
+      "name": "list_data_views"
+    },
+    {
+      "input": {
+        "data_view": "d3d7af60-4c81-11e8-b3d7-01146121b73d"
+      },
+      "name": "describe_data_view"
+    },
+    {
+      "input": {
+        "description": "",
+        "panels": [
+          {
+            "chart_type": "bar",
+            "data_view": "d3d7af60-4c81-11e8-b3d7-01146121b73d",
+            "group_by": [
+              {
+                "field": "Carrier",
+                "kind": "terms",
+                "limit": 10
+              }
+            ],
+            "metrics": [
+              {
+                "agg": "average",
+                "field": "AvgTicketPrice",
+                "label": "Average ticket price"
+              }
+            ],
+            "time_field": "timestamp",
+            "title": "Average ticket price by carrier"
+          }
+        ],
+        "time_range": {
+          "from": "now-7d",
+          "to": "now"
+        },
+        "title": "E2E 97ba0f83 flight prices"
+      },
+      "name": "create_dashboard"
+    }
+  ],
+  "toolboxes": "dashboards,data-management,platform-admin",
+  "total_cost_usd": 0.0062258,
+  "ts_end": "2026-10-31T19:35:40.590731+00:00",
+  "ts_start": "2026-10-31T19:35:25.991838+00:00",
+  "valid": true,
+  "wall_s": 14.6
+}

@@ -1,0 +1,148 @@
+{
+  "block": "adhoc",
+  "cache_creation_input_tokens": 7783,
+  "cache_read_input_tokens": 92882,
+  "claude_cli": "2.1.316 (Claude Code)",
+  "default_space_contamination": false,
+  "duration_api_ms": 10855,
+  "duration_ms": 15181,
+  "final_text": "Everything is set up and verified in the new space.\n\n- **Space:** `e2e-haiku-01f490b8` (display name is also `e2e-haiku-01f490b8`, since no separate name was given).\n- **Rule:** \"E2E 589ea25a flight watch\" (id `77c2e268-1dd5-40cf-bd19-7dae3e8af15c`), type `.es-query`, consumer `stackAlerts`.\n  - Index `kibana_sample_data_flights`, time field `timestamp`, window 5 minutes.\n  - Fires when the count is greater than 0.\n  - Query is `match_all`, since you didn't specify a filter, so it counts every document in the window.\n- **Status:** enabled. A re-read confirms `enabled: true`, with the schedule at the default 1m and no actions attached.\n\nI didn't add any actions, so the rule will evaluate and show alerts but won't send notifications anywhere.",
+  "first_missing": null,
+  "git_sha": "aea14c6e",
+  "has_result": true,
+  "init_model": "claude-haiku-5-5",
+  "input_tokens": 10,
+  "is_error": false,
+  "key_in_transcript": false,
+  "kibana_version": "9.5.5",
+  "marker": "E2E 589ea25a",
+  "mcp_servers": [
+    {
+      "name": "mcp-for-kibana",
+      "source": "dynamic",
+      "status": "connected"
+    }
+  ],
+  "model_requested": "haiku",
+  "models_reported": [
+    "claude-haiku-5-5"
+  ],
+  "n_tool_calls": 5,
+  "non_server_tools": [],
+  "num_turns": 6,
+  "offered_tools": [
+    "copy_saved_objects_to_spaces",
+    "create_alert_rule",
+    "create_connector",
+    "create_or_update_role",
+    "create_space",
+    "disable_alert_rule",
+    "enable_alert_rule",
+    "get_alert_rule",
+    "get_alerting_health",
+    "get_connector",
+    "get_role",
+    "get_space",
+    "get_upgrade_status",
+    "list_alert_rules",
+    "list_connectors",
+    "list_roles",
+    "list_rule_types",
+    "list_spaces",
+    "mute_alert",
+    "mute_alert_rule",
+    "share_saved_objects_to_spaces",
+    "snooze_alert_rule",
+    "unmute_alert",
+    "unmute_alert_rule",
+    "unsnooze_alert_rule",
+    "update_alert_rule",
+    "update_alert_rule_api_key",
+    "update_connector",
+    "update_space"
+  ],
+  "output_tokens": 1251,
+  "passed": true,
+  "permission_denials": 0,
+  "permission_mode": "dontAsk",
+  "prompt": "Using the kibana tools, create a new Kibana space with id 'e2e-haiku-01f490b8'. Inside that space, create an '.es-query' alert rule named 'E2E 589ea25a flight watch' with consumer 'stackAlerts' that fires when more than 0 documents match in the index 'kibana_sample_data_flights' (time field 'timestamp') over the last 5 minutes, then enable that rule.",
+  "run_id": "20261031T193829Z-alerting_space-2-a0f361",
+  "run_index": 2,
+  "s1_space": true,
+  "s2_rule": true,
+  "s3_enabled": true,
+  "server_dirty": false,
+  "session_cost_usd": 0.036894,
+  "space": "e2e-haiku-01f490b8",
+  "study": "claude-e2e",
+  "task": "alerting_space",
+  "terminal_reason": "success",
+  "tier": "write",
+  "timed_out": false,
+  "tool_calls": [
+    "create_space",
+    "list_rule_types",
+    "create_alert_rule",
+    "enable_alert_rule",
+    "get_alert_rule"
+  ],
+  "tool_inputs": [
+    {
+      "input": {
+        "id": "e2e-haiku-01f490b8",
+        "name": "e2e-haiku-01f490b8"
+      },
+      "name": "create_space"
+    },
+    {
+      "input": {
+        "space": "e2e-haiku-01f490b8"
+      },
+      "name": "list_rule_types"
+    },
+    {
+      "input": {
+        "consumer": "stackAlerts",
+        "name": "E2E 589ea25a flight watch",
+        "params": {
+          "esQuery": "{\"query\":{\"match_all\":{}}}",
+          "index": [
+            "kibana_sample_data_flights"
+          ],
+          "searchType": "esQuery",
+          "size": 100,
+          "threshold": [
+            0
+          ],
+          "thresholdComparator": ">",
+          "timeField": "timestamp",
+          "timeWindowSize": 5,
+          "timeWindowUnit": "m"
+        },
+        "rule_type_id": ".es-query",
+        "space": "e2e-haiku-01f490b8"
+      },
+      "name": "create_alert_rule"
+    },
+    {
+      "input": {
+        "rule_id": "77c2e268-1dd5-40cf-bd19-7dae3e8af15c",
+        "space": "e2e-haiku-01f490b8"
+      },
+      "name": "enable_alert_rule"
+    },
+    {
+      "input": {
+        "rule_id": "77c2e268-1dd5-40cf-bd19-7dae3e8af15c",
+        "space": "e2e-haiku-01f490b8"
+      },
+      "name": "get_alert_rule"
+    }
+  ],
+  "toolboxes": "alerting,platform-admin",
+  "total_cost_usd": 0.0033953200000000003,
+  "ts_end": "2026-10-31T19:38:48.208668+00:00",
+  "ts_start": "2026-10-31T19:38:29.151066+00:00",
+  "valid": true,
+  "wall_s": 19.1
+}
