@@ -393,11 +393,13 @@ _DEFAULT_SPACE_FLEET = [{"feature": {"fleetv2": ["all"], "fleet": ["all"]}, "spa
 
 def test_uninstall_refused_for_a_space_the_key_cannot_list_live(gateway, restricted_key):
     # Why uninstall_package refuses with Fleet space awareness on: a key that
-    # cannot read a space is not told it exists, and Kibana's uninstall with
-    # that key, no force, still deletes the package policy there.
+    # cannot read a space is not told it exists. Up to 9.5.4 / 9.4.7 Kibana's
+    # uninstall with that key, no force, deleted the package policy there; 9.5.5
+    # and 9.4.8 refuse it themselves with a 403 (Fleet's uninstall_authz.ts, new
+    # in both), which this pins. The server's guard still refuses first.
     import os
 
-    from kibana import NotFoundError
+    from kibana import AuthorizationException
 
     from kibana_mcp.adapters.kibana.gateway import KibanaPyGateway
 
@@ -426,9 +428,11 @@ def test_uninstall_refused_for_a_space_the_key_cannot_list_live(gateway, restric
                             gw.uninstall_package(name="tcp", force=force)
                 assert scoped.fleet_policies.get_package_policy(
                     package_policy_id=pp["id"]).body["item"]["id"] == pp["id"]  # kept
-                restricted._client.fleet_epm.uninstall_package(pkg_name="tcp")
-            with pytest.raises(NotFoundError):
-                scoped.fleet_policies.get_package_policy(package_policy_id=pp["id"])
+                with pytest.raises(AuthorizationException, match=(
+                        r"used in spaces you are not authorized to access")):
+                    restricted._client.fleet_epm.uninstall_package(pkg_name="tcp")
+            assert scoped.fleet_policies.get_package_policy(
+                package_policy_id=pp["id"]).body["item"]["id"] == pp["id"]  # still kept
         finally:
             scoped.fleet_policies.delete_agent_policy(agent_policy_id=pol["id"], force=True)
             _ensure_uninstalled(gateway, "tcp")

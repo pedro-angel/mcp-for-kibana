@@ -72,6 +72,12 @@ release claim, `make help` for the rest.
 
 As of this page:
 
+- fleet: `uninstall_package` under space awareness on the patches that check
+  — **open**. Kibana 9.5.5 and 9.4.8 refuse an uninstall whose package is used
+  in a space the key cannot access (403, D51 amendment), the hazard the
+  server's fail-closed refusal was built for. Allowing the uninstall there
+  and relying on Kibana's 403 needs a way to tell those patches from older
+  ones that still delete; the guard stays until an owner decision.
 - gate: what the 2026-10 DoD hardening (D53–D63) left open — **open**.
   - **The managed-policy guard of `uninstall_package` runs on fakes only**
     (D63): `fleet_unaware_ephemeral` creates no managed agent policy, so

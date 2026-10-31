@@ -254,7 +254,13 @@ version section.
   `elastic-start-local/.env.example` and `.env.ephemeral.example` is 9.5.5,
   and the docs name 9.4.8 and 9.5.5 as the tested versions. The supported set
   is kibana-py's, so this needs kibana-py 0.6.1, the first release that lists
-  9.5.5 and 9.4.8 (`kibana.SUPPORTED_VERSIONS`).
+  9.5.5 and 9.4.8 (`kibana.SUPPORTED_VERSIONS`). One Kibana behavior changed
+  on both lines: an uninstall of a package used in a space the API key cannot
+  access now answers 403 instead of deleting that space's package policy
+  (Fleet's `uninstall_authz.ts`, new in both). `uninstall_package` still
+  refuses first under Fleet space awareness, so the tool behaves the same;
+  the contract test that reproduced the deletion now pins the 403 (D51
+  amendment).
 - **The Definition-of-Done gate is hardened** (D53–D63). A review of the
   gate found 18 ways it could read GO over a defect; the entries below close
   them. Each check is a required criterion, runs inside one, or is part of

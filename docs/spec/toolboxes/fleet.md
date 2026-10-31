@@ -140,7 +140,10 @@ in a space it was never shown (probed). No Kibana route the server calls
 proves a key reads every space (the package `stats` and
 `withPackagePoliciesCount` counts are space-scoped as well, probed), so no
 listing is provably complete; the refusal names Kibana's Integrations UI, as
-a user whose role grants Fleet and Integrations in all spaces. The checks
+a user whose role grants Fleet and Integrations in all spaces. Kibana 9.5.5
+and 9.4.8 refuse that uninstall themselves (403 "… it is used in spaces you
+are not authorized to access", probed on 9.5.5; D51 amendment); the guard
+stays, since older patches still delete. The checks
 above therefore run with awareness off, where one listing holds every
 space's policies; the `fleet_unaware_ephemeral` tier runs them live on a
 9.5.4 stack booted with Fleet's `useSpaceAwareness` feature off (D63), all

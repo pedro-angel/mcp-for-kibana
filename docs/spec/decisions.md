@@ -1098,7 +1098,16 @@ this ledger stands without them.
   under `force` with a warning that unreported package policies may be
   deleted (an uninstall the caller cannot review); an operator setting that
   vouches for the key (an assertion, not a proof). Contract:
-  [fleet](toolboxes/fleet.md).
+  [fleet](toolboxes/fleet.md). **Amended (2026-10-31, probe on 9.5.5):
+  Kibana 9.5.5 and 9.4.8 refuse that uninstall themselves.** The same
+  limited key's uninstall, no `force`, answered 403 "Insufficient privileges
+  to uninstall package tcp: it is used in spaces you are not authorized to
+  access" and the package policy was kept (Fleet's
+  `services/epm/packages/uninstall_authz.ts`, present at the v9.5.5 and
+  v9.4.8 tags, absent at v9.5.4 and v9.4.7). The guard stays as it is: it
+  refuses before Kibana is asked, and a 9.4 or 9.5 patch older than these
+  still deletes. Relaxing it on the patches that check is open (roadmap).
+  The contract test now pins the 403.
 
 - **D52 (2026-10-25, probes on 9.5.4, Basic)** — The dashboards toolbox
   gains `update_dashboard` (`write`, `idempotentHint=true`), over
