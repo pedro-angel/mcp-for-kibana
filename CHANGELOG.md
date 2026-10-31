@@ -526,6 +526,9 @@ version section.
   CVE-2026-114614 to CVE-2026-114618 and CVE-2026-114620), dnspython 2.9.0
   (from email-validator; CVE-2026-114605) and msgpack 1.2.4 (from pip-audit's
   cache; CVE-2026-114613).
+- Locked joserfc moved to 1.7.7 (from authlib, through fastmcp), past two
+  advisories `pip-audit` reported on 2026-10-30: CVE-2026-119283 (fixed in
+  1.7.5) and CVE-2026-119284 (fixed in 1.7.6).
 
 ## [0.4.0] - 2026-10-17
 
