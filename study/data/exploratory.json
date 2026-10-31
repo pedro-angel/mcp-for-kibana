@@ -1,0 +1,784 @@
+{
+  "phase": "study",
+  "label": "exploratory: not fixed before the runs",
+  "counted": 600,
+  "time_ratio_cli": {
+    "claude-haiku-5-5": {
+      "median_with": 34.07,
+      "median_without": 104.9135,
+      "ratio": 0.3247437174434177,
+      "ratio_ci95": [
+        0.30941860627534606,
+        0.3407539827553853
+      ]
+    },
+    "claude-sonnet-5-5": {
+      "median_with": 29.8915,
+      "median_without": 46.7325,
+      "ratio": 0.6396298079494998,
+      "ratio_ci95": [
+        0.6234122678240889,
+        0.6497679361499089
+      ]
+    },
+    "claude-opus-5-5": {
+      "median_with": 51.441,
+      "median_without": 86.007,
+      "ratio": 0.5981024800306952,
+      "ratio_ci95": [
+        0.5545567484579371,
+        0.6342950678130733
+      ]
+    }
+  },
+  "waits_over_s": 120,
+  "waits": [],
+  "failures": [],
+  "medians": {
+    "claude-haiku-5-5/with-mcp": {
+      "input_tokens_total": 300884.5,
+      "output_tokens": 5097.0,
+      "turns": 17.0,
+      "mcp_calls": 16.0,
+      "bash_calls": 0.0,
+      "failed_tool_calls": 0.0
+    },
+    "claude-haiku-5-5/no-mcp": {
+      "input_tokens_total": 801692.5,
+      "output_tokens": 17717.0,
+      "turns": 28.0,
+      "mcp_calls": 0.0,
+      "bash_calls": 27.0,
+      "failed_tool_calls": 3.0
+    },
+    "claude-sonnet-5-5/with-mcp": {
+      "input_tokens_total": 197892.5,
+      "output_tokens": 3743.0,
+      "turns": 16.0,
+      "mcp_calls": 15.0,
+      "bash_calls": 0.0,
+      "failed_tool_calls": 0.0
+    },
+    "claude-sonnet-5-5/no-mcp": {
+      "input_tokens_total": 168300.0,
+      "output_tokens": 4778.0,
+      "turns": 12.0,
+      "mcp_calls": 0.0,
+      "bash_calls": 11.0,
+      "failed_tool_calls": 0.0
+    },
+    "claude-opus-5-5/with-mcp": {
+      "input_tokens_total": 285097.0,
+      "output_tokens": 3863.5,
+      "turns": 15.0,
+      "mcp_calls": 14.0,
+      "bash_calls": 0.0,
+      "failed_tool_calls": 0.0
+    },
+    "claude-opus-5-5/no-mcp": {
+      "input_tokens_total": 298701.5,
+      "output_tokens": 6595.0,
+      "turns": 15.0,
+      "mcp_calls": 0.0,
+      "bash_calls": 14.0,
+      "failed_tool_calls": 0.0
+    }
+  },
+  "time_breakdown": {
+    "label": "exploratory: not planned before the runs",
+    "source": "claude_code.tool.execution (tool time, one span per tool call) and claude_code.llm_request (model time) spans of the counted runs' traces; rest = study.wall_s minus both",
+    "spans": {
+      "pulled": 27860,
+      "by_name": {
+        "claude_code.tool.execution": 9828,
+        "claude_code.tool": 9828,
+        "claude_code.llm_request": 8204
+      },
+      "attached": 27854,
+      "left_out": 6,
+      "left_out_runs": [
+        "20261018T012909Z-b084-claude-opus-5-5-no-mcp-35b7f3"
+      ],
+      "attached_outside_run_trace": 40,
+      "tool_executions_without_tool_name": 0
+    },
+    "runs": 600,
+    "by_model_arm": {
+      "claude-haiku-5-5/with-mcp": {
+        "model_s": {
+          "n": 100,
+          "median": 25.9065,
+          "median_ci95": [
+            25.313,
+            26.477
+          ]
+        },
+        "tool_s": {
+          "n": 100,
+          "median": 9.6075,
+          "median_ci95": [
+            9.21,
+            9.981
+          ]
+        },
+        "rest_s": {
+          "n": 100,
+          "median": 1.0749999999999993,
+          "median_ci95": [
+            0.8450000000000006,
+            1.2585000000000033
+          ]
+        },
+        "model_clock_s": {
+          "n": 100,
+          "median": 25.9065,
+          "median_ci95": [
+            25.313,
+            26.566000000000003
+          ]
+        },
+        "tool_outside_model_s": {
+          "n": 100,
+          "median": 7.25,
+          "median_ci95": [
+            6.8145,
+            7.599
+          ]
+        },
+        "idle_s": {
+          "n": 100,
+          "median": 3.4155000000000015,
+          "median_ci95": [
+            3.355999999999998,
+            3.4609999999999985
+          ]
+        },
+        "wall_s": {
+          "n": 100,
+          "median": 36.6,
+          "median_ci95": [
+            35.9,
+            37.3
+          ]
+        },
+        "overlap_s_median": 2.421,
+        "overlap_s_max": 4.167,
+        "runs_with_overlap": 100,
+        "share_of_wall_median": {
+          "model_s": 0.7088557604830039,
+          "tool_s": 0.25844051127652307
+        }
+      },
+      "claude-haiku-5-5/no-mcp": {
+        "model_s": {
+          "n": 100,
+          "median": 92.7085,
+          "median_ci95": [
+            89.3335,
+            97.166
+          ]
+        },
+        "tool_s": {
+          "n": 100,
+          "median": 8.793,
+          "median_ci95": [
+            8.573,
+            9.003
+          ]
+        },
+        "rest_s": {
+          "n": 100,
+          "median": 2.7830000000000013,
+          "median_ci95": [
+            2.7009999999999934,
+            2.8530000000000015
+          ]
+        },
+        "model_clock_s": {
+          "n": 100,
+          "median": 92.7085,
+          "median_ci95": [
+            89.449,
+            97.166
+          ]
+        },
+        "tool_outside_model_s": {
+          "n": 100,
+          "median": 8.575,
+          "median_ci95": [
+            8.3335,
+            8.7585
+          ]
+        },
+        "idle_s": {
+          "n": 100,
+          "median": 2.994500000000002,
+          "median_ci95": [
+            2.9509999999999934,
+            3.079499999999996
+          ]
+        },
+        "wall_s": {
+          "n": 100,
+          "median": 105.8,
+          "median_ci95": [
+            101.6,
+            110.2
+          ]
+        },
+        "overlap_s_median": 0.227,
+        "overlap_s_max": 0.529,
+        "runs_with_overlap": 100,
+        "share_of_wall_median": {
+          "model_s": 0.8857580012125468,
+          "tool_s": 0.08753681551891714
+        }
+      },
+      "claude-sonnet-5-5/with-mcp": {
+        "model_s": {
+          "n": 100,
+          "median": 23.8275,
+          "median_ci95": [
+            23.298,
+            24.4085
+          ]
+        },
+        "tool_s": {
+          "n": 100,
+          "median": 9.9405,
+          "median_ci95": [
+            9.703,
+            10.088
+          ]
+        },
+        "rest_s": {
+          "n": 100,
+          "median": -1.4370000000000012,
+          "median_ci95": [
+            -1.703000000000003,
+            -1.118000000000002
+          ]
+        },
+        "model_clock_s": {
+          "n": 100,
+          "median": 23.8275,
+          "median_ci95": [
+            23.2795,
+            24.369
+          ]
+        },
+        "tool_outside_model_s": {
+          "n": 100,
+          "median": 5.1434999999999995,
+          "median_ci95": [
+            5.013,
+            5.406
+          ]
+        },
+        "idle_s": {
+          "n": 100,
+          "median": 3.1975,
+          "median_ci95": [
+            3.1579999999999977,
+            3.289999999999999
+          ]
+        },
+        "wall_s": {
+          "n": 100,
+          "median": 32.4,
+          "median_ci95": [
+            31.9,
+            32.6
+          ]
+        },
+        "overlap_s_median": 4.585,
+        "overlap_s_max": 6.507,
+        "runs_with_overlap": 100,
+        "share_of_wall_median": {
+          "model_s": 0.7357019753660237,
+          "tool_s": 0.3036406765676567
+        }
+      },
+      "claude-sonnet-5-5/no-mcp": {
+        "model_s": {
+          "n": 100,
+          "median": 37.297,
+          "median_ci95": [
+            36.432,
+            38.0715
+          ]
+        },
+        "tool_s": {
+          "n": 100,
+          "median": 8.9085,
+          "median_ci95": [
+            8.7325,
+            9.01
+          ]
+        },
+        "rest_s": {
+          "n": 100,
+          "median": 1.5280000000000022,
+          "median_ci95": [
+            1.4690000000000047,
+            1.5840000000000032
+          ]
+        },
+        "model_clock_s": {
+          "n": 100,
+          "median": 37.297,
+          "median_ci95": [
+            36.444,
+            38.0715
+          ]
+        },
+        "tool_outside_model_s": {
+          "n": 100,
+          "median": 8.655000000000001,
+          "median_ci95": [
+            8.4955,
+            8.861
+          ]
+        },
+        "idle_s": {
+          "n": 100,
+          "median": 1.7155000000000022,
+          "median_ci95": [
+            1.6870000000000012,
+            1.7540000000000049
+          ]
+        },
+        "wall_s": {
+          "n": 100,
+          "median": 47.5,
+          "median_ci95": [
+            46.8,
+            48.2
+          ]
+        },
+        "overlap_s_median": 0.147,
+        "overlap_s_max": 2.232,
+        "runs_with_overlap": 100,
+        "share_of_wall_median": {
+          "model_s": 0.7820330596229876,
+          "tool_s": 0.18732241138452216
+        }
+      },
+      "claude-opus-5-5/with-mcp": {
+        "model_s": {
+          "n": 100,
+          "median": 45.028,
+          "median_ci95": [
+            43.1155,
+            46.465
+          ]
+        },
+        "tool_s": {
+          "n": 100,
+          "median": 8.3245,
+          "median_ci95": [
+            8.173,
+            8.676
+          ]
+        },
+        "rest_s": {
+          "n": 100,
+          "median": 1.185499999999994,
+          "median_ci95": [
+            0.8000000000000114,
+            1.4450000000000003
+          ]
+        },
+        "model_clock_s": {
+          "n": 100,
+          "median": 45.028,
+          "median_ci95": [
+            43.1485,
+            46.465
+          ]
+        },
+        "tool_outside_model_s": {
+          "n": 100,
+          "median": 5.9510000000000005,
+          "median_ci95": [
+            5.6355,
+            6.362
+          ]
+        },
+        "idle_s": {
+          "n": 100,
+          "median": 3.2905000000000015,
+          "median_ci95": [
+            3.2210000000000036,
+            3.3445
+          ]
+        },
+        "wall_s": {
+          "n": 100,
+          "median": 53.8,
+          "median_ci95": [
+            52.2,
+            56.3
+          ]
+        },
+        "overlap_s_median": 2.115,
+        "overlap_s_max": 5.337,
+        "runs_with_overlap": 100,
+        "share_of_wall_median": {
+          "model_s": 0.8323676434705003,
+          "tool_s": 0.15209690734743125
+        }
+      },
+      "claude-opus-5-5/no-mcp": {
+        "model_s": {
+          "n": 100,
+          "median": 76.923,
+          "median_ci95": [
+            72.829,
+            82.612
+          ]
+        },
+        "tool_s": {
+          "n": 100,
+          "median": 8.3445,
+          "median_ci95": [
+            8.1585,
+            8.508
+          ]
+        },
+        "rest_s": {
+          "n": 100,
+          "median": 1.8850000000000122,
+          "median_ci95": [
+            1.8340000000000032,
+            1.9390000000000072
+          ]
+        },
+        "model_clock_s": {
+          "n": 100,
+          "median": 76.923,
+          "median_ci95": [
+            72.829,
+            82.612
+          ]
+        },
+        "tool_outside_model_s": {
+          "n": 100,
+          "median": 8.207,
+          "median_ci95": [
+            8.0215,
+            8.398
+          ]
+        },
+        "idle_s": {
+          "n": 100,
+          "median": 2.008499999999998,
+          "median_ci95": [
+            1.9415000000000049,
+            2.076999999999998
+          ]
+        },
+        "wall_s": {
+          "n": 100,
+          "median": 86.80000000000001,
+          "median_ci95": [
+            83.15,
+            92.0
+          ]
+        },
+        "overlap_s_median": 0.12,
+        "overlap_s_max": 0.199,
+        "runs_with_overlap": 100,
+        "share_of_wall_median": {
+          "model_s": 0.8837942530714713,
+          "tool_s": 0.09497202300187374
+        }
+      }
+    },
+    "single_call_ms": {
+      "claude-haiku-5-5/with-mcp/mcp": {
+        "n": 1586,
+        "median": 508.5,
+        "median_ci95": [
+          449.0,
+          573.5
+        ]
+      },
+      "claude-haiku-5-5/no-mcp/bash": {
+        "n": 2738,
+        "median": 55.0,
+        "median_ci95": [
+          53.0,
+          59.0
+        ]
+      },
+      "claude-haiku-5-5/no-mcp/other": {
+        "n": 13,
+        "median": 14.0,
+        "median_ci95": [
+          13.0,
+          24.0
+        ]
+      },
+      "claude-sonnet-5-5/with-mcp/mcp": {
+        "n": 1495,
+        "median": 589.0,
+        "median_ci95": [
+          543.0,
+          631.0
+        ]
+      },
+      "claude-sonnet-5-5/no-mcp/bash": {
+        "n": 1120,
+        "median": 86.0,
+        "median_ci95": [
+          78.0,
+          97.5
+        ]
+      },
+      "claude-opus-5-5/with-mcp/mcp": {
+        "n": 1402,
+        "median": 479.5,
+        "median_ci95": [
+          415.5,
+          534.0
+        ]
+      },
+      "claude-opus-5-5/no-mcp/bash": {
+        "n": 1390,
+        "median": 78.0,
+        "median_ci95": [
+          70.0,
+          85.0
+        ]
+      },
+      "claude-opus-5-5/no-mcp/other": {
+        "n": 82,
+        "median": 26.0,
+        "median_ci95": [
+          24.0,
+          27.0
+        ]
+      }
+    },
+    "call_bootstrap_note": "single-call intervals resample calls as if independent; calls of one run are not, so these intervals are narrower than a run-level one"
+  },
+  "cold_start": {
+    "label": "exploratory: n = 1 per cell, not planned before the runs",
+    "source": "the counted efficiency.run root spans (first run = earliest start, all workers); per-request cache reads from claude_code.llm_request spans (MIN(cache_read_tokens) by study.run_id); the pilot's root spans for the gap",
+    "cache_life_s": 300,
+    "cells": {
+      "claude-haiku-5-5/with-mcp": {
+        "first": {
+          "run_id": "20261017T234300Z-b035-claude-haiku-5-5-with-mcp-7e143c",
+          "worker": "3",
+          "block": "b035",
+          "time": "2026-10-17T23:43:00.909837824Z",
+          "cost_usd": 0.010547405000000003,
+          "time_s": 42.5,
+          "cache_read_tokens": 360043,
+          "cache_write_tokens": 34027
+        },
+        "first_min_request_cache_read": 0,
+        "cell_floor_request_cache_read": 0,
+        "others_median_min_request_cache_read": 24636,
+        "others_at_floor": [],
+        "cold": true,
+        "n": 100,
+        "median": {
+          "cost_usd": 0.0066865325,
+          "time_s": 36.6,
+          "cache_read_tokens": 291627.5,
+          "cache_write_tokens": 9253.5
+        },
+        "pilot_last": {
+          "run_id": "20261017T232920Z-p1-claude-haiku-5-5-with-mcp-6425fa",
+          "time": "2026-10-17T23:29:20.959964928Z",
+          "time_s": 38.1
+        },
+        "gap_after_pilot_s": 781.8,
+        "gap_exceeds_cache_life": true
+      },
+      "claude-haiku-5-5/no-mcp": {
+        "first": {
+          "run_id": "20261017T234354Z-b052-claude-haiku-5-5-no-mcp-bcf718",
+          "worker": "4",
+          "block": "b052",
+          "time": "2026-10-17T23:43:55.093624832Z",
+          "cost_usd": 0.021405665,
+          "time_s": 113,
+          "cache_read_tokens": 677174,
+          "cache_write_tokens": 45921
+        },
+        "first_min_request_cache_read": 0,
+        "cell_floor_request_cache_read": 0,
+        "others_median_min_request_cache_read": 6263,
+        "others_at_floor": [],
+        "cold": true,
+        "n": 100,
+        "median": {
+          "cost_usd": 0.021878655000000004,
+          "time_s": 105.8,
+          "cache_read_tokens": 760263.5,
+          "cache_write_tokens": 41027.5
+        },
+        "pilot_last": {
+          "run_id": "20261017T232601Z-p5-claude-haiku-5-5-no-mcp-3c68ed",
+          "time": "2026-10-17T23:26:01.934509568Z",
+          "time_s": 155
+        },
+        "gap_after_pilot_s": 918.2,
+        "gap_exceeds_cache_life": true
+      },
+      "claude-sonnet-5-5/with-mcp": {
+        "first": {
+          "run_id": "20261017T234423Z-b085-claude-sonnet-5-5-with-mcp-31c155",
+          "worker": "6",
+          "block": "b085",
+          "time": "2026-10-17T23:44:23.721648384Z",
+          "cost_usd": 0.1403269,
+          "time_s": 36.1,
+          "cache_read_tokens": 197324,
+          "cache_write_tokens": 32261
+        },
+        "first_min_request_cache_read": 0,
+        "cell_floor_request_cache_read": 0,
+        "others_median_min_request_cache_read": 23856,
+        "others_at_floor": [],
+        "cold": true,
+        "n": 100,
+        "median": {
+          "cost_usd": 0.0773549,
+          "time_s": 32.4,
+          "cache_read_tokens": 189712.5,
+          "cache_write_tokens": 8069.0
+        },
+        "pilot_last": {
+          "run_id": "20261017T232842Z-p4-claude-sonnet-5-5-with-mcp-d7b182",
+          "time": "2026-10-17T23:28:43.181270784Z",
+          "time_s": 31.7
+        },
+        "gap_after_pilot_s": 908.8,
+        "gap_exceeds_cache_life": true
+      },
+      "claude-sonnet-5-5/no-mcp": {
+        "first": {
+          "run_id": "20261017T234318Z-b069-claude-sonnet-5-5-no-mcp-63d943",
+          "worker": "5",
+          "block": "b069",
+          "time": "2026-10-17T23:43:19.066758656Z",
+          "cost_usd": 0.0995801,
+          "time_s": 45.1,
+          "cache_read_tokens": 116266,
+          "cache_write_tokens": 17259
+        },
+        "first_min_request_cache_read": 4645,
+        "cell_floor_request_cache_read": 4645,
+        "others_median_min_request_cache_read": 5483,
+        "others_at_floor": [
+          "20261018T003645Z-b042-claude-sonnet-5-5-no-mcp-97b50e"
+        ],
+        "cold": true,
+        "n": 100,
+        "median": {
+          "cost_usd": 0.10164580000000001,
+          "time_s": 47.5,
+          "cache_read_tokens": 151927.5,
+          "cache_write_tokens": 15548.5
+        },
+        "pilot_last": {
+          "run_id": "20261017T233028Z-p3-claude-sonnet-5-5-no-mcp-16b09d",
+          "time": "2026-10-17T23:30:28.331714816Z",
+          "time_s": 50.8
+        },
+        "gap_after_pilot_s": 719.9,
+        "gap_exceeds_cache_life": true
+      },
+      "claude-opus-5-5/with-mcp": {
+        "first": {
+          "run_id": "20261017T234416Z-b018-claude-opus-5-5-with-mcp-f44c2c",
+          "worker": "2",
+          "block": "b018",
+          "time": "2026-10-17T23:44:16.900208384Z",
+          "cost_usd": 0.27301259999999994,
+          "time_s": 56.3,
+          "cache_read_tokens": 195518,
+          "cache_write_tokens": 31773
+        },
+        "first_min_request_cache_read": 0,
+        "cell_floor_request_cache_read": 0,
+        "others_median_min_request_cache_read": 23856,
+        "others_at_floor": [],
+        "cold": true,
+        "n": 100,
+        "median": {
+          "cost_usd": 0.17326429999999998,
+          "time_s": 53.8,
+          "cache_read_tokens": 277001.5,
+          "cache_write_tokens": 7978.0
+        },
+        "pilot_last": {
+          "run_id": "20261017T233005Z-p6-claude-opus-5-5-with-mcp-283f29",
+          "time": "2026-10-17T23:30:05.6936448Z",
+          "time_s": 110.4
+        },
+        "gap_after_pilot_s": 740.8,
+        "gap_exceeds_cache_life": true
+      },
+      "claude-opus-5-5/no-mcp": {
+        "first": {
+          "run_id": "20261017T234258Z-b085-claude-opus-5-5-no-mcp-b773f6",
+          "worker": "6",
+          "block": "b085",
+          "time": "2026-10-17T23:42:59.328038656Z",
+          "cost_usd": 0.2448998,
+          "time_s": 81.2,
+          "cache_read_tokens": 189069,
+          "cache_write_tokens": 20662
+        },
+        "first_min_request_cache_read": 4645,
+        "cell_floor_request_cache_read": 4645,
+        "others_median_min_request_cache_read": 5483,
+        "others_at_floor": [],
+        "cold": true,
+        "n": 100,
+        "median": {
+          "cost_usd": 0.30835460000000003,
+          "time_s": 86.80000000000001,
+          "cache_read_tokens": 275333.0,
+          "cache_write_tokens": 23653.5
+        },
+        "pilot_last": {
+          "run_id": "20261017T232950Z-p4-claude-opus-5-5-no-mcp-6fa909",
+          "time": "2026-10-17T23:29:50.621708032Z",
+          "time_s": 79.6
+        },
+        "gap_after_pilot_s": 709.1,
+        "gap_exceeds_cache_life": true
+      }
+    },
+    "ratios": {
+      "claude-haiku-5-5": {
+        "cold_cost_usd": 0.4927389548514378,
+        "warm_cost_usd": 0.3056189925751834,
+        "cold_time_s": 0.37610619469026546,
+        "warm_time_s": 0.3459357277882798,
+        "both_first_runs_cold": true
+      },
+      "claude-sonnet-5-5": {
+        "cold_cost_usd": 1.4091861727393324,
+        "warm_cost_usd": 0.7610240659230386,
+        "cold_time_s": 0.8004434589800443,
+        "warm_time_s": 0.6821052631578947,
+        "both_first_runs_cold": true
+      },
+      "claude-opus-5-5": {
+        "cold_cost_usd": 1.1147930704720868,
+        "warm_cost_usd": 0.5618995143902505,
+        "cold_time_s": 0.6933497536945812,
+        "warm_time_s": 0.6198156682027649,
+        "both_first_runs_cold": true
+      }
+    }
+  }
+}

@@ -1,0 +1,460 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MCP savings study</title>
+<meta name="description" content="Claude Code doing one Kibana job through the mcp-for-kibana MCP server versus Kibana's REST API: cost and time over 600 runs.">
+<style>
+:root{color-scheme:light dark;--bg:#fbfbf9;--card:#ffffff;--fg:#1c1d1f;--muted:#55595f;--faint:#868b92;--rule:#e2e2de;--grid:#ebebe7;
+--accent:#2d5bc8;--good:#16794a;--seg-tool:#9097a0;--seg-idle:#cfd3d8;--code:#f1f1ee}
+@media (prefers-color-scheme:dark){:root{--bg:#131416;--card:#1a1b1e;--fg:#e7e7e4;--muted:#a9adb3;--faint:#7c818a;--rule:#2d2f33;--grid:#24262a;
+--accent:#86a8ff;--good:#4cc48a;--seg-tool:#7c838c;--seg-idle:#3e4248;--code:#1f2124}}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.55 system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif}
+main{max-width:760px;margin:0 auto;padding:40px 16px 64px}
+h1{font-size:2rem;line-height:1.2;margin:0 0 6px;letter-spacing:-.01em}
+.sub{color:var(--muted);margin:0 0 28px}
+h2{font-size:1.3rem;margin:48px 0 10px;padding-top:20px;border-top:1px solid var(--rule)}
+h3{font-size:1.02rem;margin:28px 0 6px}
+p,li{max-width:68ch}
+.lead{font-size:1.14rem;line-height:1.5}
+.tag{display:inline-block;font-size:.72rem;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);border:1px solid var(--rule);border-radius:4px;padding:1px 6px;margin-left:8px;vertical-align:3px}
+.defs{background:var(--card);border:1px solid var(--rule);border-radius:8px;padding:12px 16px;margin:20px 0}
+.defs p{margin:6px 0}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px 28px;margin:12px 0 4px}
+.panel h4{margin:0 0 2px;font-size:.92rem;color:var(--muted);font-weight:600}
+figure{margin:20px 0 8px}
+figcaption{font-size:.84rem;color:var(--muted);margin-top:8px;max-width:72ch}
+figcaption code{font-size:.8rem}
+.chart{width:100%;height:auto;display:block;overflow:visible}
+.chart text{font-family:inherit}
+.chart .tick{fill:var(--faint);font-size:11px}
+.chart .note{fill:var(--faint);font-size:11px}
+.chart .lab{fill:var(--fg);font-size:13px;font-weight:600}
+.chart .lab2{fill:var(--muted);font-size:12px}
+.chart .val{fill:var(--fg);font-size:12px;font-variant-numeric:tabular-nums}
+.chart .val,.chart .note,.chart .lab{paint-order:stroke;stroke:var(--bg);stroke-width:4px;stroke-linejoin:round}
+.chart .grid{stroke:var(--grid);stroke-width:1}
+.chart .ref{stroke:var(--fg);stroke-width:1.25;stroke-dasharray:4 3;opacity:.7}
+.chart .whisk{stroke-width:2;stroke-linecap:round}
+.chart .whisk.good{stroke:var(--good)}.chart .dot.good{fill:var(--good);stroke:var(--card);stroke-width:2}
+.chart .whisk.acc{stroke:var(--accent)}.chart .dot.acc{fill:var(--accent);stroke:var(--card);stroke-width:2}
+.chart .hollow{fill:var(--card);stroke:var(--accent);stroke-width:2}
+.chart .hit{fill:transparent}
+.chart .seg-model{fill:var(--accent)}.chart .seg-tool{fill:var(--seg-tool)}.chart .seg-idle{fill:var(--seg-idle)}
+.legend{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:.84rem;color:var(--muted);margin:10px 0 0;padding:0;list-style:none}
+.legend li{display:flex;align-items:center;gap:6px}
+.sw{display:inline-block;width:12px;height:12px;border-radius:3px}
+.sw.model{background:var(--accent)}.sw.tool{background:var(--seg-tool)}.sw.idle{background:var(--seg-idle)}
+.sw.good{background:var(--good);border-radius:50%;width:10px;height:10px}
+.sw.cold{border:2px solid var(--accent);transform:rotate(45deg);width:9px;height:9px;border-radius:1px;margin:0 2px}
+.tw{overflow-x:auto;margin:14px 0}
+table{border-collapse:collapse;width:100%;font-size:.92rem;font-variant-numeric:tabular-nums}
+th,td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--rule);vertical-align:top}
+thead th{font-size:.8rem;color:var(--muted);font-weight:600;border-bottom:1px solid var(--faint)}
+tbody th{font-weight:600}
+tr.gh th{padding-top:14px;border-bottom:none;font-size:.95rem}
+td{white-space:nowrap}.ci{white-space:nowrap}
+.num{text-align:right}
+.ci{display:block;color:var(--faint);font-size:.78rem}
+table.small{font-size:.86rem}
+.only-narrow{display:none}
+code,pre{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+code{font-size:.88em;background:var(--code);padding:1px 4px;border-radius:4px;overflow-wrap:anywhere}
+pre{background:var(--code);border:1px solid var(--rule);border-radius:8px;padding:12px 14px;font-size:.8rem;line-height:1.5;overflow-x:auto;white-space:pre}
+pre code{background:none;padding:0}
+ul.facts{padding-left:20px}
+ul.facts li{margin:4px 0}
+a{color:var(--accent)}
+footer{margin-top:56px;padding-top:16px;border-top:1px solid var(--rule);font-size:.84rem;color:var(--muted)}
+@media (max-width:640px){
+ main{padding-top:28px}
+ h1{font-size:1.6rem}
+ .lead{font-size:1.05rem}
+ .grid2{grid-template-columns:1fr;gap:18px}
+ .only-wide{display:none}.only-narrow{display:block}
+ th,td{padding:6px 5px}
+ table{font-size:.86rem}
+ table.small{font-size:.8rem}
+}
+</style>
+</head>
+<body>
+<main>
+<header>
+<h1>MCP savings study</h1>
+<p class="sub">Claude Code on one Kibana job, 600 runs, three models: through the mcp-for-kibana MCP server, or through Kibana's REST API.</p>
+</header>
+
+<p class="lead">With MCP, Claude Code did the same Kibana job cheaper and faster than with Direct API, with each of the three models. Median cost per run fell 24% (Sonnet 5.5) to 69% (Haiku 5.5); median time per run fell 32% (Sonnet 5.5) to 65% (Haiku 5.5). All six 95% intervals lie wholly below 1.</p>
+<p>These are warm-cache numbers: 593 of 600 runs (99%) started with the prompt already cached. On a cold cache, with one run each, MCP cost more for Sonnet 5.5 and Opus 5.5, and still saved for Haiku 5.5.</p>
+
+<div class="defs">
+<p><strong>The two setups.</strong> <strong>MCP</strong>: Claude Code reaches Kibana through the tools of the <a href="https://github.com/pedro-angel/mcp-for-kibana">mcp-for-kibana</a> server (0.4.0). <strong>Direct API</strong>: Claude Code calls Kibana's REST API itself from the shell, with the pinned Kibana API reference. Everything else is the same.</p>
+<p>Results describe Claude Code with each model, not the model alone. A ratio is the median on MCP ÷ the median on Direct API: below 1, MCP is cheaper or faster.</p>
+</div>
+
+<h2>Savings per model</h2>
+<p>Haiku 5.5 saved the most on both measures. With 100 runs per model and setup, the intervals are narrow.</p>
+<figure>
+<div class="grid2">
+<div class="panel"><h4>Cost per run, MCP ÷ Direct API</h4><svg viewBox="0 0 360 192" role="img" aria-label="cost ratio MCP ÷ Direct API per model" class="chart">
+<line class="grid" x1="86.0" x2="86.0" y1="22" y2="166"/>
+<text class="tick" x="86.0" y="182" text-anchor="middle">0</text>
+<line class="grid" x1="172.0" x2="172.0" y1="22" y2="166"/>
+<text class="tick" x="172.0" y="182" text-anchor="middle">0.5</text>
+<line class="ref" x1="258.0" x2="258.0" y1="22" y2="166"/>
+<text class="tick" x="258.0" y="182" text-anchor="middle">1</text>
+<line class="grid" x1="344.0" x2="344.0" y1="22" y2="166"/>
+<text class="tick" x="344.0" y="182" text-anchor="middle">1.5</text>
+<text class="note" x="252.0" y="16" text-anchor="end">← MCP lower</text>
+<text class="note" x="264.0" y="16">MCP higher →</text>
+<text class="lab" x="0" y="65.0">Haiku 5.5</text>
+<g><title>Haiku 5.5, cost: MCP ÷ Direct API = 0.31, 95% interval 0.29–0.32</title>
+<line class="whisk good" x1="136.3" x2="140.9" y1="61.0" y2="61.0"/>
+<line class="whisk good" x1="136.3" x2="136.3" y1="56.0" y2="66.0"/>
+<line class="whisk good" x1="140.9" x2="140.9" y1="56.0" y2="66.0"/>
+<circle class="dot good" cx="138.6" cy="61.0" r="5"/>
+<text class="val" x="138.6" y="52.0" text-anchor="middle">0.31 (0.29–0.32)</text>
+<rect class='hit' x='0' y='48.0' width='360' height='26'/>
+</g>
+<text class="lab" x="0" y="109.0">Sonnet 5.5</text>
+<g><title>Sonnet 5.5, cost: MCP ÷ Direct API = 0.76, 95% interval 0.73–0.79</title>
+<line class="whisk good" x1="212.1" x2="221.0" y1="105.0" y2="105.0"/>
+<line class="whisk good" x1="212.1" x2="212.1" y1="100.0" y2="110.0"/>
+<line class="whisk good" x1="221.0" x2="221.0" y1="100.0" y2="110.0"/>
+<circle class="dot good" cx="216.9" cy="105.0" r="5"/>
+<text class="val" x="216.9" y="96.0" text-anchor="middle">0.76 (0.73–0.79)</text>
+<rect class='hit' x='0' y='92.0' width='360' height='26'/>
+</g>
+<text class="lab" x="0" y="153.0">Opus 5.5</text>
+<g><title>Opus 5.5, cost: MCP ÷ Direct API = 0.56, 95% interval 0.55–0.59</title>
+<line class="whisk good" x1="180.3" x2="188.2" y1="149.0" y2="149.0"/>
+<line class="whisk good" x1="180.3" x2="180.3" y1="144.0" y2="154.0"/>
+<line class="whisk good" x1="188.2" x2="188.2" y1="144.0" y2="154.0"/>
+<circle class="dot good" cx="182.6" cy="149.0" r="5"/>
+<text class="val" x="182.6" y="140.0" text-anchor="middle">0.56 (0.55–0.59)</text>
+<rect class='hit' x='0' y='136.0' width='360' height='26'/>
+</g>
+</svg></div>
+<div class="panel"><h4>Time per run, MCP ÷ Direct API</h4><svg viewBox="0 0 360 192" role="img" aria-label="time ratio MCP ÷ Direct API per model" class="chart">
+<line class="grid" x1="86.0" x2="86.0" y1="22" y2="166"/>
+<text class="tick" x="86.0" y="182" text-anchor="middle">0</text>
+<line class="grid" x1="172.0" x2="172.0" y1="22" y2="166"/>
+<text class="tick" x="172.0" y="182" text-anchor="middle">0.5</text>
+<line class="ref" x1="258.0" x2="258.0" y1="22" y2="166"/>
+<text class="tick" x="258.0" y="182" text-anchor="middle">1</text>
+<line class="grid" x1="344.0" x2="344.0" y1="22" y2="166"/>
+<text class="tick" x="344.0" y="182" text-anchor="middle">1.5</text>
+<text class="note" x="252.0" y="16" text-anchor="end">← MCP lower</text>
+<text class="note" x="264.0" y="16">MCP higher →</text>
+<text class="lab" x="0" y="65.0">Haiku 5.5</text>
+<g><title>Haiku 5.5, time: MCP ÷ Direct API = 0.35, 95% interval 0.33–0.36</title>
+<line class="whisk good" x1="142.9" x2="148.3" y1="61.0" y2="61.0"/>
+<line class="whisk good" x1="142.9" x2="142.9" y1="56.0" y2="66.0"/>
+<line class="whisk good" x1="148.3" x2="148.3" y1="56.0" y2="66.0"/>
+<circle class="dot good" cx="145.5" cy="61.0" r="5"/>
+<text class="val" x="145.5" y="52.0" text-anchor="middle">0.35 (0.33–0.36)</text>
+<rect class='hit' x='0' y='48.0' width='360' height='26'/>
+</g>
+<text class="lab" x="0" y="109.0">Sonnet 5.5</text>
+<g><title>Sonnet 5.5, time: MCP ÷ Direct API = 0.68, 95% interval 0.67–0.69</title>
+<line class="whisk good" x1="200.8" x2="205.2" y1="105.0" y2="105.0"/>
+<line class="whisk good" x1="200.8" x2="200.8" y1="100.0" y2="110.0"/>
+<line class="whisk good" x1="205.2" x2="205.2" y1="100.0" y2="110.0"/>
+<circle class="dot good" cx="203.3" cy="105.0" r="5"/>
+<text class="val" x="203.3" y="96.0" text-anchor="middle">0.68 (0.67–0.69)</text>
+<rect class='hit' x='0' y='92.0' width='360' height='26'/>
+</g>
+<text class="lab" x="0" y="153.0">Opus 5.5</text>
+<g><title>Opus 5.5, time: MCP ÷ Direct API = 0.62, 95% interval 0.58–0.66</title>
+<line class="whisk good" x1="185.3" x2="199.7" y1="149.0" y2="149.0"/>
+<line class="whisk good" x1="185.3" x2="185.3" y1="144.0" y2="154.0"/>
+<line class="whisk good" x1="199.7" x2="199.7" y1="144.0" y2="154.0"/>
+<circle class="dot good" cx="192.6" cy="149.0" r="5"/>
+<text class="val" x="192.6" y="140.0" text-anchor="middle">0.62 (0.58–0.66)</text>
+<rect class='hit' x='0' y='136.0' width='360' height='26'/>
+</g>
+</svg></div>
+</div>
+<ul class="legend"><li><span class="sw good"></span>median ratio, 95% interval wholly below 1</li></ul>
+<figcaption>Medians with 95% percentile-bootstrap intervals (10,000 resamples). Shared scale; dashed line at 1 = same as Direct API. Data: <a href="study/data/analysis.json"><code>study/data/analysis.json</code></a> (<code>ratios</code>).</figcaption>
+</figure>
+
+<h2>Per model and setup</h2>
+<p>On Direct API, Haiku 5.5 took the longest of all six combinations; on MCP it was the cheapest by far. All 600 of 600 counted runs passed every check.</p>
+<figure>
+<div class='tw'><table><thead><tr><th>Setup</th><th class='num'>Cost per run</th><th class='num'>Time per run</th><th class='num'>Tool calls</th></tr></thead><tbody><tr class='gh'><th colspan='4' scope='rowgroup'>Haiku 5.5</th></tr><tr><td>MCP</td><td class='num'>$0.0067<span class='ci'>0.0065–0.0068</span></td><td class='num'>36.6 s<span class='ci'>35.8–37.3</span></td><td class='num'>16<span class='ci'>16–16</span></td></tr><tr><td>Direct API</td><td class='num'>$0.0219<span class='ci'>0.0211–0.0226</span></td><td class='num'>105.8 s<span class='ci'>101.6–110.2</span></td><td class='num'>27<span class='ci'>26–28.5</span></td></tr><tr class='gh'><th colspan='4' scope='rowgroup'>Sonnet 5.5</th></tr><tr><td>MCP</td><td class='num'>$0.0774<span class='ci'>0.0767–0.0783</span></td><td class='num'>32.4 s<span class='ci'>31.9–32.6</span></td><td class='num'>15<span class='ci'>15–15</span></td></tr><tr><td>Direct API</td><td class='num'>$0.1016<span class='ci'>0.0985–0.1055</span></td><td class='num'>47.5 s<span class='ci'>46.8–48.2</span></td><td class='num'>11<span class='ci'>11–12</span></td></tr><tr class='gh'><th colspan='4' scope='rowgroup'>Opus 5.5</th></tr><tr><td>MCP</td><td class='num'>$0.1733<span class='ci'>0.1709–0.1753</span></td><td class='num'>53.8 s<span class='ci'>52.3–56.3</span></td><td class='num'>14<span class='ci'>14–14</span></td></tr><tr><td>Direct API</td><td class='num'>$0.3084<span class='ci'>0.2925–0.3149</span></td><td class='num'>86.8 s<span class='ci'>83.2–92.7</span></td><td class='num'>14<span class='ci'>14–15</span></td></tr></tbody></table></div>
+<figcaption>Median per run, 95% interval below it. Cost is list-price cost (Anthropic's published prices, not a bill), as each run came; caches were not controlled. Time runs from the CLI's start to its result. A tool call is one MCP tool call on MCP, or one shell command on Direct API (a command can bundle several Kibana requests). Data: <a href="study/data/analysis.json"><code>study/data/analysis.json</code></a> (<code>per_model_arm</code>).</figcaption>
+</figure>
+
+<h2>Where the time goes <span class="tag">exploratory</span></h2>
+<p>Not planned before the runs: it suggests where to look, not what holds. On MCP, the time saved is the model's time. A median run spent 25.9 s in model requests instead of 92.7 s with Haiku 5.5, 23.8 s instead of 37.3 s with Sonnet 5.5, and 45.0 s instead of 76.9 s with Opus 5.5. Tool time outside those requests stayed between 5.1 and 8.7 s.</p>
+<figure>
+<ul class="legend"><li><span class="sw model"></span>model requests</li><li><span class="sw tool"></span>tools, outside requests</li><li><span class="sw idle"></span>idle</li></ul>
+<div class="only-wide"><svg viewBox="0 0 680 249" role="img" aria-label="Where a median run’s time goes, per model and setup" class="chart">
+<line class="grid" x1="82.0" x2="82.0" y1="8" y2="227"/>
+<text class="tick" x="82.0" y="242" text-anchor="middle">0 s</text>
+<line class="grid" x1="217.0" x2="217.0" y1="8" y2="227"/>
+<text class="tick" x="217.0" y="242" text-anchor="middle">30 s</text>
+<line class="grid" x1="352.0" x2="352.0" y1="8" y2="227"/>
+<text class="tick" x="352.0" y="242" text-anchor="middle">60 s</text>
+<line class="grid" x1="487.0" x2="487.0" y1="8" y2="227"/>
+<text class="tick" x="487.0" y="242" text-anchor="middle">90 s</text>
+<line class="grid" x1="622.0" x2="622.0" y1="8" y2="227"/>
+<text class="tick" x="622.0" y="242" text-anchor="middle">120 s</text>
+<text class="lab" x="0" y="22">Haiku 5.5</text>
+<text class="lab2" x="74" y="40" text-anchor="end">MCP</text>
+<rect class="seg-model" x="82.0" y="28" width="115.1" height="16" rx="2"><title>Haiku 5.5, MCP: model requests 25.9 s (95% interval 25.3–26.6)</title></rect>
+<rect class="seg-tool" x="198.6" y="28" width="31.1" height="16" rx="2"><title>Haiku 5.5, MCP: tools outside requests 7.2 s (95% interval 6.8–7.6)</title></rect>
+<rect class="seg-idle" x="231.2" y="28" width="13.9" height="16" rx="2"><title>Haiku 5.5, MCP: idle 3.4 s (95% interval 3.4–3.5)</title></rect>
+<text class="val" x="252.6" y="40">36.6 s</text>
+<text class="lab2" x="74" y="63" text-anchor="end">Direct API</text>
+<rect class="seg-model" x="82.0" y="51" width="415.7" height="16" rx="2"><title>Haiku 5.5, Direct API: model requests 92.7 s (95% interval 89.4–97.2)</title></rect>
+<rect class="seg-tool" x="499.2" y="51" width="37.1" height="16" rx="2"><title>Haiku 5.5, Direct API: tools outside requests 8.6 s (95% interval 8.3–8.8)</title></rect>
+<rect class="seg-idle" x="537.8" y="51" width="12.0" height="16" rx="2"><title>Haiku 5.5, Direct API: idle 3.0 s (95% interval 3.0–3.1)</title></rect>
+<text class="val" x="557.3" y="63">105.8 s</text>
+<text class="lab" x="0" y="102">Sonnet 5.5</text>
+<text class="lab2" x="74" y="120" text-anchor="end">MCP</text>
+<rect class="seg-model" x="82.0" y="108" width="105.7" height="16" rx="2"><title>Sonnet 5.5, MCP: model requests 23.8 s (95% interval 23.3–24.4)</title></rect>
+<rect class="seg-tool" x="189.2" y="108" width="21.6" height="16" rx="2"><title>Sonnet 5.5, MCP: tools outside requests 5.1 s (95% interval 5.0–5.4)</title></rect>
+<rect class="seg-idle" x="212.4" y="108" width="12.9" height="16" rx="2"><title>Sonnet 5.5, MCP: idle 3.2 s (95% interval 3.2–3.3)</title></rect>
+<text class="val" x="232.8" y="120">32.4 s</text>
+<text class="lab2" x="74" y="143" text-anchor="end">Direct API</text>
+<rect class="seg-model" x="82.0" y="131" width="166.3" height="16" rx="2"><title>Sonnet 5.5, Direct API: model requests 37.3 s (95% interval 36.4–38.1)</title></rect>
+<rect class="seg-tool" x="249.8" y="131" width="37.4" height="16" rx="2"><title>Sonnet 5.5, Direct API: tools outside requests 8.7 s (95% interval 8.5–8.9)</title></rect>
+<rect class="seg-idle" x="288.8" y="131" width="6.2" height="16" rx="2"><title>Sonnet 5.5, Direct API: idle 1.7 s (95% interval 1.7–1.8)</title></rect>
+<text class="val" x="302.5" y="143">47.5 s</text>
+<text class="lab" x="0" y="182">Opus 5.5</text>
+<text class="lab2" x="74" y="200" text-anchor="end">MCP</text>
+<rect class="seg-model" x="82.0" y="188" width="201.1" height="16" rx="2"><title>Opus 5.5, MCP: model requests 45.0 s (95% interval 43.1–46.5)</title></rect>
+<rect class="seg-tool" x="284.6" y="188" width="25.3" height="16" rx="2"><title>Opus 5.5, MCP: tools outside requests 6.0 s (95% interval 5.6–6.4)</title></rect>
+<rect class="seg-idle" x="311.4" y="188" width="13.3" height="16" rx="2"><title>Opus 5.5, MCP: idle 3.3 s (95% interval 3.2–3.3)</title></rect>
+<text class="val" x="332.2" y="200">53.8 s</text>
+<text class="lab2" x="74" y="223" text-anchor="end">Direct API</text>
+<rect class="seg-model" x="82.0" y="211" width="344.7" height="16" rx="2"><title>Opus 5.5, Direct API: model requests 76.9 s (95% interval 72.8–82.6)</title></rect>
+<rect class="seg-tool" x="428.2" y="211" width="35.4" height="16" rx="2"><title>Opus 5.5, Direct API: tools outside requests 8.2 s (95% interval 8.0–8.4)</title></rect>
+<rect class="seg-idle" x="465.1" y="211" width="7.5" height="16" rx="2"><title>Opus 5.5, Direct API: idle 2.0 s (95% interval 1.9–2.1)</title></rect>
+<text class="val" x="480.1" y="223">86.8 s</text>
+</svg></div>
+<div class="only-narrow"><svg viewBox="0 0 360 249" role="img" aria-label="Where a median run’s time goes, per model and setup" class="chart">
+<line class="grid" x1="82.0" x2="82.0" y1="8" y2="227"/>
+<text class="tick" x="82.0" y="242" text-anchor="middle">0 s</text>
+<line class="grid" x1="137.0" x2="137.0" y1="8" y2="227"/>
+<text class="tick" x="137.0" y="242" text-anchor="middle">30 s</text>
+<line class="grid" x1="192.0" x2="192.0" y1="8" y2="227"/>
+<text class="tick" x="192.0" y="242" text-anchor="middle">60 s</text>
+<line class="grid" x1="247.0" x2="247.0" y1="8" y2="227"/>
+<text class="tick" x="247.0" y="242" text-anchor="middle">90 s</text>
+<line class="grid" x1="302.0" x2="302.0" y1="8" y2="227"/>
+<text class="tick" x="302.0" y="242" text-anchor="middle">120 s</text>
+<text class="lab" x="0" y="22">Haiku 5.5</text>
+<text class="lab2" x="74" y="40" text-anchor="end">MCP</text>
+<rect class="seg-model" x="82.0" y="28" width="46.0" height="16" rx="2"><title>Haiku 5.5, MCP: model requests 25.9 s (95% interval 25.3–26.6)</title></rect>
+<rect class="seg-tool" x="129.5" y="28" width="11.8" height="16" rx="2"><title>Haiku 5.5, MCP: tools outside requests 7.2 s (95% interval 6.8–7.6)</title></rect>
+<rect class="seg-idle" x="142.8" y="28" width="4.8" height="16" rx="2"><title>Haiku 5.5, MCP: idle 3.4 s (95% interval 3.4–3.5)</title></rect>
+<text class="val" x="155.0" y="40">36.6 s</text>
+<text class="lab2" x="74" y="63" text-anchor="end">Direct API</text>
+<rect class="seg-model" x="82.0" y="51" width="168.5" height="16" rx="2"><title>Haiku 5.5, Direct API: model requests 92.7 s (95% interval 89.4–97.2)</title></rect>
+<rect class="seg-tool" x="252.0" y="51" width="14.2" height="16" rx="2"><title>Haiku 5.5, Direct API: tools outside requests 8.6 s (95% interval 8.3–8.8)</title></rect>
+<rect class="seg-idle" x="267.7" y="51" width="4.0" height="16" rx="2"><title>Haiku 5.5, Direct API: idle 3.0 s (95% interval 3.0–3.1)</title></rect>
+<text class="val" x="279.2" y="63">105.8 s</text>
+<text class="lab" x="0" y="102">Sonnet 5.5</text>
+<text class="lab2" x="74" y="120" text-anchor="end">MCP</text>
+<rect class="seg-model" x="82.0" y="108" width="42.2" height="16" rx="2"><title>Sonnet 5.5, MCP: model requests 23.8 s (95% interval 23.3–24.4)</title></rect>
+<rect class="seg-tool" x="125.7" y="108" width="7.9" height="16" rx="2"><title>Sonnet 5.5, MCP: tools outside requests 5.1 s (95% interval 5.0–5.4)</title></rect>
+<rect class="seg-idle" x="135.1" y="108" width="4.4" height="16" rx="2"><title>Sonnet 5.5, MCP: idle 3.2 s (95% interval 3.2–3.3)</title></rect>
+<text class="val" x="147.0" y="120">32.4 s</text>
+<text class="lab2" x="74" y="143" text-anchor="end">Direct API</text>
+<rect class="seg-model" x="82.0" y="131" width="66.9" height="16" rx="2"><title>Sonnet 5.5, Direct API: model requests 37.3 s (95% interval 36.4–38.1)</title></rect>
+<rect class="seg-tool" x="150.4" y="131" width="14.4" height="16" rx="2"><title>Sonnet 5.5, Direct API: tools outside requests 8.7 s (95% interval 8.5–8.9)</title></rect>
+<rect class="seg-idle" x="166.2" y="131" width="1.6" height="16" rx="2"><title>Sonnet 5.5, Direct API: idle 1.7 s (95% interval 1.7–1.8)</title></rect>
+<text class="val" x="175.4" y="143">47.5 s</text>
+<text class="lab" x="0" y="182">Opus 5.5</text>
+<text class="lab2" x="74" y="200" text-anchor="end">MCP</text>
+<rect class="seg-model" x="82.0" y="188" width="81.1" height="16" rx="2"><title>Opus 5.5, MCP: model requests 45.0 s (95% interval 43.1–46.5)</title></rect>
+<rect class="seg-tool" x="164.6" y="188" width="9.4" height="16" rx="2"><title>Opus 5.5, MCP: tools outside requests 6.0 s (95% interval 5.6–6.4)</title></rect>
+<rect class="seg-idle" x="175.5" y="188" width="4.5" height="16" rx="2"><title>Opus 5.5, MCP: idle 3.3 s (95% interval 3.2–3.3)</title></rect>
+<text class="val" x="187.5" y="200">53.8 s</text>
+<text class="lab2" x="74" y="223" text-anchor="end">Direct API</text>
+<rect class="seg-model" x="82.0" y="211" width="139.5" height="16" rx="2"><title>Opus 5.5, Direct API: model requests 76.9 s (95% interval 72.8–82.6)</title></rect>
+<rect class="seg-tool" x="223.0" y="211" width="13.5" height="16" rx="2"><title>Opus 5.5, Direct API: tools outside requests 8.2 s (95% interval 8.0–8.4)</title></rect>
+<rect class="seg-idle" x="238.1" y="211" width="2.2" height="16" rx="2"><title>Opus 5.5, Direct API: idle 2.0 s (95% interval 1.9–2.1)</title></rect>
+<text class="val" x="247.8" y="223">86.8 s</text>
+</svg></div>
+<figcaption>Median seconds per run on the clock, without double counting (model requests + tool time outside them + idle = wall time); each part is its own median, so the parts need not add up exactly to the median wall time printed at the end. From 27,854 of 27,860 CLI spans (<code>claude_code.llm_request</code>, <code>claude_code.tool.execution</code>) attached to the counted runs. Data: <a href="study/data/exploratory.json"><code>study/data/exploratory.json</code></a> (<code>time_breakdown</code>), from <a href="study/data/spans/spans.jsonl"><code>study/data/spans/spans.jsonl</code></a>.</figcaption>
+</figure>
+<p>One MCP tool call takes 6 to 9 times as long as one shell command, yet tool time does not grow: the CLI starts a tool while the model's response is still streaming, so on MCP a median 2.1 to 4.6 s of tool time per run runs under the model's requests.</p>
+<figure>
+<div class='tw'><table><thead><tr><th>Model</th><th class='num'>MCP: one tool call</th><th class='num'>Direct API: one shell command</th></tr></thead><tbody><tr><th scope='row'>Haiku 5.5</th><td class='num'>508 ms<span class='ci'>449–574 · n = 1,586</span></td><td class='num'>55 ms<span class='ci'>53–59 · n = 2,738</span></td></tr><tr><th scope='row'>Sonnet 5.5</th><td class='num'>589 ms<span class='ci'>543–631 · n = 1,495</span></td><td class='num'>86 ms<span class='ci'>78–98 · n = 1,120</span></td></tr><tr><th scope='row'>Opus 5.5</th><td class='num'>480 ms<span class='ci'>416–534 · n = 1,402</span></td><td class='num'>78 ms<span class='ci'>70–85 · n = 1,390</span></td></tr></tbody></table></div>
+<figcaption>Median duration of one call, 95% interval and number of calls below it. The interval resamples calls as if independent, so it is narrower than a run-level one. Data: <a href="study/data/exploratory.json"><code>study/data/exploratory.json</code></a> (<code>time_breakdown.single_call_ms</code>).</figcaption>
+</figure>
+<p>The time saving is not harness overhead: by the CLI's own duration the ratios are 0.32 (Haiku 5.5), 0.64 (Sonnet 5.5) and 0.60 (Opus 5.5), each interval wholly below 1 (<code>time_ratio_cli</code> in <a href="study/data/exploratory.json"><code>study/data/exploratory.json</code></a>).</p>
+
+<h2>Cache: cold against warm <span class="tag">exploratory</span></h2>
+<p>On MCP, the cached prompt carries the server's tool definitions: a warm run's smallest cache read per request is 18,373 tokens larger than on Direct API. On a warm cache they cost little; a cold run first has to write them to the cache. 593 of 600 runs started warm. The 7 cold ones are the first run of each model and setup, and one more (Sonnet 5.5 on Direct API, started 308 s after the previous run of its model and setup had ended).</p>
+<figure>
+<div class="grid2">
+<div class="panel"><h4>Cost, MCP ÷ Direct API</h4><svg viewBox="0 0 360 270" role="img" aria-label="cost ratio, warm and cold, per model" class="chart">
+<line class="grid" x1="86.0" x2="86.0" y1="22" y2="244"/>
+<text class="tick" x="86.0" y="260" text-anchor="middle">0</text>
+<line class="grid" x1="172.0" x2="172.0" y1="22" y2="244"/>
+<text class="tick" x="172.0" y="260" text-anchor="middle">0.5</text>
+<line class="ref" x1="258.0" x2="258.0" y1="22" y2="244"/>
+<text class="tick" x="258.0" y="260" text-anchor="middle">1</text>
+<line class="grid" x1="344.0" x2="344.0" y1="22" y2="244"/>
+<text class="tick" x="344.0" y="260" text-anchor="middle">1.5</text>
+<text class="note" x="252.0" y="16" text-anchor="end">← MCP lower</text>
+<text class="note" x="264.0" y="16">MCP higher →</text>
+<text class="lab" x="0" y="78.0">Haiku 5.5</text>
+<g><title>Haiku 5.5, cost, warm: median ÷ median = 0.31 (0.29–0.32)</title>
+<line class="whisk good" x1="136.3" x2="140.9" y1="61.0" y2="61.0"/>
+<line class="whisk good" x1="136.3" x2="136.3" y1="56.0" y2="66.0"/>
+<line class="whisk good" x1="140.9" x2="140.9" y1="56.0" y2="66.0"/>
+<circle class="dot good" cx="138.6" cy="61.0" r="5"/>
+<text class="val" x="138.6" y="52.0" text-anchor="middle">0.31 (0.29–0.32)</text>
+<rect class='hit' x='0' y='48.0' width='360' height='26'/>
+</g>
+<g><title>Haiku 5.5, cost, cold: first MCP run ÷ first Direct API run = 0.49 (one run each)</title>
+<path class="hollow" d="M170.8 81.0 L176.8 87.0 L170.8 93.0 L164.8 87.0 Z"/>
+<text class="val" x="170.8" y="78.0" text-anchor="middle">0.49</text>
+<rect class='hit' x='0' y='74.0' width='360' height='26'/>
+</g>
+<text class="lab" x="0" y="148.0">Sonnet 5.5</text>
+<g><title>Sonnet 5.5, cost, warm: median ÷ median = 0.76 (0.73–0.79)</title>
+<line class="whisk good" x1="212.1" x2="221.0" y1="131.0" y2="131.0"/>
+<line class="whisk good" x1="212.1" x2="212.1" y1="126.0" y2="136.0"/>
+<line class="whisk good" x1="221.0" x2="221.0" y1="126.0" y2="136.0"/>
+<circle class="dot good" cx="216.9" cy="131.0" r="5"/>
+<text class="val" x="216.9" y="122.0" text-anchor="middle">0.76 (0.73–0.79)</text>
+<rect class='hit' x='0' y='118.0' width='360' height='26'/>
+</g>
+<g><title>Sonnet 5.5, cost, cold: first MCP run ÷ first Direct API run = 1.41 (one run each)</title>
+<path class="hollow" d="M328.4 151.0 L334.4 157.0 L328.4 163.0 L322.4 157.0 Z"/>
+<text class="val" x="304.0" y="148.0" text-anchor="middle">1.41</text>
+<rect class='hit' x='0' y='144.0' width='360' height='26'/>
+</g>
+<text class="lab" x="0" y="218.0">Opus 5.5</text>
+<g><title>Opus 5.5, cost, warm: median ÷ median = 0.56 (0.55–0.59)</title>
+<line class="whisk good" x1="180.3" x2="188.2" y1="201.0" y2="201.0"/>
+<line class="whisk good" x1="180.3" x2="180.3" y1="196.0" y2="206.0"/>
+<line class="whisk good" x1="188.2" x2="188.2" y1="196.0" y2="206.0"/>
+<circle class="dot good" cx="182.6" cy="201.0" r="5"/>
+<text class="val" x="182.6" y="192.0" text-anchor="middle">0.56 (0.55–0.59)</text>
+<rect class='hit' x='0' y='188.0' width='360' height='26'/>
+</g>
+<g><title>Opus 5.5, cost, cold: first MCP run ÷ first Direct API run = 1.11 (one run each)</title>
+<path class="hollow" d="M277.7 221.0 L283.7 227.0 L277.7 233.0 L271.7 227.0 Z"/>
+<text class="val" x="277.7" y="218.0" text-anchor="middle">1.11</text>
+<rect class='hit' x='0' y='214.0' width='360' height='26'/>
+</g>
+</svg></div>
+<div class="panel"><h4>Time, MCP ÷ Direct API</h4><svg viewBox="0 0 360 270" role="img" aria-label="time ratio, warm and cold, per model" class="chart">
+<line class="grid" x1="86.0" x2="86.0" y1="22" y2="244"/>
+<text class="tick" x="86.0" y="260" text-anchor="middle">0</text>
+<line class="grid" x1="172.0" x2="172.0" y1="22" y2="244"/>
+<text class="tick" x="172.0" y="260" text-anchor="middle">0.5</text>
+<line class="ref" x1="258.0" x2="258.0" y1="22" y2="244"/>
+<text class="tick" x="258.0" y="260" text-anchor="middle">1</text>
+<line class="grid" x1="344.0" x2="344.0" y1="22" y2="244"/>
+<text class="tick" x="344.0" y="260" text-anchor="middle">1.5</text>
+<text class="note" x="252.0" y="16" text-anchor="end">← MCP lower</text>
+<text class="note" x="264.0" y="16">MCP higher →</text>
+<text class="lab" x="0" y="78.0">Haiku 5.5</text>
+<g><title>Haiku 5.5, time, warm: median ÷ median = 0.35 (0.33–0.36)</title>
+<line class="whisk good" x1="142.9" x2="148.3" y1="61.0" y2="61.0"/>
+<line class="whisk good" x1="142.9" x2="142.9" y1="56.0" y2="66.0"/>
+<line class="whisk good" x1="148.3" x2="148.3" y1="56.0" y2="66.0"/>
+<circle class="dot good" cx="145.5" cy="61.0" r="5"/>
+<text class="val" x="145.5" y="52.0" text-anchor="middle">0.35 (0.33–0.36)</text>
+<rect class='hit' x='0' y='48.0' width='360' height='26'/>
+</g>
+<g><title>Haiku 5.5, time, cold: first MCP run ÷ first Direct API run = 0.38 (one run each)</title>
+<path class="hollow" d="M150.7 81.0 L156.7 87.0 L150.7 93.0 L144.7 87.0 Z"/>
+<text class="val" x="150.7" y="78.0" text-anchor="middle">0.38</text>
+<rect class='hit' x='0' y='74.0' width='360' height='26'/>
+</g>
+<text class="lab" x="0" y="148.0">Sonnet 5.5</text>
+<g><title>Sonnet 5.5, time, warm: median ÷ median = 0.68 (0.67–0.69)</title>
+<line class="whisk good" x1="200.8" x2="205.2" y1="131.0" y2="131.0"/>
+<line class="whisk good" x1="200.8" x2="200.8" y1="126.0" y2="136.0"/>
+<line class="whisk good" x1="205.2" x2="205.2" y1="126.0" y2="136.0"/>
+<circle class="dot good" cx="203.3" cy="131.0" r="5"/>
+<text class="val" x="203.3" y="122.0" text-anchor="middle">0.68 (0.67–0.69)</text>
+<rect class='hit' x='0' y='118.0' width='360' height='26'/>
+</g>
+<g><title>Sonnet 5.5, time, cold: first MCP run ÷ first Direct API run = 0.80 (one run each)</title>
+<path class="hollow" d="M223.7 151.0 L229.7 157.0 L223.7 163.0 L217.7 157.0 Z"/>
+<text class="val" x="223.7" y="148.0" text-anchor="middle">0.80</text>
+<rect class='hit' x='0' y='144.0' width='360' height='26'/>
+</g>
+<text class="lab" x="0" y="218.0">Opus 5.5</text>
+<g><title>Opus 5.5, time, warm: median ÷ median = 0.62 (0.58–0.66)</title>
+<line class="whisk good" x1="185.3" x2="199.7" y1="201.0" y2="201.0"/>
+<line class="whisk good" x1="185.3" x2="185.3" y1="196.0" y2="206.0"/>
+<line class="whisk good" x1="199.7" x2="199.7" y1="196.0" y2="206.0"/>
+<circle class="dot good" cx="192.6" cy="201.0" r="5"/>
+<text class="val" x="192.6" y="192.0" text-anchor="middle">0.62 (0.58–0.66)</text>
+<rect class='hit' x='0' y='188.0' width='360' height='26'/>
+</g>
+<g><title>Opus 5.5, time, cold: first MCP run ÷ first Direct API run = 0.69 (one run each)</title>
+<path class="hollow" d="M205.3 221.0 L211.3 227.0 L205.3 233.0 L199.3 227.0 Z"/>
+<text class="val" x="205.3" y="218.0" text-anchor="middle">0.69</text>
+<rect class='hit' x='0' y='214.0' width='360' height='26'/>
+</g>
+</svg></div>
+</div>
+<ul class="legend"><li><span class="sw good"></span>warm: median ÷ median, 100 runs each, 95% interval</li><li><span class="sw cold"></span>cold: first run ÷ first run, one run each</li></ul>
+<figcaption>Same scale as above; dashed line at 1. A first run counts as cold when its least-read model request read no more than the lowest per-request cache read of any run of its model and setup. Data: <a href="study/data/exploratory.json"><code>study/data/exploratory.json</code></a> (<code>cold_start</code>), from <a href="study/data/cache/min-request-cache-read.json"><code>study/data/cache/min-request-cache-read.json</code></a> and <a href="study/data/cache/pilot-root-spans.json"><code>study/data/cache/pilot-root-spans.json</code></a>; warm ratios from <a href="study/data/analysis.json"><code>study/data/analysis.json</code></a>.</figcaption>
+</figure>
+<p>Cold against cold, MCP cost Sonnet 5.5 and Opus 5.5 more, and still saved for Haiku 5.5; all three cold runs finished sooner on MCP. One run per model and setup is an observation, not a result.</p>
+<figure>
+<div class='tw'><table class='small'><thead><tr><th>Setup</th><th class='num'>Cost, first run</th><th class='num'>Cost, median</th><th class='num'>Cache write, first run (tokens)</th><th class='num'>Cache write, median (tokens)</th></tr></thead><tbody><tr class='gh'><th colspan='5' scope='rowgroup'>Haiku 5.5</th></tr><tr><td>MCP</td><td class='num'>$0.0105</td><td class='num'>$0.0067</td><td class='num'>34,027</td><td class='num'>9,254</td></tr><tr><td>Direct API</td><td class='num'>$0.0214</td><td class='num'>$0.0219</td><td class='num'>45,921</td><td class='num'>41,028</td></tr><tr class='gh'><th colspan='5' scope='rowgroup'>Sonnet 5.5</th></tr><tr><td>MCP</td><td class='num'>$0.1403</td><td class='num'>$0.0774</td><td class='num'>32,261</td><td class='num'>8,069</td></tr><tr><td>Direct API</td><td class='num'>$0.0996</td><td class='num'>$0.1016</td><td class='num'>17,259</td><td class='num'>15,548</td></tr><tr class='gh'><th colspan='5' scope='rowgroup'>Opus 5.5</th></tr><tr><td>MCP</td><td class='num'>$0.2730</td><td class='num'>$0.1733</td><td class='num'>31,773</td><td class='num'>7,978</td></tr><tr><td>Direct API</td><td class='num'>$0.2449</td><td class='num'>$0.3084</td><td class='num'>20,662</td><td class='num'>23,654</td></tr></tbody></table></div>
+<figcaption>The first run of each model and setup against the median of its 100 runs. Data: <a href="study/data/exploratory.json"><code>study/data/exploratory.json</code></a> (<code>cold_start.cells</code>).</figcaption>
+</figure>
+
+<h2>How it ran</h2>
+<ul class="facts">
+<li><strong>Design:</strong> 100 blocks × 3 models × 2 setups = 600 runs. A block is one run of each model in each setup, in a seeded order, so each block pairs the two setups.</li>
+<li><strong>When:</strong> 17 to 18 October 2026, 23:42 to 01:45 UTC, on 6 workers running whole blocks one run at a time.</li>
+<li><strong>The job:</strong> one long Kibana job on the web-logs and flights sample data, 6 steps in order, then 27 checks against Kibana:<ol><li>create a Kibana space and work inside it</li><li>create data views on the web-logs and flights indices, each with its time field</li><li>build a two-panel web-logs dashboard and a server-errors alert rule</li><li>build a two-panel flights dashboard and a cancelled-flights alert rule</li><li>change the web-logs dashboard in place: retitle a panel, add a third</li><li>read back the dashboard&#x27;s panel count and the rule&#x27;s settings</li></ol></li>
+<li><strong>Held fixed:</strong> harness frozen at commit <code>9d4ec85</code>, mcp-for-kibana 0.4.0 (write tier), Kibana 9.5.5, Claude Code CLI 2.1.302, effort medium. Each run worked in its own Kibana space.</li>
+<li><strong>Measurement:</strong> each run sent one root span, <code>efficiency.run</code>, to Honeycomb, with its time, cost, tokens, turns, tool calls, checks and versions. Every number on this page comes from those spans and the CLI's own spans.</li>
+<li><strong>Analysis, fixed before any run:</strong> medians per run with 95% percentile-bootstrap intervals (10,000 resamples, seed 20261017). A saving counts only if the pass-rate difference (MCP minus Direct API, bootstrapped over blocks) does not lie wholly below 0.</li>
+<li><strong>Integrity:</strong> 600 of 600 planned runs counted, each exactly once, from 601 root spans (1 aborted run, rerun). Recomputed from each run's tokens, the price table reproduced the CLI's cost of all 601 priced runs. One trace per run. Every run recorded the same harness, CLI and Kibana version.</li>
+<li><strong>Spend:</strong> $69.45 at list prices for every run.</li>
+</ul>
+
+<h2>Limits</h2>
+<ul class="facts">
+<li><strong>Warm cache.</strong> 99% of runs started on a warm prompt cache, so the ratios describe repeated use. A first, cold run can come out the other way, as it did for Sonnet 5.5 and Opus 5.5.</li>
+<li><strong>Success does not separate the setups.</strong> All 600 runs passed all 27 checks, so the study cannot say whether either setup does the job better; it compares cost and time at equal success.</li>
+<li><strong>One job, one stack.</strong> One task, one Kibana version (9.5.5), one Claude Code CLI version (2.1.302), one server version (0.4.0), one effort level. Other jobs, versions or agents may differ.</li>
+<li><strong>List prices.</strong> Cost is computed at Anthropic's published list prices, not what any account was billed.</li>
+<li><strong>Exploratory sections</strong> (where the time goes, cache) were not planned before the runs.</li>
+</ul>
+
+<h2>Reproduce</h2>
+<p>The rows, spans, analysis output and the frozen harness are in <a href="study/"><code>study/</code></a> on this branch. To recompute every number from the rows, with <a href="https://docs.astral.sh/uv/">uv</a>:</p>
+<pre><code>git clone -b gh-pages https://github.com/pedro-angel/mcp-for-kibana.git mcp-savings-study
+cd mcp-savings-study/study/harness
+uv run python mcp_savings_analyze.py analyze --phase study \
+  --rows ../data/rows.jsonl --harness-sha 9d4ec85 --out /tmp/mcp-savings
+uv run python mcp_savings_explore.py --phase study \
+  --rows ../data/rows.jsonl --harness-sha 9d4ec85 --out /tmp/mcp-savings \
+  --spans ../data/spans/spans.jsonl \
+  --min-reads ../data/cache/min-request-cache-read.json \
+  --pilot-rows ../data/cache/pilot-root-spans.json
+cmp /tmp/mcp-savings/analysis.json ../data/analysis.json
+cmp /tmp/mcp-savings/exploratory.json ../data/exploratory.json
+cd ../.. &amp;&amp; python3 study/build_site.py   # rebuilds this page</code></pre>
+<p>How the rows were pulled from Honeycomb: <a href="study/docs/PULL_ROWS.md"><code>study/docs/PULL_ROWS.md</code></a>. What each file is: <a href="study/README.md"><code>study/README.md</code></a>.</p>
+
+<footer>
+<p>Every number and chart on this page is generated by <a href="study/build_site.py"><code>study/build_site.py</code></a> from <code>study/data/</code>. Licensed under the Apache License 2.0, as is <a href="https://github.com/pedro-angel/mcp-for-kibana">mcp-for-kibana</a>.</p>
+</footer>
+</main>
+</body>
+</html>

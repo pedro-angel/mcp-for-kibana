@@ -1,0 +1,102 @@
+{
+  "_about": "The MCP savings study's single definition: what is held fixed, the plan's seed and split, the long task's prompt and its checks. mcp_savings.py reads it; docs/RUNBOOK.md explains it. Its SHA-256 goes into every run record; it is frozen after the pilot.",
+  "study": {
+    "server_package": "mcp-for-kibana[otel]==0.4.0",
+    "server_version": "0.4.0",
+    "toolboxes": "dashboards,data-management,alerting,platform-admin",
+    "tier": "write",
+    "kibana_version": "9.5.5",
+    "claude_cli": "2.1.302",
+    "models": ["claude-haiku-5-5", "claude-sonnet-5-5", "claude-opus-5-5"],
+    "arms": ["with-mcp", "no-mcp"],
+    "blocks": 100,
+    "workers": [[1, 17], [18, 34], [35, 51], [52, 68], [69, 84], [85, 100]],
+    "pilot_blocks_per_worker": 1,
+    "order_seed": 20261016,
+    "analysis_seed": 20261017,
+    "resamples": 10000,
+    "run_timeout_s": 1800,
+    "stall_minutes": 40,
+    "max_retries": 3,
+    "dataset": "mcp-savings",
+    "cli_env": {"CLAUDE_CODE_EFFORT_LEVEL": "medium", "FORCE_PROMPT_CACHING_5M": "1", "DISABLE_AUTOUPDATER": "1"},
+    "prices": {
+      "source": "https://platform.claude.com/docs/en/about-claude/pricing (fetched 2026-10-17)",
+      "usd_per_mtok": {
+        "claude-haiku-5-5": {"input": 0.10, "output": 0.50, "cache_write_5m": 0.125, "cache_read": 0.01},
+        "claude-sonnet-5-5": {"input": 2.0, "output": 10.0, "cache_write_5m": 2.5, "cache_read": 0.10},
+        "claude-opus-5-5": {"input": 4.0, "output": 20.0, "cache_write_5m": 5.0, "cache_read": 0.20}
+      }
+    }
+  },
+  "arms": {
+    "server": "Use only the kibana tools.",
+    "api": "A local Kibana 9.5 is available. Its URL is in the environment variable KIBANA_URL and an API key in KIBANA_TEST_API_KEY. Kibana's API reference is in ./kibana-api/ (kibana.yaml for the whole API, dashboards-api.yaml for the Dashboards and Visualizations APIs)."
+  },
+  "data": {
+    "logs": {
+      "sample": "logs",
+      "index": "kibana_sample_data_logs",
+      "match": {"field": "response.keyword", "prefix": "5"}
+    },
+    "flights": {
+      "sample": "flights",
+      "index": "kibana_sample_data_flights",
+      "match": {"field": "Cancelled", "equals": true}
+    }
+  },
+  "task": {
+    "intro": "Work in Kibana on its web-logs and flights sample data, held in the indices kibana_sample_data_logs and kibana_sample_data_flights. Do these steps in order:",
+    "steps": [
+      {
+        "id": "space",
+        "text": "Create a Kibana space with the id '{space}' and the name '{marker} MCP savings'. Do every following step inside that space.",
+        "checks": [{"kind": "space"}]
+      },
+      {
+        "id": "data_views",
+        "text": "In that space, create a data view on the index kibana_sample_data_logs and one on the index kibana_sample_data_flights, each with its time field set. Name each data view's time field.",
+        "checks": [
+          {"kind": "data_view", "data": "logs"},
+          {"kind": "data_view", "data": "flights"},
+          {"kind": "answer", "line": "LOGS_TIME_FIELD", "expect": "time_field", "data": "logs"},
+          {"kind": "answer", "line": "FLIGHTS_TIME_FIELD", "expect": "time_field", "data": "flights"}
+        ]
+      },
+      {
+        "id": "weblogs",
+        "text": "Build a dashboard titled '{marker} Web logs' on the web-logs data view with exactly two panels: the number of requests over time, and the number of requests by HTTP response code. Then create an alert rule named '{marker} Server errors' on the web-logs data: it checks every minute and fires when more than 10 server errors arrive within 5 minutes. Count all server errors: every request whose response code is anywhere from 500 to 599. The rule must be enabled when you finish: if it is created disabled, enable it.",
+        "checks": [
+          {"kind": "dashboard", "title": "{marker} Web logs", "data": "logs", "panel_mentions": ["response"]},
+          {"kind": "rule", "name": "{marker} Server errors", "data": "logs", "interval": "1m", "threshold": 10, "window_minutes": 5, "enabled": true}
+        ]
+      },
+      {
+        "id": "flights",
+        "text": "Build a dashboard titled '{marker} Flights' on the flights data view with exactly two panels: the number of flights over time, and the number of flights by carrier. Then create an alert rule named '{marker} Cancelled flights' on the flights data: it checks every minute and fires when more than 10 cancelled flights arrive within 5 minutes. The rule must be enabled when you finish: if it is created disabled, enable it.",
+        "checks": [
+          {"kind": "dashboard", "title": "{marker} Flights", "data": "flights", "panels": 2, "panel_mentions": ["Carrier"]},
+          {"kind": "rule", "name": "{marker} Cancelled flights", "data": "flights", "interval": "1m", "threshold": 10, "window_minutes": 5, "enabled": true}
+        ]
+      },
+      {
+        "id": "change",
+        "text": "Change the '{marker} Web logs' dashboard in place, without creating a new dashboard: retitle its response-code panel 'Responses by code', and add a third panel showing the number of requests by host.",
+        "checks": [
+          {"kind": "dashboard_changed", "title": "{marker} Web logs", "data": "logs", "panels": 3, "panel_mentions": ["host"], "panel_title": "Responses by code"}
+        ]
+      },
+      {
+        "id": "lookup",
+        "text": "Read back what you built: count the panels of the '{marker} Web logs' dashboard, and read the '{marker} Server errors' rule's name, check interval and whether it is enabled.",
+        "checks": [
+          {"kind": "answer", "line": "PANELS", "expect": "panels", "dashboard": "{marker} Web logs"},
+          {"kind": "answer", "line": "RULE_NAME", "expect": "rule_name", "rule": "{marker} Server errors"},
+          {"kind": "answer", "line": "INTERVAL", "expect": "rule_interval", "rule": "{marker} Server errors"},
+          {"kind": "answer", "line": "ENABLED", "expect": "rule_enabled", "rule": "{marker} Server errors"}
+        ]
+      }
+    ],
+    "closing": "End your reply with these six lines:\nLOGS_TIME_FIELD: <the web-logs data view's time field>\nFLIGHTS_TIME_FIELD: <the flights data view's time field>\nPANELS: <the number of panels on the '{marker} Web logs' dashboard>\nRULE_NAME: <the server-error rule's name>\nINTERVAL: <its check interval, such as 5m>\nENABLED: <yes or no>"
+  }
+}

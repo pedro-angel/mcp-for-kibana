@@ -1,0 +1,423 @@
+{
+  "phase": "study",
+  "config_sha": "c57e7bb051e4",
+  "harness_sha": "9d4ec85",
+  "complete": true,
+  "ok": true,
+  "root_spans": 601,
+  "planned": 600,
+  "counted": 600,
+  "missing": [],
+  "duplicate_cells": [],
+  "duplicate_run_ids": [],
+  "invalid": [],
+  "aborted": [
+    {
+      "run_id": "20261018T012909Z-b084-claude-opus-5-5-no-mcp-35b7f3",
+      "cell": [
+        "b084",
+        "claude-opus-5-5",
+        "no-mcp"
+      ],
+      "cost_usd": 0.027097
+    }
+  ],
+  "outside_plan": [],
+  "price_check": {
+    "checked": 601,
+    "mismatches": [],
+    "unchecked": []
+  },
+  "spend_usd": {
+    "all_runs": 69.4532,
+    "counted": 69.4261,
+    "invalid": 0,
+    "aborted": 0.0271,
+    "aborted_without_cost": 0
+  },
+  "traces": {
+    "without_trace_id": [],
+    "shared": []
+  },
+  "rescored_runs": 0,
+  "rescore_changed": [],
+  "harness_shas": {
+    "values": [
+      "9d4ec85"
+    ],
+    "absent": 0
+  },
+  "claude_cli": {
+    "values": [
+      "2.1.302 (Claude Code)"
+    ],
+    "absent": 0
+  },
+  "kibana_versions": {
+    "values": [
+      "9.5.5"
+    ],
+    "absent": 0
+  },
+  "server_versions": {
+    "with-mcp": {
+      "values": [
+        "0.4.0"
+      ],
+      "absent": 0
+    },
+    "no-mcp": {
+      "values": [
+        "0.4.0"
+      ],
+      "absent": 0
+    }
+  },
+  "first_row": "2026-10-17T23:42:59.328038656Z",
+  "last_row": "2026-10-18T01:45:15.198098176Z",
+  "bootstrap": {
+    "resamples": 10000,
+    "seed": 20261017
+  },
+  "per_model_arm": {
+    "claude-haiku-5-5/with-mcp": {
+      "cost_usd": {
+        "n": 100,
+        "median": 0.0066865325,
+        "median_ci95": [
+          0.006518605,
+          0.0067893725
+        ]
+      },
+      "time_s": {
+        "n": 100,
+        "median": 36.6,
+        "median_ci95": [
+          35.8,
+          37.3
+        ]
+      },
+      "tool_calls": {
+        "n": 100,
+        "median": 16.0,
+        "median_ci95": [
+          16.0,
+          16.0
+        ]
+      },
+      "failed_tool_calls": {
+        "n": 100,
+        "median": 0.0,
+        "median_ci95": [
+          0.0,
+          0.0
+        ]
+      }
+    },
+    "claude-haiku-5-5/no-mcp": {
+      "cost_usd": {
+        "n": 100,
+        "median": 0.021878655000000004,
+        "median_ci95": [
+          0.021072285000000003,
+          0.022554515000000008
+        ]
+      },
+      "time_s": {
+        "n": 100,
+        "median": 105.8,
+        "median_ci95": [
+          101.6,
+          110.2
+        ]
+      },
+      "tool_calls": {
+        "n": 100,
+        "median": 27.0,
+        "median_ci95": [
+          26.0,
+          28.5
+        ]
+      },
+      "failed_tool_calls": {
+        "n": 100,
+        "median": 3.0,
+        "median_ci95": [
+          3.0,
+          4.0
+        ]
+      }
+    },
+    "claude-sonnet-5-5/with-mcp": {
+      "cost_usd": {
+        "n": 100,
+        "median": 0.0773549,
+        "median_ci95": [
+          0.07672005,
+          0.0782893
+        ]
+      },
+      "time_s": {
+        "n": 100,
+        "median": 32.4,
+        "median_ci95": [
+          31.9,
+          32.6
+        ]
+      },
+      "tool_calls": {
+        "n": 100,
+        "median": 15.0,
+        "median_ci95": [
+          15.0,
+          15.0
+        ]
+      },
+      "failed_tool_calls": {
+        "n": 100,
+        "median": 0.0,
+        "median_ci95": [
+          0.0,
+          0.0
+        ]
+      }
+    },
+    "claude-sonnet-5-5/no-mcp": {
+      "cost_usd": {
+        "n": 100,
+        "median": 0.10164580000000001,
+        "median_ci95": [
+          0.09850215,
+          0.1054912
+        ]
+      },
+      "time_s": {
+        "n": 100,
+        "median": 47.5,
+        "median_ci95": [
+          46.8,
+          48.2
+        ]
+      },
+      "tool_calls": {
+        "n": 100,
+        "median": 11.0,
+        "median_ci95": [
+          11.0,
+          12.0
+        ]
+      },
+      "failed_tool_calls": {
+        "n": 100,
+        "median": 0.0,
+        "median_ci95": [
+          0.0,
+          1.0
+        ]
+      }
+    },
+    "claude-opus-5-5/with-mcp": {
+      "cost_usd": {
+        "n": 100,
+        "median": 0.17326429999999998,
+        "median_ci95": [
+          0.1709418,
+          0.175252
+        ]
+      },
+      "time_s": {
+        "n": 100,
+        "median": 53.8,
+        "median_ci95": [
+          52.3,
+          56.3
+        ]
+      },
+      "tool_calls": {
+        "n": 100,
+        "median": 14.0,
+        "median_ci95": [
+          14.0,
+          14.0
+        ]
+      },
+      "failed_tool_calls": {
+        "n": 100,
+        "median": 0.0,
+        "median_ci95": [
+          0.0,
+          0.0
+        ]
+      }
+    },
+    "claude-opus-5-5/no-mcp": {
+      "cost_usd": {
+        "n": 100,
+        "median": 0.30835460000000003,
+        "median_ci95": [
+          0.2925022,
+          0.31485719999999995
+        ]
+      },
+      "time_s": {
+        "n": 100,
+        "median": 86.80000000000001,
+        "median_ci95": [
+          83.15,
+          92.7
+        ]
+      },
+      "tool_calls": {
+        "n": 100,
+        "median": 14.0,
+        "median_ci95": [
+          14.0,
+          15.0
+        ]
+      },
+      "failed_tool_calls": {
+        "n": 100,
+        "median": 0.0,
+        "median_ci95": [
+          0.0,
+          1.0
+        ]
+      }
+    }
+  },
+  "ratios": {
+    "claude-haiku-5-5": {
+      "cost_usd": {
+        "median_with": 0.0066865325,
+        "median_without": 0.021878655000000004,
+        "ratio": 0.3056189925751834,
+        "ratio_ci95": [
+          0.29218338987092285,
+          0.3189803573746273
+        ],
+        "saving_counts": true
+      },
+      "time_s": {
+        "median_with": 36.6,
+        "median_without": 105.8,
+        "ratio": 0.3459357277882798,
+        "ratio_ci95": [
+          0.3308789691670502,
+          0.36196911196911197
+        ],
+        "saving_counts": true
+      }
+    },
+    "claude-sonnet-5-5": {
+      "cost_usd": {
+        "median_with": 0.0773549,
+        "median_without": 0.10164580000000001,
+        "ratio": 0.7610240659230386,
+        "ratio_ci95": [
+          0.733282965782928,
+          0.78501488268791
+        ],
+        "saving_counts": true
+      },
+      "time_s": {
+        "median_with": 32.4,
+        "median_without": 47.5,
+        "ratio": 0.6821052631578947,
+        "ratio_ci95": [
+          0.6673596673596673,
+          0.6929637526652452
+        ],
+        "saving_counts": true
+      }
+    },
+    "claude-opus-5-5": {
+      "cost_usd": {
+        "median_with": 0.17326429999999998,
+        "median_without": 0.30835460000000003,
+        "ratio": 0.5618995143902505,
+        "ratio_ci95": [
+          0.5480174273658464,
+          0.5939275939207539
+        ],
+        "saving_counts": true
+      },
+      "time_s": {
+        "median_with": 53.8,
+        "median_without": 86.80000000000001,
+        "ratio": 0.6198156682027649,
+        "ratio_ci95": [
+          0.5772179627601314,
+          0.6607981220657276
+        ],
+        "saving_counts": true
+      }
+    }
+  },
+  "success": {
+    "claude-haiku-5-5/with-mcp": {
+      "passed": 100,
+      "runs": 100
+    },
+    "claude-haiku-5-5/no-mcp": {
+      "passed": 100,
+      "runs": 100
+    },
+    "claude-sonnet-5-5/with-mcp": {
+      "passed": 100,
+      "runs": 100
+    },
+    "claude-sonnet-5-5/no-mcp": {
+      "passed": 100,
+      "runs": 100
+    },
+    "claude-opus-5-5/with-mcp": {
+      "passed": 100,
+      "runs": 100
+    },
+    "claude-opus-5-5/no-mcp": {
+      "passed": 100,
+      "runs": 100
+    }
+  },
+  "success_by_model": {
+    "claude-haiku-5-5": {
+      "passed_with": 100,
+      "runs_with": 100,
+      "passed_without": 100,
+      "runs_without": 100,
+      "paired_blocks": 100,
+      "difference": 0.0,
+      "difference_ci95": [
+        0.0,
+        0.0
+      ],
+      "holds": true
+    },
+    "claude-sonnet-5-5": {
+      "passed_with": 100,
+      "runs_with": 100,
+      "passed_without": 100,
+      "runs_without": 100,
+      "paired_blocks": 100,
+      "difference": 0.0,
+      "difference_ci95": [
+        0.0,
+        0.0
+      ],
+      "holds": true
+    },
+    "claude-opus-5-5": {
+      "passed_with": 100,
+      "runs_with": 100,
+      "passed_without": 100,
+      "runs_without": 100,
+      "paired_blocks": 100,
+      "difference": 0.0,
+      "difference_ci95": [
+        0.0,
+        0.0
+      ],
+      "holds": true
+    }
+  }
+}
