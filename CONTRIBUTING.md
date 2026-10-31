@@ -102,7 +102,7 @@ data), then pass the version:
 
 ```bash
 make stack-destroy
-ES_LOCAL_VERSION=9.4.7 make test-contract
+ES_LOCAL_VERSION=9.4.8 make test-contract
 ```
 
 `make dod` certifies only the pinned version: on a stack left on another line

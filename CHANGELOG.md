@@ -249,6 +249,12 @@ version section.
 
 ### Changed
 
+- **The supported Kibana pins move to 9.5.5 and 9.4.8**, the latest patch on
+  each line (D30). The set of lines is unchanged. The stack pin in
+  `elastic-start-local/.env.example` and `.env.ephemeral.example` is 9.5.5,
+  and the docs name 9.4.8 and 9.5.5 as the tested versions. The supported set
+  is kibana-py's, so this needs kibana-py 0.6.1, the first release that lists
+  9.5.5 and 9.4.8 (`kibana.SUPPORTED_VERSIONS`).
 - **The Definition-of-Done gate is hardened** (D53–D63). A review of the
   gate found 18 ways it could read GO over a defect; the entries below close
   them. Each check is a required criterion, runs inside one, or is part of
