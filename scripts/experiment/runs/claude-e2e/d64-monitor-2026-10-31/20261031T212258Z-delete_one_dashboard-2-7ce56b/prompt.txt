@@ -1,0 +1,1 @@
+Using the kibana tools, delete the dashboard titled 'E2E 7707279e flights remove'. Do not delete or change anything else.

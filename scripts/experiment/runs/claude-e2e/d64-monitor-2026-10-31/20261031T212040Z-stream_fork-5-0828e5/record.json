@@ -1,0 +1,79 @@
+{
+  "block": "adhoc",
+  "cache_creation_input_tokens": 1859,
+  "cache_read_input_tokens": 9966,
+  "claude_cli": "2.1.316 (Claude Code)",
+  "duration_api_ms": 3403,
+  "duration_ms": 6885,
+  "final_text": "I created the fork `logs.ecs.e2e18129f5d` from `logs.ecs`. It routes documents where `service.name` equals `e2e-18129f5d`.\n\nThe fork was created in staged mode (status `disabled`), so no documents are routed into it yet. Activate it from the Kibana UI when you're ready. I didn't verify the child stream afterward.",
+  "first_missing": null,
+  "git_sha": "819a0848",
+  "has_result": true,
+  "init_model": "claude-haiku-5-5",
+  "input_tokens": 4,
+  "is_error": false,
+  "key_in_transcript": false,
+  "kibana_version": "9.5.5",
+  "marker": "E2E 18129f5d",
+  "mcp_servers": [
+    {
+      "name": "mcp-for-kibana",
+      "source": "dynamic",
+      "status": "connected"
+    }
+  ],
+  "model_requested": "haiku",
+  "models_reported": [
+    "claude-haiku-5-5"
+  ],
+  "n_tool_calls": 1,
+  "non_server_tools": [],
+  "num_turns": 2,
+  "offered_tools": [
+    "deactivate_fork",
+    "enable_streams",
+    "fork_stream",
+    "get_stream",
+    "get_stream_ingest",
+    "list_streams",
+    "resync_streams",
+    "set_stream_processing"
+  ],
+  "output_tokens": 333,
+  "passed": true,
+  "permission_denials": 0,
+  "permission_mode": "dontAsk",
+  "prompt": "Using the kibana tools, fork the wired stream 'logs.ecs' into a new child stream named 'logs.ecs.e2e18129f5d' that receives the documents whose field 'service.name' equals 'e2e-18129f5d'.",
+  "run_id": "20261031T212040Z-stream_fork-5-0828e5",
+  "run_index": 5,
+  "s1_child": true,
+  "s2_routing": true,
+  "server_dirty": false,
+  "session_cost_usd": 0.080366,
+  "space": null,
+  "study": "claude-e2e",
+  "task": "stream_fork",
+  "terminal_reason": "success",
+  "tier": "write",
+  "timed_out": false,
+  "tool_calls": [
+    "fork_stream"
+  ],
+  "tool_inputs": [
+    {
+      "input": {
+        "child_name": "logs.ecs.e2e18129f5d",
+        "condition_field": "service.name",
+        "condition_value": "e2e-18129f5d",
+        "parent_name": "logs.ecs"
+      },
+      "name": "fork_stream"
+    }
+  ],
+  "toolboxes": "streams",
+  "total_cost_usd": 0.0007797600000000001,
+  "ts_end": "2026-10-31T21:20:51.226925+00:00",
+  "ts_start": "2026-10-31T21:20:40.459048+00:00",
+  "valid": true,
+  "wall_s": 10.8
+}

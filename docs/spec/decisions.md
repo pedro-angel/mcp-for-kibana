@@ -2142,7 +2142,8 @@ this ledger stands without them.
   a Fleet key without `monitor` refused naming it on 9.5.5. The first
   `make dod` at 1d39e14f was NO-GO on exactly that (`contract_green`, 2
   failed: the 9.4.8 probe did not hold on 9.5.5); `make test-e2e` 55 of 55
-  (`scripts/experiment/runs/claude-e2e/d64-uninstall-2026-10-31`).
+  (`scripts/experiment/runs/claude-e2e/d64-uninstall-2026-10-31`), and 55
+  of 55 again after the `monitor` fix (`d64-monitor-2026-10-31`, at 819a0848).
   Supersedes D51's awareness-on refusal and `force`; D63's awareness-off tier
   stays. Contract: [fleet](toolboxes/fleet.md).
 
