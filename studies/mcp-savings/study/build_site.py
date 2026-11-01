@@ -6,7 +6,7 @@ Honeycomb and analysed by study/harness/mcp_savings_analyze.py and
 mcp_savings_explore.py). Nothing numeric is typed by hand here. Standard
 library only:
 
-    python3 study/build_site.py
+    python3 study/build_site.py      # from studies/mcp-savings/
 """
 
 from __future__ import annotations
@@ -442,6 +442,7 @@ pre code{background:none;padding:0}
 ul.facts{padding-left:20px}
 ul.facts li{margin:4px 0}
 a{color:var(--accent)}
+.home{margin:0 0 18px;font-size:.88rem}.home a{color:var(--muted);text-decoration:none}.home a:hover{color:var(--accent);text-decoration:underline}
 footer{margin-top:56px;padding-top:16px;border-top:1px solid var(--rule);font-size:.84rem;color:var(--muted)}
 @media (max-width:640px){
  main{padding-top:28px}
@@ -478,6 +479,7 @@ page = f"""<!doctype html>
 </head>
 <body>
 <main>
+<p class="home"><a href="../../">← mcp-for-kibana</a></p>
 <header>
 <h1>MCP savings study</h1>
 <p class="sub">Claude Code on one Kibana job, {A['counted']} runs, three models: through the mcp-for-kibana MCP server, or through Kibana's REST API.</p>
@@ -564,7 +566,7 @@ page = f"""<!doctype html>
 <h2>Reproduce</h2>
 <p>The rows, spans, analysis output and the frozen harness are in <a href="study/"><code>study/</code></a> on this branch. To recompute every number from the rows, with <a href="https://docs.astral.sh/uv/">uv</a>:</p>
 <pre><code>git clone -b gh-pages {REPO}.git mcp-savings-study
-cd mcp-savings-study/study/harness
+cd mcp-savings-study/studies/mcp-savings/study/harness
 uv run python mcp_savings_analyze.py analyze --phase study \\
   --rows ../data/rows.jsonl --harness-sha {harness} --out /tmp/mcp-savings
 uv run python mcp_savings_explore.py --phase study \\

@@ -59,7 +59,8 @@ cmp /tmp/mcp-savings/exploratory.json ../data/exploratory.json
 ```
 
 Both files come out byte for byte identical to the ones in `data/`. Then,
-from the branch root, `python3 study/build_site.py` rebuilds the page.
+from `studies/mcp-savings/` on the branch, `python3 study/build_site.py`
+rebuilds the page.
 
 ## How the data was pulled
 
