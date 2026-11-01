@@ -273,6 +273,16 @@ def _await_bundle(gateway, agent_id, action_id, seconds):
     raise AssertionError(f"the demo agent did not upload bundle {action_id} within {seconds} s")
 
 
+def _assert_ready(gateway, agent_id, bundle):
+    # The tool's bundle drops the upload's `error`; read it raw so a FAILED
+    # bundle names why (the agent's "rate limit exceeded", say).
+    if bundle.status != "READY":
+        raw = gateway._client.fleet_agents.get_uploads(agent_id=agent_id).body.get("items", [])
+        why = [u.get("error") for u in raw if u.get("actionId") == bundle.action_id]
+        raise AssertionError(f"bundle {bundle.action_id} is {bundle.status}: {why}")
+    assert bundle.name.endswith(".zip") and bundle.created_at
+
+
 def test_agent_diagnostics_live(gateway):
     # The agent rate-limits diagnostics to one per minute (a second request
     # within it FAILED "rate limit exceeded", probed). Its window opens when the
@@ -288,13 +298,13 @@ def test_agent_diagnostics_live(gateway):
     action_ids = [cpu.action_id]
     try:
         bundle = _await_bundle(gateway, agent.id, cpu.action_id, 150)
-        assert bundle.status == "READY" and bundle.name.endswith(".zip") and bundle.created_at
+        _assert_ready(gateway, agent.id, bundle)
         time.sleep(65)  # past the rate limit, counted from the agent's side
         req = gateway.request_agent_diagnostics(agent_id=agent.id)
         action_ids.append(req.action_id)
         assert req.action_id != cpu.action_id and req.agent_status == "online"
         bundle = _await_bundle(gateway, agent.id, req.action_id, 120)
-        assert bundle.status == "READY" and bundle.name.endswith(".zip") and bundle.created_at
+        _assert_ready(gateway, agent.id, bundle)
     finally:
         for d in gateway.list_agent_diagnostics(agent.id):
             if d.action_id in action_ids and d.status == "READY":
