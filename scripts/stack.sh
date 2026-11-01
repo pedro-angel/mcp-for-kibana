@@ -9,7 +9,7 @@
 # rest of the stack env, kibana-py-style). User config (LMSTUDIO_*) lives in
 # .env.local (human-written, never touched here).
 #
-# Another supported line: `ES_LOCAL_VERSION=9.4.7 scripts/stack.sh up` overrides
+# Another supported line: `ES_LOCAL_VERSION=9.4.8 scripts/stack.sh up` overrides
 # the pin for that stack. Destroy the stack first when moving to an OLDER
 # version — Elasticsearch cannot open data written by a newer one.
 #

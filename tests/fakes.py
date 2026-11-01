@@ -23,10 +23,10 @@ from kibana_mcp.core.models import (
     VisualizationDetail, VisualizationSummary,
 )
 from kibana_mcp.core.fleet_ops import (
-    AGENT_MONITORING_PACKAGE, guard_reason, guarded_policy_refusal, installed_version_refusal,
-    missing_agents_message, monitoring_refusal, not_installed_message, package_policies_refusal,
-    space_awareness_refusal, tags_not_applied, unattached_guard_reason, unknown_agent_message,
-    unknown_package_message,
+    AGENT_MONITORING_PACKAGE, checks_hidden_spaces, guard_reason, guarded_policy_refusal,
+    hidden_spaces_refusal, installed_version_refusal, missing_agents_message, monitoring_refusal,
+    not_installed_message, package_policies_refusal, space_awareness_refusal, tags_not_applied,
+    unattached_guard_reason, unknown_agent_message, unknown_package_message,
 )
 from kibana_mcp.core.saved_objects import READABLE_TYPES, unreadable_type_message
 from kibana_mcp.core.space_sharing import (
@@ -317,6 +317,7 @@ class FakeGateway:
             FleetServerHost(id="fsh-1", name="default", host_urls=("http://localhost:8220",),
                             is_default=True),
         ]
+        self.fleet_hidden_space_packages: set[str] = set()  # see uninstall_package
         self.fleet_settings = FleetSettings(
             id="fleet-default-settings", prerelease_integrations_enabled=False,
             integration_knowledge_enabled=True, space_awareness_migration_status="success")
@@ -1796,41 +1797,51 @@ class FakeGateway:
         return FleetPackageInstall(
             name=name, version=installed.version, status="installed", already_installed=False)
 
-    def uninstall_package(self, *, name, force=False):
+    def uninstall_package(self, *, name):
+        # One space: the fake's Fleet objects all live in 'default'. A name in
+        # fleet_hidden_space_packages is used in a space the key cannot access,
+        # which Kibana 9.5.5 / 9.4.8 refuse with a 403 (D64).
         pkg = self._fake_package(name)
         if pkg.status != "installed":
             raise KibanaNotFound(not_installed_message(name))
-        if self.fleet_settings.space_awareness_migration_status:
-            raise KibanaRejected(space_awareness_refusal(name))
+        aware = bool(self.fleet_settings.space_awareness_migration_status)
+        if aware and not checks_hidden_spaces(self.kibana_status.version):
+            raise KibanaRejected(space_awareness_refusal(name, self.kibana_status.version))
+        space = "default" if aware else ""
         if name == AGENT_MONITORING_PACKAGE:
             monitoring = [ap.id for ap in self.fleet_agent_policies if ap.monitoring_enabled]
             if monitoring:
                 raise KibanaRejected(monitoring_refusal(name, monitoring))
         pps = [pp for pp in self.fleet_package_policies if pp.package_name == name]
-        listed, guarded = [], []
+        listed, guarded, emptied = [], [], []
         for pp in pps:
             if pp.agent_policy_id is None:  # as the adapter: no agent policy to read
                 unattached = unattached_guard_reason(name)
                 if unattached is not None:
                     guarded.append((pp.id, "", unattached))
-                listed.append((pp.id, pp.name, "", 0))
+                listed.append((pp.id, pp.name, space, "", 0))
                 continue
             ap = self.get_agent_policy(pp.agent_policy_id)
             why = guard_reason(name, is_managed=ap.is_managed, is_default_fleet_server=(
                 ap.id in self.fleet_default_fleet_server_policy_ids))
             if why is not None:
                 guarded.append((pp.id, ap.id, why))
-            listed.append((pp.id, pp.name, ap.id, ap.agent_count))
+            listed.append((pp.id, pp.name, space, ap.id, ap.agent_count))
+            on_it = {q.package_name for q in self.fleet_package_policies
+                     if q.agent_policy_id == ap.id}
+            if on_it == {name} and (space, ap.id) not in emptied:
+                emptied.append((space, ap.id))
         if guarded:
             raise KibanaRejected(guarded_policy_refusal(name, guarded))
-        if pps and not force:
-            raise KibanaRejected(package_policies_refusal(name, listed))
-        self.fleet_package_policies = [pp for pp in self.fleet_package_policies if pp not in pps]
+        if listed:
+            raise KibanaRejected(package_policies_refusal(name, listed, emptied, "default"))
+        if aware and name in self.fleet_hidden_space_packages:
+            raise KibanaRejected(hidden_spaces_refusal(name))
         self.fleet_packages = [
             replace(p, status="not_installed") if p.name == name else p for p in self.fleet_packages]
         self.fleet_installed_packages = [p for p in self.fleet_installed_packages if p.name != name]
         self.deleted.append(("package", name))
-        return FleetPackageUninstall(name=name, version=pkg.version, deleted_package_policies=tuple(pps))
+        return FleetPackageUninstall(name=name, version=pkg.version)
 
     def _get(self, dashboard_id):
         if dashboard_id not in self.dashboards:

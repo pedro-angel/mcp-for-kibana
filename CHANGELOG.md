@@ -249,6 +249,35 @@ version section.
 
 ### Changed
 
+- **`uninstall_package` never removes an integration from agent policies**
+  (D64, owner). While any package policy uses the package, the call is
+  refused and nothing changes; the refusal names each package policy with
+  its agent policy, agent count and space, and each agent policy it would
+  leave with no integration, so the model can remove them with
+  `delete_package_policy` (and `delete_agent_policy` for an emptied one the
+  user no longer wants) and call again. **Breaking:** the `force` parameter
+  is gone, and the result no longer carries `deleted_package_policies` (it
+  is `{uninstalled, name, version}`). With Fleet space awareness on the tool
+  now works instead of refusing every call: it reads every space the API key
+  can access, and Kibana 9.5.5 / 9.4.8 refuse (403) a package used in a space
+  the key cannot access, which the tool reports with the fix. On an older
+  Kibana, or through a space-pinned `KIBANA_URL` while the key can access
+  another space, it is still refused with awareness on. On Kibana 9.5 the API
+  key also needs the Elasticsearch `monitor` cluster privilege there: from
+  9.5.5 Kibana gives its version (which the check needs) only to such a key,
+  and the refusal says so.
+- **The supported Kibana pins move to 9.5.5 and 9.4.8**, the latest patch on
+  each line (D30). The set of lines is unchanged. The stack pin in
+  `elastic-start-local/.env.example` and `.env.ephemeral.example` is 9.5.5,
+  and the docs name 9.4.8 and 9.5.5 as the tested versions. The supported set
+  is kibana-py's, so the dependency is now `kibana-py[async]>=0.6.1`, the
+  first release that lists 9.5.5 and 9.4.8 (`kibana.SUPPORTED_VERSIONS`). One Kibana behavior changed
+  on both lines: an uninstall of a package used in a space the API key cannot
+  access now answers 403 instead of deleting that space's package policy
+  (Fleet's `uninstall_authz.ts`, new in both). `uninstall_package` still
+  refuses first under Fleet space awareness, so the tool behaves the same;
+  the contract test that reproduced the deletion now pins the 403 (D51
+  amendment).
 - **The Definition-of-Done gate is hardened** (D53–D63). A review of the
   gate found 18 ways it could read GO over a defect; the entries below close
   them. Each check is a required criterion, runs inside one, or is part of
@@ -526,6 +555,9 @@ version section.
   CVE-2026-114614 to CVE-2026-114618 and CVE-2026-114620), dnspython 2.9.0
   (from email-validator; CVE-2026-114605) and msgpack 1.2.4 (from pip-audit's
   cache; CVE-2026-114613).
+- Locked joserfc moved to 1.7.7 (from authlib, through fastmcp), past two
+  advisories `pip-audit` reported on 2026-10-30: CVE-2026-119283 (fixed in
+  1.7.5) and CVE-2026-119284 (fixed in 1.7.6).
 
 ## [0.4.0] - 2026-10-17
 

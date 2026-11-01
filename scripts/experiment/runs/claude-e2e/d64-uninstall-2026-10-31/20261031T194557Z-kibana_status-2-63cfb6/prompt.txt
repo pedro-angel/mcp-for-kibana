@@ -1,0 +1,1 @@
+Using the kibana tools, find out which version of Kibana this is and its overall status level. Reply with the version number and the level.

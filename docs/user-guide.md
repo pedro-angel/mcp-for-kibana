@@ -20,7 +20,7 @@ No Kibana or Lens knowledge required. That's the point.
 From the repo root:
 
 ```bash
-scripts/stack.sh up      # Elasticsearch + Kibana 9.5.4 (first run pulls ~2GB)
+scripts/stack.sh up      # Elasticsearch + Kibana 9.5.5 (first run pulls ~2GB)
 scripts/stack.sh seed    # loads the flights sample dataset and the secret canaries; mints an API key only if needed
 ```
 

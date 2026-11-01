@@ -5,6 +5,10 @@ composable toolboxes over a hexagonal core, powered by [kibana-py](https://githu
 
 [![Documentation Status](https://readthedocs.org/projects/mcp-for-kibana/badge/?version=latest)](https://mcp-for-kibana.readthedocs.io/en/latest/?badge=latest)
 
+**Savings study:** on one Kibana job, Claude Code with this server cost 24–69% less and
+finished 32–65% faster than calling Kibana's REST API directly (600 runs, three models).
+[Results, limits and data](https://pedro-angel.github.io/mcp-for-kibana/studies/mcp-savings/) · [Project site](https://pedro-angel.github.io/mcp-for-kibana/).
+
 > **Disclaimer:** This is an independent, community-driven project and is **not**
 > officially affiliated with, endorsed by, or supported by Elastic N.V. or any of
 > its subsidiaries. "Kibana" and "Elasticsearch" are trademarks of Elastic N.V.
@@ -41,7 +45,7 @@ surfaces are not worth duplicating here.
 across 10 composable toolboxes (dashboards, data management, alerting, cases,
 security detections, fleet, streams, observability, platform admin, and platform
 health), each classified read / write / destructive and contract-tested against
-live Kibana 9.4.7 and 9.5.4. It's packaged as a stdio and container-runnable server. See the
+live Kibana 9.4.8 and 9.5.5. It's packaged as a stdio and container-runnable server. See the
 [Tool reference](#tool-reference) below.
 
 The flagship path is **dashboards from plain English**: an LLM goes from a request

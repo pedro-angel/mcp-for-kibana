@@ -870,6 +870,3 @@ class FleetPackageInstall:
 class FleetPackageUninstall:
     name: str
     version: str  # the version that was installed
-    # Package policies of the package, read before the call: Kibana deletes them
-    # with it (probed on 9.5.4), so this is what the uninstall removed.
-    deleted_package_policies: tuple[FleetPackagePolicy, ...]

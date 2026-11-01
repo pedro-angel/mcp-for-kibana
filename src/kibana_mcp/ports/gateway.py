@@ -740,21 +740,21 @@ class KibanaGateway(Protocol):
         Kibana refuses an older version."""
         ...
 
-    def uninstall_package(self, *, name: str, force: bool = False) -> FleetPackageUninstall:
-        """Uninstall an installed integration package. Kibana deletes the
-        package's package policies with it (probed; with agents on them only
-        when forced), so a package that has any is refused unless `force`,
-        naming them, and `force` reaches Kibana only then. Refused regardless
-        of `force`, naming every guarded package policy: one on a managed or
-        the default Fleet Server agent policy, and any `fleet_server` one
-        (it runs the Fleet Servers on its agent policy); `elastic_agent` is
-        refused while any agent policy has `monitoring_enabled` (Kibana
-        uninstalls it unchecked, probed); a `fleet_server` package policy on
-        no agent policy is guarded too. With Fleet space awareness on, every
-        uninstall is refused, whatever `force` says, before any policy is
-        read: Kibana's uninstall deletes every space's package policies,
-        while the spaces listing hides each space the key cannot read
-        (probed), and nothing reachable proves the key reads them all. A
-        package that is not installed raises KibanaNotFound naming
+    def uninstall_package(self, *, name: str) -> FleetPackageUninstall:
+        """Uninstall an installed integration package that no package policy
+        uses (D64). This never removes an integration from an agent policy:
+        Kibana's uninstall deletes the package's package policies with it
+        (probed), so while any is left the call is refused, naming each one,
+        its agent policy (with its agent count) and space, and each agent
+        policy it would leave with no integration. Refused too, naming them:
+        one on a managed or the default Fleet Server agent policy, any
+        `fleet_server` one, and `elastic_agent` while an agent policy has
+        `monitoring_enabled` (Kibana uninstalls it unchecked, probed). With
+        Fleet space awareness on, each space the key can access is read (a
+        space-pinned KIBANA_URL is refused while the key can access another
+        space), and a space it cannot access is left to Kibana, whose 403 (9.5.5
+        / 9.4.8 and later) becomes a refusal naming the fix; an older Kibana, or
+        one whose version cannot be read, is refused before any policy is read.
+        A package that is not installed raises KibanaNotFound naming
         list_installed_packages."""
         ...

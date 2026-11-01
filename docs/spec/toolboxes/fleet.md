@@ -27,7 +27,7 @@ swapping its binary, or unenrolling it is destructive to infrastructure, not
 to a saved object. `request_agent_diagnostics` sends a live agent an action
 too, but sits at `write`: the agent collects and uploads a bundle and nothing
 it collects or ships changes (D51). `uninstall_package` is `destructive`
-because Kibana deletes the package's package policies with it.
+because it removes the package's Elasticsearch and Kibana assets.
 Annotations follow docs/tools.md#tiers-and-annotations
 (`read`→`readOnlyHint=True`; `write`→`destructiveHint=False,
 idempotentHint=False`, except `install_package` and `update_agent_tags`,
@@ -46,8 +46,8 @@ per-deployment migration state, not the same axis. Once that migration has
 run (the dev stack reads `success`), Fleet's agent and package policy
 listings return only the calling space's (probed on 9.5.4), so the other
 fleet tools see the default space's (or the pinned space's) policies only;
-`uninstall_package`, whose Kibana call reaches every space, is refused then
-(below).
+`uninstall_package`, whose Kibana call reaches every space, reads every
+space the key can access then (below).
 
 **Secret redaction is a fixed field allowlist, not after-the-fact
 stripping.** Enrollment-key/uninstall-token reads and every output
@@ -112,43 +112,50 @@ version when none is given, is returned with `already_installed=true` and
 nothing sent (Kibana's install without a version upgrades it, probed); one
 installed at another version is refused, because the rollback route needs an
 Enterprise license (403 on Basic, probed) and Kibana refuses older versions.
-`uninstall_package` reads the package and every package policy of it: a
-package that is not installed names `list_installed_packages`; a package
-policy on a managed or the default Fleet Server agent policy refuses the call
-regardless of `force` (as `delete_agent_policy` guards those policies), and so
-does any `fleet_server` package policy, on whatever agent policy or none (it
-runs the Fleet Servers there; the refusal names every guarded one, and for a
-plain or unattached one `delete_package_policy` once no Fleet Server is
-enrolled on it); any
-other package policy refuses it unless `force=True`, naming each one with its
-agent policy and agent count, because Kibana deletes them with the package
-(probed: without `force` when no agent uses them, with it otherwise), and
-Kibana's `force` is sent only then. `elastic_agent` is refused, whatever
-`force` says, while any agent policy has `monitoring_enabled`: it holds the
-index templates and ingest pipelines of the agents' monitoring data streams,
-and Kibana uninstalled it under a monitoring agent policy without `force` or a
-check (probed); the refusal names those agent policies and
-`update_agent_policy monitoring_enabled=[]`. **With Fleet space awareness on
-(`use_space_awareness_migration_status` set to any value), every uninstall
-is refused, whatever `force` says, before any policy is read** (fail
-closed): each space lists only its own agent and package policies, Kibana's
-uninstall deletes every space's package policies (probed: read by id after
-it), and Kibana's spaces listing leaves out, without an error, each space
-the API key cannot read — a key limited to the default space listed only it,
-and Kibana's uninstall with that key, no `force`, deleted a package policy
-in a space it was never shown (probed). No Kibana route the server calls
-proves a key reads every space (the package `stats` and
-`withPackagePoliciesCount` counts are space-scoped as well, probed), so no
-listing is provably complete; the refusal names Kibana's Integrations UI, as
-a user whose role grants Fleet and Integrations in all spaces. The checks
-above therefore run with awareness off, where one listing holds every
-space's policies; the `fleet_unaware_ephemeral` tier runs them live on a
-9.5.4 stack booted with Fleet's `useSpaceAwareness` feature off (D63), all
-but the managed-agent-policy guard, which runs on fakes only. The
-managed `logs-*`/`metrics-*` data views an install may add to every space are
-kept (probed with `nginx`). The result lists the package policies read before the call; one created between
-that read and the uninstall is deleted unreported (the route has no
-conditional form).
+`uninstall_package` reads the package and every package policy of it, and
+**never removes an integration from an agent policy** (D64, owner): Kibana's
+uninstall deletes the package's package policies with it (probed: without
+`force` when no agent uses them, with it otherwise), so while any is left the
+call is refused and changes nothing, naming each one with its agent policy,
+agent count and (awareness on) space, and each agent policy it would leave
+with no integration (`delete_agent_policy` removes one the user no longer
+wants). The model removes them with `delete_package_policy` and calls again;
+there is no `force`, and Kibana's is never sent. A package that is not
+installed names `list_installed_packages`. Guarded, with their own refusal: a
+package policy on a managed or the default Fleet Server agent policy (as
+`delete_agent_policy` guards those policies), and any `fleet_server` package
+policy, on whatever agent policy or none (it runs the Fleet Servers there;
+the refusal names every guarded one, and for a plain or unattached one
+`delete_package_policy` once no Fleet Server is enrolled on it).
+`elastic_agent` is refused while any agent policy has `monitoring_enabled`:
+it holds the index templates and ingest pipelines of the agents' monitoring
+data streams, and Kibana uninstalled it under a monitoring agent policy
+without `force` or a check (probed); the refusal names those agent policies
+and `update_agent_policy monitoring_enabled=[]`. **With Fleet space awareness
+on (`use_space_awareness_migration_status` set to any value)** each space
+lists only its own agent and package policies, and Kibana's spaces listing
+leaves out, without an error, each space the API key cannot access (probed).
+So the uninstall reads the package policies (and, for `elastic_agent`, the
+agent policies) of every space the key lists, names a package policy in a
+space other than the one the fleet tools act in as one to remove in Kibana's
+Fleet UI there, and leaves the spaces it cannot see to Kibana: from 9.5.5 and
+9.4.8 Kibana answers 403 "… it is used in spaces you are not authorized to
+access" and keeps the package policies (probed on both; Fleet's
+`uninstall_authz.ts`, also on the 9.6 and main branches), which the tool
+turns into a refusal naming the fix. An older Kibana deleted them (probed on
+9.5.4), so under awareness a Kibana before 9.5.5 / 9.4.8 is refused before
+any policy is read, naming the upgrade and Kibana's Integrations UI, and so
+is a key `/api/status` does not give the version to: any authenticated key
+read it on 9.4.8, but from 9.5.5 only one with the Elasticsearch `monitor`
+cluster privilege does (Kibana's `statusPageBypassMonitorPrivilege`; probed),
+so that refusal names the privilege; so is a space-pinned `KIBANA_URL` while the key can
+access another space (a pinned URL reads only its own). The awareness-off
+path runs live in the `fleet_unaware_ephemeral` tier (D63), all but the
+managed-agent-policy guard, which runs on fakes only. The managed
+`logs-*`/`metrics-*` data views an install may add to every space are kept
+(probed with `nginx`). The result is `{uninstalled, name, version}`; a
+package policy created between the read and the uninstall is deleted
+unreported when no agent uses it (the route has no conditional form).
 
 **Agent-lifecycle results are async; return shape differs by arity.**
 Single-agent lifecycle tools return once Kibana *accepts* the command, not
@@ -206,14 +213,12 @@ object's body.
   tag to add or keep a tag to remove.
 - `install_package` never sends an install for a package that is installed;
   a different requested version is refused.
-- `uninstall_package` never sends an uninstall when the package has a package
-  policy on a managed or the default Fleet Server agent policy, when it is
-  `fleet_server` with any package policy (on any agent policy or none), when
-  it is `elastic_agent` while an agent policy has `monitoring_enabled`, nor,
-  without `force=True`, when it has any package policy, nor, whatever
-  `force` says, while Fleet space awareness is on (no listing it can read
-  proves complete); it sends Kibana's `force` only for a package with package
-  policies.
+- `uninstall_package` never sends an uninstall while any package policy it
+  can read uses the package (in every space the key can access, with Fleet
+  space awareness on), when it is `elastic_agent` while an agent policy has
+  `monitoring_enabled`, nor, with awareness on, on a Kibana before 9.5.5 /
+  9.4.8 or through a space-pinned URL while the key can access another
+  space; it never sends Kibana's `force` (D64).
 - `list_agent_diagnostics` returns exactly
   `{id, name, status, created_at, action_id}` per bundle — no download path.
 

@@ -1,0 +1,1 @@
+Using the kibana tools, create a Synthetics global parameter with the key 'e2e_c9ee5987_env', the value 'staging' and the description 'E2E c9ee5987 staging', then change that parameter's description to 'E2E c9ee5987 production'.

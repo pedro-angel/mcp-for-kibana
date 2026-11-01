@@ -1,0 +1,1 @@
+Using the kibana tools, create a new Kibana space with id 'e2e-haiku-45e62179'. Inside that space, create an '.es-query' alert rule named 'E2E ac3bc454 flight watch' with consumer 'stackAlerts' that fires when more than 0 documents match in the index 'kibana_sample_data_flights' (time field 'timestamp') over the last 5 minutes, then enable that rule.
