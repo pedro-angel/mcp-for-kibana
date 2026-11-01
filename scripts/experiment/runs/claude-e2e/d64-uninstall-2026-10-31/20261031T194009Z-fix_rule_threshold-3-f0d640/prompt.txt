@@ -1,0 +1,1 @@
+Using the kibana tools, fix the existing alert rule named 'E2E 9584e020 late flights'. It should fire when more than 100 documents match, but its threshold was set to 10000 by mistake. Correct the threshold of that rule in place and change nothing else: do not create, delete, enable or disable any rule.

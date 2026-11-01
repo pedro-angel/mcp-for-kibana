@@ -1,0 +1,1 @@
+Using the kibana tools, open a new case titled 'E2E 2f940e7d delayed flights' with the description 'Flights in the sample data are arriving late.', then add the comment 'Checked the flight delay dashboard.' to that case.

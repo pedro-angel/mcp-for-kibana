@@ -1,0 +1,1 @@
+Using the kibana tools, create a dashboard titled 'E2E c0a2f55c flight prices' with a bar chart of the average ticket price by carrier over the last 7 days, using the flights sample data. Make exactly one create-dashboard call, then stop.

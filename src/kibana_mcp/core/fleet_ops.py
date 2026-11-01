@@ -11,16 +11,22 @@ Observed on Kibana 9.5.4 (Basic), and what each shaped:
   and the rollback route answers 403 "Rollback integration requires an
   enterprise license", so an install never changes an installed version;
 - an uninstall deletes the package's package policies (one on an agent policy
-  with no agents went without `force`; one with an agent needed `force`), so a
-  package that has any is refused unless forced, naming them;
+  with no agents went without `force`; one with an agent needed `force`), so
+  the uninstall never sends one while any is left: a package still used by a
+  package policy is refused, naming each one, its agent policy and space, and
+  the agent policies it would leave with no integration (D64, owner);
 - an uninstall of `elastic_agent` went through without `force` while an agent
   policy had monitoring on (it removed the monitoring data streams' index
   templates and ingest pipelines; Kibana has no check), so it is refused while
-  any agent policy has `monitoring_enabled`, regardless of `force`;
-- with Fleet space awareness on, an uninstall deletes every space's package
-  policies, while the spaces listing hides each space the API key cannot read
-  (a key restricted to 'default' saw only it, and its uninstall deleted another
-  space's package policy), so the uninstall is refused, regardless of `force`.
+  any agent policy has `monitoring_enabled`;
+- with Fleet space awareness on, each space lists only its own package
+  policies and the spaces listing leaves out each space the API key cannot
+  access. Up to 9.5.4 / 9.4.7 Kibana's uninstall deleted the package policies
+  of those hidden spaces too; 9.5.5 and 9.4.8 answer 403 "... it is used in
+  spaces you are not authorized to access" instead (probed on both; Fleet's
+  uninstall_authz.ts, also on the 9.6 and main branches). So the uninstall
+  reads every space the key lists, leaves the hidden ones to Kibana's 403, and
+  is refused on a Kibana that lacks the check.
 
 stdlib only (no fastmcp/mcp/kibana) so this stays in `core`.
 """
@@ -84,8 +90,8 @@ def installed_version_refusal(name: str, installed: str, requested: str) -> str:
         f"{requested}; install_package only installs a package that is not installed — "
         "an upgrade cannot be undone on a Basic license (Kibana's rollback needs "
         "Enterprise) and Kibana refuses an older version. Change the version in "
-        "Kibana's Integrations UI, or uninstall_package it (which deletes its package "
-        "policies) and install_package again."
+        "Kibana's Integrations UI, or uninstall_package it (once no package policy uses "
+        "it) and install_package again."
     )
 
 
@@ -136,9 +142,9 @@ def guarded_policy_refusal(name: str, guarded: Sequence[tuple[str, str, str]]) -
                "managed nor the default Fleet Server policy, can be deleted on its own with "
                "delete_package_policy once no Fleet Server is enrolled on that agent policy.")
     return (
-        f"refusing to uninstall integration package '{name}': {listed}, "
-        "and Kibana deletes a package's package policies with it. This is refused "
-        f"regardless of force.{fix}"
+        f"refusing to uninstall integration package '{name}': {listed}, and this "
+        f"server never removes an integration from such an agent policy. Nothing was "
+        f"changed.{fix}"
     )
 
 
@@ -149,47 +155,126 @@ def monitoring_refusal(name: str, agent_policy_ids: Sequence[str]) -> str:
         f"refusing to uninstall integration package '{name}': agent monitoring is on in "
         f"{noun} {listed}, and the package holds the index templates and ingest pipelines "
         "of the agents' monitoring data streams (logs-elastic_agent*, metrics-elastic_agent*); "
-        "Kibana uninstalls it without a check. This is refused regardless of force — turn "
-        "monitoring off on each first with update_agent_policy monitoring_enabled=[] (a "
-        "managed agent policy cannot be changed)."
+        "Kibana uninstalls it without a check. Nothing was changed; turn monitoring off on "
+        "each first with update_agent_policy monitoring_enabled=[] (a managed agent policy "
+        "cannot be changed)."
     )
 
 
-def space_awareness_refusal(name: str) -> str:
-    """With Fleet space awareness on, Kibana's uninstall deletes the package's
-    package policies in every space, while the spaces listing leaves out, with no
-    error, each space the API key cannot read (probed on 9.5.4 with a key
-    restricted to 'default': the listing showed only 'default', and Kibana's
-    uninstall, no `force`, deleted a package policy in the other space). No
-    Kibana API this server calls proves the key reads every space, so nothing it
-    lists can be shown complete: refused whatever `force` says."""
+# The first patch of each line whose uninstall refuses (403) when the package is
+# used in a space the API key cannot access (Fleet's uninstall_authz.ts: present
+# at v9.4.8, v9.5.5 and on the 9.6 and main branches; absent at v9.4.7, v9.5.4).
+_HIDDEN_SPACE_CHECK = {(9, 4): 8, (9, 5): 5}
+_HIDDEN_SPACE_CHECK_FROM = (9, 6)
+
+
+def checks_hidden_spaces(version: str) -> bool:
+    """Whether Kibana `version` ("9.5.5", "9.6.0-SNAPSHOT") refuses an uninstall
+    of a package used in a space the API key cannot access. Unparseable: False."""
+    parts = version.split("-", 1)[0].split(".")
+    try:
+        major, minor, patch = (int(p) for p in parts[:3])
+    except ValueError:
+        return False
+    if (major, minor) >= _HIDDEN_SPACE_CHECK_FROM:
+        return True
+    first = _HIDDEN_SPACE_CHECK.get((major, minor))
+    return first is not None and patch >= first
+
+
+def _integrations_ui(name: str) -> str:
+    return (f"uninstall it in Kibana's Integrations UI ('{name}' → Settings) as a user whose "
+            "role grants Fleet and Integrations in all spaces (spaces [\"*\"])")
+
+
+def space_awareness_refusal(name: str, version: str) -> str:
+    """Fleet space awareness on and a Kibana without the hidden-space check, or
+    a version the key cannot read ("": from 9.5.5 GET /api/status gives it only
+    to a caller with the `monitor` cluster privilege, Kibana's
+    statusPageBypassMonitorPrivilege; probed): an older Kibana's uninstall
+    deletes the package's package policies in spaces the key cannot see."""
+    if not version:
+        return (
+            f"refusing to uninstall integration package '{name}': Fleet space awareness is on, "
+            "and this API key cannot read Kibana's version (from 9.5.5, GET /api/status gives "
+            "it only to a key with the Elasticsearch `monitor` cluster privilege), so the server "
+            "cannot tell whether this Kibana refuses an uninstall that would remove package "
+            "policies in spaces the key cannot access (before 9.5.5 / 9.4.8 it removes them "
+            "unseen). Nothing was changed. Add the `monitor` cluster privilege to the API key's "
+            f"role, or {_integrations_ui(name)}."
+        )
+    return (
+        f"refusing to uninstall integration package '{name}': Fleet space awareness is on, and "
+        f"Kibana {version} uninstalls a package's package policies in every space, including "
+        "spaces this API key cannot access, which no listing shows; Kibana 9.5.5 and 9.4.8 "
+        "refuse that instead. Nothing was changed. Upgrade Kibana to 9.5.5 or later (9.4.8 or "
+        f"later on 9.4), or {_integrations_ui(name)}."
+    )
+
+
+def pinned_space_refusal(name: str, pinned: str, others: Sequence[str]) -> str:
+    """Space awareness on and KIBANA_URL pinned to one space while the key can
+    access others: the server reads Fleet in the pinned space only, and Kibana's
+    uninstall would remove the package's package policies in the others unseen."""
+    noun = "space" if len(others) == 1 else "spaces"
     return (
         f"refusing to uninstall integration package '{name}': Fleet space awareness is on, "
-        "so Kibana's uninstall deletes the package's package policies in every space, and "
-        "this server cannot prove its API key reads every space (Kibana's spaces listing "
-        "leaves out, without an error, each space the key cannot read), so it cannot show "
-        "what would be deleted. This is refused regardless of force; nothing was changed. "
-        f"Uninstall it in Kibana's Integrations UI ('{name}' → Settings) as a user whose role "
-        "grants Fleet and Integrations in all spaces (spaces [\"*\"]), after reviewing its "
-        "integration policies in each space."
+        f"KIBANA_URL is pinned to space '{pinned}', and the API key can also access {noun} "
+        f"{_quoted(others)}, whose package policies Kibana's uninstall would remove but this "
+        "server cannot read through a pinned URL. Nothing was changed. Point KIBANA_URL at "
+        f"the deployment's root URL (no '/s/<space>'), or {_integrations_ui(name)}."
     )
 
 
-def package_policies_refusal(name: str, policies: Sequence[tuple[str, str, str, int]]) -> str:
-    """`policies`: (package policy id, its name, agent policy id or "", that
-    agent policy's agent count), one per package policy and agent policy."""
-    def where(ap_id: str, agents: int) -> str:
-        if not ap_id:
-            return "on no agent policy"
-        return f"on agent policy '{ap_id}' ({agents} agent{'' if agents == 1 else 's'})"
+def hidden_spaces_refusal(name: str) -> str:
+    """Kibana's 403 on the uninstall (9.5.5 / 9.4.8 and later): the package is
+    still used in a space the API key cannot access."""
+    return (
+        f"refusing to uninstall integration package '{name}': Kibana answered 403 — it is "
+        "still used in spaces this API key cannot access, so this server cannot list those "
+        "package policies. Nothing was changed. Remove them in Kibana's Fleet UI in each of "
+        "those spaces (or with an API key that can access them), then call uninstall_package "
+        f"again; or {_integrations_ui(name)}."
+    )
 
-    listed = "; ".join(f"'{pp_id}' ('{pp_name}') {where(ap_id, agents)}"
-                       for pp_id, pp_name, ap_id, agents in policies)
+
+def package_policies_refusal(
+    name: str,
+    policies: Sequence[tuple[str, str, str, str, int]],
+    emptied: Sequence[tuple[str, str]],
+    current_space: str,
+) -> str:
+    """`policies`: (package policy id, its name, space or "" when spaces do not
+    apply, agent policy id or "", that agent policy's agent count), one per
+    package policy and agent policy. `emptied`: (space or "", agent policy id)
+    of each agent policy left with no integration once these are removed.
+    `current_space`: the space the fleet tools act in."""
+    def where(space: str, ap_id: str, agents: int) -> str:
+        at = f" in space '{space}'" if space else ""
+        if not ap_id:
+            return f"on no agent policy{at}"
+        return f"on agent policy '{ap_id}'{at} ({agents} agent{'' if agents == 1 else 's'})"
+
+    listed = "; ".join(f"'{pp_id}' ('{pp_name}') {where(space, ap_id, agents)}"
+                       for pp_id, pp_name, space, ap_id, agents in policies)
     count = len({pp_id for pp_id, *_ in policies})
     noun = "package policy" if count == 1 else "package policies"
-    return (
-        f"refusing to uninstall integration package '{name}': it has {count} {noun} — "
-        f"{listed} — and Kibana deletes them with the package, so the agents on those "
-        "agent policies stop collecting its data. Delete them first with "
-        "delete_package_policy, or pass force=True to delete them with the package."
+    elsewhere = sorted({space for _, _, space, _, _ in policies if space and space != current_space})
+    how = (f"delete_package_policy removes each one in space '{current_space}'"
+           if elsewhere else "delete_package_policy removes each one")
+    if elsewhere:
+        how += (f"; this server's fleet tools act in space '{current_space}' only, so remove "
+                f"those in {_quoted(elsewhere)} in Kibana's Fleet UI in that space")
+    text = (
+        f"refusing to uninstall integration package '{name}': it is still used by {count} "
+        f"{noun} — {listed} — and this server never removes an integration from agent "
+        "policies as part of an uninstall. Nothing was changed. Remove the integration from "
+        f"them first ({how}; the agents on those agent policies stop collecting its data), "
+        "then call uninstall_package again."
     )
+    if emptied:
+        aps = ", ".join(f"'{ap}'" + (f" (space '{sp}')" if sp else "") for sp, ap in emptied)
+        verb = "would be" if len(emptied) == 1 else "would each be"
+        text += (f" Agent polic{'y' if len(emptied) == 1 else 'ies'} {aps} {verb} left with no "
+                 "integration: delete_agent_policy removes it if it is no longer wanted.")
+    return text

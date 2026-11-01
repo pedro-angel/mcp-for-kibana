@@ -1,0 +1,1 @@
+Using the kibana tools, create a detection exception list named 'E2E 785dff3a trusted hosts' with the description 'Hosts the e2e test trusts.', then add an exception item named 'E2E 785dff3a build server' with the description 'The CI build host.' to that list, matching when the field 'host.name' is 'build-01'.

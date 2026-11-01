@@ -492,31 +492,29 @@ class FleetToolbox:
             return {"deleted": True, "output_id": output_id}
 
         @mcp.tool(tags={self.name, "destructive"}, annotations=_DESTRUCTIVE)
-        def uninstall_package(
-            name: Annotated[str, Field(min_length=1)], force: bool = False
-        ) -> dict[str, Any]:
+        def uninstall_package(name: Annotated[str, Field(min_length=1)]) -> dict[str, Any]:
             """Uninstall an installed integration package (names from
-            list_installed_packages). DESTRUCTIVE: removes the package's
-            Elasticsearch and Kibana assets (index templates, ingest pipelines,
-            its dashboards) and DELETES its package policies, so agents stop
-            collecting its data; ingested data and the shared 'logs-*'/
-            'metrics-*' data views stay. A package with package
-            policies is refused unless force=True (the refusal names them;
-            delete_package_policy removes one at a time; force is sent to
-            Kibana only then); one with a package policy on a managed or the
-            default Fleet Server agent policy, and fleet_server with any
-            package policy, are refused regardless of force, as is
-            elastic_agent while an agent policy has monitoring on (it holds
-            the monitoring data streams' templates and pipelines). With Fleet
-            space awareness on (get_fleet_settings
-            space_awareness_migration_status set) every uninstall is refused,
-            force or not: Kibana deletes the package policies of every space
-            and this server cannot prove its key reads them all. Returns
-            {uninstalled, name, version,
-            deleted_package_policies} (as read before the call);
-            install_package reinstalls the package, not its policies."""
+            list_installed_packages) once no agent policy uses it. DESTRUCTIVE:
+            removes its Elasticsearch and Kibana assets (index templates,
+            ingest pipelines, its dashboards); ingested data and the shared
+            'logs-*'/'metrics-*' data views stay. It never removes the
+            integration from agent policies: while any package policy uses
+            the package, the call is refused and changes nothing, naming each
+            package policy, its agent policy (agent count) and space, and each
+            agent policy that would be left with no integration. To go on,
+            remove each with delete_package_policy (its agents stop collecting
+            the package's data), optionally delete_agent_policy an emptied one
+            the user no longer wants, then call this again. Also refused: a
+            package policy on a managed or the default Fleet Server agent
+            policy, any fleet_server one, and elastic_agent while an agent
+            policy has monitoring on. With Fleet space awareness on
+            (get_fleet_settings space_awareness_migration_status set) every
+            space the API key can access is checked, Kibana itself refuses a
+            package used in a space the key cannot access, and a Kibana older
+            than 9.5.5 / 9.4.8, or a key without the 'monitor' cluster
+            privilege on 9.5, is refused. Returns {uninstalled, name, version}."""
             with gateway_errors(), deps.gateway_factory() as gw:
-                result = gw.uninstall_package(name=name, force=force)
+                result = gw.uninstall_package(name=name)
             return {"uninstalled": True, **asdict(result)}
 
         # --- Agent lifecycle: single ---

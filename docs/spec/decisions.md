@@ -1,6 +1,6 @@
 # Decisions ledger
 
-Status: Draft v1.17 (2026-10-25) — regeneration corpus. Consumes
+Status: Draft v1.18 (2026-10-31) — regeneration corpus. Consumes
 [brief.md](brief.md); read alongside [design.md](design.md).
 
 Each entry is a decision a rewrite must not silently re-litigate: what was
@@ -1108,10 +1108,10 @@ this ledger stands without them.
   to uninstall package tcp: it is used in spaces you are not authorized to
   access" and the package policy was kept (Fleet's
   `services/epm/packages/uninstall_authz.ts`, present at the v9.5.5 and
-  v9.4.8 tags, absent at v9.5.4 and v9.4.7). The guard stays as it is: it
-  refuses before Kibana is asked, and a 9.4 or 9.5 patch older than these
-  still deletes. Relaxing it on the patches that check is open (roadmap).
-  The contract test now pins the 403.
+  v9.4.8 tags, absent at v9.5.4 and v9.4.7). The contract test now pins
+  the 403. *Superseded by D64: on those patches the uninstall reads every
+  space the key can access and relies on the 403 for the rest; older
+  patches stay refused.*
 
 - **D52 (2026-10-25, probes on 9.5.4, Basic)** — The dashboards toolbox
   gains `update_dashboard` (`write`, `idempotentHint=true`), over
@@ -2020,14 +2020,14 @@ this ledger stands without them.
   `fleet_unaware_ephemeral` (local `dod.config`; CI job
   `fleet-unaware-ephemeral` over `.github/dod/ci-fleet-unaware.config`, on
   every supported line like the other ephemeral jobs, D62).
-  `uninstall_package` refuses every call while awareness is on (D51), and a
+  `uninstall_package` refused every call while awareness was on (D51, until D64), and a
   fresh 9.5.4 stack has it on, so its package-policy listing, the Fleet
   Server guards (the default Fleet Server policy, any policy carrying a
   `fleet_server` package policy), the `elastic_agent` monitoring guard and
   the forced delete reporting `deleted_package_policies` ran on no gate
   stack before; the off path was checked only against hand-written mocks.
   The managed-policy guard still runs only on fakes
-  (`test_uninstall_package_refuses_a_guarded_agent_policy_even_with_force`):
+  (`test_uninstall_package_refuses_a_guarded_agent_policy`):
   the tier creates no managed agent policy (not probed; a live case when a
   fix touches that branch).
   The owner chose (2026-10-25): a 9.5.4 switch if one exists, else unit
@@ -2091,6 +2091,61 @@ this ledger stands without them.
   block, which the Fleet Server reasons reach), or the package-policy
   refusal bypassed, the criterion is NO-GO on the failing test; booted with the flag on, it is NO-GO naming the overlay at the
   harness check and, with that check disabled, at every test.
+- **D64 (2026-10-31, probes on 9.4.8 and 9.5.5, Basic; owner)** —
+  `uninstall_package` never removes an integration from an agent policy.
+  Owner: "the tool should stick to removing the integration ... the refusal
+  should come with the policies that use it, so the agent using the server
+  can remove the integration from all of them if that is what the user
+  asked." Kibana's uninstall deletes the package's package policies with it
+  (D51, probed), so while any package policy the server can read uses the
+  package the call is refused and nothing is sent; the refusal names each
+  one with its agent policy, agent count and space (awareness on), and each
+  agent policy it would leave with no integration, naming
+  `delete_package_policy` (and `delete_agent_policy` for an emptied one the
+  user no longer wants); `force` is gone from the tool and Kibana's is never
+  sent. With Fleet space awareness on, the D51 blanket refusal is withdrawn:
+  the uninstall reads every space the key lists (Kibana's uninstall removes
+  the package policies of every space the key can access without a 403, so a
+  default-space read alone would delete unreported), and leaves the spaces
+  the key cannot access to Kibana, which from 9.5.5 and 9.4.8 answers 403
+  "Insufficient privileges to uninstall package <name>: it is used in spaces
+  you are not authorized to access" and keeps them (the D51 amendment;
+  `uninstall_authz.ts`, also on the 9.6 and main branches); the tool turns
+  that 403 into a refusal naming the fix. A Kibana before 9.5.5 / 9.4.8
+  deleted them (probed on 9.5.4), so with awareness on it is refused before
+  any policy is read, the version read from `/api/status`. An unreadable
+  version refuses too, naming the fix: on 9.4.8 any authenticated key reads it
+  (a key with no privileges did, probed), but from 9.5.5 Kibana gives it only
+  to a caller with the Elasticsearch `monitor` cluster privilege
+  (`statusPageBypassMonitorPrivilege` in its status route, absent at v9.4.8;
+  a Fleet-only key got `{"status": {"overall": ...}}`, probed on 9.5.5), so on
+  9.5 the uninstall needs a key with `monitor` — the refusal names it. Fleet
+  serves no reliable Kibana version (its agent `available_versions` is a
+  filtered list that allows newer patches), and inferring the check from the
+  redaction was rejected (two fixes that happen to share a patch). A
+  space-pinned `KIBANA_URL` is refused while the key can access another space
+  (it reads only its own). A package policy in a
+  space other than the one the fleet tools act in is named with "remove it in
+  Kibana's Fleet UI in that space" (the fleet tools take no `space`; roadmap).
+  The result is `{uninstalled, name, version}` (`deleted_package_policies`
+  is gone: nothing listed is deleted). Rejected: a forced uninstall that
+  deletes the listed package policies in one call (owner: the integration is
+  removed from the policies explicitly); deleting emptied agent policies
+  automatically (an agent policy may be wanted empty; the refusal names them
+  instead). Evidence (2026-10-31, awareness on): the uninstall and
+  privilege-matrix contract tests, 9 passed on Kibana 9.4.8 (kibana-py
+  0.6.0) and 9 passed on 9.5.5 (0.6.1) — the refusal naming the package
+  policy and the emptied agent policy, `delete_package_policy` then the
+  uninstall, the restricted key's 403 turned into the refusal, the full key
+  naming the other space's package policy, `default-only-all` uninstalling a
+  package no space uses on 9.4.8 and refused naming `monitor` on 9.5.5, and
+  a Fleet key without `monitor` refused naming it on 9.5.5. The first
+  `make dod` at 1d39e14f was NO-GO on exactly that (`contract_green`, 2
+  failed: the 9.4.8 probe did not hold on 9.5.5); `make test-e2e` 55 of 55
+  (`scripts/experiment/runs/claude-e2e/d64-uninstall-2026-10-31`), and 55
+  of 55 again after the `monitor` fix (`d64-monitor-2026-10-31`, at 819a0848).
+  Supersedes D51's awareness-on refusal and `force`; D63's awareness-off tier
+  stays. Contract: [fleet](toolboxes/fleet.md).
 
 ## Scope and licensing (probed on Basic)
 
@@ -2161,6 +2216,11 @@ this ledger stands without them.
   mechanism. Surfaced by owner review of this corpus — the toolbox is only
   a safe regeneration unit because contracts cannot overlap.
 ## Superseded
+
+- ~~D51's refusal of every `uninstall_package` under Fleet space awareness,
+  and its `force`~~ — superseded by D64: the uninstall reads every space the
+  key can access, relies on Kibana's 403 (9.5.5 / 9.4.8) for the rest, and
+  never removes an integration from agent policies.
 
 - ~~D18's reference-model status (`gemma-4-12b-qat` as the `LMSTUDIO_MODEL`
   fallback)~~ — superseded by D33; D18's measurements stand.

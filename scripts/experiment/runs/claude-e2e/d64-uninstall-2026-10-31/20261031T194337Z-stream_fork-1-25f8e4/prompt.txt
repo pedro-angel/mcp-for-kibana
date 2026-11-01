@@ -1,0 +1,1 @@
+Using the kibana tools, fork the wired stream 'logs.ecs' into a new child stream named 'logs.ecs.e2e36b15f2a' that receives the documents whose field 'service.name' equals 'e2e-36b15f2a'.
