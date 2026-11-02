@@ -489,6 +489,13 @@ version section.
 
 ### Fixed
 
+- **The diagnostics contract test waits out the agent's rate limit from the
+  agent's side.** `test_agent_diagnostics_live` sent its second request 65 s
+  after the first, but the agent's one-per-minute limit starts when it handles
+  the first action, later on a busy runner: post-merge CI on `main` (contract,
+  Kibana 9.5.5) read the second bundle `FAILED` with "rate limit exceeded". It
+  now waits 65 s after the first bundle is `READY`.
+
 - **`update_output` keeps a remote Elasticsearch output's service token.**
   A rename (or any edit that leaves `type` as it is) sent the output's type
   back to Fleet, which then reset the output's `service_token` (a

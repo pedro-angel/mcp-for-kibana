@@ -273,28 +273,38 @@ def _await_bundle(gateway, agent_id, action_id, seconds):
     raise AssertionError(f"the demo agent did not upload bundle {action_id} within {seconds} s")
 
 
+def _assert_ready(gateway, agent_id, bundle):
+    # The tool's bundle drops the upload's `error`; read it raw so a FAILED
+    # bundle names why (the agent's "rate limit exceeded", say).
+    if bundle.status != "READY":
+        raw = gateway._client.fleet_agents.get_uploads(agent_id=agent_id).body.get("items", [])
+        why = [u.get("error") for u in raw if u.get("actionId") == bundle.action_id]
+        raise AssertionError(f"bundle {bundle.action_id} is {bundle.status}: {why}")
+    assert bundle.name.endswith(".zip") and bundle.created_at
+
+
 def test_agent_diagnostics_live(gateway):
     # The agent rate-limits diagnostics to one per minute (a second request
-    # within it FAILED "rate limit exceeded", probed), so the second request is
-    # sent at least 65 s after the first. The CPU bundle took ~66 s on the dev
-    # stack's demo agent but less on a GitHub runner, where a second request
-    # timed by the first bundle alone landed inside the window and FAILED.
+    # within it FAILED "rate limit exceeded", probed). Its window opens when the
+    # agent starts handling the first action, which can be well after the
+    # request is sent: on a GitHub runner a second request sent 65 s after the
+    # first was still rate-limited (main, 2026-10-31). So the second request
+    # waits 65 s from when the first bundle is READY, after the handling began.
     # additional_metrics=["CPU"] is the only value Kibana accepts (400
     # "expected value to equal [CPU]", probed).
     agent = _demo_agent(gateway)
-    first_sent = time.monotonic()
     cpu = gateway.request_agent_diagnostics(agent_id=agent.id, include_cpu_metrics=True)
     assert cpu.action_id and cpu.agent_id == agent.id and cpu.agent_status == "online"
     action_ids = [cpu.action_id]
     try:
         bundle = _await_bundle(gateway, agent.id, cpu.action_id, 150)
-        assert bundle.status == "READY" and bundle.name.endswith(".zip") and bundle.created_at
-        time.sleep(max(0.0, 65 - (time.monotonic() - first_sent)))  # past the rate limit
+        _assert_ready(gateway, agent.id, bundle)
+        time.sleep(65)  # past the rate limit, counted from the agent's side
         req = gateway.request_agent_diagnostics(agent_id=agent.id)
         action_ids.append(req.action_id)
         assert req.action_id != cpu.action_id and req.agent_status == "online"
         bundle = _await_bundle(gateway, agent.id, req.action_id, 120)
-        assert bundle.status == "READY" and bundle.name.endswith(".zip") and bundle.created_at
+        _assert_ready(gateway, agent.id, bundle)
     finally:
         for d in gateway.list_agent_diagnostics(agent.id):
             if d.action_id in action_ids and d.status == "READY":
