@@ -565,6 +565,9 @@ version section.
 - Locked joserfc moved to 1.7.7 (from authlib, through fastmcp), past two
   advisories `pip-audit` reported on 2026-10-30: CVE-2026-119283 (fixed in
   1.7.5) and CVE-2026-119284 (fixed in 1.7.6).
+- Locked dnspython moved to 2.9.2 (from email-validator), past
+  CVE-2026-128089, which `pip-audit` reported on 2026-11-13 against 2.9.0.
+  `make check`'s audit step fails without it.
 
 ## [0.4.0] - 2026-10-17
 
