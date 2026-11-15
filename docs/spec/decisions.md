@@ -54,7 +54,7 @@ this ledger stands without them.
   403 recorded in D51's amendment (that test passed alone once it pinned the
   403), and the e2e replay passed 10 on each — no gateway change.
   **Moved 2026-11-15 to 9.5.6 and 9.4.9** (kibana-py 0.6.2, released for
-  it; its evidence is kibana-py's `docs/evidence/multi-version-9.4.9-9.5.6.md`).
+  it after running both pins live end to end).
   The two answers 0.6.2 records as changed on 9.5.6 —
   `fleet_epm.authorize_transforms` (404 → 403) and `osquery.get_live_query`
   (500 → 404) on a missing object — come from calls no gateway method makes.
