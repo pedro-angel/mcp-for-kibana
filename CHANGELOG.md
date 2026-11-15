@@ -278,6 +278,16 @@ version section.
   refuses first under Fleet space awareness, so the tool behaves the same;
   the contract test that reproduced the deletion now pins the 403 (D51
   amendment).
+- **The supported Kibana pins move to 9.5.6 and 9.4.9**, the latest patch on
+  each line (D30). The set of lines is unchanged. The dependency is now
+  `kibana-py[async]>=0.6.2`, the first release that lists 9.5.6 and 9.4.9
+  (`kibana.SUPPORTED_VERSIONS`); the stack pin in
+  `elastic-start-local/.env.example` and `.env.ephemeral.example` and the
+  image pre-pull fallback in `scripts/cloud-setup.sh` are 9.5.6, and the docs
+  name 9.4.9 and 9.5.6 as the tested versions. The two answers kibana-py 0.6.2
+  records as changed on 9.5.6 (`fleet_epm.authorize_transforms` and
+  `osquery.get_live_query` on a missing object) come from calls no tool
+  makes, so no tool changes.
 - **The Definition-of-Done gate is hardened** (D53–D63). A review of the
   gate found 18 ways it could read GO over a defect; the entries below close
   them. Each check is a required criterion, runs inside one, or is part of
