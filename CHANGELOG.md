@@ -10,6 +10,8 @@ version section.
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-15
+
 ### Added
 
 - **Dashboards: edit a dashboard's settings** (one `write` tool, 184 tools in
@@ -496,6 +498,11 @@ version section.
   two ephemeral criteria, it is NO-GO outside CI on a shell `ES_LOCAL_VERSION`
   off the `.env.ephemeral.example` pin, naming `unset ES_LOCAL_VERSION`, and
   its GO line names the line it ran.
+- **The container image runs on Python 3.15** (`python:3.15-slim`, both
+  Dockerfile stages; #40). The image build, smoke test and replay over HTTP
+  pass on it. Locked dependencies moved with it (#41): fastmcp 4.1.8,
+  pydantic 2.14.3, authlib 1.9.5, aiofile 3.12.3 and caio 0.12.10 at runtime;
+  ruff 0.17.4, import-linter 2.16 and mkdocs-material 9.8.1 for development.
 
 ### Fixed
 
@@ -1289,7 +1296,8 @@ version section.
   `lms unload <identifier>`. It fails rather than skips, so the skip-green hole
   guarded in `tests/_stack_env.py` is not reopened here.
 
-[Unreleased]: https://github.com/pedro-angel/mcp-for-kibana/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/pedro-angel/mcp-for-kibana/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/pedro-angel/mcp-for-kibana/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/pedro-angel/mcp-for-kibana/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/pedro-angel/mcp-for-kibana/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/pedro-angel/mcp-for-kibana/compare/v0.1.0...v0.2.0

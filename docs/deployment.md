@@ -44,7 +44,7 @@ curl http://localhost:8000/mcp \
 
 The image (`docker/Dockerfile`) is a two-stage build: `uv sync --frozen
 --no-dev --no-editable` in the build stage, then only the built `.venv` is
-copied into a slim `python:3.14-slim` runtime stage. It runs as a
+copied into a slim `python:3.15-slim` runtime stage. It runs as a
 **non-root user** (`mcp-for-kibana`, uid 10001) — `USER mcp-for-kibana` is set
 before `ENTRYPOINT`, so the container process never runs as root even if
 someone runs it without extra `--user` flags. The published image name is
