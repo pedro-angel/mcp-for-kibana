@@ -35,7 +35,7 @@ this ledger stands without them.
 
 - **D30 (2026-10-04)** — The supported Kibana set is kibana-py's, and the
   stack pin is its newest version. `kibana.SUPPORTED_VERSIONS` (kibana-py ≥
-  0.6.1; today 9.5.5 and 9.4.8) is the one declaration: the CI contract job fans
+  0.6.2; today 9.5.6 and 9.4.9) is the one declaration: the CI contract job fans
   out over it — contract tier and e2e replay on every line — and
   `scripts/stack.sh up` takes an `ES_LOCAL_VERSION` override, so one script
   provisions either line. The pin in `.env.example` and `.env.ephemeral.example`
@@ -53,6 +53,14 @@ this ledger stands without them.
   on a fresh 9.4.8 stack and 556 of 557 on 9.5.5, the one failure the Fleet
   403 recorded in D51's amendment (that test passed alone once it pinned the
   403), and the e2e replay passed 10 on each — no gateway change.
+  **Moved 2026-11-15 to 9.5.6 and 9.4.9** (kibana-py 0.6.2, released for
+  it after running both pins live end to end).
+  The two answers 0.6.2 records as changed on 9.5.6 —
+  `fleet_epm.authorize_transforms` (404 → 403) and `osquery.get_live_query`
+  (500 → 404) on a missing object — come from calls no gateway method makes.
+  Evidence: `make dod` on a fresh, seeded 9.5.6 stack and the CI contract
+  matrix on both pins (the pull request that moved them records the
+  verdict) — no gateway change.
 - **D34 (2026-10-12)** — A per-tool allow list, `KIBANA_MCP_TOOLS` (owner
   spec), is the third selection axis beside toolbox and tier. Semantics:
   **published = listed ∩ tier**, nothing else. **The list alone decides**:
